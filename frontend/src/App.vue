@@ -66,6 +66,7 @@ const linkAccountForm = reactive({
 
 const activeTab = ref('students')
 const identityConnected = ref(false)
+const connectingIdentity = ref(false)
 const loadingStudents = ref(false)
 const loadingIdentityUsers = ref(false)
 const creatingStudent = ref(false)
