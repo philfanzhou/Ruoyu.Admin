@@ -19,7 +19,7 @@ RUN dotnet restore "AdminPortal.sln"
 
 # Copy all source files
 COPY admin_portal/backend/ ./backend/
-COPY backend/ruoyu.student/ ./backend/ruoyu.student/
+COPY backend/ruoyu.student/src/Contract/ ./backend/ruoyu.student/src/Contract/
 COPY admin_portal/test/ ./test/
 COPY --from=frontend-build /backend/wwwroot ./backend/wwwroot
 RUN dotnet test "AdminPortal.sln" -c Release --no-restore
