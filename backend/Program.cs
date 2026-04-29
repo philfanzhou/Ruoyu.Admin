@@ -45,6 +45,26 @@ var wwwrootPath = Path.Combine(builder.Environment.ContentRootPath, "wwwroot");
 if (Directory.Exists(wwwrootPath))
 {
     app.UseDefaultFiles();
+
+    // Inject app title from env var (APP_TITLE) into index.html at runtime
+    var appTitle = builder.Configuration["APP_TITLE"] ?? "Admin Portal";
+    app.Use(async (context, next) =>
+    {
+        if (context.Request.Path == "/index.html")
+        {
+            var filePath = Path.Combine(wwwrootPath, "index.html");
+            if (File.Exists(filePath))
+            {
+                var content = await File.ReadAllTextAsync(filePath);
+                content = content.Replace("__APP_TITLE__", appTitle);
+                context.Response.ContentType = "text/html; charset=utf-8";
+                await context.Response.WriteAsync(content);
+                return;
+            }
+        }
+        await next();
+    });
+
     app.UseStaticFiles();
 
     // SPA fallback for non-API paths (Vue Router history mode)

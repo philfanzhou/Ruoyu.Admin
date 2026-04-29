@@ -4,7 +4,7 @@ set -e
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_DIR="$SCRIPT_DIR/../.."
 DATE=$(date +%Y%m%d)
-IMAGE_NAME="admin-web-combined:${DATE}"
+IMAGE_NAME="ruoyu-admin:${DATE}"
 
 IMAGE_EXISTS=$(docker images -q "$IMAGE_NAME" 2>/dev/null)
 

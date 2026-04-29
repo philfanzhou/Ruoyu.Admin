@@ -3,8 +3,8 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HTTP_PORT="5020"
-IMAGE_NAME="admin-web-combined:$(date +%Y%m%d)"
-CONTAINER_NAME="admin-web-combined"
+IMAGE_NAME="ruoyu-admin:$(date +%Y%m%d)"
+CONTAINER_NAME="ruoyu-admin"
 ADMIN_APP_ID="student-admin"
 ADMIN_APP_SECRET="student-admin-secret"
 GRPC_HOST_PORT="5005"
@@ -24,6 +24,7 @@ docker run -d \
   --add-host=host.docker.internal:host-gateway \
   -p "${HTTP_PORT}:5020" \
   -e TZ=Asia/Shanghai \
+  -e APP_TITLE="${CONTAINER_NAME}" \
   -e AdminApi__AppId="${ADMIN_APP_ID}" \
   -e AdminApi__AppSecret="${ADMIN_APP_SECRET}" \
   -e GrpcService__Address="http://host.docker.internal:${GRPC_HOST_PORT}" \
