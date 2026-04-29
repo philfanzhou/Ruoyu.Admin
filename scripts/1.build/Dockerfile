@@ -10,9 +10,10 @@ RUN npm run build
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS backend-build
 WORKDIR /src
 COPY . .
-RUN dotnet restore "backend/Admin.WebApi.csproj"
+RUN dotnet restore "AdminPortal.sln"
+RUN dotnet test "AdminPortal.sln" -c Release --no-restore
 COPY --from=frontend-build /frontend/wwwroot ./backend/wwwroot
-RUN dotnet publish "backend/Admin.WebApi.csproj" -c Release -o /app/publish /p:UseAppHost=false
+RUN dotnet publish "backend/Admin.WebApi.csproj" -c Release -o /app/publish /p:UseAppHost=false --no-restore
 
 # ========== Stage 3: Runtime ==========
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final

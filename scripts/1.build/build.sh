@@ -19,6 +19,8 @@ fi
 
 echo "=========================================="
 echo "Building Unified Image: $IMAGE_NAME"
+echo "Using AdminPortal.sln solution"
+echo "Running tests during build..."
 echo "=========================================="
 
 docker build -f "$SCRIPT_DIR/Dockerfile" -t "$IMAGE_NAME" "$PROJECT_DIR"
