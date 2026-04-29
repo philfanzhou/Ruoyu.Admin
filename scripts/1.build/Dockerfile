@@ -12,7 +12,7 @@ WORKDIR /src
 COPY . .
 RUN dotnet restore "AdminPortal.sln"
 RUN dotnet test "AdminPortal.sln" -c Release --no-restore
-COPY --from=frontend-build /frontend/wwwroot ./backend/wwwroot
+COPY --from=frontend-build /backend/wwwroot ./backend/wwwroot
 RUN dotnet publish "backend/Admin.WebApi.csproj" -c Release -o /app/publish /p:UseAppHost=false --no-restore
 
 # ========== Stage 3: Runtime ==========
