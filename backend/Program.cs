@@ -18,6 +18,12 @@ builder.Services.AddGrpcClient<StudentManagementGrpcService.StudentManagementGrp
     options.Address = new Uri(grpcServiceAddress);
 });
 
+var identityServiceAddress = builder.Configuration["IdentityService:Address"] ?? "http://localhost:5010";
+builder.Services.AddHttpClient("IdentityService", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(30);
+});
+
 builder.Services.AddCors(options =>
 {
     var origins = builder.Configuration.GetSection("AdminWeb:AllowedOrigins").Get<string[]>() ?? Array.Empty<string>();
@@ -36,6 +42,61 @@ var app = builder.Build();
 
 app.UseCors("AdminWeb");
 app.MapStudentAdminApi(adminApiPort);
+
+// Proxy /api/identity/* requests to IdentityIssuer service
+app.MapWhen(ctx => ctx.Request.Path.StartsWithSegments("/api/identity"), identityApp =>
+{
+    identityApp.Run(async context =>
+    {
+        var clientFactory = context.RequestServices.GetRequiredService<IHttpClientFactory>();
+        var client = clientFactory.CreateClient("IdentityService");
+
+        var targetPath = context.Request.Path.Value!.Replace("/api/identity", "/api");
+        var targetUri = $"{identityServiceAddress.TrimEnd('/')}{targetPath}{context.Request.QueryString}";
+
+        var requestMessage = new HttpRequestMessage(new HttpMethod(context.Request.Method), targetUri);
+
+        // Forward request body for methods that support it
+        if (context.Request.Body != null && !HttpMethods.IsGet(context.Request.Method))
+        {
+            using var reader = new StreamReader(context.Request.Body, Encoding.UTF8);
+            var body = await reader.ReadToEndAsync();
+            if (!string.IsNullOrEmpty(body))
+            {
+                requestMessage.Content = new StringContent(body, Encoding.UTF8, context.Request.ContentType ?? "application/json");
+            }
+        }
+
+        // Forward request headers (Content-* handled by StringContent above)
+        foreach (var header in context.Request.Headers)
+        {
+            if (header.Key.StartsWith("Content-", StringComparison.OrdinalIgnoreCase))
+                continue;
+            requestMessage.Headers.TryAddWithoutValidation(header.Key, header.Value.ToArray());
+        }
+
+        HttpResponseMessage response;
+        try
+        {
+            response = await client.SendAsync(requestMessage, HttpCompletionOption.ResponseHeadersRead);
+        }
+        catch
+        {
+            context.Response.StatusCode = 502;
+            context.Response.ContentType = "application/json; charset=utf-8";
+            await context.Response.WriteAsync($"{{\"message\":\"Identity service unreachable\"}}");
+            return;
+        }
+
+        context.Response.StatusCode = (int)response.StatusCode;
+        foreach (var header in response.Headers)
+            context.Response.Headers[header.Key] = header.Value.ToArray();
+        foreach (var header in response.Content.Headers)
+            context.Response.Headers[header.Key] = header.Value.ToArray();
+
+        await response.Content.CopyToAsync(context.Response.Body);
+    });
+});
 
 // ========== Static files & SPA ==========
 var wwwrootPath = Path.Combine(builder.Environment.ContentRootPath, "wwwroot");
