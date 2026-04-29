@@ -13,13 +13,15 @@ WORKDIR /src
 # Copy project files for restore layer caching
 COPY admin_portal/AdminPortal.sln .
 COPY admin_portal/backend/Admin.WebApi.csproj ./backend/
-COPY backend/ruoyu.student/src/Contract/Ruoyu.Study.Student.Contract.csproj ./backend/ruoyu.student/src/Contract/
+# Keep the contract project at /backend/... so Admin.WebApi.csproj's
+# ../../backend/ruoyu.student/... reference resolves exactly as on disk.
+COPY backend/ruoyu.student/src/Contract/Ruoyu.Study.Student.Contract.csproj /backend/ruoyu.student/src/Contract/
 COPY admin_portal/test/Admin.WebApi.Tests/Admin.WebApi.Tests.csproj ./test/Admin.WebApi.Tests/
 RUN dotnet restore "AdminPortal.sln"
 
 # Copy all source files
 COPY admin_portal/backend/ ./backend/
-COPY backend/ruoyu.student/src/Contract/ ./backend/ruoyu.student/src/Contract/
+COPY backend/ruoyu.student/src/Contract/ /backend/ruoyu.student/src/Contract/
 COPY admin_portal/test/ ./test/
 COPY --from=frontend-build /backend/wwwroot ./backend/wwwroot
 RUN dotnet test "AdminPortal.sln" -c Release --no-restore
