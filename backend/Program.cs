@@ -45,61 +45,73 @@ var app = builder.Build();
 app.UseCors("AdminWeb");
 app.MapStudentAdminApi(adminApiPort);
 
-// Proxy /api/identity/* requests to IdentityIssuer service
-app.MapWhen(ctx => ctx.Request.Path.StartsWithSegments("/api/identity"), identityApp =>
+app.Use(async (context, next) =>
 {
-    identityApp.Run(async context =>
+    if (!context.Request.Path.StartsWithSegments("/api/identity"))
     {
-        var clientFactory = context.RequestServices.GetRequiredService<IHttpClientFactory>();
-        var client = clientFactory.CreateClient("IdentityService");
+        await next(context);
+        return;
+    }
 
-        var targetPath = context.Request.Path.Value!.Replace("/api/identity", "/api");
-        var targetUri = $"{identityServiceAddress.TrimEnd('/')}{targetPath}{context.Request.QueryString}";
+    var clientFactory = context.RequestServices.GetRequiredService<IHttpClientFactory>();
+    var client = clientFactory.CreateClient("IdentityService");
 
-        var requestMessage = new HttpRequestMessage(new HttpMethod(context.Request.Method), targetUri);
+    var targetPath = context.Request.Path.Value!.Replace("/api/identity", "/api");
+    var targetUri = $"{identityServiceAddress.TrimEnd('/')}{targetPath}{context.Request.QueryString}";
 
-        // Forward request body for methods that support it
-        if (context.Request.Body != null && !HttpMethods.IsGet(context.Request.Method))
+    var requestMessage = new HttpRequestMessage(new HttpMethod(context.Request.Method), targetUri);
+
+    if (context.Request.Body != null && !HttpMethods.IsGet(context.Request.Method))
+    {
+        using var reader = new StreamReader(context.Request.Body, Encoding.UTF8);
+        var body = await reader.ReadToEndAsync();
+        if (!string.IsNullOrEmpty(body))
         {
-            using var reader = new StreamReader(context.Request.Body, Encoding.UTF8);
-            var body = await reader.ReadToEndAsync();
-            if (!string.IsNullOrEmpty(body))
-            {
-                var content = new StringContent(body, Encoding.UTF8);
-                content.Headers.ContentType = new MediaTypeHeaderValue(context.Request.ContentType ?? "application/json");
-                requestMessage.Content = content;
-            }
+            var content = new StringContent(body, Encoding.UTF8);
+            content.Headers.ContentType = new MediaTypeHeaderValue(context.Request.ContentType ?? "application/json");
+            requestMessage.Content = content;
         }
+    }
 
-        // Forward request headers (Content-* handled by StringContent above)
-        foreach (var header in context.Request.Headers)
-        {
-            if (header.Key.StartsWith("Content-", StringComparison.OrdinalIgnoreCase))
-                continue;
-            requestMessage.Headers.TryAddWithoutValidation(header.Key, header.Value.ToArray());
-        }
+    foreach (var header in context.Request.Headers)
+    {
+        if (header.Key.StartsWith("Content-", StringComparison.OrdinalIgnoreCase))
+            continue;
+        requestMessage.Headers.TryAddWithoutValidation(header.Key, header.Value.ToArray());
+    }
 
-        HttpResponseMessage response;
-        try
-        {
-            response = await client.SendAsync(requestMessage, HttpCompletionOption.ResponseHeadersRead);
-        }
-        catch
-        {
-            context.Response.StatusCode = 502;
-            context.Response.ContentType = "application/json; charset=utf-8";
-            await context.Response.WriteAsync($"{{\"message\":\"Identity service unreachable\"}}");
-            return;
-        }
+    HttpResponseMessage response;
+    try
+    {
+        response = await client.SendAsync(requestMessage, HttpCompletionOption.ResponseHeadersRead);
+    }
+    catch
+    {
+        context.Response.StatusCode = 502;
+        context.Response.ContentType = "application/json; charset=utf-8";
+        await context.Response.WriteAsync("{\"message\":\"Identity service unreachable\"}");
+        return;
+    }
 
-        context.Response.StatusCode = (int)response.StatusCode;
-        foreach (var header in response.Headers)
-            context.Response.Headers[header.Key] = header.Value.ToArray();
-        foreach (var header in response.Content.Headers)
-            context.Response.Headers[header.Key] = header.Value.ToArray();
+    context.Response.StatusCode = (int)response.StatusCode;
 
-        await response.Content.CopyToAsync(context.Response.Body);
-    });
+    var excludedHeaders = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "Transfer-Encoding", "Content-Length", "Content-Type", "Connection", "Keep-Alive"
+    };
+
+    foreach (var header in response.Headers)
+    {
+        if (excludedHeaders.Contains(header.Key)) continue;
+        context.Response.Headers[header.Key] = header.Value.ToArray();
+    }
+    foreach (var header in response.Content.Headers)
+    {
+        if (excludedHeaders.Contains(header.Key)) continue;
+        context.Response.Headers[header.Key] = header.Value.ToArray();
+    }
+
+    await response.Content.CopyToAsync(context.Response.Body);
 });
 
 // ========== Static files & SPA ==========
