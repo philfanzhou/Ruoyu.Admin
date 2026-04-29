@@ -1,0 +1,58 @@
+import axios, { type AxiosInstance } from 'axios'
+
+export interface IdentityCredentials {
+  appId: string
+  appSecret: string
+}
+
+export interface IdentityPagedResponse<T> {
+  items: T[]
+  total: number
+  page: number
+  pageSize: number
+}
+
+export interface IdentityUser {
+  userId: string
+  username: string
+  phone: string
+  isActive: boolean
+  remark: string
+  createdAt: number
+  displayName: string
+}
+
+class IdentityAdminApiClient {
+  private client: AxiosInstance
+
+  constructor(credentials: IdentityCredentials) {
+    this.client = axios.create({
+      timeout: 15000,
+      headers: {
+        'X-Admin-AppId': credentials.appId,
+        'X-Admin-AppSecret': credentials.appSecret,
+      },
+    })
+  }
+
+  async testConnection(): Promise<void> {
+    await this.client.get('/api/identity/admin/apps')
+  }
+
+  async getUsers(params: { username?: string; phone?: string; page?: number; pageSize?: number }) {
+    const response = await this.client.get<IdentityPagedResponse<IdentityUser>>('/api/identity/admin/users', { params })
+    return response.data
+  }
+}
+
+export function createIdentityAdminApiClient(credentials: IdentityCredentials) {
+  return new IdentityAdminApiClient(credentials)
+}
+
+export function getIdentityErrorMessage(error: unknown) {
+  if (axios.isAxiosError(error)) {
+    return (error.response?.data as { message?: string } | undefined)?.message ?? error.message
+  }
+  if (error instanceof Error) return error.message
+  return 'Unknown error occurred.'
+}
