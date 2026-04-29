@@ -39,10 +39,6 @@ class StudentAdminApiClient {
   constructor() {
     this.client = axios.create({
       timeout: 15000,
-      headers: {
-        'X-Admin-AppId': 'student-admin',
-        'X-Admin-AppSecret': 'student-admin-secret',
-      },
     })
   }
 

@@ -5,8 +5,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HTTP_PORT="5020"
 IMAGE_NAME="ruoyu-admin:$(date +%Y%m%d)"
 CONTAINER_NAME="ruoyu-admin"
-ADMIN_APP_ID="student-admin"
-ADMIN_APP_SECRET="student-admin-secret"
 GRPC_HOST_PORT="5005"
 
 if [ -n "$(docker ps -q --filter "name=^/${CONTAINER_NAME}$")" ]; then
@@ -25,15 +23,12 @@ docker run -d \
   -p "${HTTP_PORT}:5020" \
   -e TZ=Asia/Shanghai \
   -e APP_TITLE="${CONTAINER_NAME}" \
-  -e AdminApi__AppId="${ADMIN_APP_ID}" \
-  -e AdminApi__AppSecret="${ADMIN_APP_SECRET}" \
   -e GrpcService__Address="http://host.docker.internal:${GRPC_HOST_PORT}" \
   "$IMAGE_NAME"
 
 echo "${CONTAINER_NAME} started"
 echo "-> HTTP Port: ${HTTP_PORT}"
 echo "-> gRPC Service: host.docker.internal:${GRPC_HOST_PORT}"
-echo "-> Admin Credentials: AppId=${ADMIN_APP_ID}, AppSecret=${ADMIN_APP_SECRET}"
 echo "-> Image: ${IMAGE_NAME}"
 echo "=== Real-time Logs ==="
 docker logs -f -t "$CONTAINER_NAME"

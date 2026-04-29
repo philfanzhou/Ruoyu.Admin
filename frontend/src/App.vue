@@ -15,6 +15,8 @@ import {
 
 const IDENTITY_STORAGE_KEY = 'student-admin-identity-credentials'
 
+const appTitle = (window as any).__APP_TITLE__ || 'Student Management Console'
+
 function loadSavedCredentials(key: string): { appId: string; appSecret: string } {
   try {
     const saved = localStorage.getItem(key)
@@ -339,7 +341,7 @@ onMounted(() => {
     <header class="hero">
       <div>
         <p class="eyebrow">Ruoyu.Student Admin</p>
-        <h1>Student Management Console</h1>
+        <h1>{{ appTitle }}</h1>
         <p class="hero-description">
           Manage student profiles and bind them to Identity phone accounts.
         </p>

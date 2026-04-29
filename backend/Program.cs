@@ -6,8 +6,6 @@ using Ruoyu.Study.Student.Contract.Protos;
 var builder = WebApplication.CreateBuilder(args);
 
 var adminApiPort = builder.Configuration.GetValue<int>("AdminApi:Port");
-var adminAppId = builder.Configuration["AdminApi:AppId"] ?? string.Empty;
-var adminAppSecret = builder.Configuration["AdminApi:AppSecret"] ?? string.Empty;
 var grpcServiceAddress = builder.Configuration["GrpcService:Address"] ?? "http://localhost:5005";
 
 builder.WebHost.ConfigureKestrel(options =>
@@ -15,7 +13,6 @@ builder.WebHost.ConfigureKestrel(options =>
     options.ListenAnyIP(adminApiPort);
 });
 
-builder.Services.AddSingleton(new AdminCredentials(adminAppId, adminAppSecret));
 builder.Services.AddGrpcClient<StudentManagementGrpcService.StudentManagementGrpcServiceClient>(options =>
 {
     options.Address = new Uri(grpcServiceAddress);
@@ -57,6 +54,8 @@ if (Directory.Exists(wwwrootPath))
             {
                 var content = await File.ReadAllTextAsync(filePath);
                 content = content.Replace("__APP_TITLE__", appTitle);
+                // Inject global variable for Vue app to read at runtime
+                content = content.Replace("</head>", $"<script>window.__APP_TITLE__ = '{appTitle.Replace("'", "\\'")}';</script></head>");
                 context.Response.ContentType = "text/html; charset=utf-8";
                 await context.Response.WriteAsync(content);
                 return;

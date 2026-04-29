@@ -8,15 +8,10 @@ namespace Admin.WebApi;
 internal static class StudentAdminApi
 {
     private const string GroupPath = "/api/admin";
-    private const string AppIdHeader = "X-Admin-AppId";
-    private const string AppSecretHeader = "X-Admin-AppSecret";
 
     public static void MapStudentAdminApi(this WebApplication app, int adminApiPort)
     {
         var group = app.MapGroup(GroupPath);
-
-        group.AddEndpointFilterFactory((_, next) => invocationContext =>
-            ValidateRequestAsync(invocationContext, next, adminApiPort));
 
         var students = group.MapGroup("/students");
 
@@ -31,27 +26,6 @@ internal static class StudentAdminApi
         students.MapDelete("{studentId:guid}/accounts/{accountId:guid}", UnlinkIdentityAccountFromStudentAsync);
 
         group.MapGet("accounts/{accountId:guid}/students", GetStudentsByIdentityAccountIdAsync);
-    }
-
-    private static async ValueTask<object?> ValidateRequestAsync(
-        EndpointFilterInvocationContext context,
-        EndpointFilterDelegate next,
-        int adminApiPort)
-    {
-        var httpContext = context.HttpContext;
-        if (httpContext.Connection.LocalPort != adminApiPort)
-            return TypedResults.NotFound();
-
-        var appId = httpContext.Request.Headers[AppIdHeader].ToString();
-        var appSecret = httpContext.Request.Headers[AppSecretHeader].ToString();
-        if (string.IsNullOrWhiteSpace(appId) || string.IsNullOrWhiteSpace(appSecret))
-            return TypedResults.Unauthorized();
-
-        var credentials = httpContext.RequestServices.GetRequiredService<AdminCredentials>();
-        if (appId != credentials.AppId || !BCrypt.Net.BCrypt.Verify(appSecret, credentials.AppSecret))
-            return TypedResults.Json(new ErrorResponse("Invalid admin credentials"), statusCode: StatusCodes.Status401Unauthorized);
-
-        return await next(context);
     }
 
     private static bool IsValidGuid(string value) => Guid.TryParse(value, out _);
