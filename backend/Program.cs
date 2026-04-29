@@ -1,3 +1,5 @@
+using System.Net.Http.Headers;
+using System.Text;
 using Admin.WebApi;
 using Admin.WebApi.Models;
 using Grpc.Net.ClientFactory;
@@ -18,7 +20,7 @@ builder.Services.AddGrpcClient<StudentManagementGrpcService.StudentManagementGrp
     options.Address = new Uri(grpcServiceAddress);
 });
 
-var identityServiceAddress = builder.Configuration["IdentityService:Address"] ?? "http://localhost:5010";
+var identityServiceAddress = builder.Configuration["IdentityService:Address"] ?? "http://localhost:5002";
 builder.Services.AddHttpClient("IdentityService", client =>
 {
     client.Timeout = TimeSpan.FromSeconds(30);
@@ -63,7 +65,9 @@ app.MapWhen(ctx => ctx.Request.Path.StartsWithSegments("/api/identity"), identit
             var body = await reader.ReadToEndAsync();
             if (!string.IsNullOrEmpty(body))
             {
-                requestMessage.Content = new StringContent(body, Encoding.UTF8, context.Request.ContentType ?? "application/json");
+                var content = new StringContent(body, Encoding.UTF8);
+                content.Headers.ContentType = new MediaTypeHeaderValue(context.Request.ContentType ?? "application/json");
+                requestMessage.Content = content;
             }
         }
 
