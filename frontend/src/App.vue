@@ -130,11 +130,14 @@ async function connectIdentity() {
     await client.testConnection()
     identityClient.value = client
     identityConnected.value = true
+    // 将 Identity 凭据传递给 studentAdminClient，使 batch 查询能携带认证头
+    studentAdminClient.setIdentityCredentials({ appId: identityCreds.appId, appSecret: identityCreds.appSecret })
     saveCredentials(IDENTITY_STORAGE_KEY, identityCreds)
     ElMessage.success('Identity service connected.')
   } catch (error) {
     identityConnected.value = false
     identityClient.value = null
+    studentAdminClient.clearIdentityCredentials()
     ElMessage.error(`Connection failed: ${getIdentityErrorMessage(error)}`)
   } finally {
     connectingIdentity.value = false

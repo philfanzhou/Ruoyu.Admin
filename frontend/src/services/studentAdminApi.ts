@@ -49,11 +49,21 @@ export interface IdentityAccountDto {
 
 class StudentAdminApiClient {
   private client: AxiosInstance
+  private identityCredentials: { appId: string; appSecret: string } | null = null
 
   constructor() {
     this.client = axios.create({
       timeout: 15000,
     })
+  }
+
+  // 设置 Identity 认证凭据 (调用 batch 接口时需要)
+  setIdentityCredentials(credentials: { appId: string; appSecret: string }) {
+    this.identityCredentials = credentials
+  }
+
+  clearIdentityCredentials() {
+    this.identityCredentials = null
   }
 
   async getGrades() {
@@ -108,7 +118,12 @@ class StudentAdminApiClient {
 
   // 批量获取 Identity 用户信息
   async getIdentityAccountsBatch(accountIds: string[]) {
-    const response = await this.client.post<IdentityAccountDto[]>('/api/admin/identity-accounts/batch', accountIds)
+    const headers: Record<string, string> = {}
+    if (this.identityCredentials) {
+      headers['X-Admin-AppId'] = this.identityCredentials.appId
+      headers['X-Admin-AppSecret'] = this.identityCredentials.appSecret
+    }
+    const response = await this.client.post<IdentityAccountDto[]>('/api/admin/identity-accounts/batch', accountIds, { headers })
     return response.data
   }
 }
