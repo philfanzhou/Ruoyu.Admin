@@ -16,6 +16,11 @@ export interface StudentDto {
   updatedAt: number
 }
 
+export interface GradeOption {
+  value: number
+  label: string
+}
+
 export interface CreateStudentRequest {
   name: string
   grade: number
@@ -40,6 +45,11 @@ class StudentAdminApiClient {
     this.client = axios.create({
       timeout: 15000,
     })
+  }
+
+  async getGrades() {
+    const response = await this.client.get<GradeOption[]>('/api/admin/students/grades')
+    return response.data
   }
 
   async getStudents(params: { name?: string; grade?: number; page?: number; pageSize?: number }) {

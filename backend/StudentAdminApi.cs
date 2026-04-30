@@ -9,6 +9,22 @@ internal static class StudentAdminApi
 {
     private const string GroupPath = "/api/admin";
 
+    private static readonly Dictionary<int, string> GradeLabels = new()
+    {
+        [1] = "小学一年级",
+        [2] = "小学二年级",
+        [3] = "小学三年级",
+        [4] = "小学四年级",
+        [5] = "小学五年级",
+        [6] = "小学六年级",
+        [7] = "初中一年级",
+        [8] = "初中二年级",
+        [9] = "初中三年级",
+        [10] = "高中一年级",
+        [11] = "高中二年级",
+        [12] = "高中三年级",
+    };
+
     public static void MapStudentAdminApi(this WebApplication app, int adminApiPort)
     {
         var group = app.MapGroup(GroupPath);
@@ -16,6 +32,7 @@ internal static class StudentAdminApi
         var students = group.MapGroup("/students");
 
         students.MapGet("", ListStudentsAsync);
+        students.MapGet("grades", GetGrades);
         students.MapGet("{studentId:guid}", GetStudentAsync);
         students.MapPost("", CreateStudentAsync);
         students.MapPut("{studentId:guid}", UpdateStudentAsync);
@@ -29,6 +46,17 @@ internal static class StudentAdminApi
     }
 
     private static bool IsValidGuid(string value) => Guid.TryParse(value, out _);
+
+    private static bool IsValidGrade(int grade) => GradeLabels.ContainsKey(grade);
+
+    private static Ok<List<GradeOption>> GetGrades()
+    {
+        var grades = GradeLabels
+            .Select(kv => new GradeOption(kv.Key, kv.Value))
+            .OrderBy(g => g.Value)
+            .ToList();
+        return TypedResults.Ok(grades);
+    }
 
     private static async Task<Results<Ok<PagedResponse<StudentDto>>, BadRequest<ErrorResponse>>> ListStudentsAsync(
         string? name,
@@ -45,7 +73,7 @@ internal static class StudentAdminApi
             var request = new SProto.ListStudentsRequest
             {
                 Name = name ?? "",
-                Grade = grade.GetValueOrDefault(),
+                Grade = grade.HasValue && grade.Value > 0 ? (SProto.Grade)grade.Value : SProto.Grade.Unspecified,
                 Page = normalizedPage,
                 PageSize = normalizedPageSize
             };
@@ -90,6 +118,9 @@ internal static class StudentAdminApi
             if (string.IsNullOrWhiteSpace(request.Name))
                 return TypedResults.BadRequest(new ErrorResponse("Name is required."));
 
+            if (!IsValidGrade(request.Grade))
+                return TypedResults.BadRequest(new ErrorResponse("Invalid grade value."));
+
             if (request.IdentityAccountIds == null || request.IdentityAccountIds.Count == 0)
                 return TypedResults.BadRequest(new ErrorResponse("At least one Identity Account ID is required."));
 
@@ -100,7 +131,7 @@ internal static class StudentAdminApi
             var grpcRequest = new SProto.CreateStudentRequest
             {
                 Name = request.Name.Trim(),
-                Grade = request.Grade,
+                Grade = (SProto.Grade)request.Grade,
                 IdentityAccountIds = { request.IdentityAccountIds }
             };
 
@@ -123,11 +154,14 @@ internal static class StudentAdminApi
             if (string.IsNullOrWhiteSpace(request.Name))
                 return TypedResults.BadRequest(new ErrorResponse("Name is required."));
 
+            if (!IsValidGrade(request.Grade))
+                return TypedResults.BadRequest(new ErrorResponse("Invalid grade value."));
+
             var grpcRequest = new SProto.UpdateStudentRequest
             {
                 StudentId = studentId.ToString(),
                 Name = request.Name.Trim(),
-                Grade = request.Grade
+                Grade = (SProto.Grade)request.Grade
             };
 
             if (request.IdentityAccountIds != null)
@@ -251,7 +285,7 @@ internal static class StudentAdminApi
     private static StudentDto ToDto(SProto.StudentDto model) => new(
         model.Id,
         model.Name,
-        model.Grade,
+        (int)model.Grade,
         model.IdentityAccountIds.ToList(),
         model.CreatedAt,
         model.UpdatedAt);

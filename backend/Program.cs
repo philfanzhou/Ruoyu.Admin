@@ -8,7 +8,7 @@ using Ruoyu.Study.Student.Contract.Protos;
 var builder = WebApplication.CreateBuilder(args);
 
 var adminApiPort = builder.Configuration.GetValue<int>("AdminApi:Port");
-var grpcServiceAddress = builder.Configuration["GrpcService:Address"] ?? "http://localhost:5005";
+var grpcServiceAddress = builder.Configuration["StudentGrpcService:Address"] ?? "http://localhost:5005";
 
 builder.WebHost.ConfigureKestrel(options =>
 {

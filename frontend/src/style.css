@@ -118,6 +118,45 @@ code {
   gap: 4px;
 }
 
+.account-search-bar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.search-results {
+  border: 1px solid #e4e7ed;
+  border-radius: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+  margin-bottom: 8px;
+}
+
+.search-result-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  font-size: 13px;
+}
+
+.search-result-item:hover {
+  background-color: #f5f7fa;
+}
+
+.search-result-item.selected {
+  background-color: #f0f9eb;
+}
+
+.selected-accounts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
 @media (max-width: 1100px) {
   .connection-grid,
   .split-layout {

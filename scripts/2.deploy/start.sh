@@ -5,8 +5,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ADMIN_HTTP_PORT="10901"
 IMAGE_NAME="ruoyu-admin:$(date +%Y%m%d)"
 CONTAINER_NAME="ruoyu-admin"
-STUDENT_GRPC_PORT="5005"
 IDENTITY_HTTP_PORT="10891"
+STUDENT_GRPC_PORT="10892"
 
 if [ -n "$(docker ps -q --filter "name=^/${CONTAINER_NAME}$")" ]; then
     echo "Container is already running, stopping it..."
@@ -24,7 +24,7 @@ docker run -d \
   -p "${ADMIN_HTTP_PORT}:5020" \
   -e TZ=Asia/Shanghai \
   -e APP_TITLE="${CONTAINER_NAME}" \
-  -e GrpcService__Address="http://host.docker.internal:${STUDENT_GRPC_PORT}" \
+  -e StudentGrpcService__Address="http://host.docker.internal:${STUDENT_GRPC_PORT}" \
   -e IdentityService__Address="http://host.docker.internal:${IDENTITY_HTTP_PORT}" \
   "$IMAGE_NAME"
 
