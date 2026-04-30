@@ -12,6 +12,7 @@ import {
   getStudentErrorMessage,
   type StudentDto,
   type GradeOption,
+  type IdentityAccountDto,
 } from './services/studentAdminApi'
 
 const IDENTITY_STORAGE_KEY = 'student-admin-identity-credentials'
@@ -90,6 +91,9 @@ const studentPage = ref(1)
 const studentPageSize = ref(20)
 
 const identityClient = ref<ReturnType<typeof createIdentityAdminApiClient> | null>(null)
+
+// 全局 Identity 用户信息缓存（键为 userId）
+const identityAccountCache = ref<Map<string, IdentityUser>>(new Map())
 
 const gradeLabelMap = computed(() => {
   const map = new Map<number, string>()
@@ -244,10 +248,42 @@ async function loadStudents() {
     })
     students.value = response.items
     studentTotal.value = response.total
+
+    // 预加载关联用户信息到全局缓存
+    const allAccountIds = [...new Set(
+      response.items.flatMap(s => s.identityAccountIds)
+    )]
+    if (allAccountIds.length > 0) {
+      await preloadIdentityAccounts(allAccountIds)
+    }
   } catch (error) {
     ElMessage.error(`Failed to load students: ${getStudentErrorMessage(error)}`)
   } finally {
     loadingStudents.value = false
+  }
+}
+
+// 预加载 Identity 用户信息到全局缓存
+async function preloadIdentityAccounts(accountIds: string[]) {
+  // 过滤掉缓存中已存在的ID
+  const idsToFetch = accountIds.filter(id => !identityAccountCache.value.has(id))
+  if (idsToFetch.length === 0) return
+
+  try {
+    const accounts = await studentAdminClient.getIdentityAccountsBatch(idsToFetch)
+    for (const account of accounts) {
+      identityAccountCache.value.set(account.userId, {
+        userId: account.userId,
+        username: account.username,
+        displayName: account.displayName,
+        phone: account.phone,
+        remark: account.remark,
+        isActive: true,
+        createdAt: 0,
+      })
+    }
+  } catch (error) {
+    console.warn('Failed to preload identity accounts:', error)
   }
 }
 
@@ -401,9 +437,16 @@ async function handleUnlinkAccount(studentId: string, accountId: string) {
 }
 
 function getAccountLabel(accountId: string): string {
+  // 1. 优先从全局缓存查找
+  const cachedUser = identityAccountCache.value.get(accountId)
+  if (cachedUser) return formatAccountLabel(cachedUser)
+
+  // 2. 从搜索结果缓存查找（兼容现有逻辑）
   const allUsers = [...searchResults.value, ...editStudentForm.searchResults, ...linkAccountForm.searchResults]
   const user = allUsers.find(u => u.userId === accountId)
   if (user) return formatAccountLabel(user)
+
+  // 3. 兜底：显示ID前8位
   return accountId.substring(0, 8) + '...'
 }
 
@@ -577,7 +620,7 @@ onMounted(() => {
                   <el-tag
                     v-for="accountId in row.identityAccountIds" :key="accountId" size="small" type="info"
                   >
-                    {{ accountId.substring(0, 8) }}...
+                    {{ getAccountLabel(accountId) }}
                   </el-tag>
                   <span v-if="!row.identityAccountIds.length" style="color: #c0c4cc; font-size: 12px;">None</span>
                 </div>

@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.AspNetCore.Mvc;
 using Admin.WebApi.Models;
 using Grpc.Core;
 using SProto = Ruoyu.Study.Student.Contract.Protos;
+using System.Text.Json;
 
 namespace Admin.WebApi;
 
@@ -41,6 +43,9 @@ internal static class StudentAdminApi
         students.MapGet("{studentId:guid}/accounts", GetIdentityAccountsByStudentIdAsync);
         students.MapPost("{studentId:guid}/accounts", LinkIdentityAccountToStudentAsync);
         students.MapDelete("{studentId:guid}/accounts/{accountId:guid}", UnlinkIdentityAccountFromStudentAsync);
+
+        // 批量查询 Identity 用户信息接口
+        group.MapPost("identity-accounts/batch", GetIdentityAccountsBatchAsync);
 
         group.MapGet("accounts/{accountId:guid}/students", GetStudentsByIdentityAccountIdAsync);
     }
@@ -289,4 +294,73 @@ internal static class StudentAdminApi
         model.IdentityAccountIds.ToList(),
         model.CreatedAt,
         model.UpdatedAt);
+
+    // 批量查询 Identity 用户信息 DTO
+    public sealed record IdentityAccountDto(string UserId, string Username, string DisplayName, string Phone, string Remark);
+
+    // Identity 服务返回的用户列表项
+    private sealed record IdentityUserItem(string UserId, string Username, string Phone, string Remark, string DisplayName);
+
+    // 批量查询 Identity 用户信息
+    private static async Task<Ok<List<IdentityAccountDto>>> GetIdentityAccountsBatchAsync(
+        HttpClient identityHttpClient,
+        [FromBody] List<string> accountIds)
+    {
+        if (accountIds == null || accountIds.Count == 0)
+            return TypedResults.Ok(new List<IdentityAccountDto>());
+
+        var targetIds = new HashSet<string>(accountIds, StringComparer.OrdinalIgnoreCase);
+        var result = new List<IdentityAccountDto>();
+
+        try
+        {
+            // 分页获取所有用户，每次 100 条
+            int page = 1;
+            const int pageSize = 100;
+            bool hasMore = true;
+
+            while (hasMore)
+            {
+                var url = $"/api/identity/admin/users?page={page}&pageSize={pageSize}";
+                var response = await identityHttpClient.GetAsync(url);
+
+                if (!response.IsSuccessStatusCode)
+                    break;
+
+                var json = await response.Content.ReadAsStringAsync();
+                var pagedResult = JsonSerializer.Deserialize<IdentityPagedResult<IdentityUserItem>>(json, new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                });
+
+                if (pagedResult?.Items == null || pagedResult.Items.Count == 0)
+                    break;
+
+                foreach (var user in pagedResult.Items)
+                {
+                    if (targetIds.Contains(user.UserId))
+                    {
+                        result.Add(new IdentityAccountDto(
+                            user.UserId,
+                            user.Username ?? string.Empty,
+                            user.DisplayName ?? string.Empty,
+                            user.Phone ?? string.Empty,
+                            user.Remark ?? string.Empty));
+                    }
+                }
+
+                hasMore = pagedResult.Items.Count == pageSize;
+                page++;
+            }
+        }
+        catch
+        {
+            // 出现错误时返回已获取到的数据
+        }
+
+        return TypedResults.Ok(result);
+    }
+
+    // JSON 反序列化辅助类型
+    private sealed record IdentityPagedResult<T>(List<T> Items, int Total, int Page, int PageSize);
 }

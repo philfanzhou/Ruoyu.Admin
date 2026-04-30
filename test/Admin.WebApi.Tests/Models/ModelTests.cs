@@ -141,3 +141,36 @@ public class ErrorResponseTests
         response.Message.Should().Be(message);
     }
 }
+
+public class IdentityAccountDtoTests
+{
+    [Fact]
+    public void Constructor_ShouldSetPropertiesCorrectly()
+    {
+        var userId = "user-123";
+        var username = "johndoe";
+        var displayName = "John Doe";
+        var phone = "13800138000";
+        var remark = "VIP user";
+
+        var dto = new Admin.WebApi.StudentAdminApi.IdentityAccountDto(userId, username, displayName, phone, remark);
+
+        dto.UserId.Should().Be(userId);
+        dto.Username.Should().Be(username);
+        dto.DisplayName.Should().Be(displayName);
+        dto.Phone.Should().Be(phone);
+        dto.Remark.Should().Be(remark);
+    }
+
+    [Fact]
+    public void Constructor_WithEmptyValues_ShouldAcceptEmptyStrings()
+    {
+        var dto = new Admin.WebApi.StudentAdminApi.IdentityAccountDto("", "", "", "", "");
+
+        dto.UserId.Should().BeEmpty();
+        dto.Username.Should().BeEmpty();
+        dto.DisplayName.Should().BeEmpty();
+        dto.Phone.Should().BeEmpty();
+        dto.Remark.Should().BeEmpty();
+    }
+}

@@ -38,6 +38,15 @@ export interface OperationResponse {
   message: string
 }
 
+// Identity 账户信息（用于批量查询）
+export interface IdentityAccountDto {
+  userId: string
+  username: string
+  displayName: string
+  phone: string
+  remark: string
+}
+
 class StudentAdminApiClient {
   private client: AxiosInstance
 
@@ -94,6 +103,12 @@ class StudentAdminApiClient {
 
   async getStudentsByAccountId(accountId: string) {
     const response = await this.client.get<StudentDto[]>(`/api/admin/accounts/${accountId}/students`)
+    return response.data
+  }
+
+  // 批量获取 Identity 用户信息
+  async getIdentityAccountsBatch(accountIds: string[]) {
+    const response = await this.client.post<IdentityAccountDto[]>('/api/admin/identity-accounts/batch', accountIds)
     return response.data
   }
 }
