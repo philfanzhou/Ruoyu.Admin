@@ -6,7 +6,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 PORTAL_DIR="$REPO_ROOT/admin_portal"
 STUDENT_CONTRACT_DIR="$REPO_ROOT/backend/ruoyu.student/src/Contract"
 DATE=$(date +%Y%m%d)
-IMAGE_NAME="ruoyu-admin:${DATE}"
+IMAGE_NAME="ruoyu.admin:${DATE}"
 
 if [ ! -f "$PORTAL_DIR/AdminPortal.sln" ]; then
     echo "Error: AdminPortal.sln not found under build context: $PORTAL_DIR"

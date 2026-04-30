@@ -3,7 +3,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ADMIN_HTTP_PORT="10901"
-IMAGE_NAME="ruoyu-admin:$(date +%Y%m%d)"
+IMAGE_NAME="ruoyu.admin:$(date +%Y%m%d)"
 CONTAINER_NAME="ruoyu-admin"
 IDENTITY_HTTP_PORT="10891"
 STUDENT_GRPC_PORT="10892"
