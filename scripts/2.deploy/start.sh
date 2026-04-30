@@ -2,11 +2,11 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ADMIN_HTTP_PORT="8091"
+ADMIN_HTTP_PORT="10901"
 IMAGE_NAME="ruoyu-admin:$(date +%Y%m%d)"
 CONTAINER_NAME="ruoyu-admin"
 STUDENT_GRPC_PORT="5005"
-IDENTITY_HTTP_PORT="5002"
+IDENTITY_HTTP_PORT="10891"
 
 if [ -n "$(docker ps -q --filter "name=^/${CONTAINER_NAME}$")" ]; then
     echo "Container is already running, stopping it..."
