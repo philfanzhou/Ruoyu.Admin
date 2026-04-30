@@ -23,7 +23,7 @@ RUN dotnet restore "AdminPortal.sln"
 COPY admin_portal/backend/ ./backend/
 COPY backend/ruoyu.student/src/Contract/ /backend/ruoyu.student/src/Contract/
 COPY admin_portal/test/ ./test/
-COPY --from=frontend-build /backend/wwwroot ./backend/wwwroot
+COPY --from=frontend-build /frontend/dist ./backend/wwwroot
 RUN dotnet test "AdminPortal.sln" -c Release --no-restore
 RUN dotnet publish "backend/Admin.WebApi.csproj" -c Release -o /app/publish /p:UseAppHost=false --no-restore
 
