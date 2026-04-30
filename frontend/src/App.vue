@@ -104,10 +104,9 @@ function getGradeLabel(grade: number): string {
 }
 
 function formatAccountLabel(user: IdentityUser): string {
-  if (user.username && user.remark) return `${user.username}(${user.remark})`
-  if (user.username) return user.username
-  if (user.phone && user.remark) return `${user.phone}(${user.remark})`
-  return user.phone || user.userId.substring(0, 8) + '...'
+  const name = user.displayName || user.username || user.phone || user.userId.substring(0, 8)
+  if (user.remark) return `${name}(${user.remark})`
+  return name
 }
 
 function formatDate(timestamp?: number | null) {
@@ -457,7 +456,10 @@ onMounted(() => {
         <!-- Create Student -->
         <el-card shadow="never" class="compact-card">
           <template #header>
-            <div class="panel-header"><span>Create Student</span></div>
+            <div class="panel-header">
+              <span>Create Student</span>
+              <span></span>
+            </div>
           </template>
           <el-form class="compact-form" label-position="top">
             <el-form-item label="Student Name">
@@ -476,7 +478,7 @@ onMounted(() => {
                 <div class="account-search-bar">
                   <el-input
                     v-model="usernameSearch"
-                    placeholder="Search by username..."
+                    placeholder="Search accounts..."
                     size="small"
                     :disabled="!identityConnected"
                     @keyup.enter="handleCreateSearch"
@@ -600,20 +602,20 @@ onMounted(() => {
             <div class="account-search-bar">
               <el-input
                 v-model="editStudentForm.usernameSearch"
-                placeholder="Search by username..."
-                size="small"
-                :disabled="!identityConnected"
-                @keyup.enter="handleEditSearch"
-              />
-              <el-button
-                type="primary"
-                size="small"
-                :loading="editStudentForm.searchLoading"
-                :disabled="!identityConnected || !editStudentForm.usernameSearch.trim()"
-                @click="handleEditSearch"
-              >
-                Search
-              </el-button>
+                placeholder="Search accounts..."
+                    size="small"
+                    :disabled="!identityConnected"
+                    @keyup.enter="handleEditSearch"
+                  />
+                  <el-button
+                    type="primary"
+                    size="small"
+                    :loading="editStudentForm.searchLoading"
+                    :disabled="!identityConnected || !editStudentForm.usernameSearch.trim()"
+                    @click="handleEditSearch"
+                  >
+                    Search
+                  </el-button>
             </div>
             <div v-if="editStudentForm.searchResults.length" class="search-results">
               <div
@@ -655,7 +657,7 @@ onMounted(() => {
             <div class="account-search-bar">
               <el-input
                 v-model="linkAccountForm.usernameSearch"
-                placeholder="Search by username..."
+                placeholder="Search accounts..."
                 size="small"
                 :disabled="!identityConnected"
                 @keyup.enter="handleLinkSearch"
