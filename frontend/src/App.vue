@@ -40,6 +40,7 @@ function saveCredentials(key: string, creds: { appId: string; appSecret: string 
 }
 
 const identityCreds = reactive<IdentityCredentials>(loadSavedCredentials(IDENTITY_STORAGE_KEY))
+const showConnectionPanel = ref(!loadSavedCredentials(IDENTITY_STORAGE_KEY).appId)
 
 const studentFilters = reactive({ name: '' })
 const usernameSearch = ref('')
@@ -403,55 +404,67 @@ onMounted(() => {
 
 <template>
   <div class="app-shell">
+    <!-- Header -->
     <header class="hero">
-      <div>
-        <p class="eyebrow">Ruoyu.Student Admin</p>
-        <h1>{{ appTitle }}</h1>
-        <p class="hero-description">
-          Manage student profiles and bind them to Identity accounts.
-        </p>
+      <div class="hero-main">
+        <div>
+          <h1>{{ appTitle }}</h1>
+          <p class="hero-sub">Manage student profiles and bind them to Identity accounts</p>
+        </div>
       </div>
-      <div style="display: flex; gap: 8px;">
-        <el-tag :type="identityConnected ? 'success' : 'info'" size="large">
-          {{ identityConnected ? 'Identity Connected' : 'Identity Disconnected' }}
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <el-button
+          v-if="identityConnected"
+          text
+          size="small"
+          @click="showConnectionPanel = !showConnectionPanel"
+        >
+          {{ showConnectionPanel ? 'Hide' : 'Show' }} Config
+        </el-button>
+        <el-tag :type="identityConnected ? 'success' : 'info'" class="status-tag">
+          {{ identityConnected ? 'Connected' : 'Disconnected' }}
         </el-tag>
       </div>
     </header>
 
-    <el-card shadow="never" class="panel">
+    <!-- Connection Panel -->
+    <el-card v-if="showConnectionPanel || !identityConnected" shadow="never" class="panel connection-panel">
       <template #header>
         <div class="panel-header">
           <span>Identity Authentication</span>
           <div class="header-actions">
-            <el-button type="danger" text @click="handleClearAllCredentials">Clear</el-button>
-            <el-button type="primary" :loading="connectingIdentity" @click="connectIdentity">
+            <el-button type="danger" text size="small" @click="handleClearAllCredentials">Clear</el-button>
+            <el-button type="primary" size="small" :loading="connectingIdentity" @click="connectIdentity">
               {{ identityConnected ? 'Reconnect' : 'Connect' }}
             </el-button>
           </div>
         </div>
       </template>
 
-      <el-form label-position="top">
-        <h4 style="margin: 0 0 12px; color: #4f46e5;">Identity Service</h4>
+      <el-form class="connection-form" label-position="top">
         <el-form-item label="Admin AppId">
-          <el-input v-model="identityCreds.appId" placeholder="Enter Identity AppId" />
+          <el-input v-model="identityCreds.appId" placeholder="Enter Identity AppId" size="small" />
         </el-form-item>
         <el-form-item label="Admin AppSecret">
-          <el-input v-model="identityCreds.appSecret" show-password placeholder="Enter Identity AppSecret" />
+          <el-input v-model="identityCreds.appSecret" show-password placeholder="Enter Identity AppSecret" size="small" />
         </el-form-item>
       </el-form>
     </el-card>
 
+    <!-- Main Content -->
     <el-card shadow="never" class="panel">
       <div class="split-layout">
-        <el-card shadow="never">
-          <template #header><div class="panel-header"><span>Create Student</span></div></template>
-          <el-form label-position="top">
+        <!-- Create Student -->
+        <el-card shadow="never" class="compact-card">
+          <template #header>
+            <div class="panel-header"><span>Create Student</span></div>
+          </template>
+          <el-form class="compact-form" label-position="top">
             <el-form-item label="Student Name">
-              <el-input v-model="createStudentForm.name" placeholder="Enter student name" />
+              <el-input v-model="createStudentForm.name" placeholder="Enter student name" size="small" />
             </el-form-item>
             <el-form-item label="Grade">
-              <el-select v-model="createStudentForm.grade" placeholder="Select grade" style="width: 100%">
+              <el-select v-model="createStudentForm.grade" placeholder="Select grade" size="small" style="width: 100%">
                 <el-option
                   v-for="g in gradeOptions" :key="g.value"
                   :label="g.label" :value="g.value"
@@ -464,11 +477,13 @@ onMounted(() => {
                   <el-input
                     v-model="usernameSearch"
                     placeholder="Search by username..."
+                    size="small"
                     :disabled="!identityConnected"
                     @keyup.enter="handleCreateSearch"
                   />
                   <el-button
                     type="primary"
+                    size="small"
                     :loading="searchLoading"
                     :disabled="!identityConnected || !usernameSearch.trim()"
                     @click="handleCreateSearch"
@@ -484,7 +499,7 @@ onMounted(() => {
                     @click="addAccountToCreate(user.userId)"
                   >
                     <span>{{ formatAccountLabel(user) }}</span>
-                    <el-icon v-if="createStudentForm.selectedAccountIds.includes(user.userId)" style="color: #67c23a;"><svg viewBox="0 0 1024 1024" width="16" height="16"><path fill="currentColor" d="M406.656 706.944l-195.2-195.2 60.330667-60.330667 134.869333 134.869334 300.8-300.8 60.330667 60.330666z"/></svg></el-icon>
+                    <el-icon v-if="createStudentForm.selectedAccountIds.includes(user.userId)" style="color: #67c23a;"><svg viewBox="0 0 1024 1024" width="14" height="14"><path fill="currentColor" d="M406.656 706.944l-195.2-195.2 60.330667-60.330667 134.869333 134.869334 300.8-300.8 60.330667 60.330666z"/></svg></el-icon>
                   </div>
                 </div>
                 <div v-if="createStudentForm.selectedAccountIds.length" class="selected-accounts">
@@ -496,13 +511,13 @@ onMounted(() => {
                     {{ getAccountLabel(accountId) }}
                   </el-tag>
                 </div>
-                <div v-if="!identityConnected" style="color: #909399; font-size: 12px; margin-top: 4px;">
+                <div v-if="!identityConnected" style="color: #909399; font-size: 11px; margin-top: 4px;">
                   Connect to Identity service to search accounts.
                 </div>
               </div>
             </el-form-item>
             <el-button
-              type="primary" :loading="creatingStudent"
+              type="primary" size="small" :loading="creatingStudent"
               @click="handleCreateStudent"
             >
               Create Student
@@ -510,25 +525,26 @@ onMounted(() => {
           </el-form>
         </el-card>
 
-        <el-card shadow="never">
+        <!-- Student List -->
+        <el-card shadow="never" class="compact-card">
           <template #header>
             <div class="panel-header">
               <span>Student List</span>
-              <el-button @click="loadStudents">Refresh</el-button>
+              <el-button size="small" @click="loadStudents">Refresh</el-button>
             </div>
           </template>
 
           <div class="filter-bar">
-            <el-input v-model="studentFilters.name" placeholder="Search by name" clearable />
-            <el-button type="primary" @click="loadStudents">Search</el-button>
+            <el-input v-model="studentFilters.name" placeholder="Search by name" clearable size="small" />
+            <el-button type="primary" size="small" @click="loadStudents">Search</el-button>
           </div>
 
-          <el-table :data="students" v-loading="loadingStudents" empty-text="No data">
-            <el-table-column prop="name" label="Name" min-width="140" />
-            <el-table-column label="Grade" width="120">
+          <el-table :data="students" v-loading="loadingStudents" empty-text="No data" class="data-table" size="small">
+            <el-table-column prop="name" label="Name" min-width="120" />
+            <el-table-column label="Grade" width="100">
               <template #default="{ row }">{{ getGradeLabel(row.grade) }}</template>
             </el-table-column>
-            <el-table-column label="Linked Accounts" min-width="220">
+            <el-table-column label="Linked Accounts" min-width="180">
               <template #default="{ row }">
                 <div class="account-tags">
                   <el-tag
@@ -536,14 +552,14 @@ onMounted(() => {
                   >
                     {{ accountId.substring(0, 8) }}...
                   </el-tag>
-                  <span v-if="!row.identityAccountIds.length" style="color: #c0c4cc;">None</span>
+                  <span v-if="!row.identityAccountIds.length" style="color: #c0c4cc; font-size: 12px;">None</span>
                 </div>
               </template>
             </el-table-column>
-            <el-table-column label="Created" min-width="160">
+            <el-table-column label="Created" min-width="140">
               <template #default="{ row }">{{ formatDate(row.createdAt) }}</template>
             </el-table-column>
-            <el-table-column label="Actions" width="260" fixed="right">
+            <el-table-column label="Actions" width="200" fixed="right">
               <template #default="{ row }">
                 <div class="table-actions">
                   <el-button link type="primary" size="small" @click="openEditDialog(row)">Edit</el-button>
@@ -568,11 +584,11 @@ onMounted(() => {
     </el-card>
 
     <!-- Edit Student Dialog -->
-    <el-dialog v-model="editStudentForm.visible" title="Edit Student" width="560px" destroy-on-close>
-      <el-form label-position="top">
-        <el-form-item label="Student Name"><el-input v-model="editStudentForm.name" /></el-form-item>
+    <el-dialog v-model="editStudentForm.visible" title="Edit Student" width="520px" destroy-on-close class="compact-dialog">
+      <el-form class="compact-form" label-position="top">
+        <el-form-item label="Student Name"><el-input v-model="editStudentForm.name" size="small" /></el-form-item>
         <el-form-item label="Grade">
-          <el-select v-model="editStudentForm.grade" placeholder="Select grade" style="width: 100%">
+          <el-select v-model="editStudentForm.grade" placeholder="Select grade" size="small" style="width: 100%">
             <el-option
               v-for="g in gradeOptions" :key="g.value"
               :label="g.label" :value="g.value"
@@ -585,11 +601,13 @@ onMounted(() => {
               <el-input
                 v-model="editStudentForm.usernameSearch"
                 placeholder="Search by username..."
+                size="small"
                 :disabled="!identityConnected"
                 @keyup.enter="handleEditSearch"
               />
               <el-button
                 type="primary"
+                size="small"
                 :loading="editStudentForm.searchLoading"
                 :disabled="!identityConnected || !editStudentForm.usernameSearch.trim()"
                 @click="handleEditSearch"
@@ -605,7 +623,7 @@ onMounted(() => {
                 @click="addAccountToEdit(user.userId)"
               >
                 <span>{{ formatAccountLabel(user) }}</span>
-                <el-icon v-if="editStudentForm.selectedAccountIds.includes(user.userId)" style="color: #67c23a;"><svg viewBox="0 0 1024 1024" width="16" height="16"><path fill="currentColor" d="M406.656 706.944l-195.2-195.2 60.330667-60.330667 134.869333 134.869334 300.8-300.8 60.330667 60.330666z"/></svg></el-icon>
+                <el-icon v-if="editStudentForm.selectedAccountIds.includes(user.userId)" style="color: #67c23a;"><svg viewBox="0 0 1024 1024" width="14" height="14"><path fill="currentColor" d="M406.656 706.944l-195.2-195.2 60.330667-60.330667 134.869333 134.869334 300.8-300.8 60.330667 60.330666z"/></svg></el-icon>
               </div>
             </div>
             <div v-if="editStudentForm.selectedAccountIds.length" class="selected-accounts">
@@ -621,15 +639,15 @@ onMounted(() => {
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="editStudentForm.visible = false">Cancel</el-button>
-        <el-button type="primary" :loading="updatingStudent" @click="handleUpdateStudent">Save Changes</el-button>
+        <el-button size="small" @click="editStudentForm.visible = false">Cancel</el-button>
+        <el-button type="primary" size="small" :loading="updatingStudent" @click="handleUpdateStudent">Save Changes</el-button>
       </template>
     </el-dialog>
 
     <!-- Link Account Dialog -->
-    <el-dialog v-model="linkAccountForm.visible" :title="`Link Account to: ${linkAccountForm.studentName}`" width="500px" destroy-on-close>
-      <el-form label-position="top">
-        <el-alert type="info" :closable="false" style="margin-bottom: 16px;">
+    <el-dialog v-model="linkAccountForm.visible" :title="`Link Account: ${linkAccountForm.studentName}`" width="480px" destroy-on-close class="compact-dialog">
+      <el-form class="compact-form" label-position="top">
+        <el-alert type="info" :closable="false" style="margin-bottom: 12px; padding: 8px 12px; font-size: 12px;">
           Search for an Identity account by username and select it to link with this student.
         </el-alert>
         <el-form-item label="Search Identity Account">
@@ -638,11 +656,13 @@ onMounted(() => {
               <el-input
                 v-model="linkAccountForm.usernameSearch"
                 placeholder="Search by username..."
+                size="small"
                 :disabled="!identityConnected"
                 @keyup.enter="handleLinkSearch"
               />
               <el-button
                 type="primary"
+                size="small"
                 :loading="linkAccountForm.searchLoading"
                 :disabled="!identityConnected || !linkAccountForm.usernameSearch.trim()"
                 @click="handleLinkSearch"
@@ -656,7 +676,7 @@ onMounted(() => {
                   v-for="user in linkAccountForm.searchResults" :key="user.userId"
                   class="search-result-item"
                 >
-                  <el-radio :value="user.userId">{{ formatAccountLabel(user) }}</el-radio>
+                  <el-radio :value="user.userId" size="small">{{ formatAccountLabel(user) }}</el-radio>
                 </div>
               </el-radio-group>
             </div>
@@ -664,8 +684,8 @@ onMounted(() => {
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="linkAccountForm.visible = false">Cancel</el-button>
-        <el-button type="primary" :loading="linkingAccount" :disabled="!linkAccountForm.selectedAccountId" @click="handleLinkAccount">
+        <el-button size="small" @click="linkAccountForm.visible = false">Cancel</el-button>
+        <el-button type="primary" size="small" :loading="linkingAccount" :disabled="!linkAccountForm.selectedAccountId" @click="handleLinkAccount">
           Link Account
         </el-button>
       </template>
