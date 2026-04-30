@@ -4,7 +4,6 @@ using Microsoft.Extensions.Logging;
 using Admin.WebApi.Models;
 using Grpc.Core;
 using SProto = Ruoyu.Study.Student.Contract.Protos;
-using System.Text.Json;
 
 namespace Admin.WebApi;
 
@@ -303,7 +302,7 @@ internal static class StudentAdminApi
     private sealed record IdentityUserItem(string UserId, string Username, string Phone, string Remark, string DisplayName);
 
     // 批量查询 Identity 用户信息
-    // 通过 admin_portal 自身的 proxy 路径 /api/identity/admin/users 间接调用 Identity 服务
+    // 通过 admin_portal 自身的 proxy 路径 /api/identity/gateway/users/batch 间接调用 Identity 服务
     private static async Task<Ok<List<IdentityAccountDto>>> GetIdentityAccountsBatchAsync(
         HttpContext httpContext,
         [FromBody] List<string> accountIds)
@@ -322,53 +321,37 @@ internal static class StudentAdminApi
             if (string.IsNullOrEmpty(appId) || string.IsNullOrEmpty(appSecret))
                 return TypedResults.Ok(result);
 
-            // 通过 admin_portal 自身地址调用 /api/identity/admin/users，该请求会经过 proxy 中间件
-            // 避免了直接调用 Identity 服务时的 cookie 认证问题
+            // 通过 admin_portal 自身地址调用 /api/identity/gateway/users/batch，该请求会经过 proxy 中间件
+            // 底层与前端用户搜索统一走基于 AppId/AppSecret 的 gateway 查询通道
             var scheme = httpContext.Request.Scheme;
             var host = httpContext.Request.Host.Value;
             var baseUrl = $"{scheme}://{host}";
 
             using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
-            int page = 1;
-            const int pageSize = 100;
-            bool hasMore = true;
+            var request = new HttpRequestMessage(HttpMethod.Post, $"{baseUrl}/api/identity/gateway/users/batch");
+            request.Headers.Add("X-Admin-AppId", appId);
+            request.Headers.Add("X-Admin-AppSecret", appSecret);
+            request.Content = JsonContent.Create(accountIds);
 
-            while (hasMore)
+            var response = await httpClient.SendAsync(request);
+            if (!response.IsSuccessStatusCode)
+                return TypedResults.Ok(result);
+
+            var accounts = await response.Content.ReadFromJsonAsync<List<IdentityUserItem>>();
+            if (accounts == null)
+                return TypedResults.Ok(result);
+
+            foreach (var user in accounts)
             {
-                var url = $"{baseUrl}/api/identity/admin/users?page={page}&pageSize={pageSize}";
-                var request = new HttpRequestMessage(HttpMethod.Get, url);
-                request.Headers.Add("X-Admin-AppId", appId);
-                request.Headers.Add("X-Admin-AppSecret", appSecret);
+                if (!targetIds.Contains(user.UserId))
+                    continue;
 
-                var response = await httpClient.SendAsync(request);
-
-                if (!response.IsSuccessStatusCode)
-                    break;
-
-                var json = await response.Content.ReadAsStringAsync();
-                var pagedResult = JsonSerializer.Deserialize<IdentityPagedResult<IdentityUserItem>>(json, new JsonSerializerOptions
-                {
-                    PropertyNameCaseInsensitive = true
-                });
-
-                if (pagedResult?.Items == null || pagedResult.Items.Count == 0)
-                    break;
-
-                foreach (var user in pagedResult.Items)
-                {
-                    if (targetIds.Contains(user.UserId))
-                    {
-                        result.Add(new IdentityAccountDto(
-                            user.UserId,
-                            user.Username ?? string.Empty,
-                            user.DisplayName ?? string.Empty,
-                            user.Phone ?? string.Empty,
-                            user.Remark ?? string.Empty));
-                    }
-                }
-
-                hasMore = pagedResult.Items.Count == pageSize;
-                page++;
+                result.Add(new IdentityAccountDto(
+                    user.UserId,
+                    user.Username ?? string.Empty,
+                    user.DisplayName ?? string.Empty,
+                    user.Phone ?? string.Empty,
+                    user.Remark ?? string.Empty));
             }
         }
         catch (Exception ex)
@@ -380,7 +363,4 @@ internal static class StudentAdminApi
 
         return TypedResults.Ok(result);
     }
-
-    // JSON 反序列化辅助类型
-    private sealed record IdentityPagedResult<T>(List<T> Items, int Total, int Page, int PageSize);
 }

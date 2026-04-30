@@ -36,11 +36,21 @@ class IdentityAdminApiClient {
   }
 
   async testConnection(): Promise<void> {
-    await this.client.get('/api/identity/admin/apps')
+    await this.client.get('/api/identity/gateway/users/search', {
+      params: {
+        page: 1,
+        pageSize: 1,
+      },
+    })
   }
 
   async getUsers(params: { username?: string; phone?: string; page?: number; pageSize?: number }) {
-    const response = await this.client.get<IdentityPagedResponse<IdentityUser>>('/api/identity/admin/users', { params })
+    const response = await this.client.get<IdentityPagedResponse<IdentityUser>>('/api/identity/gateway/users/search', { params })
+    return response.data
+  }
+
+  async getUsersByIds(userIds: string[]) {
+    const response = await this.client.post<IdentityUser[]>('/api/identity/gateway/users/batch', userIds)
     return response.data
   }
 }

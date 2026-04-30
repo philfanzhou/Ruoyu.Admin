@@ -12,7 +12,6 @@ import {
   getStudentErrorMessage,
   type StudentDto,
   type GradeOption,
-  type IdentityAccountDto,
 } from './services/studentAdminApi'
 
 const IDENTITY_STORAGE_KEY = 'student-admin-identity-credentials'
@@ -64,6 +63,7 @@ const editStudentForm = reactive({
   searchLoading: false,
   searchResults: [] as IdentityUser[],
 })
+const editManagedAccountsLoading = ref(false)
 
 const linkAccountForm = reactive({
   visible: false,
@@ -91,9 +91,7 @@ const studentPage = ref(1)
 const studentPageSize = ref(20)
 
 const identityClient = ref<ReturnType<typeof createIdentityAdminApiClient> | null>(null)
-
-// 全局 Identity 用户信息缓存（键为 userId）
-const identityAccountCache = ref<Map<string, IdentityUser>>(new Map())
+const editManagedAccountCache = ref<Map<string, IdentityUser>>(new Map())
 
 const gradeLabelMap = computed(() => {
   const map = new Map<number, string>()
@@ -108,7 +106,7 @@ function getGradeLabel(grade: number): string {
 }
 
 function formatAccountLabel(user: IdentityUser): string {
-  const name = user.displayName || user.username || user.phone || user.userId.substring(0, 8)
+  const name = user.displayName || user.username || user.phone || user.userId
   if (user.remark) return `${name}(${user.remark})`
   return name
 }
@@ -235,10 +233,18 @@ function addAccountToEdit(userId: string) {
   if (!editStudentForm.selectedAccountIds.includes(userId)) {
     editStudentForm.selectedAccountIds.push(userId)
   }
+
+  const selectedUser = editStudentForm.searchResults.find(user => user.userId === userId)
+  if (selectedUser) {
+    cacheEditManagedAccount(selectedUser)
+  }
 }
 
 function removeAccountFromEdit(userId: string) {
   editStudentForm.selectedAccountIds = editStudentForm.selectedAccountIds.filter(id => id !== userId)
+  const next = new Map(editManagedAccountCache.value)
+  next.delete(userId)
+  editManagedAccountCache.value = next
 }
 
 async function loadStudents() {
@@ -251,14 +257,6 @@ async function loadStudents() {
     })
     students.value = response.items
     studentTotal.value = response.total
-
-    // 预加载关联用户信息到全局缓存
-    const allAccountIds = [...new Set(
-      response.items.flatMap(s => s.identityAccountIds)
-    )]
-    if (allAccountIds.length > 0) {
-      await preloadIdentityAccounts(allAccountIds)
-    }
   } catch (error) {
     ElMessage.error(`Failed to load students: ${getStudentErrorMessage(error)}`)
   } finally {
@@ -266,27 +264,38 @@ async function loadStudents() {
   }
 }
 
-// 预加载 Identity 用户信息到全局缓存
-async function preloadIdentityAccounts(accountIds: string[]) {
-  // 过滤掉缓存中已存在的ID
-  const idsToFetch = accountIds.filter(id => !identityAccountCache.value.has(id))
-  if (idsToFetch.length === 0) return
+function cacheEditManagedAccount(user: IdentityUser) {
+  const next = new Map(editManagedAccountCache.value)
+  next.set(user.userId, user)
+  editManagedAccountCache.value = next
+}
 
+async function loadEditManagedAccounts(studentId: string, accountIds: string[]) {
+  editManagedAccountCache.value = new Map()
+  editManagedAccountsLoading.value = false
+
+  if (!identityConnected.value || accountIds.length === 0) {
+    return
+  }
+
+  editManagedAccountsLoading.value = true
   try {
-    const accounts = await studentAdminClient.getIdentityAccountsBatch(idsToFetch)
+    if (!identityClient.value) return
+
+    const accounts = await identityClient.value.getUsersByIds(accountIds)
+    if (editStudentForm.studentId !== studentId) return
+
+    const next = new Map<string, IdentityUser>()
     for (const account of accounts) {
-      identityAccountCache.value.set(account.userId, {
-        userId: account.userId,
-        username: account.username,
-        displayName: account.displayName,
-        phone: account.phone,
-        remark: account.remark,
-        isActive: true,
-        createdAt: 0,
-      })
+      next.set(account.userId, account)
     }
+    editManagedAccountCache.value = next
   } catch (error) {
-    console.warn('Failed to preload identity accounts:', error)
+    console.warn('Failed to load managed account names for edit dialog:', error)
+  } finally {
+    if (editStudentForm.studentId === studentId) {
+      editManagedAccountsLoading.value = false
+    }
   }
 }
 
@@ -330,14 +339,16 @@ async function handleCreateStudent() {
   }
 }
 
-function openEditDialog(row: StudentDto) {
+async function openEditDialog(row: StudentDto) {
   editStudentForm.visible = true
   editStudentForm.studentId = row.id
   editStudentForm.name = row.name
   editStudentForm.grade = row.grade
   editStudentForm.selectedAccountIds = [...row.identityAccountIds]
   editStudentForm.accountSearch = ''
+  editStudentForm.searchLoading = false
   editStudentForm.searchResults = []
+  await loadEditManagedAccounts(row.id, editStudentForm.selectedAccountIds)
 }
 
 async function handleUpdateStudent() {
@@ -356,6 +367,7 @@ async function handleUpdateStudent() {
     })
     ElMessage.success('Student updated successfully.')
     editStudentForm.visible = false
+    editManagedAccountCache.value = new Map()
     await loadStudents()
   } catch (error) {
     ElMessage.error(`Failed to update student: ${getStudentErrorMessage(error)}`)
@@ -440,17 +452,26 @@ async function handleUnlinkAccount(studentId: string, accountId: string) {
 }
 
 function getAccountLabel(accountId: string): string {
-  // 1. 优先从全局缓存查找
-  const cachedUser = identityAccountCache.value.get(accountId)
-  if (cachedUser) return formatAccountLabel(cachedUser)
-
-  // 2. 从搜索结果缓存查找（兼容现有逻辑）
+  // 从搜索结果缓存查找（用于创建/关联等主动搜索场景）
   const allUsers = [...searchResults.value, ...editStudentForm.searchResults, ...linkAccountForm.searchResults]
   const user = allUsers.find(u => u.userId === accountId)
   if (user) return formatAccountLabel(user)
 
-  // 3. 兜底：显示ID前8位
-  return accountId.substring(0, 8) + '...'
+  return accountId
+}
+
+function getEditManagedAccountLabel(accountId: string): string {
+  const cachedUser = editManagedAccountCache.value.get(accountId)
+  if (cachedUser) {
+    return `${formatAccountLabel(cachedUser)} [${accountId}]`
+  }
+
+  const searchedUser = editStudentForm.searchResults.find(user => user.userId === accountId)
+  if (searchedUser) {
+    return `${formatAccountLabel(searchedUser)} [${accountId}]`
+  }
+
+  return accountId
 }
 
 function handleStudentPageChange(page: number) {
@@ -623,7 +644,7 @@ onMounted(() => {
                   <el-tag
                     v-for="accountId in row.identityAccountIds" :key="accountId" size="small" type="info"
                   >
-                    {{ getAccountLabel(accountId) }}
+                    {{ accountId }}
                   </el-tag>
                   <span v-if="!row.identityAccountIds.length" style="color: #c0c4cc; font-size: 12px;">None</span>
                 </div>
@@ -699,13 +720,16 @@ onMounted(() => {
                 <el-icon v-if="editStudentForm.selectedAccountIds.includes(user.userId)" style="color: #67c23a;"><svg viewBox="0 0 1024 1024" width="14" height="14"><path fill="currentColor" d="M406.656 706.944l-195.2-195.2 60.330667-60.330667 134.869333 134.869334 300.8-300.8 60.330667 60.330666z"/></svg></el-icon>
               </div>
             </div>
+            <div v-if="editManagedAccountsLoading" style="color: #909399; font-size: 11px; margin-top: 4px;">
+              Loading usernames for linked accounts...
+            </div>
             <div v-if="editStudentForm.selectedAccountIds.length" class="selected-accounts">
               <el-tag
                 v-for="accountId in editStudentForm.selectedAccountIds" :key="accountId"
                 closable size="small" type="info"
                 @close="removeAccountFromEdit(accountId)"
               >
-                {{ getAccountLabel(accountId) }}
+                {{ getEditManagedAccountLabel(accountId) }}
               </el-tag>
             </div>
           </div>
