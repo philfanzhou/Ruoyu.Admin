@@ -43,7 +43,7 @@ const identityCreds = reactive<IdentityCredentials>(loadSavedCredentials(IDENTIT
 const showConnectionPanel = ref(!loadSavedCredentials(IDENTITY_STORAGE_KEY).appId)
 
 const studentFilters = reactive({ name: '' })
-const usernameSearch = ref('')
+const accountSearch = ref('')
 const searchLoading = ref(false)
 const searchResults = ref<IdentityUser[]>([])
 
@@ -59,7 +59,7 @@ const editStudentForm = reactive({
   name: '',
   grade: 1,
   selectedAccountIds: [] as string[],
-  usernameSearch: '',
+  accountSearch: '',
   searchLoading: false,
   searchResults: [] as IdentityUser[],
 })
@@ -68,7 +68,7 @@ const linkAccountForm = reactive({
   visible: false,
   studentId: '',
   studentName: '',
-  usernameSearch: '',
+  accountSearch: '',
   searchLoading: false,
   searchResults: [] as IdentityUser[],
   selectedAccountId: '',
@@ -155,16 +155,41 @@ async function handleClearAllCredentials() {
   }
 }
 
-async function searchUsersByUsername(query: string): Promise<IdentityUser[]> {
+function isPhoneLikeQuery(query: string): boolean {
+  return /^[+\d\s\-()]+$/.test(query)
+}
+
+async function searchIdentityAccounts(query: string): Promise<IdentityUser[]> {
   if (!identityClient.value || !query.trim()) return []
 
-  try {
-    const response = await identityClient.value.getUsers({
-      username: query.trim(),
+  const trimmedQuery = query.trim()
+  const requests = [
+    identityClient.value.getUsers({
+      username: trimmedQuery,
       page: 1,
       pageSize: 20,
-    })
-    return response.items
+    }),
+  ]
+
+  if (isPhoneLikeQuery(trimmedQuery)) {
+    requests.push(
+      identityClient.value.getUsers({
+        phone: trimmedQuery,
+        page: 1,
+        pageSize: 20,
+      }),
+    )
+  }
+
+  try {
+    const responses = await Promise.all(requests)
+    const merged = new Map<string, IdentityUser>()
+    for (const response of responses) {
+      for (const user of response.items) {
+        merged.set(user.userId, user)
+      }
+    }
+    return [...merged.values()]
   } catch (error) {
     ElMessage.error(`Search failed: ${getIdentityErrorMessage(error)}`)
     return []
@@ -173,19 +198,19 @@ async function searchUsersByUsername(query: string): Promise<IdentityUser[]> {
 
 async function handleCreateSearch() {
   searchLoading.value = true
-  searchResults.value = await searchUsersByUsername(usernameSearch.value)
+  searchResults.value = await searchIdentityAccounts(accountSearch.value)
   searchLoading.value = false
 }
 
 async function handleEditSearch() {
   editStudentForm.searchLoading = true
-  editStudentForm.searchResults = await searchUsersByUsername(editStudentForm.usernameSearch)
+  editStudentForm.searchResults = await searchIdentityAccounts(editStudentForm.accountSearch)
   editStudentForm.searchLoading = false
 }
 
 async function handleLinkSearch() {
   linkAccountForm.searchLoading = true
-  linkAccountForm.searchResults = await searchUsersByUsername(linkAccountForm.usernameSearch)
+  linkAccountForm.searchResults = await searchIdentityAccounts(linkAccountForm.accountSearch)
   linkAccountForm.searchLoading = false
 }
 
@@ -256,7 +281,7 @@ async function handleCreateStudent() {
     createStudentForm.name = ''
     createStudentForm.grade = 1
     createStudentForm.selectedAccountIds = []
-    usernameSearch.value = ''
+    accountSearch.value = ''
     searchResults.value = []
     await loadStudents()
   } catch (error) {
@@ -272,7 +297,7 @@ function openEditDialog(row: StudentDto) {
   editStudentForm.name = row.name
   editStudentForm.grade = row.grade
   editStudentForm.selectedAccountIds = [...row.identityAccountIds]
-  editStudentForm.usernameSearch = ''
+  editStudentForm.accountSearch = ''
   editStudentForm.searchResults = []
 }
 
@@ -328,7 +353,7 @@ function openLinkAccountDialog(row: StudentDto) {
   linkAccountForm.studentId = row.id
   linkAccountForm.studentName = row.name
   linkAccountForm.selectedAccountId = ''
-  linkAccountForm.usernameSearch = ''
+  linkAccountForm.accountSearch = ''
   linkAccountForm.searchResults = []
 }
 
@@ -477,8 +502,8 @@ onMounted(() => {
               <div style="width: 100%">
                 <div class="account-search-bar">
                   <el-input
-                    v-model="usernameSearch"
-                    placeholder="Search accounts..."
+                    v-model="accountSearch"
+                    placeholder="Search by username or phone..."
                     size="small"
                     :disabled="!identityConnected"
                     @keyup.enter="handleCreateSearch"
@@ -487,7 +512,7 @@ onMounted(() => {
                     type="primary"
                     size="small"
                     :loading="searchLoading"
-                    :disabled="!identityConnected || !usernameSearch.trim()"
+                    :disabled="!identityConnected || !accountSearch.trim()"
                     @click="handleCreateSearch"
                   >
                     Search
@@ -514,7 +539,7 @@ onMounted(() => {
                   </el-tag>
                 </div>
                 <div v-if="!identityConnected" style="color: #909399; font-size: 11px; margin-top: 4px;">
-                  Connect to Identity service to search accounts.
+                  Connect to Identity service to search accounts by username or phone.
                 </div>
               </div>
             </el-form-item>
@@ -601,8 +626,8 @@ onMounted(() => {
           <div style="width: 100%">
             <div class="account-search-bar">
               <el-input
-                v-model="editStudentForm.usernameSearch"
-                placeholder="Search accounts..."
+                v-model="editStudentForm.accountSearch"
+                placeholder="Search by username or phone..."
                     size="small"
                     :disabled="!identityConnected"
                     @keyup.enter="handleEditSearch"
@@ -611,7 +636,7 @@ onMounted(() => {
                     type="primary"
                     size="small"
                     :loading="editStudentForm.searchLoading"
-                    :disabled="!identityConnected || !editStudentForm.usernameSearch.trim()"
+                    :disabled="!identityConnected || !editStudentForm.accountSearch.trim()"
                     @click="handleEditSearch"
                   >
                     Search
@@ -650,14 +675,14 @@ onMounted(() => {
     <el-dialog v-model="linkAccountForm.visible" :title="`Link Account: ${linkAccountForm.studentName}`" width="480px" destroy-on-close class="compact-dialog">
       <el-form class="compact-form" label-position="top">
         <el-alert type="info" :closable="false" style="margin-bottom: 12px; padding: 8px 12px; font-size: 12px;">
-          Search for an Identity account by username and select it to link with this student.
+          Search for an Identity account by username or phone and select it to link with this student.
         </el-alert>
         <el-form-item label="Search Identity Account">
           <div style="width: 100%">
             <div class="account-search-bar">
               <el-input
-                v-model="linkAccountForm.usernameSearch"
-                placeholder="Search accounts..."
+                v-model="linkAccountForm.accountSearch"
+                placeholder="Search by username or phone..."
                 size="small"
                 :disabled="!identityConnected"
                 @keyup.enter="handleLinkSearch"
@@ -666,7 +691,7 @@ onMounted(() => {
                 type="primary"
                 size="small"
                 :loading="linkAccountForm.searchLoading"
-                :disabled="!identityConnected || !linkAccountForm.usernameSearch.trim()"
+                :disabled="!identityConnected || !linkAccountForm.accountSearch.trim()"
                 @click="handleLinkSearch"
               >
                 Search
