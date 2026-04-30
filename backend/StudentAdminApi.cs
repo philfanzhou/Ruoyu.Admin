@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Configuration;
 using Admin.WebApi.Models;
 using Grpc.Core;
 using SProto = Ruoyu.Study.Student.Contract.Protos;
@@ -303,7 +304,7 @@ internal static class StudentAdminApi
 
     // 批量查询 Identity 用户信息
     private static async Task<Ok<List<IdentityAccountDto>>> GetIdentityAccountsBatchAsync(
-        HttpClient identityHttpClient,
+        HttpContext httpContext,
         [FromBody] List<string> accountIds)
     {
         if (accountIds == null || accountIds.Count == 0)
@@ -314,15 +315,34 @@ internal static class StudentAdminApi
 
         try
         {
+            // 获取 Identity 服务的认证凭据（从前端请求头中获取）
+            var appId = httpContext.Request.Headers["X-Admin-AppId"].FirstOrDefault();
+            var appSecret = httpContext.Request.Headers["X-Admin-AppSecret"].FirstOrDefault();
+
+            if (string.IsNullOrEmpty(appId) || string.IsNullOrEmpty(appSecret))
+            {
+                // 没有认证信息，返回空列表
+                return TypedResults.Ok(result);
+            }
+
+            // 获取 Identity 服务地址
+            var identityAddress = httpContext.RequestServices
+                .GetService<IConfiguration>()?  ["IdentityService:Address"] ?? "http://localhost:5002";
+
             // 分页获取所有用户，每次 100 条
+            using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
             int page = 1;
             const int pageSize = 100;
             bool hasMore = true;
 
             while (hasMore)
             {
-                var url = $"/api/identity/admin/users?page={page}&pageSize={pageSize}";
-                var response = await identityHttpClient.GetAsync(url);
+                var url = $"{identityAddress.TrimEnd('/')}/api/admin/users?page={page}&pageSize={pageSize}";
+                var request = new HttpRequestMessage(HttpMethod.Get, url);
+                request.Headers.Add("X-Admin-AppId", appId);
+                request.Headers.Add("X-Admin-AppSecret", appSecret);
+
+                var response = await httpClient.SendAsync(request);
 
                 if (!response.IsSuccessStatusCode)
                     break;
