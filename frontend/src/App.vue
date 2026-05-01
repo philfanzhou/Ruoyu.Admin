@@ -150,6 +150,14 @@ function toggleSubject(subjectValue: number) {
   }
 }
 
+function isSubjectActive(subject: OpenSubjectDto): boolean {
+  if (!subject.openStartDate) return false
+  const today = new Date().toISOString().split('T')[0]
+  const startOk = subject.openStartDate <= today
+  const endOk = !subject.openEndDate || subject.openEndDate >= today
+  return startOk && endOk
+}
+
 function removeOpenSubject(subjectValue: number) {
   selectedOpenSubjects.value = selectedOpenSubjects.value.filter(s => s.subject !== subjectValue)
 }
@@ -427,15 +435,13 @@ async function handleUpdateStudent() {
       identityAccountIds: editStudentForm.selectedAccountIds,
     })
     // 更新开放学科
-    if (selectedOpenSubjects.value.length > 0) {
-      await studentAdminClient.setStudentOpenSubjects(editStudentForm.studentId, {
-        subjects: selectedOpenSubjects.value.map(s => ({
-          subject: s.subject,
-          openStartDate: s.openStartDate,
-          openEndDate: s.openEndDate
-        }))
-      })
-    }
+    await studentAdminClient.setStudentOpenSubjects(editStudentForm.studentId, {
+      subjects: selectedOpenSubjects.value.map(s => ({
+        subject: s.subject,
+        openStartDate: s.openStartDate,
+        openEndDate: s.openEndDate
+      }))
+    })
     ElMessage.success('Student updated successfully.')
     editStudentForm.visible = false
     editManagedAccountCache.value = new Map()
@@ -857,8 +863,8 @@ onMounted(() => {
                 </el-table-column>
                 <el-table-column label="状态" width="70">
                   <template #default="{ row }">
-                    <el-tag :type="row.isActive ? 'success' : 'info'" size="small">
-                      {{ row.isActive ? '有效' : '过期' }}
+                    <el-tag :type="isSubjectActive(row) ? 'success' : 'info'" size="small">
+                      {{ isSubjectActive(row) ? '有效' : '过期' }}
                     </el-tag>
                   </template>
                 </el-table-column>

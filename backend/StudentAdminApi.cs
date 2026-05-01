@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Admin.WebApi.Models;
 using Grpc.Core;
+using Ruoyu.Study.Shared.Constants;
 using SProto = Ruoyu.Study.Student.Contract.Protos;
 
 namespace Admin.WebApi;
@@ -331,39 +332,39 @@ internal static class StudentAdminApi
     {
         try
         {
-            if (request.Subjects == null || request.Subjects.Count == 0)
-                return TypedResults.BadRequest(new ErrorResponse("At least one subject is required"));
-
             var grpcRequest = new SProto.SetOpenSubjectsRequest
             {
                 StudentId = studentId.ToString()
             };
 
-            foreach (var subject in request.Subjects)
+            if (request.Subjects != null && request.Subjects.Count > 0)
             {
-                if (subject.Subject < 1 || subject.Subject > 9)
-                    return TypedResults.BadRequest(new ErrorResponse($"Invalid subject value: {subject.Subject}"));
-
-                if (string.IsNullOrEmpty(subject.OpenStartDate))
-                    return TypedResults.BadRequest(new ErrorResponse("Open start date is required"));
-
-                if (!DateOnly.TryParse(subject.OpenStartDate, out _))
-                    return TypedResults.BadRequest(new ErrorResponse($"Invalid start date format: {subject.OpenStartDate}"));
-
-                DateOnly? endDate = null;
-                if (!string.IsNullOrEmpty(subject.OpenEndDate))
+                foreach (var subject in request.Subjects)
                 {
-                    if (!DateOnly.TryParse(subject.OpenEndDate, out var parsed))
-                        return TypedResults.BadRequest(new ErrorResponse($"Invalid end date format: {subject.OpenEndDate}"));
-                    endDate = parsed;
+                    if (subject.Subject < 1 || subject.Subject > 9)
+                        return TypedResults.BadRequest(new ErrorResponse($"Invalid subject value: {subject.Subject}"));
+
+                    if (string.IsNullOrEmpty(subject.OpenStartDate))
+                        return TypedResults.BadRequest(new ErrorResponse("Open start date is required"));
+
+                    if (!DateOnly.TryParse(subject.OpenStartDate, out _))
+                        return TypedResults.BadRequest(new ErrorResponse($"Invalid start date format: {subject.OpenStartDate}"));
+
+                    DateOnly? endDate = null;
+                    if (!string.IsNullOrEmpty(subject.OpenEndDate))
+                    {
+                        if (!DateOnly.TryParse(subject.OpenEndDate, out var parsed))
+                            return TypedResults.BadRequest(new ErrorResponse($"Invalid end date format: {subject.OpenEndDate}"));
+                        endDate = parsed;
+                    }
+
+                    grpcRequest.Subjects.Add(new SProto.OpenSubjectItem
+                    {
+                        Subject = subject.Subject,
+                        OpenStartDate = subject.OpenStartDate,
+                        OpenEndDate = endDate?.ToString(SubjectConstants.DateFormat) ?? ""
+                    });
                 }
-
-                grpcRequest.Subjects.Add(new SProto.OpenSubjectItem
-                {
-                    Subject = subject.Subject,
-                    OpenStartDate = subject.OpenStartDate,
-                    OpenEndDate = endDate?.ToString("yyyy-MM-dd") ?? ""
-                });
             }
 
             var response = await grpcClient.SetStudentOpenSubjectsAsync(grpcRequest).ConfigureAwait(false);
