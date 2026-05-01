@@ -151,6 +151,25 @@ class StudentAdminApiClient {
     const response = await this.client.post<IdentityAccountDto[]>('/api/admin/identity-accounts/batch', accountIds, { headers })
     return response.data
   }
+
+  // ========== Open Subjects ==========
+
+  async getSubjectOptions() {
+    const response = await this.client.get<SubjectOption[]>('/api/admin/students/subject-options')
+    return response.data
+  }
+
+  async getStudentOpenSubjects(studentId: string, activeOnly: boolean = false) {
+    const response = await this.client.get<OpenSubjectDto[]>(`/api/admin/students/${studentId}/open-subjects`, {
+      params: { activeOnly }
+    })
+    return response.data
+  }
+
+  async setStudentOpenSubjects(studentId: string, payload: SetOpenSubjectsRequest) {
+    const response = await this.client.put<OperationResponse>(`/api/admin/students/${studentId}/open-subjects`, payload)
+    return response.data
+  }
 }
 
 export const studentAdminClient = new StudentAdminApiClient()
