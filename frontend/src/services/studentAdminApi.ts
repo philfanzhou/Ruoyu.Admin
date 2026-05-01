@@ -47,6 +47,31 @@ export interface IdentityAccountDto {
   remark: string
 }
 
+// ========== Open Subjects ==========
+export interface OpenSubjectDto {
+  id: string
+  subject: number
+  openStartDate: string
+  openEndDate: string | null
+  isActive: boolean
+}
+
+export interface SubjectItem {
+  subject: number
+  openStartDate: string
+  openEndDate: string | null
+}
+
+export interface SetOpenSubjectsRequest {
+  subjects: SubjectItem[]
+}
+
+export interface SubjectOption {
+  value: number
+  name: string
+  displayName: string
+}
+
 class StudentAdminApiClient {
   private client: AxiosInstance
   private identityCredentials: { appId: string; appSecret: string } | null = null

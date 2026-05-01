@@ -48,6 +48,11 @@ internal static class StudentAdminApi
         group.MapPost("identity-accounts/batch", GetIdentityAccountsBatchAsync);
 
         group.MapGet("accounts/{accountId:guid}/students", GetStudentsByIdentityAccountIdAsync);
+
+        // Open Subjects 学科管理
+        students.MapGet("{studentId:guid}/open-subjects", GetStudentOpenSubjectsAsync);
+        students.MapPut("{studentId:guid}/open-subjects", SetStudentOpenSubjectsAsync);
+        students.MapGet("subject-options", GetSubjectOptionsAsync);
     }
 
     private static bool IsValidGuid(string value) => Guid.TryParse(value, out _);
@@ -294,6 +299,96 @@ internal static class StudentAdminApi
         model.IdentityAccountIds.ToList(),
         model.CreatedAt,
         model.UpdatedAt);
+
+    // ========== Open Subjects Endpoints ==========
+
+    private static async Task<Ok<List<Models.OpenSubjectDto>>> GetStudentOpenSubjectsAsync(
+        Guid studentId,
+        bool? activeOnly,
+        SProto.StudentManagementGrpcService.StudentManagementGrpcServiceClient grpcClient)
+    {
+        var request = new SProto.GetStudentOpenSubjectsRequest
+        {
+            StudentId = studentId.ToString(),
+            ActiveOnly = activeOnly ?? false
+        };
+        var response = await grpcClient.GetStudentOpenSubjectsAsync(request).ConfigureAwait(false);
+
+        var dtos = response.Subjects.Select(s => new Models.OpenSubjectDto(
+            s.Id,
+            s.Subject,
+            s.OpenStartDate,
+            string.IsNullOrEmpty(s.OpenEndDate) ? null : s.OpenEndDate,
+            s.IsActive)).ToList();
+
+        return TypedResults.Ok(dtos);
+    }
+
+    private static async Task<Results<Ok<OperationResponse>, BadRequest<ErrorResponse>>> SetStudentOpenSubjectsAsync(
+        Guid studentId,
+        Models.SetOpenSubjectsRequest request,
+        SProto.StudentManagementGrpcService.StudentManagementGrpcServiceClient grpcClient)
+    {
+        try
+        {
+            if (request.Subjects == null || request.Subjects.Count == 0)
+                return TypedResults.BadRequest(new ErrorResponse("At least one subject is required"));
+
+            var grpcRequest = new SProto.SetOpenSubjectsRequest
+            {
+                StudentId = studentId.ToString()
+            };
+
+            foreach (var subject in request.Subjects)
+            {
+                if (subject.Subject < 1 || subject.Subject > 9)
+                    return TypedResults.BadRequest(new ErrorResponse($"Invalid subject value: {subject.Subject}"));
+
+                if (string.IsNullOrEmpty(subject.OpenStartDate))
+                    return TypedResults.BadRequest(new ErrorResponse("Open start date is required"));
+
+                if (!DateOnly.TryParse(subject.OpenStartDate, out _))
+                    return TypedResults.BadRequest(new ErrorResponse($"Invalid start date format: {subject.OpenStartDate}"));
+
+                DateOnly? endDate = null;
+                if (!string.IsNullOrEmpty(subject.OpenEndDate))
+                {
+                    if (!DateOnly.TryParse(subject.OpenEndDate, out var parsed))
+                        return TypedResults.BadRequest(new ErrorResponse($"Invalid end date format: {subject.OpenEndDate}"));
+                    endDate = parsed;
+                }
+
+                grpcRequest.Subjects.Add(new SProto.OpenSubjectItem
+                {
+                    Subject = subject.Subject,
+                    OpenStartDate = subject.OpenStartDate,
+                    OpenEndDate = endDate?.ToString("yyyy-MM-dd") ?? ""
+                });
+            }
+
+            var response = await grpcClient.SetStudentOpenSubjectsAsync(grpcRequest).ConfigureAwait(false);
+
+            if (!response.Success)
+                return TypedResults.BadRequest(new ErrorResponse(response.ErrorMessage));
+
+            return TypedResults.Ok(new OperationResponse(true, "Open subjects updated successfully."));
+        }
+        catch (RpcException ex) when (ex.StatusCode == StatusCode.InvalidArgument)
+        {
+            return TypedResults.BadRequest(new ErrorResponse(ex.Status.Detail));
+        }
+    }
+
+    private static async Task<Ok<List<Models.SubjectOption>>> GetSubjectOptionsAsync(
+        SProto.StudentManagementGrpcService.StudentManagementGrpcServiceClient grpcClient)
+    {
+        var request = new SProto.Empty();
+        var response = await grpcClient.GetAvailableSubjectsAsync(request).ConfigureAwait(false);
+
+        var options = response.Subjects.Select(s => new Models.SubjectOption(s.Value, s.Name, s.DisplayName)).ToList();
+
+        return TypedResults.Ok(options);
+    }
 
     // 批量查询 Identity 用户信息 DTO
     public sealed record IdentityAccountDto(string UserId, string Username, string DisplayName, string Phone, string Remark);

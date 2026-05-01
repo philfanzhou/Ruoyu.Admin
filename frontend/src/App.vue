@@ -12,6 +12,8 @@ import {
   getStudentErrorMessage,
   type StudentDto,
   type GradeOption,
+  type OpenSubjectDto,
+  type SubjectOption,
 } from './services/studentAdminApi'
 
 const IDENTITY_STORAGE_KEY = 'student-admin-identity-credentials'
@@ -93,6 +95,11 @@ const studentPageSize = ref(20)
 const identityClient = ref<ReturnType<typeof createIdentityAdminApiClient> | null>(null)
 const editManagedAccountCache = ref<Map<string, IdentityUser>>(new Map())
 
+// 学科相关
+const subjectOptions = ref<SubjectOption[]>([])
+const selectedOpenSubjects = ref<OpenSubjectDto[]>([])
+const loadingOpenSubjects = ref(false)
+
 const gradeLabelMap = computed(() => {
   const map = new Map<number, string>()
   for (const g of gradeOptions.value) {
@@ -114,6 +121,57 @@ function formatAccountLabel(user: IdentityUser): string {
 function formatDate(timestamp?: number | null) {
   if (!timestamp) return '-'
   return new Date(timestamp * 1000).toLocaleString()
+}
+
+// 学科相关辅助函数
+function getSubjectDisplayName(subjectValue: number): string {
+  const option = subjectOptions.value.find(s => s.value === subjectValue)
+  return option?.displayName ?? `学科${subjectValue}`
+}
+
+function isSubjectSelected(subjectValue: number): boolean {
+  return selectedOpenSubjects.value.some(s => s.subject === subjectValue)
+}
+
+function toggleSubject(subjectValue: number) {
+  const existing = selectedOpenSubjects.value.find(s => s.subject === subjectValue)
+  if (existing) {
+    selectedOpenSubjects.value = selectedOpenSubjects.value.filter(s => s.subject !== subjectValue)
+  } else {
+    // 添加新学科，默认开始日期为今天
+    const today = new Date().toISOString().split('T')[0]
+    selectedOpenSubjects.value.push({
+      id: '',
+      subject: subjectValue,
+      openStartDate: today,
+      openEndDate: null,
+      isActive: true
+    })
+  }
+}
+
+function removeOpenSubject(subjectValue: number) {
+  selectedOpenSubjects.value = selectedOpenSubjects.value.filter(s => s.subject !== subjectValue)
+}
+
+async function loadSubjectOptions() {
+  try {
+    subjectOptions.value = await studentAdminClient.getSubjectOptions()
+  } catch (error) {
+    console.warn('Failed to load subject options:', error)
+  }
+}
+
+async function loadStudentOpenSubjects(studentId: string) {
+  loadingOpenSubjects.value = true
+  try {
+    selectedOpenSubjects.value = await studentAdminClient.getStudentOpenSubjects(studentId, false)
+  } catch (error) {
+    console.warn('Failed to load open subjects:', error)
+    selectedOpenSubjects.value = []
+  } finally {
+    loadingOpenSubjects.value = false
+  }
 }
 
 async function connectIdentity() {
@@ -349,6 +407,8 @@ async function openEditDialog(row: StudentDto) {
   editStudentForm.searchLoading = false
   editStudentForm.searchResults = []
   await loadEditManagedAccounts(row.id, editStudentForm.selectedAccountIds)
+  // 加载开放学科
+  await loadStudentOpenSubjects(row.id)
 }
 
 async function handleUpdateStudent() {
@@ -360,11 +420,22 @@ async function handleUpdateStudent() {
 
   updatingStudent.value = true
   try {
+    // 更新学生基本信息
     await studentAdminClient.updateStudent(editStudentForm.studentId, {
       name: editStudentForm.name.trim(),
       grade: editStudentForm.grade,
       identityAccountIds: editStudentForm.selectedAccountIds,
     })
+    // 更新开放学科
+    if (selectedOpenSubjects.value.length > 0) {
+      await studentAdminClient.setStudentOpenSubjects(editStudentForm.studentId, {
+        subjects: selectedOpenSubjects.value.map(s => ({
+          subject: s.subject,
+          openStartDate: s.openStartDate,
+          openEndDate: s.openEndDate
+        }))
+      })
+    }
     ElMessage.success('Student updated successfully.')
     editStudentForm.visible = false
     editManagedAccountCache.value = new Map()
@@ -490,6 +561,7 @@ onMounted(() => {
   if (savedIdentity.appId && savedIdentity.appSecret) connectIdentity()
   void loadGradeOptions()
   void loadStudents()
+  void loadSubjectOptions()
 })
 </script>
 
@@ -734,6 +806,74 @@ onMounted(() => {
             </div>
           </div>
         </el-form-item>
+        <!-- Open Subjects Section -->
+        <el-form-item label="Open Subjects">
+          <div v-if="loadingOpenSubjects" style="color: #909399; font-size: 12px;">Loading...</div>
+          <div v-else style="width: 100%;">
+            <!-- 学科选择网格 -->
+            <div class="subjects-grid">
+              <div
+                v-for="subject in subjectOptions"
+                :key="subject.value"
+                class="subject-item"
+                :class="{ active: isSubjectSelected(subject.value) }"
+                @click="toggleSubject(subject.value)"
+              >
+                {{ subject.displayName }}
+              </div>
+            </div>
+            <!-- 已选学科的日期设置 -->
+            <div v-if="selectedOpenSubjects.length" class="subject-dates">
+              <el-table :data="selectedOpenSubjects" size="small" style="margin-top: 12px;">
+                <el-table-column label="学科" width="80">
+                  <template #default="{ row }">{{ getSubjectDisplayName(row.subject) }}</template>
+                </el-table-column>
+                <el-table-column label="开始日期" width="160">
+                  <template #default="{ row }">
+                    <el-date-picker
+                      v-model="row.openStartDate"
+                      type="date"
+                      placeholder="选择日期"
+                      format="YYYY-MM-DD"
+                      value-format="YYYY-MM-DD"
+                      size="small"
+                      style="width: 140px;"
+                    />
+                  </template>
+                </el-table-column>
+                <el-table-column label="结束日期" width="160">
+                  <template #default="{ row }">
+                    <el-date-picker
+                      v-model="row.openEndDate"
+                      type="date"
+                      placeholder="永久开放"
+                      format="YYYY-MM-DD"
+                      value-format="YYYY-MM-DD"
+                      size="small"
+                      clearable
+                      style="width: 140px;"
+                    />
+                  </template>
+                </el-table-column>
+                <el-table-column label="状态" width="70">
+                  <template #default="{ row }">
+                    <el-tag :type="row.isActive ? 'success' : 'info'" size="small">
+                      {{ row.isActive ? '有效' : '过期' }}
+                    </el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column label="操作" width="60">
+                  <template #default="{ row }">
+                    <el-button link type="danger" size="small" @click="removeOpenSubject(row.subject)">移除</el-button>
+                  </template>
+                </el-table-column>
+              </el-table>
+            </div>
+            <div v-else style="color: #909399; font-size: 11px; margin-top: 8px;">
+              点击上方学科名称选择开放科目，然后设置有效期
+            </div>
+          </div>
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button size="small" @click="editStudentForm.visible = false">Cancel</el-button>
@@ -789,3 +929,36 @@ onMounted(() => {
     </el-dialog>
   </div>
 </template>
+
+<style scoped>
+/* 学科选择网格样式 */
+.subjects-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.subject-item {
+  padding: 6px 14px;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 13px;
+}
+
+.subject-item:hover {
+  border-color: #409eff;
+  color: #409eff;
+}
+
+.subject-item.active {
+  background: #409eff;
+  color: white;
+  border-color: #409eff;
+}
+
+.subject-dates {
+  margin-top: 12px;
+}
+</style>
