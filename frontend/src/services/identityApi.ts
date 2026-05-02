@@ -1,10 +1,5 @@
 import axios, { type AxiosInstance } from 'axios'
 
-export interface IdentityCredentials {
-  appId: string
-  appSecret: string
-}
-
 export interface IdentityPagedResponse<T> {
   items: T[]
   total: number
@@ -25,13 +20,9 @@ export interface IdentityUser {
 class IdentityAdminApiClient {
   private client: AxiosInstance
 
-  constructor(credentials: IdentityCredentials) {
+  constructor() {
     this.client = axios.create({
       timeout: 15000,
-      headers: {
-        'X-Admin-AppId': credentials.appId,
-        'X-Admin-AppSecret': credentials.appSecret,
-      },
     })
   }
 
@@ -55,8 +46,13 @@ class IdentityAdminApiClient {
   }
 }
 
-export function createIdentityAdminApiClient(credentials: IdentityCredentials) {
-  return new IdentityAdminApiClient(credentials)
+let _instance: IdentityAdminApiClient | null = null
+
+export function getIdentityAdminApiClient(): IdentityAdminApiClient {
+  if (!_instance) {
+    _instance = new IdentityAdminApiClient()
+  }
+  return _instance
 }
 
 export function getIdentityErrorMessage(error: unknown) {

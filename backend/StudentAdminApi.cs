@@ -411,20 +411,17 @@ internal static class StudentAdminApi
 
         try
         {
-            var appId = httpContext.Request.Headers["X-Admin-AppId"].FirstOrDefault();
-            var appSecret = httpContext.Request.Headers["X-Admin-AppSecret"].FirstOrDefault();
+            var config = httpContext.RequestServices.GetRequiredService<IConfiguration>();
+            var appId = config["IdentityService:AppId"];
+            var appSecret = config["IdentityService:AppSecret"];
 
             if (string.IsNullOrEmpty(appId) || string.IsNullOrEmpty(appSecret))
                 return TypedResults.Ok(result);
 
-            // 通过 admin_portal 自身地址调用 /api/identity/gateway/users/batch，该请求会经过 proxy 中间件
-            // 底层与前端用户搜索统一走基于 AppId/AppSecret 的 gateway 查询通道
-            var scheme = httpContext.Request.Scheme;
-            var host = httpContext.Request.Host.Value;
-            var baseUrl = $"{scheme}://{host}";
+            var identityAddress = config["IdentityService:Address"] ?? "http://localhost:5002";
 
             using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
-            var request = new HttpRequestMessage(HttpMethod.Post, $"{baseUrl}/api/identity/gateway/users/batch");
+            var request = new HttpRequestMessage(HttpMethod.Post, $"{identityAddress.TrimEnd('/')}/api/gateway/users/batch");
             request.Headers.Add("X-Admin-AppId", appId);
             request.Headers.Add("X-Admin-AppSecret", appSecret);
             request.Content = JsonContent.Create(accountIds);

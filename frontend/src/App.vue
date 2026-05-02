@@ -1,10 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import {
-  createIdentityAdminApiClient,
+  getIdentityAdminApiClient,
   getIdentityErrorMessage,
-  type IdentityCredentials,
   type IdentityUser,
 } from './services/identityApi'
 import {
@@ -16,33 +15,7 @@ import {
   type SubjectOption,
 } from './services/studentAdminApi'
 
-const IDENTITY_STORAGE_KEY = 'student-admin-identity-credentials'
-
 const appTitle = (window as any).__APP_TITLE__ || 'Student Management Console'
-
-function loadSavedCredentials(key: string): { appId: string; appSecret: string } {
-  try {
-    const saved = localStorage.getItem(key)
-    if (saved) {
-      const parsed = JSON.parse(saved) as { appId: string; appSecret: string }
-      if (parsed.appId && parsed.appSecret) return parsed
-    }
-  } catch {
-    localStorage.removeItem(key)
-  }
-  return { appId: '', appSecret: '' }
-}
-
-function saveCredentials(key: string, creds: { appId: string; appSecret: string }) {
-  try {
-    localStorage.setItem(key, JSON.stringify(creds))
-  } catch {
-    ElMessage.warning('Cannot save credentials to local storage.')
-  }
-}
-
-const identityCreds = reactive<IdentityCredentials>(loadSavedCredentials(IDENTITY_STORAGE_KEY))
-const showConnectionPanel = ref(!loadSavedCredentials(IDENTITY_STORAGE_KEY).appId)
 
 const studentFilters = reactive({ name: '' })
 const accountSearch = ref('')
@@ -67,8 +40,6 @@ const editStudentForm = reactive({
 })
 const editManagedAccountsLoading = ref(false)
 
-const identityConnected = ref(false)
-const connectingIdentity = ref(false)
 const loadingStudents = ref(false)
 const creatingStudent = ref(false)
 const updatingStudent = ref(false)
@@ -79,12 +50,11 @@ const studentTotal = ref(0)
 const studentPage = ref(1)
 const studentPageSize = ref(20)
 
-const identityClient = ref<ReturnType<typeof createIdentityAdminApiClient> | null>(null)
+const identityClient = getIdentityAdminApiClient()
 const editManagedAccountCache = ref<Map<string, IdentityUser>>(new Map())
 const listAccountCache = ref<Map<string, IdentityUser>>(new Map())
 const loadingListAccounts = ref(false)
 
-// 学科相关
 const subjectOptions = ref<SubjectOption[]>([])
 const selectedOpenSubjects = ref<OpenSubjectDto[]>([])
 const loadingOpenSubjects = ref(false)
@@ -112,7 +82,6 @@ function formatDate(timestamp?: number | null) {
   return new Date(timestamp * 1000).toLocaleString()
 }
 
-// 学科相关辅助函数
 function getSubjectDisplayName(subjectValue: number): string {
   const option = subjectOptions.value.find(s => s.value === subjectValue)
   return option?.displayName ?? `学科${subjectValue}`
@@ -170,59 +139,16 @@ async function loadStudentOpenSubjects(studentId: string) {
   }
 }
 
-async function connectIdentity() {
-  if (!identityCreds.appId || !identityCreds.appSecret) {
-    ElMessage.warning('Please enter Identity AppId and AppSecret.')
-    return
-  }
-
-  connectingIdentity.value = true
-  try {
-    const client = createIdentityAdminApiClient(identityCreds)
-    await client.testConnection()
-    identityClient.value = client
-    identityConnected.value = true
-    studentAdminClient.setIdentityCredentials({ appId: identityCreds.appId, appSecret: identityCreds.appSecret })
-    saveCredentials(IDENTITY_STORAGE_KEY, identityCreds)
-    ElMessage.success('Identity service connected.')
-  } catch (error) {
-    identityConnected.value = false
-    identityClient.value = null
-    studentAdminClient.clearIdentityCredentials()
-    ElMessage.error(`Connection failed: ${getIdentityErrorMessage(error)}`)
-  } finally {
-    connectingIdentity.value = false
-  }
-}
-
-async function handleClearAllCredentials() {
-  try {
-    await ElMessageBox.confirm(
-      'Clear all saved credentials? You will need to re-enter them.',
-      'Confirm Clear',
-      { confirmButtonText: 'Confirm', cancelButtonText: 'Cancel', type: 'warning' },
-    )
-    localStorage.removeItem(IDENTITY_STORAGE_KEY)
-    identityCreds.appId = ''
-    identityCreds.appSecret = ''
-    identityClient.value = null
-    identityConnected.value = false
-    ElMessage.success('All credentials cleared.')
-  } catch {
-    // cancelled
-  }
-}
-
 function isPhoneLikeQuery(query: string): boolean {
   return /^[+\d\s\-()]+$/.test(query)
 }
 
 async function searchIdentityAccounts(query: string): Promise<IdentityUser[]> {
-  if (!identityClient.value || !query.trim()) return []
+  if (!query.trim()) return []
 
   const trimmedQuery = query.trim()
   const requests = [
-    identityClient.value.getUsers({
+    identityClient.getUsers({
       username: trimmedQuery,
       page: 1,
       pageSize: 20,
@@ -231,7 +157,7 @@ async function searchIdentityAccounts(query: string): Promise<IdentityUser[]> {
 
   if (isPhoneLikeQuery(trimmedQuery)) {
     requests.push(
-      identityClient.value.getUsers({
+      identityClient.getUsers({
         phone: trimmedQuery,
         page: 1,
         pageSize: 20,
@@ -313,8 +239,6 @@ async function loadStudents() {
 }
 
 async function loadListAccountNames(items: StudentDto[]) {
-  if (!identityConnected.value || !identityClient.value) return
-
   const allAccountIds = new Set<string>()
   for (const item of items) {
     for (const id of item.identityAccountIds) {
@@ -328,7 +252,7 @@ async function loadListAccountNames(items: StudentDto[]) {
 
   loadingListAccounts.value = true
   try {
-    const accounts = await identityClient.value.getUsersByIds([...allAccountIds])
+    const accounts = await identityClient.getUsersByIds([...allAccountIds])
     const next = new Map(listAccountCache.value)
     for (const account of accounts) {
       next.set(account.userId, account)
@@ -351,15 +275,13 @@ async function loadEditManagedAccounts(studentId: string, accountIds: string[]) 
   editManagedAccountCache.value = new Map()
   editManagedAccountsLoading.value = false
 
-  if (!identityConnected.value || accountIds.length === 0) {
+  if (accountIds.length === 0) {
     return
   }
 
   editManagedAccountsLoading.value = true
   try {
-    if (!identityClient.value) return
-
-    const accounts = await identityClient.value.getUsersByIds(accountIds)
+    const accounts = await identityClient.getUsersByIds(accountIds)
     if (editStudentForm.studentId !== studentId) return
 
     const next = new Map<string, IdentityUser>()
@@ -517,8 +439,6 @@ function handleStudentPageSizeChange(size: number) {
 }
 
 onMounted(() => {
-  const savedIdentity = loadSavedCredentials(IDENTITY_STORAGE_KEY)
-  if (savedIdentity.appId && savedIdentity.appSecret) connectIdentity()
   void loadGradeOptions()
   void loadStudents()
   void loadSubjectOptions()
@@ -538,48 +458,7 @@ onMounted(() => {
           <p class="hero-sub">Manage student profiles and bind them to Identity accounts</p>
         </div>
       </div>
-      <div class="hero-actions">
-        <el-button
-          v-if="identityConnected"
-          text
-          size="small"
-          @click="showConnectionPanel = !showConnectionPanel"
-        >
-          {{ showConnectionPanel ? 'Hide' : 'Show' }} Config
-        </el-button>
-        <el-tag :type="identityConnected ? 'success' : 'info'" class="status-tag" effect="light">
-          <span class="status-dot" :class="{ connected: identityConnected }"></span>
-          {{ identityConnected ? 'Connected' : 'Disconnected' }}
-        </el-tag>
-      </div>
     </header>
-
-    <!-- Connection Panel -->
-    <el-card v-if="showConnectionPanel || !identityConnected" shadow="never" class="panel connection-panel">
-      <template #header>
-        <div class="panel-header">
-          <div class="panel-title">
-            <el-icon><svg viewBox="0 0 1024 1024" width="14" height="14"><path fill="currentColor" d="M512 64a448 448 0 1 1 0 896 448 448 0 0 1 0-896zm0 64a384 384 0 1 0 0 768 384 384 0 0 0 0-768z"/></svg></el-icon>
-            <span>Identity Authentication</span>
-          </div>
-          <div class="header-actions">
-            <el-button type="danger" text size="small" @click="handleClearAllCredentials">Clear</el-button>
-            <el-button type="primary" size="small" :loading="connectingIdentity" @click="connectIdentity">
-              {{ identityConnected ? 'Reconnect' : 'Connect' }}
-            </el-button>
-          </div>
-        </div>
-      </template>
-
-      <el-form class="connection-form" label-position="top">
-        <el-form-item label="Admin AppId">
-          <el-input v-model="identityCreds.appId" placeholder="Enter Identity AppId" size="small" />
-        </el-form-item>
-        <el-form-item label="Admin AppSecret">
-          <el-input v-model="identityCreds.appSecret" show-password placeholder="Enter Identity AppSecret" size="small" />
-        </el-form-item>
-      </el-form>
-    </el-card>
 
     <!-- Main Content -->
     <el-card shadow="never" class="panel main-panel">
@@ -613,14 +492,13 @@ onMounted(() => {
                     v-model="accountSearch"
                     placeholder="Search by username or phone..."
                     size="small"
-                    :disabled="!identityConnected"
                     @keyup.enter="handleCreateSearch"
                   />
                   <el-button
                     type="primary"
                     size="small"
                     :loading="searchLoading"
-                    :disabled="!identityConnected || !accountSearch.trim()"
+                    :disabled="!accountSearch.trim()"
                     @click="handleCreateSearch"
                   >
                     Search
@@ -648,9 +526,6 @@ onMounted(() => {
                   >
                     {{ getAccountLabel(accountId) }}
                   </el-tag>
-                </div>
-                <div v-if="!identityConnected" class="hint-text">
-                  Connect to Identity service to search accounts by username or phone.
                 </div>
               </div>
             </el-form-item>
@@ -763,14 +638,13 @@ onMounted(() => {
                 v-model="editStudentForm.accountSearch"
                 placeholder="Search by username or phone..."
                 size="default"
-                :disabled="!identityConnected"
                 @keyup.enter="handleEditSearch"
               />
               <el-button
                 type="primary"
                 size="default"
                 :loading="editStudentForm.searchLoading"
-                :disabled="!identityConnected || !editStudentForm.accountSearch.trim()"
+                :disabled="!editStudentForm.accountSearch.trim()"
                 @click="handleEditSearch"
               >
                 Search
@@ -935,36 +809,6 @@ onMounted(() => {
   line-height: 1.4;
 }
 
-.hero-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.status-tag {
-  font-size: 12px;
-  height: 26px;
-  padding: 0 10px;
-  border-radius: 20px;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-weight: 500;
-}
-
-.status-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #9ca3af;
-  display: inline-block;
-}
-
-.status-dot.connected {
-  background: #22c55e;
-  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.2);
-}
-
 /* ========== Panels ========== */
 .panel {
   margin-bottom: 16px;
@@ -1000,30 +844,6 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 8px;
-}
-
-/* ========== Connection Panel ========== */
-.connection-panel :deep(.el-card__body) {
-  padding: 14px 18px;
-}
-
-.connection-form {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-  align-items: flex-end;
-}
-
-.connection-form .el-form-item {
-  margin-bottom: 0;
-}
-
-.connection-form .el-form-item__label {
-  padding-bottom: 6px;
-  font-size: 12.5px;
-  font-weight: 500;
-  color: #4b5563;
-  line-height: 1;
 }
 
 /* ========== Main Layout ========== */
@@ -1347,18 +1167,6 @@ onMounted(() => {
   flex-shrink: 0;
 }
 
-.radio-item :deep(.el-radio) {
-  width: 100%;
-  margin-right: 0;
-  align-items: center;
-}
-
-.radio-item :deep(.el-radio__label) {
-  flex: 1;
-  min-width: 0;
-  padding-left: 8px;
-}
-
 /* ========== Selected Accounts ========== */
 .selected-accounts {
   display: flex;
@@ -1380,13 +1188,6 @@ onMounted(() => {
   font-size: 12px;
   margin-top: 6px;
   line-height: 1.4;
-}
-
-.info-alert {
-  margin-bottom: 16px;
-  padding: 10px 14px;
-  font-size: 12.5px;
-  border-radius: 8px;
 }
 
 /* ========== Subjects ========== */
@@ -1494,10 +1295,6 @@ onMounted(() => {
   .split-layout {
     grid-template-columns: 1fr;
   }
-
-  .connection-form {
-    grid-template-columns: 1fr 1fr;
-  }
 }
 
 @media (max-width: 768px) {
@@ -1509,10 +1306,6 @@ onMounted(() => {
     flex-direction: column;
     align-items: flex-start;
     gap: 10px;
-  }
-
-  .connection-form {
-    grid-template-columns: 1fr;
   }
 
   .filter-bar {

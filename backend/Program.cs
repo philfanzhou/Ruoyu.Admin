@@ -21,6 +21,8 @@ builder.Services.AddGrpcClient<StudentManagementGrpcService.StudentManagementGrp
 });
 
 var identityServiceAddress = builder.Configuration["IdentityService:Address"] ?? "http://localhost:5002";
+var identityAppId = builder.Configuration["IdentityService:AppId"] ?? "";
+var identityAppSecret = builder.Configuration["IdentityService:AppSecret"] ?? "";
 builder.Services.AddHttpClient("IdentityService", client =>
 {
     client.Timeout = TimeSpan.FromSeconds(30);
@@ -77,8 +79,17 @@ app.Use(async (context, next) =>
     {
         if (header.Key.StartsWith("Content-", StringComparison.OrdinalIgnoreCase))
             continue;
+        if (string.Equals(header.Key, "X-Admin-AppId", StringComparison.OrdinalIgnoreCase))
+            continue;
+        if (string.Equals(header.Key, "X-Admin-AppSecret", StringComparison.OrdinalIgnoreCase))
+            continue;
         requestMessage.Headers.TryAddWithoutValidation(header.Key, header.Value.ToArray());
     }
+
+    if (!string.IsNullOrEmpty(identityAppId))
+        requestMessage.Headers.TryAddWithoutValidation("X-Admin-AppId", identityAppId);
+    if (!string.IsNullOrEmpty(identityAppSecret))
+        requestMessage.Headers.TryAddWithoutValidation("X-Admin-AppSecret", identityAppSecret);
 
     HttpResponseMessage response;
     try

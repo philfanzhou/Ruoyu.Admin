@@ -87,45 +87,6 @@
       line-height: 1.4;
     }
 
-    .hero-actions {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-
-    .status-tag {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 12px;
-      height: 26px;
-      padding: 0 10px;
-      border-radius: 20px;
-      background: #f5f7fa;
-      color: var(--el-text-color-regular);
-      border: 1px solid #e4e7ed;
-      font-weight: 500;
-    }
-
-    .status-tag.success {
-      background: #f0f9eb;
-      color: #67c23a;
-      border-color: #b3e19d;
-    }
-
-    .status-dot {
-      width: 7px;
-      height: 7px;
-      border-radius: 50%;
-      background: #9ca3af;
-      display: inline-block;
-    }
-
-    .status-dot.connected {
-      background: #22c55e;
-      box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.2);
-    }
-
     /* Buttons */
     .btn {
       display: inline-flex;
@@ -239,20 +200,6 @@
       background: #fff;
       color: var(--el-text-color-primary);
       outline: none;
-    }
-
-    /* Connection form grid */
-    .connection-form {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 16px;
-      align-items: flex-end;
-    }
-
-    .header-actions {
-      display: flex;
-      align-items: center;
-      gap: 8px;
     }
 
     /* Main layout */
@@ -581,40 +528,7 @@
           <p class="hero-sub">Manage student profiles and bind them to Identity accounts</p>
         </div>
       </div>
-      <div class="hero-actions">
-        <button class="btn btn-text">Hide Config</button>
-        <span class="status-tag success">
-          <span class="status-dot connected"></span>
-          Connected
-        </span>
-      </div>
     </header>
-
-    <!-- Connection Panel -->
-    <div class="card">
-      <div class="card-header">
-        <div class="card-header-title">
-          <svg width="14" height="14" viewBox="0 0 1024 1024"><path fill="currentColor" d="M512 64a448 448 0 1 1 0 896 448 448 0 0 1 0-896zm0 64a384 384 0 1 0 0 768 384 384 0 0 0 0-768z"/></svg>
-          Identity Authentication
-        </div>
-        <div class="header-actions">
-          <button class="btn btn-danger-text">Clear</button>
-          <button class="btn btn-primary">Reconnect</button>
-        </div>
-      </div>
-      <div class="card-body">
-        <div class="connection-form">
-          <div class="form-item" style="margin-bottom:0">
-            <label class="form-label">Admin AppId</label>
-            <input class="input" placeholder="Enter Identity AppId" value="admin-app-id-12345">
-          </div>
-          <div class="form-item" style="margin-bottom:0">
-            <label class="form-label">Admin AppSecret</label>
-            <input class="input" type="password" placeholder="Enter Identity AppSecret" value="secret-value-here">
-          </div>
-        </div>
-      </div>
-    </div>
 
     <!-- Main Content -->
     <div class="card" style="margin-bottom:0">
