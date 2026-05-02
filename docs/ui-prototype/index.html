@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Student Management Console - 主界面原型</title>
+  <style>
+    :root {
+      --el-color-primary: #409eff;
+      --el-color-success: #67c23a;
+      --el-color-warning: #e6a23c;
+      --el-color-danger: #f56c6c;
+      --el-color-info: #909399;
+      --el-bg-color: #ffffff;
+      --el-border-color: #e4e7ed;
+      --el-fill-color-light: #f5f7fa;
+      --el-text-color-primary: #303133;
+      --el-text-color-regular: #606266;
+      --el-text-color-secondary: #909399;
+      --el-text-color-placeholder: #a8abb2;
+      --el-border-radius-base: 4px;
+      --el-border-radius-small: 2px;
+      --shadow-light: 0 1px 3px rgba(0,0,0,0.04);
+      --shadow-card: 0 2px 12px 0 rgba(0,0,0,0.06);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: #f0f2f5;
+      color: var(--el-text-color-primary);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .app-shell {
+      max-width: 1600px;
+      margin: 0 auto;
+      padding: 20px 24px 28px;
+    }
+
+    /* Header */
+    .hero {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      padding: 14px 20px;
+      background: #ffffff;
+      border-radius: 10px;
+      border: 1px solid #e5e7eb;
+      box-shadow: var(--shadow-light);
+    }
+
+    .hero-main {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .hero-icon {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 40px;
+      height: 40px;
+      background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+      border-radius: 10px;
+      color: #ffffff;
+      flex-shrink: 0;
+    }
+
+    .hero h1 {
+      margin: 0;
+      font-size: 17px;
+      font-weight: 700;
+      color: #111827;
+      line-height: 1.2;
+      letter-spacing: -0.2px;
+    }
+
+    .hero-sub {
+      margin: 2px 0 0;
+      font-size: 12.5px;
+      color: #6b7280;
+      line-height: 1.4;
+    }
+
+    .hero-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .status-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      height: 26px;
+      padding: 0 10px;
+      border-radius: 20px;
+      background: #f5f7fa;
+      color: var(--el-text-color-regular);
+      border: 1px solid #e4e7ed;
+      font-weight: 500;
+    }
+
+    .status-tag.success {
+      background: #f0f9eb;
+      color: #67c23a;
+      border-color: #b3e19d;
+    }
+
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #9ca3af;
+      display: inline-block;
+    }
+
+    .status-dot.connected {
+      background: #22c55e;
+      box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.2);
+    }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      padding: 5px 11px;
+      font-size: 12px;
+      font-weight: 500;
+      border-radius: var(--el-border-radius-base);
+      border: 1px solid transparent;
+      cursor: pointer;
+      transition: all 0.2s;
+      line-height: 1;
+      background: transparent;
+      color: var(--el-text-color-regular);
+    }
+
+    .btn:hover { opacity: 0.85; }
+
+    .btn-primary {
+      background: var(--el-color-primary);
+      color: #fff;
+      border-color: var(--el-color-primary);
+    }
+
+    .btn-danger-text {
+      color: var(--el-color-danger);
+      border: none;
+    }
+
+    .btn-text {
+      border: none;
+      color: var(--el-text-color-secondary);
+    }
+
+    /* Card */
+    .card {
+      background: #fff;
+      border-radius: 10px;
+      border: 1px solid #e5e7eb;
+      box-shadow: var(--shadow-light);
+      margin-bottom: 16px;
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 18px;
+      border-bottom: 1px solid #f3f4f6;
+      font-weight: 600;
+      font-size: 14px;
+      color: #1f2937;
+    }
+
+    .card-header-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .card-body {
+      padding: 16px 18px;
+    }
+
+    /* Form */
+    .form-item {
+      margin-bottom: 14px;
+    }
+
+    .form-item:last-child {
+      margin-bottom: 0;
+    }
+
+    .form-label {
+      display: block;
+      font-size: 12.5px;
+      font-weight: 500;
+      color: #4b5563;
+      margin-bottom: 6px;
+    }
+
+    .input {
+      width: 100%;
+      padding: 0 10px;
+      height: 32px;
+      border: 1px solid #dcdfe6;
+      border-radius: 6px;
+      font-size: 13px;
+      color: var(--el-text-color-primary);
+      transition: border-color 0.2s;
+      outline: none;
+    }
+
+    .input:focus {
+      border-color: var(--el-color-primary);
+    }
+
+    .input::placeholder {
+      color: var(--el-text-color-placeholder);
+    }
+
+    .select {
+      width: 100%;
+      height: 32px;
+      padding: 0 10px;
+      border: 1px solid #dcdfe6;
+      border-radius: 6px;
+      font-size: 13px;
+      background: #fff;
+      color: var(--el-text-color-primary);
+      outline: none;
+    }
+
+    /* Connection form grid */
+    .connection-form {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      align-items: flex-end;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* Main layout */
+    .split-layout {
+      display: grid;
+      grid-template-columns: 360px minmax(0, 1fr);
+      gap: 16px;
+    }
+
+    .compact-card {
+      border-radius: 10px;
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      overflow: hidden;
+    }
+
+    .compact-card .card-header {
+      background: #fafafa;
+      border-radius: 10px 10px 0 0;
+      padding: 12px 16px;
+    }
+
+    .compact-card .card-body {
+      padding: 16px;
+    }
+
+    /* Search bar */
+    .account-search-bar {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .search-results {
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      max-height: 180px;
+      overflow-y: auto;
+      margin-bottom: 8px;
+      background: #ffffff;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    }
+
+    .search-result-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 12px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      font-size: 12.5px;
+      border-bottom: 1px solid #f3f4f6;
+    }
+
+    .search-result-item:last-child { border-bottom: none; }
+    .search-result-item:hover { background-color: #f9fafb; }
+    .search-result-item.selected { background-color: #eff6ff; }
+
+    .result-info {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+    }
+
+    .result-name {
+      font-weight: 500;
+      color: #1f2937;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .result-id {
+      font-size: 11px;
+      color: #9ca3af;
+      font-family: 'Courier New', monospace;
+    }
+
+    .check-icon {
+      color: #3b82f6;
+      flex-shrink: 0;
+      font-weight: bold;
+    }
+
+    .selected-accounts {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 6px;
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 11.5px;
+      padding: 0 6px;
+      height: 24px;
+      border-radius: 4px;
+      background: #f4f4f5;
+      color: #909399;
+      border: 1px solid #e9e9eb;
+    }
+
+    .tag-close {
+      cursor: pointer;
+      font-size: 12px;
+      line-height: 1;
+    }
+
+    .tag-close:hover { color: #606266; }
+
+    .hint-text {
+      color: #9ca3af;
+      font-size: 12px;
+      margin-top: 6px;
+      line-height: 1.4;
+    }
+
+    .submit-btn {
+      width: 100%;
+      margin-top: 4px;
+      height: 32px;
+    }
+
+    /* Filter bar */
+    .filter-bar {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 12px;
+      align-items: center;
+    }
+
+    .filter-bar .input {
+      width: 220px;
+    }
+
+    /* Table */
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    .data-table th {
+      padding: 10px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #4b5563;
+      background: #f9fafb;
+      text-align: left;
+      border-bottom: 1px solid #f3f4f6;
+    }
+
+    .data-table td {
+      padding: 8px 12px;
+      border-bottom: 1px solid #f3f4f6;
+      color: var(--el-text-color-primary);
+    }
+
+    .data-table tr:hover td {
+      background: #fafafa;
+    }
+
+    .grade-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 10px;
+      background: #eff6ff;
+      color: #2563eb;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    .time-text {
+      color: #6b7280;
+      font-size: 12.5px;
+    }
+
+    .empty-text {
+      color: #d1d5db;
+      font-size: 12px;
+    }
+
+    .account-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+
+    .account-tags .tag {
+      font-size: 11px;
+      padding: 0 6px;
+      height: 22px;
+      border-radius: 4px;
+    }
+
+    .table-actions {
+      display: flex;
+      align-items: center;
+    }
+
+    .link-btn {
+      color: var(--el-color-primary);
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      font-size: 12.5px;
+      padding: 2px 0;
+    }
+
+    .link-btn:hover { opacity: 0.8; }
+
+    /* Pagination */
+    .pagination-bar {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 12px;
+      padding-top: 10px;
+      border-top: 1px solid #f3f4f6;
+    }
+
+    .pagination {
+      display: flex;
+      gap: 4px;
+      align-items: center;
+    }
+
+    .page-btn {
+      min-width: 28px;
+      height: 28px;
+      padding: 0 6px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid #e4e7ed;
+      background: #fff;
+      color: var(--el-text-color-regular);
+      font-size: 12px;
+      border-radius: 2px;
+      cursor: pointer;
+    }
+
+    .page-btn:hover { color: var(--el-color-primary); }
+
+    .page-btn.active {
+      background: var(--el-color-primary);
+      color: #fff;
+      border-color: var(--el-color-primary);
+    }
+
+    .page-btn:disabled {
+      color: #c0c4cc;
+      cursor: not-allowed;
+    }
+
+    .page-info {
+      font-size: 12px;
+      color: var(--el-text-color-secondary);
+      margin: 0 8px;
+    }
+
+    /* Responsive */
+    @media (max-width: 1200px) {
+      .split-layout { grid-template-columns: 320px minmax(0, 1fr); }
+    }
+
+    @media (max-width: 992px) {
+      .split-layout { grid-template-columns: 1fr; }
+      .connection-form { grid-template-columns: 1fr 1fr; }
+    }
+
+    @media (max-width: 768px) {
+      .app-shell { padding: 12px; }
+      .hero {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+      }
+      .connection-form { grid-template-columns: 1fr; }
+      .filter-bar { flex-wrap: wrap; }
+      .filter-bar .input { width: 100%; }
+      .pagination-bar { justify-content: center; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <!-- Header -->
+    <header class="hero">
+      <div class="hero-main">
+        <div class="hero-icon">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+            <circle cx="9" cy="7" r="4"/>
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+            <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+          </svg>
+        </div>
+        <div>
+          <h1>Student Management Console</h1>
+          <p class="hero-sub">Manage student profiles and bind them to Identity accounts</p>
+        </div>
+      </div>
+      <div class="hero-actions">
+        <button class="btn btn-text">Hide Config</button>
+        <span class="status-tag success">
+          <span class="status-dot connected"></span>
+          Connected
+        </span>
+      </div>
+    </header>
+
+    <!-- Connection Panel -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-header-title">
+          <svg width="14" height="14" viewBox="0 0 1024 1024"><path fill="currentColor" d="M512 64a448 448 0 1 1 0 896 448 448 0 0 1 0-896zm0 64a384 384 0 1 0 0 768 384 384 0 0 0 0-768z"/></svg>
+          Identity Authentication
+        </div>
+        <div class="header-actions">
+          <button class="btn btn-danger-text">Clear</button>
+          <button class="btn btn-primary">Reconnect</button>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="connection-form">
+          <div class="form-item" style="margin-bottom:0">
+            <label class="form-label">Admin AppId</label>
+            <input class="input" placeholder="Enter Identity AppId" value="admin-app-id-12345">
+          </div>
+          <div class="form-item" style="margin-bottom:0">
+            <label class="form-label">Admin AppSecret</label>
+            <input class="input" type="password" placeholder="Enter Identity AppSecret" value="secret-value-here">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="card" style="margin-bottom:0">
+      <div class="card-body">
+        <div class="split-layout">
+          <!-- Create Student -->
+          <div class="compact-card">
+            <div class="card-header">
+              <div class="card-header-title">
+                <svg width="14" height="14" viewBox="0 0 1024 1024"><path fill="currentColor" d="M480 480V128a32 32 0 0 1 64 0v352h352a32 32 0 1 1 0 64H544v352a32 32 0 1 1-64 0V544H128a32 32 0 0 1 0-64h352z"/></svg>
+                Create Student
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="form-item">
+                <label class="form-label">Student Name</label>
+                <input class="input" placeholder="Enter student name">
+              </div>
+              <div class="form-item">
+                <label class="form-label">Grade</label>
+                <select class="select">
+                  <option>Grade 1</option>
+                  <option>Grade 2</option>
+                  <option>Grade 3</option>
+                  <option>Grade 4</option>
+                  <option>Grade 5</option>
+                  <option>Grade 6</option>
+                  <option>Grade 7</option>
+                  <option>Grade 8</option>
+                  <option>Grade 9</option>
+                </select>
+              </div>
+              <div class="form-item">
+                <label class="form-label">Link Identity Accounts</label>
+                <div class="account-search-bar">
+                  <input class="input" placeholder="Search by username or phone...">
+                  <button class="btn btn-primary">Search</button>
+                </div>
+                <div class="search-results">
+                  <div class="search-result-item selected">
+                    <div class="result-info">
+                      <span class="result-name">Alice Zhang (Student)</span>
+                      <span class="result-id">usr_2a3b4c5d6e7f</span>
+                    </div>
+                    <span class="check-icon">&#10003;</span>
+                  </div>
+                  <div class="search-result-item">
+                    <div class="result-info">
+                      <span class="result-name">Bob Li</span>
+                      <span class="result-id">usr_8g9h0i1j2k3l</span>
+                    </div>
+                  </div>
+                  <div class="search-result-item">
+                    <div class="result-info">
+                      <span class="result-name">Carol Wang</span>
+                      <span class="result-id">usr_4m5n6o7p8q9r</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="selected-accounts">
+                  <span class="tag">Alice Zhang <span class="tag-close">&#10005;</span></span>
+                </div>
+              </div>
+              <button class="btn btn-primary submit-btn">Create Student</button>
+            </div>
+          </div>
+
+          <!-- Student List -->
+          <div class="compact-card">
+            <div class="card-header">
+              <div class="card-header-title">
+                <svg width="14" height="14" viewBox="0 0 1024 1024"><path fill="currentColor" d="M128 224h768v64H128zM128 448h768v64H128zM128 672h768v64H128z"/></svg>
+                Student List
+              </div>
+              <button class="btn btn-text">
+                <svg width="14" height="14" viewBox="0 0 1024 1024" style="margin-right:4px"><path fill="currentColor" d="M784.512 230.272v-50.56a32 32 0 1 1 64 0v149.056a32 32 0 0 1-32 32H667.52a32 32 0 1 1 0-64h92.992A362.24 362.24 0 0 0 512 149.824C296.32 149.824 121.216 325.056 121.216 540.8c0 215.68 175.104 390.848 390.784 390.848a390.208 390.208 0 0 0 338.304-194.752 32 32 0 1 1 55.36 32.256A454.144 454.144 0 0 1 512 963.648c-233.152 0-422.848-189.632-422.848-422.848S278.848 117.952 512 117.952c124.544 0 236.608 53.952 314.24 139.712l-41.728-27.392z"/></svg>
+                Refresh
+              </button>
+            </div>
+            <div class="card-body">
+              <div class="filter-bar">
+                <input class="input" placeholder="Search by name">
+                <button class="btn btn-primary">Search</button>
+              </div>
+
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Grade</th>
+                    <th>Linked Accounts</th>
+                    <th>Created</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>Alice Zhang</td>
+                    <td><span class="grade-badge">Grade 3</span></td>
+                    <td>
+                      <div class="account-tags">
+                        <span class="tag">usr_2a3b4c5d6e7f</span>
+                      </div>
+                    </td>
+                    <td><span class="time-text">2025/4/12 09:30:00</span></td>
+                    <td>
+                      <div class="table-actions">
+                        <button class="link-btn">Edit</button>
+                      </div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>Bob Li</td>
+                    <td><span class="grade-badge">Grade 5</span></td>
+                    <td>
+                      <div class="account-tags">
+                        <span class="tag">usr_8g9h0i1j2k3l</span>
+                        <span class="tag">usr_x1y2z3a4b5c6</span>
+                      </div>
+                    </td>
+                    <td><span class="time-text">2025/4/10 14:22:15</span></td>
+                    <td>
+                      <div class="table-actions">
+                        <button class="link-btn">Edit</button>
+                      </div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>Carol Wang</td>
+                    <td><span class="grade-badge">Grade 2</span></td>
+                    <td><span class="empty-text">None</span></td>
+                    <td><span class="time-text">2025/4/8 11:05:42</span></td>
+                    <td>
+                      <div class="table-actions">
+                        <button class="link-btn">Edit</button>
+                      </div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>David Chen</td>
+                    <td><span class="grade-badge">Grade 7</span></td>
+                    <td>
+                      <div class="account-tags">
+                        <span class="tag">usr_m7n8o9p0q1r2</span>
+                      </div>
+                    </td>
+                    <td><span class="time-text">2025/4/5 16:48:30</span></td>
+                    <td>
+                      <div class="table-actions">
+                        <button class="link-btn">Edit</button>
+                      </div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>Eva Liu</td>
+                    <td><span class="grade-badge">Grade 4</span></td>
+                    <td>
+                      <div class="account-tags">
+                        <span class="tag">usr_s3t4u5v6w7x8</span>
+                        <span class="tag">usr_y9z0a1b2c3d4</span>
+                        <span class="tag">usr_e5f6g7h8i9j0</span>
+                      </div>
+                    </td>
+                    <td><span class="time-text">2025/4/1 08:15:00</span></td>
+                    <td>
+                      <div class="table-actions">
+                        <button class="link-btn">Edit</button>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+
+              <div class="pagination-bar">
+                <div class="pagination">
+                  <span class="page-info">Total 48</span>
+                  <button class="page-btn" disabled>&lt;</button>
+                  <button class="page-btn active">1</button>
+                  <button class="page-btn">2</button>
+                  <button class="page-btn">3</button>
+                  <button class="page-btn">4</button>
+                  <button class="page-btn">5</button>
+                  <button class="page-btn">&gt;</button>
+                  <select class="select" style="width:auto;height:28px;margin-left:8px">
+                    <option>10 / page</option>
+                    <option selected>20 / page</option>
+                    <option>50 / page</option>
+                    <option>100 / page</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

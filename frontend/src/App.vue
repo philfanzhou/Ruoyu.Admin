@@ -67,24 +67,11 @@ const editStudentForm = reactive({
 })
 const editManagedAccountsLoading = ref(false)
 
-const linkAccountForm = reactive({
-  visible: false,
-  studentId: '',
-  studentName: '',
-  accountSearch: '',
-  searchLoading: false,
-  searchResults: [] as IdentityUser[],
-  selectedAccountId: '',
-})
-
 const identityConnected = ref(false)
 const connectingIdentity = ref(false)
 const loadingStudents = ref(false)
 const creatingStudent = ref(false)
 const updatingStudent = ref(false)
-const deletingStudent = ref(false)
-const linkingAccount = ref(false)
-const unlinkingAccountId = ref<string | null>(null)
 
 const students = ref<StudentDto[]>([])
 const gradeOptions = ref<GradeOption[]>([])
@@ -277,12 +264,6 @@ async function handleEditSearch() {
   editStudentForm.searchLoading = false
 }
 
-async function handleLinkSearch() {
-  linkAccountForm.searchLoading = true
-  linkAccountForm.searchResults = await searchIdentityAccounts(linkAccountForm.accountSearch)
-  linkAccountForm.searchLoading = false
-}
-
 function addAccountToCreate(userId: string) {
   if (!createStudentForm.selectedAccountIds.includes(userId)) {
     createStudentForm.selectedAccountIds.push(userId)
@@ -448,83 +429,8 @@ async function handleUpdateStudent() {
   }
 }
 
-async function handleDeleteStudent(row: StudentDto) {
-  if (!studentAdminClient) return
-
-  try {
-    await ElMessageBox.confirm(
-      `Are you sure you want to delete student "${row.name}"?`,
-      'Confirm Delete',
-      { confirmButtonText: 'Delete', cancelButtonText: 'Cancel', type: 'warning' },
-    )
-
-    deletingStudent.value = true
-    await studentAdminClient.deleteStudent(row.id)
-    ElMessage.success('Student deleted.')
-    await loadStudents()
-  } catch (error) {
-    if (error !== 'cancel' && error !== 'close') {
-      ElMessage.error(`Failed to delete student: ${getStudentErrorMessage(error)}`)
-    }
-  } finally {
-    deletingStudent.value = false
-  }
-}
-
-function openLinkAccountDialog(row: StudentDto) {
-  linkAccountForm.visible = true
-  linkAccountForm.studentId = row.id
-  linkAccountForm.studentName = row.name
-  linkAccountForm.selectedAccountId = ''
-  linkAccountForm.accountSearch = ''
-  linkAccountForm.searchResults = []
-}
-
-async function handleLinkAccount() {
-  if (!studentAdminClient) return
-  if (!linkAccountForm.selectedAccountId) {
-    ElMessage.warning('Please select an Identity account to link.')
-    return
-  }
-
-  linkingAccount.value = true
-  try {
-    await studentAdminClient.linkIdentityAccount(linkAccountForm.studentId, linkAccountForm.selectedAccountId)
-    ElMessage.success('Identity account linked successfully.')
-    linkAccountForm.visible = false
-    await loadStudents()
-  } catch (error) {
-    ElMessage.error(`Failed to link account: ${getStudentErrorMessage(error)}`)
-  } finally {
-    linkingAccount.value = false
-  }
-}
-
-async function handleUnlinkAccount(studentId: string, accountId: string) {
-  if (!studentAdminClient) return
-
-  try {
-    await ElMessageBox.confirm(
-      'Are you sure you want to unlink this Identity account?',
-      'Confirm Unlink',
-      { confirmButtonText: 'Unlink', cancelButtonText: 'Cancel', type: 'warning' },
-    )
-
-    unlinkingAccountId.value = accountId
-    await studentAdminClient.unlinkIdentityAccount(studentId, accountId)
-    ElMessage.success('Identity account unlinked.')
-    await loadStudents()
-  } catch (error) {
-    if (error !== 'cancel' && error !== 'close') {
-      ElMessage.error(`Failed to unlink account: ${getStudentErrorMessage(error)}`)
-    }
-  } finally {
-    unlinkingAccountId.value = null
-  }
-}
-
 function getAccountLabel(accountId: string): string {
-  const allUsers = [...searchResults.value, ...editStudentForm.searchResults, ...linkAccountForm.searchResults]
+  const allUsers = [...searchResults.value, ...editStudentForm.searchResults]
   const user = allUsers.find(u => u.userId === accountId)
   if (user) return formatAccountLabel(user)
 
@@ -744,12 +650,10 @@ onMounted(() => {
             <el-table-column label="Created" min-width="140">
               <template #default="{ row }"><span class="time-text">{{ formatDate(row.createdAt) }}</span></template>
             </el-table-column>
-            <el-table-column label="Actions" width="200" fixed="right">
+            <el-table-column label="Actions" width="80" fixed="right">
               <template #default="{ row }">
                 <div class="table-actions">
                   <el-button link type="primary" size="small" @click="openEditDialog(row)">Edit</el-button>
-                  <el-button link type="warning" size="small" :disabled="!identityConnected" @click="openLinkAccountDialog(row)">Link</el-button>
-                  <el-button link type="danger" size="small" :loading="deletingStudent" @click="handleDeleteStudent(row)">Delete</el-button>
                 </div>
               </template>
             </el-table-column>
@@ -909,61 +813,6 @@ onMounted(() => {
       </template>
     </el-dialog>
 
-    <!-- Link Account Dialog -->
-    <el-dialog v-model="linkAccountForm.visible" :title="`Link Account: ${linkAccountForm.studentName}`" width="520px" destroy-on-close class="modern-dialog">
-      <div class="dialog-body">
-        <el-alert type="info" :closable="false" class="info-alert">
-          Search for an Identity account by username or phone and select it to link with this student.
-        </el-alert>
-        <div class="form-section">
-          <div class="section-title">Search Identity Account</div>
-          <div class="form-control-wrap">
-            <div class="account-search-bar">
-              <el-input
-                v-model="linkAccountForm.accountSearch"
-                placeholder="Search by username or phone..."
-                size="default"
-                :disabled="!identityConnected"
-                @keyup.enter="handleLinkSearch"
-              />
-              <el-button
-                type="primary"
-                size="default"
-                :loading="linkAccountForm.searchLoading"
-                :disabled="!identityConnected || !linkAccountForm.accountSearch.trim()"
-                @click="handleLinkSearch"
-              >
-                Search
-              </el-button>
-            </div>
-            <div v-if="linkAccountForm.searchResults.length" class="search-results">
-              <el-radio-group v-model="linkAccountForm.selectedAccountId">
-                <div
-                  v-for="user in linkAccountForm.searchResults" :key="user.userId"
-                  class="search-result-item radio-item"
-                  :class="{ selected: linkAccountForm.selectedAccountId === user.userId }"
-                >
-                  <el-radio :value="user.userId" size="small">
-                    <div class="result-info">
-                      <span class="result-name">{{ formatAccountLabel(user) }}</span>
-                      <span class="result-id">{{ user.userId }}</span>
-                    </div>
-                  </el-radio>
-                </div>
-              </el-radio-group>
-            </div>
-          </div>
-        </div>
-      </div>
-      <template #footer>
-        <div class="dialog-footer">
-          <el-button size="default" @click="linkAccountForm.visible = false">Cancel</el-button>
-          <el-button type="primary" size="default" :loading="linkingAccount" :disabled="!linkAccountForm.selectedAccountId" @click="handleLinkAccount">
-            Link Account
-          </el-button>
-        </div>
-      </template>
-    </el-dialog>
   </div>
 </template>
 
