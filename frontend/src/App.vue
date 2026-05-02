@@ -81,6 +81,8 @@ const studentPageSize = ref(20)
 
 const identityClient = ref<ReturnType<typeof createIdentityAdminApiClient> | null>(null)
 const editManagedAccountCache = ref<Map<string, IdentityUser>>(new Map())
+const listAccountCache = ref<Map<string, IdentityUser>>(new Map())
+const loadingListAccounts = ref(false)
 
 // 学科相关
 const subjectOptions = ref<SubjectOption[]>([])
@@ -302,10 +304,40 @@ async function loadStudents() {
     })
     students.value = response.items
     studentTotal.value = response.total
+    void loadListAccountNames(response.items)
   } catch (error) {
     ElMessage.error(`Failed to load students: ${getStudentErrorMessage(error)}`)
   } finally {
     loadingStudents.value = false
+  }
+}
+
+async function loadListAccountNames(items: StudentDto[]) {
+  if (!identityConnected.value || !identityClient.value) return
+
+  const allAccountIds = new Set<string>()
+  for (const item of items) {
+    for (const id of item.identityAccountIds) {
+      if (!listAccountCache.value.has(id)) {
+        allAccountIds.add(id)
+      }
+    }
+  }
+
+  if (allAccountIds.size === 0) return
+
+  loadingListAccounts.value = true
+  try {
+    const accounts = await identityClient.value.getUsersByIds([...allAccountIds])
+    const next = new Map(listAccountCache.value)
+    for (const account of accounts) {
+      next.set(account.userId, account)
+    }
+    listAccountCache.value = next
+  } catch (error) {
+    console.warn('Failed to load account names for student list:', error)
+  } finally {
+    loadingListAccounts.value = false
   }
 }
 
@@ -435,6 +467,28 @@ function getAccountLabel(accountId: string): string {
   if (user) return formatAccountLabel(user)
 
   return accountId
+}
+
+function getAccountNamesPreview(row: StudentDto): string {
+  if (!row.identityAccountIds.length) return ''
+
+  const names: string[] = []
+  for (const accountId of row.identityAccountIds.slice(0, 2)) {
+    const user = listAccountCache.value.get(accountId) ?? editManagedAccountCache.value.get(accountId)
+    if (user) {
+      names.push(formatAccountLabel(user))
+    }
+  }
+
+  if (names.length === 0) {
+    return row.identityAccountIds[0].slice(0, 8) + '...'
+  }
+
+  if (row.identityAccountIds.length > names.length) {
+    return `${names[0]}, +${row.identityAccountIds.length - 1}`
+  }
+
+  return names.join(', ')
 }
 
 function getEditManagedAccountLabel(accountId: string): string {
@@ -632,18 +686,19 @@ onMounted(() => {
 
           <el-table :data="students" v-loading="loadingStudents" empty-text="No data" class="data-table" size="small">
             <el-table-column prop="name" label="Name" min-width="120" show-overflow-tooltip />
-            <el-table-column label="Grade" width="90">
-              <template #default="{ row }"><span class="grade-badge">{{ getGradeLabel(row.grade) }}</span></template>
+            <el-table-column label="Grade" width="100">
+              <template #default="{ row }"><span class="grade-text">{{ getGradeLabel(row.grade) }}</span></template>
             </el-table-column>
-            <el-table-column label="Linked Accounts" min-width="180">
+            <el-table-column label="Linked Accounts" min-width="160">
               <template #default="{ row }">
-                <div class="account-tags">
-                  <el-tag
-                    v-for="accountId in row.identityAccountIds" :key="accountId" size="small" type="info" effect="light"
-                  >
-                    {{ accountId }}
-                  </el-tag>
-                  <span v-if="!row.identityAccountIds.length" class="empty-text">None</span>
+                <div class="account-summary">
+                  <span class="account-count" :class="{ zero: !row.identityAccountIds.length }">
+                    {{ row.identityAccountIds.length }}
+                  </span>
+                  <span v-if="row.identityAccountIds.length" class="account-names">
+                    {{ getAccountNamesPreview(row) }}
+                  </span>
+                  <span v-else class="empty-text">Not linked</span>
                 </div>
               </template>
             </el-table-column>
@@ -676,7 +731,10 @@ onMounted(() => {
     <el-dialog v-model="editStudentForm.visible" title="Edit Student" width="640px" destroy-on-close class="modern-dialog">
       <div class="dialog-body">
         <div class="form-section">
-          <div class="section-title">Basic Information</div>
+          <div class="section-title">
+            <el-icon><svg viewBox="0 0 1024 1024" width="14" height="14"><path fill="currentColor" d="M512 64a448 448 0 1 1 0 896 448 448 0 0 1 0-896zm0 64a384 384 0 1 0 0 768 384 384 0 0 0 0-768z"/></svg></el-icon>
+            Basic Information
+          </div>
           <el-form class="modern-form" label-position="top">
             <div class="form-row">
               <el-form-item label="Student Name" class="form-col">
@@ -695,7 +753,10 @@ onMounted(() => {
         </div>
 
         <div class="form-section">
-          <div class="section-title">Linked Identity Accounts</div>
+          <div class="section-title">
+            <el-icon><svg viewBox="0 0 1024 1024" width="14" height="14"><path fill="currentColor" d="M480 480V128a32 32 0 0 1 64 0v352h352a32 32 0 1 1 0 64H544v352a32 32 0 1 1-64 0V544H128a32 32 0 0 1 0-64h352z"/></svg></el-icon>
+            Linked Identity Accounts
+          </div>
           <div class="form-control-wrap">
             <div class="account-search-bar">
               <el-input
@@ -745,7 +806,10 @@ onMounted(() => {
         </div>
 
         <div class="form-section">
-          <div class="section-title">Open Subjects</div>
+          <div class="section-title">
+            <el-icon><svg viewBox="0 0 1024 1024" width="14" height="14"><path fill="currentColor" d="M128 224h768v64H128zM128 448h768v64H128zM128 672h768v64H128z"/></svg></el-icon>
+            Open Subjects
+          </div>
           <div v-if="loadingOpenSubjects" class="hint-text">Loading...</div>
           <div v-else class="form-control-wrap">
             <div class="subjects-grid">
@@ -967,11 +1031,14 @@ onMounted(() => {
   display: grid;
   grid-template-columns: 360px minmax(0, 1fr);
   gap: 16px;
+  align-items: start;
 }
 
 /* ========== Cards ========== */
 .compact-card {
   border-radius: 10px;
+  display: flex;
+  flex-direction: column;
 }
 
 .compact-card :deep(.el-card__header) {
@@ -980,10 +1047,12 @@ onMounted(() => {
   border-bottom: 1px solid #f3f4f6;
   background: #fafafa;
   border-radius: 10px 10px 0 0;
+  flex-shrink: 0;
 }
 
 .compact-card :deep(.el-card__body) {
   padding: 16px;
+  flex: 1;
 }
 
 .create-card :deep(.el-card__body) {
@@ -1114,14 +1183,9 @@ onMounted(() => {
   padding-right: 12px;
 }
 
-.grade-badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 10px;
-  background: #eff6ff;
-  color: #2563eb;
-  border-radius: 20px;
-  font-size: 12px;
+.grade-text {
+  font-size: 12.5px;
+  color: #4b5563;
   font-weight: 500;
 }
 
@@ -1175,18 +1239,40 @@ onMounted(() => {
   border-top: 1px solid #f3f4f6;
 }
 
-/* ========== Account Tags ========== */
-.account-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
+/* ========== Account Summary ========== */
+.account-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: #4b5563;
 }
 
-.account-tags .el-tag {
-  font-size: 11px;
+.account-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
   padding: 0 6px;
-  height: 22px;
-  border-radius: 4px;
+  border-radius: 10px;
+  background: #f3f4f6;
+  color: #6b7280;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.account-count.zero {
+  background: #fef2f2;
+  color: #f87171;
+}
+
+.account-names {
+  color: #6b7280;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ========== Search Results ========== */
