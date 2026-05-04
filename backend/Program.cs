@@ -1,5 +1,3 @@
-using System.Net.Http.Headers;
-using System.Text;
 using Admin.WebApi;
 using Admin.WebApi.Models;
 using Grpc.Net.ClientFactory;
@@ -20,9 +18,9 @@ builder.Services.AddGrpcClient<StudentManagementGrpcService.StudentManagementGrp
     options.Address = new Uri(grpcServiceAddress);
 });
 
-var identityServiceAddress = builder.Configuration["IdentityService:Address"] ?? "http://localhost:5002";
-var identityAppId = builder.Configuration["IdentityService:AppId"] ?? "";
-var identityAppSecret = builder.Configuration["IdentityService:AppSecret"] ?? "";
+builder.Services.Configure<IdentityServiceOptions>(
+    builder.Configuration.GetSection(IdentityServiceOptions.SectionName));
+
 builder.Services.AddHttpClient("IdentityService", client =>
 {
     client.Timeout = TimeSpan.FromSeconds(30);
@@ -45,85 +43,8 @@ builder.Services.AddCors(options =>
 var app = builder.Build();
 
 app.UseCors("AdminWeb");
+app.UseMiddleware<IdentityProxyMiddleware>();
 app.MapStudentAdminApi(adminApiPort);
-
-app.Use(async (context, next) =>
-{
-    if (!context.Request.Path.StartsWithSegments("/api/identity"))
-    {
-        await next(context);
-        return;
-    }
-
-    var clientFactory = context.RequestServices.GetRequiredService<IHttpClientFactory>();
-    var client = clientFactory.CreateClient("IdentityService");
-
-    var targetPath = context.Request.Path.Value!.Replace("/api/identity", "/api");
-    var targetUri = $"{identityServiceAddress.TrimEnd('/')}{targetPath}{context.Request.QueryString}";
-
-    var requestMessage = new HttpRequestMessage(new HttpMethod(context.Request.Method), targetUri);
-
-    if (context.Request.Body != null && !HttpMethods.IsGet(context.Request.Method))
-    {
-        using var reader = new StreamReader(context.Request.Body, Encoding.UTF8);
-        var body = await reader.ReadToEndAsync();
-        if (!string.IsNullOrEmpty(body))
-        {
-            var content = new StringContent(body, Encoding.UTF8);
-            content.Headers.ContentType = new MediaTypeHeaderValue(context.Request.ContentType ?? "application/json");
-            requestMessage.Content = content;
-        }
-    }
-
-    foreach (var header in context.Request.Headers)
-    {
-        if (header.Key.StartsWith("Content-", StringComparison.OrdinalIgnoreCase))
-            continue;
-        if (string.Equals(header.Key, "X-Admin-AppId", StringComparison.OrdinalIgnoreCase))
-            continue;
-        if (string.Equals(header.Key, "X-Admin-AppSecret", StringComparison.OrdinalIgnoreCase))
-            continue;
-        requestMessage.Headers.TryAddWithoutValidation(header.Key, header.Value.ToArray());
-    }
-
-    if (!string.IsNullOrEmpty(identityAppId))
-        requestMessage.Headers.TryAddWithoutValidation("X-Admin-AppId", identityAppId);
-    if (!string.IsNullOrEmpty(identityAppSecret))
-        requestMessage.Headers.TryAddWithoutValidation("X-Admin-AppSecret", identityAppSecret);
-
-    HttpResponseMessage response;
-    try
-    {
-        response = await client.SendAsync(requestMessage, HttpCompletionOption.ResponseHeadersRead);
-    }
-    catch
-    {
-        context.Response.StatusCode = 502;
-        context.Response.ContentType = "application/json; charset=utf-8";
-        await context.Response.WriteAsync("{\"message\":\"Identity service unreachable\"}");
-        return;
-    }
-
-    context.Response.StatusCode = (int)response.StatusCode;
-
-    var excludedHeaders = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-    {
-        "Transfer-Encoding", "Content-Length", "Content-Type", "Connection", "Keep-Alive"
-    };
-
-    foreach (var header in response.Headers)
-    {
-        if (excludedHeaders.Contains(header.Key)) continue;
-        context.Response.Headers[header.Key] = header.Value.ToArray();
-    }
-    foreach (var header in response.Content.Headers)
-    {
-        if (excludedHeaders.Contains(header.Key)) continue;
-        context.Response.Headers[header.Key] = header.Value.ToArray();
-    }
-
-    await response.Content.CopyToAsync(context.Response.Body);
-});
 
 // ========== Static files & SPA ==========
 var wwwrootPath = Path.Combine(builder.Environment.ContentRootPath, "wwwroot");
@@ -131,8 +52,10 @@ if (Directory.Exists(wwwrootPath))
 {
     app.UseDefaultFiles();
 
-    // Inject app title from env var (APP_TITLE) into index.html at runtime
     var appTitle = builder.Configuration["APP_TITLE"] ?? "Admin Portal";
+    var escapedAppTitle = appTitle.Replace("'", "\\'");
+    string? cachedIndexHtml = null;
+
     app.Use(async (context, next) =>
     {
         if (context.Request.Path == "/index.html")
@@ -140,10 +63,10 @@ if (Directory.Exists(wwwrootPath))
             var filePath = Path.Combine(wwwrootPath, "index.html");
             if (File.Exists(filePath))
             {
-                var content = await File.ReadAllTextAsync(filePath);
-                content = content.Replace("__APP_TITLE__", appTitle);
-                // Inject global variable for Vue app to read at runtime
-                content = content.Replace("</head>", $"<script>window.__APP_TITLE__ = '{appTitle.Replace("'", "\\'")}';</script></head>");
+                cachedIndexHtml ??= await File.ReadAllTextAsync(filePath);
+                var content = cachedIndexHtml
+                    .Replace("__APP_TITLE__", appTitle)
+                    .Replace("</head>", $"<script>window.__APP_TITLE__ = '{escapedAppTitle}';</script></head>");
                 context.Response.ContentType = "text/html; charset=utf-8";
                 await context.Response.WriteAsync(content);
                 return;
@@ -154,7 +77,6 @@ if (Directory.Exists(wwwrootPath))
 
     app.UseStaticFiles();
 
-    // SPA fallback for non-API paths (Vue Router history mode)
     app.MapWhen(
         context => !context.Request.Path.StartsWithSegments("/api"),
         spaApp =>

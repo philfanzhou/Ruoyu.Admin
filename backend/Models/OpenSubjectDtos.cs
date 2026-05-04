@@ -1,7 +1,7 @@
 namespace Admin.WebApi.Models;
 
 /// <summary>
-/// 开放学科 DTO
+/// Open subject DTO
 /// </summary>
 public record OpenSubjectDto(
     string Id,
@@ -11,16 +11,16 @@ public record OpenSubjectDto(
     bool IsActive);
 
 /// <summary>
-/// 设置开放学科请求
+/// Request for setting open subjects
 /// </summary>
 public record SetOpenSubjectsRequest(List<SubjectItem> Subjects);
 
 /// <summary>
-/// 学科项
+/// Subject item
 /// </summary>
 public record SubjectItem(int Subject, string OpenStartDate, string? OpenEndDate);
 
 /// <summary>
-/// 学科选项
+/// Subject option
 /// </summary>
 public record SubjectOption(int Value, string Name, string DisplayName);

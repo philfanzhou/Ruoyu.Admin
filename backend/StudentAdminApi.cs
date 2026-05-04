@@ -395,7 +395,7 @@ internal static class StudentAdminApi
     private static async Task<Ok<List<IdentityAccountDto>>> GetIdentityAccountsBatchAsync(
         IHttpClientFactory httpClientFactory,
         IOptions<IdentityServiceOptions> options,
-        ILogger<StudentAdminApi> logger,
+        ILoggerFactory loggerFactory,
         [FromBody] List<string> accountIds)
     {
         if (accountIds == null || accountIds.Count == 0)
@@ -440,7 +440,7 @@ internal static class StudentAdminApi
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "Failed to batch-query identity accounts");
+            loggerFactory.CreateLogger(nameof(StudentAdminApi)).LogWarning(ex, "Failed to batch-query identity accounts");
         }
 
         return TypedResults.Ok(result);
