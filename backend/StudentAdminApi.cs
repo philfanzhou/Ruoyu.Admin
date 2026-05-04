@@ -4,7 +4,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Admin.WebApi.Models;
 using Grpc.Core;
-using Ruoyu.Study.Shared.Constants;
+using Ruoyu.Study.Common.Constants;
 using SProto = Ruoyu.Study.Student.Contract.Protos;
 
 namespace Admin.WebApi;

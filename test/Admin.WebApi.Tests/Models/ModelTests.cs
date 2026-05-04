@@ -153,7 +153,7 @@ public class IdentityAccountDtoTests
         var phone = "13800138000";
         var remark = "VIP user";
 
-        var dto = new Admin.WebApi.StudentAdminApi.IdentityAccountDto(userId, username, displayName, phone, remark);
+        var dto = new IdentityAccountDto(userId, username, displayName, phone, remark);
 
         dto.UserId.Should().Be(userId);
         dto.Username.Should().Be(username);
@@ -165,7 +165,7 @@ public class IdentityAccountDtoTests
     [Fact]
     public void Constructor_WithEmptyValues_ShouldAcceptEmptyStrings()
     {
-        var dto = new Admin.WebApi.StudentAdminApi.IdentityAccountDto("", "", "", "", "");
+        var dto = new IdentityAccountDto("", "", "", "", "");
 
         dto.UserId.Should().BeEmpty();
         dto.Username.Should().BeEmpty();
