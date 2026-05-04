@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Admin.WebApi.Models;
 using Grpc.Core;
 using Ruoyu.Study.Shared.Constants;
@@ -45,12 +46,10 @@ internal static class StudentAdminApi
         students.MapPost("{studentId:guid}/accounts", LinkIdentityAccountToStudentAsync);
         students.MapDelete("{studentId:guid}/accounts/{accountId:guid}", UnlinkIdentityAccountFromStudentAsync);
 
-        // 批量查询 Identity 用户信息接口
         group.MapPost("identity-accounts/batch", GetIdentityAccountsBatchAsync);
 
         group.MapGet("accounts/{accountId:guid}/students", GetStudentsByIdentityAccountIdAsync);
 
-        // Open Subjects 学科管理
         students.MapGet("{studentId:guid}/open-subjects", GetStudentOpenSubjectsAsync);
         students.MapPut("{studentId:guid}/open-subjects", SetStudentOpenSubjectsAsync);
         students.MapGet("subject-options", GetSubjectOptionsAsync);
@@ -341,7 +340,7 @@ internal static class StudentAdminApi
             {
                 foreach (var subject in request.Subjects)
                 {
-                    if (subject.Subject < 1 || subject.Subject > 9)
+                    if (!SubjectConstants.IsValid(subject.Subject))
                         return TypedResults.BadRequest(new ErrorResponse($"Invalid subject value: {subject.Subject}"));
 
                     if (string.IsNullOrEmpty(subject.OpenStartDate))
@@ -391,16 +390,12 @@ internal static class StudentAdminApi
         return TypedResults.Ok(options);
     }
 
-    // 批量查询 Identity 用户信息 DTO
-    public sealed record IdentityAccountDto(string UserId, string Username, string DisplayName, string Phone, string Remark);
+    // ========== Identity Accounts Batch Query ==========
 
-    // Identity 服务返回的用户列表项
-    private sealed record IdentityUserItem(string UserId, string Username, string Phone, string Remark, string DisplayName);
-
-    // 批量查询 Identity 用户信息
-    // 通过 admin_portal 自身的 proxy 路径 /api/identity/gateway/users/batch 间接调用 Identity 服务
     private static async Task<Ok<List<IdentityAccountDto>>> GetIdentityAccountsBatchAsync(
-        HttpContext httpContext,
+        IHttpClientFactory httpClientFactory,
+        IOptions<IdentityServiceOptions> options,
+        ILogger<StudentAdminApi> logger,
         [FromBody] List<string> accountIds)
     {
         if (accountIds == null || accountIds.Count == 0)
@@ -411,26 +406,22 @@ internal static class StudentAdminApi
 
         try
         {
-            var config = httpContext.RequestServices.GetRequiredService<IConfiguration>();
-            var appId = config["IdentityService:AppId"];
-            var appSecret = config["IdentityService:AppSecret"];
+            var opts = options.Value;
 
-            if (string.IsNullOrEmpty(appId) || string.IsNullOrEmpty(appSecret))
+            if (string.IsNullOrEmpty(opts.AppId) || string.IsNullOrEmpty(opts.AppSecret))
                 return TypedResults.Ok(result);
 
-            var identityAddress = config["IdentityService:Address"] ?? "http://localhost:5002";
-
-            using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
-            var request = new HttpRequestMessage(HttpMethod.Post, $"{identityAddress.TrimEnd('/')}/api/gateway/users/batch");
-            request.Headers.Add("X-Admin-AppId", appId);
-            request.Headers.Add("X-Admin-AppSecret", appSecret);
+            var client = httpClientFactory.CreateClient("IdentityService");
+            var request = new HttpRequestMessage(HttpMethod.Post, $"{opts.Address.TrimEnd('/')}/api/gateway/users/batch");
+            request.Headers.Add("X-Admin-AppId", opts.AppId);
+            request.Headers.Add("X-Admin-AppSecret", opts.AppSecret);
             request.Content = JsonContent.Create(accountIds);
 
-            var response = await httpClient.SendAsync(request);
+            var response = await client.SendAsync(request).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
                 return TypedResults.Ok(result);
 
-            var accounts = await response.Content.ReadFromJsonAsync<List<IdentityUserItem>>();
+            var accounts = await response.Content.ReadFromJsonAsync<List<IdentityUserItem>>().ConfigureAwait(false);
             if (accounts == null)
                 return TypedResults.Ok(result);
 
@@ -449,9 +440,7 @@ internal static class StudentAdminApi
         }
         catch (Exception ex)
         {
-            // 记录错误
-            var loggerFactory = httpContext.RequestServices.GetService<ILoggerFactory>();
-            loggerFactory?.CreateLogger("StudentAdminApi").LogWarning(ex, "Failed to batch-query identity accounts");
+            logger.LogWarning(ex, "Failed to batch-query identity accounts");
         }
 
         return TypedResults.Ok(result);
