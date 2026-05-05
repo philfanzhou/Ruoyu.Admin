@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   getIdentityAdminApiClient,
   getIdentityErrorMessage,
@@ -14,6 +14,11 @@ import {
   type OpenSubjectDto,
   type SubjectOption,
 } from './services/studentAdminApi'
+import {
+  teacherPortalClient,
+  getTeacherPortalErrorMessage,
+  type TeacherAccountDto,
+} from './services/teacherPortalApi'
 
 const appTitle = (window as any).__APP_TITLE__ || 'Student Management Console'
 
@@ -438,10 +443,122 @@ function handleStudentPageSizeChange(size: number) {
   void loadStudents()
 }
 
+const teacherSearch = ref('')
+const teacherSearchLoading = ref(false)
+const teacherSearchResults = ref<IdentityUser[]>([])
+const teacherList = ref<TeacherAccountDto[]>([])
+const loadingTeachers = ref(false)
+const grantingTeacher = ref<string | null>(null)
+const teacherAccountCache = ref<Map<string, IdentityUser>>(new Map())
+
+async function loadTeachers() {
+  loadingTeachers.value = true
+  try {
+    const result = await teacherPortalClient.getTeachers()
+    if (result.success && result.data) {
+      teacherList.value = result.data
+      void loadTeacherAccountNames(result.data)
+    }
+  } catch (error) {
+    console.warn('Failed to load teachers:', error)
+  } finally {
+    loadingTeachers.value = false
+  }
+}
+
+async function loadTeacherAccountNames(teachers: TeacherAccountDto[]) {
+  const missingIds = new Set<string>()
+  for (const t of teachers) {
+    if (t.userId && !teacherAccountCache.value.has(t.userId)) {
+      missingIds.add(t.userId)
+    }
+  }
+  if (missingIds.size === 0) return
+
+  try {
+    const accounts = await identityClient.getUsersByIds([...missingIds])
+    const next = new Map(teacherAccountCache.value)
+    for (const account of accounts) {
+      next.set(account.userId, account)
+    }
+    teacherAccountCache.value = next
+  } catch (error) {
+    console.warn('Failed to load teacher account names:', error)
+  }
+}
+
+async function handleTeacherSearch() {
+  if (!teacherSearch.value.trim()) return
+  teacherSearchLoading.value = true
+  teacherSearchResults.value = await searchIdentityAccounts(teacherSearch.value)
+  teacherSearchLoading.value = false
+}
+
+async function grantTeacherPermission(user: IdentityUser) {
+  grantingTeacher.value = user.userId
+  try {
+    const result = await teacherPortalClient.addTeacherByUserId({
+      userId: user.userId,
+      phone: user.phone || undefined,
+      username: user.displayName || user.username || undefined,
+    })
+    if (result.success) {
+      ElMessage.success(`已为 ${formatAccountLabel(user)} 开通教师权限`)
+      await loadTeachers()
+    } else {
+      ElMessage.warning(result.message || '操作失败')
+    }
+  } catch (error) {
+    ElMessage.error(`操作失败: ${getTeacherPortalErrorMessage(error)}`)
+  } finally {
+    grantingTeacher.value = null
+  }
+}
+
+async function revokeTeacherPermission(teacher: TeacherAccountDto) {
+  const label = teacher.username || teacher.phone || teacher.userId || String(teacher.id)
+  try {
+    await ElMessageBox.confirm(`确定要撤销 ${label} 的教师权限吗？`, '撤销教师权限', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+  } catch {
+    return
+  }
+
+  const userId = teacher.userId
+  if (!userId) return
+
+  try {
+    const result = await teacherPortalClient.removeTeacherByUserId(userId)
+    if (result.success) {
+      ElMessage.success('已撤销教师权限')
+      await loadTeachers()
+    } else {
+      ElMessage.warning(result.message || '操作失败')
+    }
+  } catch (error) {
+    ElMessage.error(`操作失败: ${getTeacherPortalErrorMessage(error)}`)
+  }
+}
+
+function isUserTeacher(userId: string): boolean {
+  return teacherList.value.some(t => t.userId === userId)
+}
+
+function getTeacherAccountLabel(teacher: TeacherAccountDto): string {
+  if (teacher.userId && teacherAccountCache.value.has(teacher.userId)) {
+    return formatAccountLabel(teacherAccountCache.value.get(teacher.userId)!)
+  }
+  return teacher.username || teacher.phone || teacher.userId || String(teacher.id)
+}
+
 onMounted(() => {
   void loadGradeOptions()
   void loadStudents()
   void loadSubjectOptions()
+  void loadTeachers()
 })
 </script>
 
@@ -599,6 +716,99 @@ onMounted(() => {
             />
           </div>
         </el-card>
+      </div>
+    </el-card>
+
+    <!-- Teacher Permission Management -->
+    <el-card shadow="never" class="panel teacher-panel">
+      <template #header>
+        <div class="panel-header">
+          <div class="panel-title">
+            <el-icon><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></el-icon>
+            <span>Teacher Permissions</span>
+          </div>
+          <el-button size="small" text @click="loadTeachers">
+            <el-icon class="refresh-icon" :class="{ spinning: loadingTeachers }"><svg viewBox="0 0 1024 1024" width="14" height="14"><path fill="currentColor" d="M784.512 230.272v-50.56a32 32 0 1 1 64 0v149.056a32 32 0 0 1-32 32H667.52a32 32 0 1 1 0-64h92.992A362.24 362.24 0 0 0 512 149.824C296.32 149.824 121.216 325.056 121.216 540.8c0 215.68 175.104 390.848 390.784 390.848a390.208 390.208 0 0 0 338.304-194.752 32 32 0 1 1 55.36 32.256A454.144 454.144 0 0 1 512 963.648c-233.152 0-422.848-189.632-422.848-422.848S278.848 117.952 512 117.952c124.544 0 236.608 53.952 314.24 139.712l-41.728-27.392z"/></svg></el-icon>
+            Refresh
+          </el-button>
+        </div>
+      </template>
+
+      <div class="teacher-layout">
+        <div class="teacher-grant-section">
+          <div class="section-label">Grant Teacher Permission</div>
+          <div class="account-search-bar">
+            <el-input
+              v-model="teacherSearch"
+              placeholder="Search by username or phone..."
+              size="small"
+              @keyup.enter="handleTeacherSearch"
+            />
+            <el-button
+              type="primary"
+              size="small"
+              :loading="teacherSearchLoading"
+              :disabled="!teacherSearch.trim()"
+              @click="handleTeacherSearch"
+            >
+              Search
+            </el-button>
+          </div>
+          <div v-if="teacherSearchResults.length" class="search-results">
+            <div
+              v-for="user in teacherSearchResults" :key="user.userId"
+              class="search-result-item"
+            >
+              <div class="result-info">
+                <span class="result-name">{{ formatAccountLabel(user) }}</span>
+                <span class="result-id">{{ user.userId }}</span>
+              </div>
+              <el-button
+                v-if="isUserTeacher(user.userId)"
+                type="info"
+                size="small"
+                disabled
+              >
+                Already Teacher
+              </el-button>
+              <el-button
+                v-else
+                type="primary"
+                size="small"
+                :loading="grantingTeacher === user.userId"
+                @click="grantTeacherPermission(user)"
+              >
+                Grant
+              </el-button>
+            </div>
+          </div>
+        </div>
+
+        <div class="teacher-list-section">
+          <div class="section-label">Teacher Accounts ({{ teacherList.length }})</div>
+          <el-table :data="teacherList" v-loading="loadingTeachers" empty-text="No teachers" class="data-table" size="small">
+            <el-table-column label="Account" min-width="160">
+              <template #default="{ row }">
+                <span class="teacher-name">{{ getTeacherAccountLabel(row) }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="phone" label="Phone" width="130">
+              <template #default="{ row }">
+                <span class="time-text">{{ row.phone || '-' }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="Created" min-width="140">
+              <template #default="{ row }">
+                <span class="time-text">{{ row.createdAt }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="Actions" width="80" fixed="right">
+              <template #default="{ row }">
+                <el-button link type="danger" size="small" @click="revokeTeacherPermission(row)">Revoke</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
       </div>
     </el-card>
 
@@ -1327,6 +1537,45 @@ onMounted(() => {
   .subject-table-header,
   .subject-row {
     grid-template-columns: 80px 120px 120px 60px 60px;
+  }
+}
+
+/* ========== Teacher Panel ========== */
+.teacher-panel {
+  margin-top: 16px;
+}
+
+.teacher-layout {
+  display: grid;
+  grid-template-columns: 360px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.teacher-grant-section {
+  padding: 4px 0;
+}
+
+.section-label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #4b5563;
+  margin-bottom: 10px;
+}
+
+.teacher-list-section {
+  min-width: 0;
+}
+
+.teacher-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: #1f2937;
+}
+
+@media (max-width: 992px) {
+  .teacher-layout {
+    grid-template-columns: 1fr;
   }
 }
 </style>

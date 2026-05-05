@@ -1,0 +1,93 @@
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
+using Admin.WebApi.Models;
+
+namespace Admin.WebApi.Controllers;
+
+[Route("api/admin")]
+[ApiController]
+public class IdentityAccountsController : ControllerBase
+{
+    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IdentityServiceOptions _options;
+    private readonly ILogger<IdentityAccountsController> _logger;
+
+    public IdentityAccountsController(
+        IHttpClientFactory httpClientFactory,
+        IOptions<IdentityServiceOptions> options,
+        ILogger<IdentityAccountsController> logger)
+    {
+        _httpClientFactory = httpClientFactory;
+        _options = options.Value;
+        _logger = logger;
+    }
+
+    [HttpPost("identity-accounts/batch")]
+    public async Task<IActionResult> GetIdentityAccountsBatch([FromBody] List<string> accountIds)
+    {
+        if (accountIds == null || accountIds.Count == 0)
+            return Ok(new List<IdentityAccountDto>());
+
+        var targetIds = new HashSet<string>(accountIds, StringComparer.OrdinalIgnoreCase);
+        var result = new List<IdentityAccountDto>();
+
+        try
+        {
+            if (string.IsNullOrEmpty(_options.AppId) || string.IsNullOrEmpty(_options.AppSecret))
+                return Ok(result);
+
+            var client = _httpClientFactory.CreateClient("IdentityService");
+            var request = new HttpRequestMessage(HttpMethod.Post, $"{_options.Address.TrimEnd('/')}/api/gateway/users/batch");
+            request.Headers.Add("X-Admin-AppId", _options.AppId);
+            request.Headers.Add("X-Admin-AppSecret", _options.AppSecret);
+            request.Content = JsonContent.Create(accountIds);
+
+            var response = await client.SendAsync(request);
+            if (!response.IsSuccessStatusCode)
+                return Ok(result);
+
+            var accounts = await response.Content.ReadFromJsonAsync<List<IdentityUserItem>>();
+            if (accounts == null)
+                return Ok(result);
+
+            foreach (var user in accounts)
+            {
+                if (!targetIds.Contains(user.UserId))
+                    continue;
+
+                result.Add(new IdentityAccountDto(
+                    user.UserId,
+                    user.Username ?? string.Empty,
+                    user.DisplayName ?? string.Empty,
+                    user.Phone ?? string.Empty,
+                    user.Remark ?? string.Empty));
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to batch-query identity accounts");
+        }
+
+        return Ok(result);
+    }
+
+    [HttpGet("accounts/{accountId:guid}/students")]
+    public async Task<IActionResult> GetStudentsByIdentityAccountId(
+        Guid accountId,
+        Ruoyu.Study.Student.Contract.Protos.StudentManagementGrpcService.StudentManagementGrpcServiceClient grpcClient)
+    {
+        var request = new Ruoyu.Study.Student.Contract.Protos.GetStudentsByAccountIdRequest
+        {
+            AccountId = accountId.ToString()
+        };
+        var response = await grpcClient.GetStudentsByIdentityAccountIdAsync(request);
+        var dtos = response.Students.Select(s => new StudentDto(
+            s.Id,
+            s.Name,
+            (int)s.Grade,
+            s.IdentityAccountIds.ToList(),
+            s.CreatedAt,
+            s.UpdatedAt)).ToList();
+        return Ok((IReadOnlyList<StudentDto>)dtos);
+    }
+}

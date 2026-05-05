@@ -1,6 +1,6 @@
 namespace Admin.WebApi.Models;
 
-internal sealed record StudentDto(
+public sealed record StudentDto(
     string Id,
     string Name,
     int Grade,

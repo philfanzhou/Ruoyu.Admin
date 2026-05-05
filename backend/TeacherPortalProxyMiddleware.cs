@@ -4,7 +4,7 @@ using Microsoft.Extensions.Options;
 
 namespace Admin.WebApi;
 
-internal sealed class IdentityProxyMiddleware
+internal sealed class TeacherPortalProxyMiddleware
 {
     private static readonly HashSet<string> ExcludedResponseHeaders = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -13,12 +13,12 @@ internal sealed class IdentityProxyMiddleware
 
     private readonly RequestDelegate _next;
     private readonly IHttpClientFactory _httpClientFactory;
-    private readonly IdentityServiceOptions _options;
+    private readonly TeacherPortalOptions _options;
 
-    public IdentityProxyMiddleware(
+    public TeacherPortalProxyMiddleware(
         RequestDelegate next,
         IHttpClientFactory httpClientFactory,
-        IOptions<IdentityServiceOptions> options)
+        IOptions<TeacherPortalOptions> options)
     {
         _next = next;
         _httpClientFactory = httpClientFactory;
@@ -27,15 +27,37 @@ internal sealed class IdentityProxyMiddleware
 
     public async Task InvokeAsync(HttpContext context)
     {
-        if (!context.Request.Path.StartsWithSegments("/api/identity"))
+        if (!context.Request.Path.StartsWithSegments("/api/teacher-portal"))
         {
             await _next(context);
             return;
         }
 
-        var client = _httpClientFactory.CreateClient("IdentityService");
+        if (string.IsNullOrWhiteSpace(_options.Address) || string.IsNullOrWhiteSpace(_options.AdminApiKey))
+        {
+            context.Response.StatusCode = 503;
+            context.Response.ContentType = "application/json; charset=utf-8";
+            await context.Response.WriteAsync("{\"message\":\"Teacher portal not configured\"}").ConfigureAwait(false);
+            return;
+        }
 
-        var targetPath = context.Request.Path.Value!.Replace("/api/identity", "/api");
+        var client = _httpClientFactory.CreateClient("TeacherPortal");
+
+        var pathValue = context.Request.Path.Value!;
+        string targetPath;
+        if (pathValue.StartsWith("/api/teacher-portal/admin", StringComparison.OrdinalIgnoreCase))
+        {
+            targetPath = pathValue.Replace("/api/teacher-portal/admin", "/api/admin");
+        }
+        else if (pathValue.StartsWith("/api/teacher-portal/auth", StringComparison.OrdinalIgnoreCase))
+        {
+            targetPath = pathValue.Replace("/api/teacher-portal/auth", "/api/auth");
+        }
+        else
+        {
+            targetPath = pathValue.Replace("/api/teacher-portal", "/api/admin");
+        }
+
         var targetUri = $"{_options.Address.TrimEnd('/')}{targetPath}{context.Request.QueryString}";
 
         var requestMessage = new HttpRequestMessage(new HttpMethod(context.Request.Method), targetUri);
@@ -56,17 +78,9 @@ internal sealed class IdentityProxyMiddleware
         {
             if (header.Key.StartsWith("Content-", StringComparison.OrdinalIgnoreCase))
                 continue;
-            if (string.Equals(header.Key, "X-Admin-AppId", StringComparison.OrdinalIgnoreCase))
-                continue;
-            if (string.Equals(header.Key, "X-Admin-AppSecret", StringComparison.OrdinalIgnoreCase))
-                continue;
-            requestMessage.Headers.TryAddWithoutValidation(header.Key, header.Value.ToArray());
         }
 
-        if (!string.IsNullOrEmpty(_options.AppId))
-            requestMessage.Headers.TryAddWithoutValidation("X-Admin-AppId", _options.AppId);
-        if (!string.IsNullOrEmpty(_options.AppSecret))
-            requestMessage.Headers.TryAddWithoutValidation("X-Admin-AppSecret", _options.AppSecret);
+        requestMessage.Headers.Add("X-Admin-Key", _options.AdminApiKey);
 
         HttpResponseMessage response;
         try
@@ -77,7 +91,7 @@ internal sealed class IdentityProxyMiddleware
         {
             context.Response.StatusCode = 502;
             context.Response.ContentType = "application/json; charset=utf-8";
-            await context.Response.WriteAsync("{\"message\":\"Identity service unreachable\"}").ConfigureAwait(false);
+            await context.Response.WriteAsync("{\"message\":\"Teacher portal service unreachable\"}").ConfigureAwait(false);
             return;
         }
 
@@ -98,11 +112,10 @@ internal sealed class IdentityProxyMiddleware
     }
 }
 
-public sealed class IdentityServiceOptions
+public sealed class TeacherPortalOptions
 {
-    public const string SectionName = "IdentityService";
+    public const string SectionName = "TeacherPortal";
 
-    public string Address { get; set; } = "http://localhost:5002";
-    public string AppId { get; set; } = "";
-    public string AppSecret { get; set; } = "";
+    public string Address { get; set; } = "";
+    public string AdminApiKey { get; set; } = "";
 }

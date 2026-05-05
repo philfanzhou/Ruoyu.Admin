@@ -1,3 +1,3 @@
 namespace Admin.WebApi.Models;
 
-internal sealed record LinkUserRequest(string IdentityAccountId);
+public sealed record LinkUserRequest(string IdentityAccountId);

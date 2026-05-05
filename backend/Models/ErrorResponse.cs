@@ -1,3 +1,3 @@
 namespace Admin.WebApi.Models;
 
-internal sealed record ErrorResponse(string Message);
+public sealed record ErrorResponse(string Message);

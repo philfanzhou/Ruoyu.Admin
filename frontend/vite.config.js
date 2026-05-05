@@ -22,6 +22,10 @@ export default defineConfig({
         target: 'http://localhost:5020',
         changeOrigin: true,
       },
+      '/api/teacher-portal': {
+        target: 'http://localhost:5020',
+        changeOrigin: true,
+      },
     },
   },
   build: {

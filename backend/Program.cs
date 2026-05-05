@@ -1,5 +1,4 @@
 using Admin.WebApi;
-using Admin.WebApi.Models;
 using Grpc.Net.ClientFactory;
 using Ruoyu.Study.Student.Contract.Protos;
 
@@ -21,9 +20,17 @@ builder.Services.AddGrpcClient<StudentManagementGrpcService.StudentManagementGrp
 builder.Services.Configure<IdentityServiceOptions>(
     builder.Configuration.GetSection(IdentityServiceOptions.SectionName));
 
+builder.Services.Configure<TeacherPortalOptions>(
+    builder.Configuration.GetSection(TeacherPortalOptions.SectionName));
+
 builder.Services.AddHttpClient("IdentityService", client =>
 {
     client.Timeout = TimeSpan.FromSeconds(30);
+});
+
+builder.Services.AddHttpClient("TeacherPortal", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(10);
 });
 
 builder.Services.AddCors(options =>
@@ -40,11 +47,14 @@ builder.Services.AddCors(options =>
     });
 });
 
+builder.Services.AddControllers();
+
 var app = builder.Build();
 
 app.UseCors("AdminWeb");
 app.UseMiddleware<IdentityProxyMiddleware>();
-app.MapStudentAdminApi(adminApiPort);
+app.UseMiddleware<TeacherPortalProxyMiddleware>();
+app.MapControllers();
 
 // ========== Static files & SPA ==========
 var wwwrootPath = Path.Combine(builder.Environment.ContentRootPath, "wwwroot");
