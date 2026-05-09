@@ -18,7 +18,6 @@ import {
   teacherPortalClient,
   getTeacherPortalErrorMessage,
   type TeacherAccountDto,
-  type SubjectOption,
 } from './services/teacherPortalApi'
 
 const appTitle = (window as any).__APP_TITLE__ || 'Student Management Console'
