@@ -5,6 +5,7 @@ export interface TeacherAccountDto {
   userId: string | null
   phone: string | null
   username: string | null
+  subject: number
   createdAt: string
   updatedAt: string
 }
@@ -13,12 +14,26 @@ export interface AddTeacherByUserIdRequest {
   userId: string
   phone?: string
   username?: string
+  subject: number
+}
+
+export interface GrantTeacherRequest {
+  subject: number
 }
 
 export interface TeacherOperationResponse {
   success: boolean
   message?: string
   data?: TeacherAccountDto
+}
+
+export interface SetSubjectRequest {
+  subject: number
+}
+
+export interface SubjectOption {
+  value: number
+  name: string
 }
 
 class TeacherPortalApiClient {
@@ -40,6 +55,11 @@ class TeacherPortalApiClient {
     return response.data
   }
 
+  async grantTeacher(userId: string, payload: GrantTeacherRequest) {
+    const response = await this.client.post<TeacherOperationResponse>(`/api/teacher-portal/admin/identity-users/${encodeURIComponent(userId)}/grant-teacher`, payload)
+    return response.data
+  }
+
   async removeTeacherByUserId(userId: string) {
     const response = await this.client.delete<TeacherOperationResponse>(`/api/teacher-portal/admin/teachers/by-user/${encodeURIComponent(userId)}`)
     return response.data
@@ -50,6 +70,24 @@ class TeacherPortalApiClient {
     params.set('userId', userId)
     if (phone) params.set('phone', phone)
     const response = await this.client.get<{ isTeacher: boolean }>(`/api/teacher-portal/auth/check-teacher?${params.toString()}`)
+    return response.data
+  }
+
+  async getTeacherSubject(userId: string) {
+    const response = await this.client.get<{ success: boolean; data: number }>(`/api/teacher-portal/admin/teachers/${encodeURIComponent(userId)}/subject`)
+    return response.data
+  }
+
+  async setTeacherSubject(userId: string, subject: number) {
+    const response = await this.client.put<TeacherOperationResponse>(
+      `/api/teacher-portal/admin/teachers/${encodeURIComponent(userId)}/subject`,
+      { subject } as SetSubjectRequest
+    )
+    return response.data
+  }
+
+  async getAvailableSubjects() {
+    const response = await this.client.get<{ success: boolean; data: SubjectOption[] }>('/api/teacher-portal/admin/available-subjects')
     return response.data
   }
 }

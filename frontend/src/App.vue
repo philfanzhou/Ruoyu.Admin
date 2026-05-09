@@ -18,6 +18,7 @@ import {
   teacherPortalClient,
   getTeacherPortalErrorMessage,
   type TeacherAccountDto,
+  type SubjectOption,
 } from './services/teacherPortalApi'
 
 const appTitle = (window as any).__APP_TITLE__ || 'Student Management Console'
@@ -446,9 +447,19 @@ function handleStudentPageSizeChange(size: number) {
 const teacherSearch = ref('')
 const teacherSearchLoading = ref(false)
 const teacherSearchResults = ref<IdentityUser[]>([])
-const teacherList = ref<TeacherAccountDto[]>([])
+const teachers = ref<TeacherAccountDto[]>([])
 const loadingTeachers = ref(false)
-const grantingTeacher = ref<string | null>(null)
+const availableSubjects = ref<SubjectOption[]>([])
+const editingTeacherSubject = ref(0)
+const editingTeacherId = ref<string | null>(null)
+const editingTeacherName = ref<string>('')
+const showSubjectsDialog = ref(false)
+const savingSubjects = ref(false)
+const grantSubjectDialog = ref(false)
+const grantSubjectUserId = ref('')
+const grantSubjectUserName = ref('')
+const grantSubjectValue = ref(0)
+const grantingTeacherLoading = ref(false)
 const teacherAccountCache = ref<Map<string, IdentityUser>>(new Map())
 
 async function loadTeachers() {
@@ -456,7 +467,7 @@ async function loadTeachers() {
   try {
     const result = await teacherPortalClient.getTeachers()
     if (result.success && result.data) {
-      teacherList.value = result.data
+      teachers.value = result.data
       void loadTeacherAccountNames(result.data)
     }
   } catch (error) {
@@ -495,15 +506,25 @@ async function handleTeacherSearch() {
 }
 
 async function grantTeacherPermission(user: IdentityUser) {
-  grantingTeacher.value = user.userId
+  grantSubjectUserId.value = user.userId
+  grantSubjectUserName.value = formatAccountLabel(user)
+  grantSubjectValue.value = 0
+  grantSubjectDialog.value = true
+}
+
+async function confirmGrantTeacher() {
+  if (grantSubjectValue.value < 1) {
+    ElMessage.warning('请选择科目后再授予权限')
+    return
+  }
+  grantingTeacherLoading.value = true
   try {
-    const result = await teacherPortalClient.addTeacherByUserId({
-      userId: user.userId,
-      phone: user.phone || undefined,
-      username: user.displayName || user.username || undefined,
+    const result = await teacherPortalClient.grantTeacher(grantSubjectUserId.value, {
+      subject: grantSubjectValue.value,
     })
     if (result.success) {
-      ElMessage.success(`已为 ${formatAccountLabel(user)} 开通教师权限`)
+      ElMessage.success(`已为 ${grantSubjectUserName.value} 开通教师权限`)
+      grantSubjectDialog.value = false
       await loadTeachers()
     } else {
       ElMessage.warning(result.message || '操作失败')
@@ -511,7 +532,7 @@ async function grantTeacherPermission(user: IdentityUser) {
   } catch (error) {
     ElMessage.error(`操作失败: ${getTeacherPortalErrorMessage(error)}`)
   } finally {
-    grantingTeacher.value = null
+    grantingTeacherLoading.value = false
   }
 }
 
@@ -544,7 +565,7 @@ async function revokeTeacherPermission(teacher: TeacherAccountDto) {
 }
 
 function isUserTeacher(userId: string): boolean {
-  return teacherList.value.some(t => t.userId === userId)
+  return teachers.value.some(t => t.userId === userId)
 }
 
 function getTeacherAccountLabel(teacher: TeacherAccountDto): string {
@@ -554,11 +575,67 @@ function getTeacherAccountLabel(teacher: TeacherAccountDto): string {
   return teacher.username || teacher.phone || teacher.userId || String(teacher.id)
 }
 
+async function loadAvailableSubjects() {
+  try {
+    const result = await teacherPortalClient.getAvailableSubjects()
+    if (result.success && result.data) {
+      availableSubjects.value = result.data
+    }
+  } catch (error) {
+    console.warn('Failed to load available subjects:', error)
+  }
+}
+
+async function openSubjectsDialog(teacher: TeacherAccountDto) {
+  editingTeacherId.value = teacher.userId
+  editingTeacherName.value = getTeacherAccountLabel(teacher)
+  if (teacher.userId) {
+    try {
+      const result = await teacherPortalClient.getTeacherSubject(teacher.userId)
+      editingTeacherSubject.value = result.success ? result.data : 0
+    } catch {
+      editingTeacherSubject.value = teacher.subject ?? 0
+    }
+  } else {
+    editingTeacherSubject.value = teacher.subject ?? 0
+  }
+  showSubjectsDialog.value = true
+}
+
+async function saveTeacherSubjects() {
+  if (!editingTeacherId.value) return
+  if (editingTeacherSubject.value <= 0) {
+    ElMessage.warning('请选择一个科目')
+    return
+  }
+  savingSubjects.value = true
+  try {
+    const result = await teacherPortalClient.setTeacherSubject(editingTeacherId.value, editingTeacherSubject.value)
+    if (result.success) {
+      ElMessage.success('科目设置已保存')
+      showSubjectsDialog.value = false
+      await loadTeachers()
+    } else {
+      ElMessage.warning(result.message || '保存失败')
+    }
+  } catch (error) {
+    ElMessage.error(`保存失败: ${getTeacherPortalErrorMessage(error)}`)
+  } finally {
+    savingSubjects.value = false
+  }
+}
+
+function getSubjectName(subjectValue: number): string {
+  const subject = availableSubjects.value.find(s => s.value === subjectValue)
+  return subject?.name ?? String(subjectValue)
+}
+
 onMounted(() => {
   void loadGradeOptions()
   void loadStudents()
   void loadSubjectOptions()
   void loadTeachers()
+  void loadAvailableSubjects()
 })
 </script>
 
@@ -775,7 +852,6 @@ onMounted(() => {
                 v-else
                 type="primary"
                 size="small"
-                :loading="grantingTeacher === user.userId"
                 @click="grantTeacherPermission(user)"
               >
                 Grant
@@ -785,25 +861,29 @@ onMounted(() => {
         </div>
 
         <div class="teacher-list-section">
-          <div class="section-label">Teacher Accounts ({{ teacherList.length }})</div>
-          <el-table :data="teacherList" v-loading="loadingTeachers" empty-text="No teachers" class="data-table" size="small">
-            <el-table-column label="Account" min-width="160">
+          <div class="section-label">Teacher Accounts ({{ teachers.length }})</div>
+          <el-table :data="teachers" v-loading="loadingTeachers" empty-text="No teachers" class="data-table" size="small">
+            <el-table-column label="Account" min-width="140">
               <template #default="{ row }">
                 <span class="teacher-name">{{ getTeacherAccountLabel(row) }}</span>
               </template>
             </el-table-column>
-            <el-table-column prop="phone" label="Phone" width="130">
+            <el-table-column prop="phone" label="Phone" width="120">
               <template #default="{ row }">
                 <span class="time-text">{{ row.phone || '-' }}</span>
               </template>
             </el-table-column>
-            <el-table-column label="Created" min-width="140">
+            <el-table-column label="Subject" min-width="120">
               <template #default="{ row }">
-                <span class="time-text">{{ row.createdAt }}</span>
+                <el-tag v-if="row.subject > 0" size="small" type="info" effect="plain" class="subject-tag">
+                  {{ getSubjectName(row.subject) }}
+                </el-tag>
+                <span v-else class="empty-text">未分配</span>
               </template>
             </el-table-column>
-            <el-table-column label="Actions" width="80" fixed="right">
+            <el-table-column label="Actions" width="140" fixed="right">
               <template #default="{ row }">
+                <el-button link type="primary" size="small" @click="openSubjectsDialog(row)">管理科目</el-button>
                 <el-button link type="danger" size="small" @click="revokeTeacherPermission(row)">Revoke</el-button>
               </template>
             </el-table-column>
@@ -957,6 +1037,96 @@ onMounted(() => {
         <div class="dialog-footer">
           <el-button size="default" @click="editStudentForm.visible = false">Cancel</el-button>
           <el-button type="primary" size="default" :loading="updatingStudent" @click="handleUpdateStudent">Save Changes</el-button>
+        </div>
+      </template>
+    </el-dialog>
+
+    <!-- Edit Teacher Subjects Dialog -->
+    <el-dialog v-model="showSubjectsDialog" title="管理教师科目" width="480px" destroy-on-close class="modern-dialog">
+      <div class="dialog-body">
+        <div class="form-section">
+          <div class="section-title">
+            <el-icon><svg viewBox="0 0 1024 1024" width="14" height="14"><path fill="currentColor" d="M512 64a448 448 0 1 1 0 896 448 448 0 0 1 0-896zm0 64a384 384 0 1 0 0 768 384 384 0 0 0 0-768z"/></svg></el-icon>
+            教师信息
+          </div>
+          <div class="teacher-info-row">
+            <span class="info-label">教师：</span>
+            <span class="info-value">{{ editingTeacherName }}</span>
+          </div>
+        </div>
+        <div class="form-section">
+          <div class="section-title">
+            <el-icon><svg viewBox="0 0 1024 1024" width="14" height="14"><path fill="currentColor" d="M512 64a448 448 0 1 1 0 896 448 448 0 0 1 0-896zm0 64a384 384 0 1 0 0 768 384 384 0 0 0 0-768z"/></svg></el-icon>
+            科目设置
+          </div>
+          <p class="hint-text">选择该教师负责的科目（单选）</p>
+          <div class="subject-select">
+            <el-select v-model="editingTeacherSubject" placeholder="请选择科目" style="width: 100%">
+              <el-option
+                v-for="subject in availableSubjects"
+                :key="subject.value"
+                :label="subject.name"
+                :value="subject.value"
+              />
+            </el-select>
+          </div>
+          <div v-if="editingTeacherSubject > 0" class="selected-subject-preview">
+            <span class="info-label">已选：</span>
+            <el-tag size="small" type="primary" effect="light" class="subject-tag">
+              {{ getSubjectName(editingTeacherSubject) }}
+            </el-tag>
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button size="default" @click="showSubjectsDialog = false">取消</el-button>
+          <el-button type="primary" size="default" :loading="savingSubjects" @click="saveTeacherSubjects">保存</el-button>
+        </div>
+      </template>
+    </el-dialog>
+
+    <!-- Grant Teacher with Subject Dialog -->
+    <el-dialog v-model="grantSubjectDialog" title="授予教师权限" width="480px" destroy-on-close class="modern-dialog">
+      <div class="dialog-body">
+        <div class="form-section">
+          <div class="section-title">
+            <el-icon><svg viewBox="0 0 1024 1024" width="14" height="14"><path fill="currentColor" d="M512 64a448 448 0 1 1 0 896 448 448 0 0 1 0-896zm0 64a384 384 0 1 0 0 768 384 384 0 0 0 0-768z"/></svg></el-icon>
+            用户信息
+          </div>
+          <div class="teacher-info-row">
+            <span class="info-label">用户：</span>
+            <span class="info-value">{{ grantSubjectUserName }}</span>
+          </div>
+        </div>
+        <div class="form-section">
+          <div class="section-title">
+            <el-icon><svg viewBox="0 0 1024 1024" width="14" height="14"><path fill="currentColor" d="M512 64a448 448 0 1 1 0 896 448 448 0 0 1 0-896zm0 64a384 384 0 1 0 0 768 384 384 0 0 0 0-768z"/></svg></el-icon>
+            选择科目
+          </div>
+          <p class="hint-text">请选择该教师负责的科目（必选）</p>
+          <div class="subject-select">
+            <el-select v-model="grantSubjectValue" placeholder="请选择科目" style="width: 100%">
+              <el-option
+                v-for="subject in availableSubjects"
+                :key="subject.value"
+                :label="subject.name"
+                :value="subject.value"
+              />
+            </el-select>
+          </div>
+          <div v-if="grantSubjectValue > 0" class="selected-subject-preview">
+            <span class="info-label">已选：</span>
+            <el-tag size="small" type="primary" effect="light" class="subject-tag">
+              {{ getSubjectName(grantSubjectValue) }}
+            </el-tag>
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button size="default" @click="grantSubjectDialog = false">取消</el-button>
+          <el-button type="primary" size="default" :loading="grantingTeacherLoading" :disabled="grantSubjectValue < 1" @click="confirmGrantTeacher">确认授权</el-button>
         </div>
       </template>
     </el-dialog>
@@ -1571,6 +1741,52 @@ onMounted(() => {
   font-size: 13px;
   font-weight: 500;
   color: #1f2937;
+}
+
+/* ========== Teacher Subjects ========== */
+.subjects-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.subject-tag {
+  margin: 0;
+}
+
+.subject-select {
+  margin: 12px 0;
+}
+
+.selected-subject-preview {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed #e5e7eb;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.teacher-info-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #f9fafb;
+  border-radius: 6px;
+}
+
+.info-label {
+  color: #6b7280;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.info-value {
+  color: #1f2937;
+  font-size: 13px;
+  font-weight: 500;
 }
 
 @media (max-width: 992px) {
