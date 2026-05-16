@@ -2051,6 +2051,7 @@ onMounted(() => {
   margin-top: 2px;
 }
 
+@media (max-width: 768px) {
   .pagination-bar {
     justify-content: center;
   }
