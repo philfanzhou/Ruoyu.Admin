@@ -19,8 +19,25 @@ import {
   getTeacherPortalErrorMessage,
   type TeacherAccountDto,
 } from './services/teacherPortalApi'
+import {
+  ossAuditClient,
+  getOssAuditErrorMessage,
+  formatFileSize,
+  getBucketName,
+  type OssAuditResultDto,
+  type OssBucketAuditResultDto,
+  type OssObjectInfoDto,
+} from './services/ossAuditApi'
 
 const appTitle = (window as any).__APP_TITLE__ || 'Student Management Console'
+
+// OSS Audit
+const ossAuditResult = ref<OssAuditResultDto | null>(null)
+const loadingOssAudit = ref(false)
+const selectedBucket = ref<number | null>(null)
+const selectedZombieObjects = ref<string[]>([])
+const deletingZombie = ref(false)
+const deletingZombies = ref(false)
 
 const studentFilters = reactive({ name: '' })
 const accountSearch = ref('')
@@ -634,6 +651,100 @@ function getSubjectName(subjectValue: number): string {
   return subject?.name ?? String(subjectValue)
 }
 
+// OSS Audit Functions
+async function auditAllBuckets() {
+  loadingOssAudit.value = true
+  try {
+    ossAuditResult.value = await ossAuditClient.auditAllBuckets()
+    ElMessage.success('审计完成')
+  } catch (error) {
+    ElMessage.error('审计失败: ' + getOssAuditErrorMessage(error))
+  } finally {
+    loadingOssAudit.value = false
+  }
+}
+
+async function auditBucket(bucket: number) {
+  loadingOssAudit.value = true
+  try {
+    const result = await ossAuditClient.auditBucket(bucket)
+    if (ossAuditResult.value) {
+      const existingIndex = ossAuditResult.value.bucketResults.findIndex(r => r.bucket === bucket)
+      if (existingIndex >= 0) {
+        ossAuditResult.value.bucketResults[existingIndex] = result
+      } else {
+        ossAuditResult.value.bucketResults.push(result)
+      }
+    }
+    ElMessage.success('审计完成')
+  } catch (error) {
+    ElMessage.error('审计失败: ' + getOssAuditErrorMessage(error))
+  } finally {
+    loadingOssAudit.value = false
+  }
+}
+
+async function deleteZombieObject(objectPath: string) {
+  try {
+    await ElMessageBox.confirm('确认删除这个僵尸文件吗？', '删除确认', {
+      confirmButtonText: '确认',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+  } catch {
+    return
+  }
+
+  deletingZombie.value = true
+  try {
+    await ossAuditClient.deleteZombieObject(objectPath)
+    ElMessage.success('删除成功')
+    await auditAllBuckets()
+  } catch (error) {
+    ElMessage.error('删除失败: ' + getOssAuditErrorMessage(error))
+  } finally {
+    deletingZombie.value = false
+  }
+}
+
+async function deleteSelectedZombieObjects() {
+  if (selectedZombieObjects.value.length === 0) {
+    ElMessage.warning('请先选择要删除的文件')
+    return
+  }
+
+  try {
+    await ElMessageBox.confirm(`确认删除 ${selectedZombieObjects.value.length} 个僵尸文件吗？`, '批量删除确认', {
+      confirmButtonText: '确认',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+  } catch {
+    return
+  }
+
+  deletingZombies.value = true
+  try {
+    await ossAuditClient.deleteZombieObjects(selectedZombieObjects.value)
+    ElMessage.success('删除成功')
+    selectedZombieObjects.value = []
+    await auditAllBuckets()
+  } catch (error) {
+    ElMessage.error('删除失败: ' + getOssAuditErrorMessage(error))
+  } finally {
+    deletingZombies.value = false
+  }
+}
+
+function toggleZombieObjectSelection(objectPath: string) {
+  const index = selectedZombieObjects.value.indexOf(objectPath)
+  if (index >= 0) {
+    selectedZombieObjects.value.splice(index, 1)
+  } else {
+    selectedZombieObjects.value.push(objectPath)
+  }
+}
+
 onMounted(() => {
   void loadGradeOptions()
   void loadStudents()
@@ -1136,6 +1247,95 @@ onMounted(() => {
         </div>
       </template>
     </el-dialog>
+
+    <!-- OSS Audit Panel -->
+    <el-card shadow="never" class="panel oss-audit-panel">
+      <template #header>
+        <div class="panel-header">
+          <div class="panel-title">
+            <el-icon><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></el-icon>
+            <span>OSS 僵尸文件审计</span>
+          </div>
+          <el-button size="small" type="primary" :loading="loadingOssAudit" @click="auditAllBuckets">
+            <el-icon><svg viewBox="0 0 1024 1024" width="14" height="14"><path fill="currentColor" d="M784.512 230.272v-50.56a32 32 0 1 1 64 0v149.056a32 32 0 0 1-32 32H667.52a32 32 0 1 1 0-64h92.992A362.24 362.24 0 0 0 512 149.824C296.32 149.824 121.216 325.056 121.216 540.8c0 215.68 175.104 390.848 390.784 390.848a390.208 390.208 0 0 0 338.304-194.752 32 32 0 1 1 55.36 32.256A454.144 454.144 0 0 1 512 963.648c-233.152 0-422.848-189.632-422.848-422.848S278.848 117.952 512 117.952c124.544 0 236.608 53.952 314.24 139.712l-41.728-27.392z"/></svg></el-icon>
+            开始审计
+          </el-button>
+        </div>
+      </template>
+
+      <div v-if="!ossAuditResult" class="empty-state">
+        <el-empty description="点击“开始审计”按钮来检查 OSS 中的僵尸文件"></el-empty>
+      </div>
+
+      <div v-else class="oss-audit-content">
+        <div class="summary-cards">
+          <div class="summary-card">
+            <div class="summary-value">{{ ossAuditResult.totalZombieObjects }}</div>
+            <div class="summary-label">僵尸文件总数</div>
+          </div>
+          <div class="summary-card">
+            <div class="summary-value">{{ formatFileSize(ossAuditResult.totalZombieSize) }}</div>
+            <div class="summary-label">占用空间</div>
+          </div>
+          <div class="summary-card">
+            <div class="summary-value">{{ ossAuditResult.bucketResults.length }}</div>
+            <div class="summary-label">存储桶数</div>
+          </div>
+        </div>
+
+        <div v-if="selectedZombieObjects.length > 0" class="bulk-action-bar">
+          <el-button size="small" type="danger" :loading="deletingZombies" @click="deleteSelectedZombieObjects">
+            删除选中 ({{ selectedZombieObjects.length }})
+          </el-button>
+        </div>
+
+        <div class="bucket-section" v-for="bucketResult in ossAuditResult.bucketResults" :key="bucketResult.bucket">
+          <div class="bucket-header" @click="selectedBucket = selectedBucket === bucketResult.bucket ? null : bucketResult.bucket">
+            <el-icon :class="{ rotate: selectedBucket === bucketResult.bucket }"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></el-icon>
+            <span class="bucket-name">{{ getBucketName(bucketResult.bucket) }}</span>
+            <span class="bucket-stats">
+              {{ bucketResult.totalObjects }} 个文件 · {{ formatFileSize(bucketResult.totalSize) }}
+              <span v-if="bucketResult.zombieObjects.length > 0" class="zombie-badge">
+                · {{ bucketResult.zombieObjects.length }} 个僵尸文件
+              </span>
+            </span>
+          </div>
+
+          <div v-if="selectedBucket === bucketResult.bucket" class="bucket-content">
+            <div v-if="bucketResult.zombieObjects.length === 0" class="empty-state">
+              <el-empty description="该存储桶没有僵尸文件"></el-empty>
+            </div>
+            <div v-else class="zombie-file-list">
+              <div
+                v-for="file in bucketResult.zombieObjects"
+                :key="file.objectPath"
+                class="zombie-file-item"
+                :class="{ selected: selectedZombieObjects.includes(file.objectPath) }"
+                @click="toggleZombieObjectSelection(file.objectPath)"
+              >
+                <el-checkbox :model-value="selectedZombieObjects.includes(file.objectPath)" @click.stop></el-checkbox>
+                <div class="file-info">
+                  <div class="file-path">{{ file.objectPath }}</div>
+                  <div class="file-meta">
+                    {{ formatFileSize(file.size) }}
+                    <span v-if="file.lastModified"> · {{ formatDate(file.lastModified) }}</span>
+                  </div>
+                </div>
+                <el-button
+                  type="danger"
+                  size="small"
+                  link
+                  :loading="deletingZombie"
+                  @click.stop="deleteZombieObject(file.objectPath)"
+                >
+                  删除
+                </el-button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </el-card>
 
   </div>
 </template>
@@ -1697,10 +1897,159 @@ onMounted(() => {
   .filter-bar {
     flex-wrap: wrap;
   }
+}
 
-  .filter-bar .el-input {
-    width: 100%;
-  }
+/* ========== OSS Audit ========== */
+.empty-state {
+  padding: 40px;
+  text-align: center;
+}
+
+.summary-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.summary-card {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 20px;
+  border-radius: 10px;
+  color: white;
+  text-align: center;
+}
+
+.summary-card:nth-child(2) {
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+}
+
+.summary-card:nth-child(3) {
+  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+}
+
+.summary-value {
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.2;
+  margin-bottom: 4px;
+}
+
+.summary-label {
+  font-size: 13px;
+  opacity: 0.9;
+}
+
+.bulk-action-bar {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  padding: 12px 16px;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+}
+
+.bucket-section {
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  margin-bottom: 12px;
+  overflow: hidden;
+}
+
+.bucket-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  background: #f9fafb;
+  cursor: pointer;
+  transition: background 0.2s ease;
+  user-select: none;
+}
+
+.bucket-header:hover {
+  background: #f3f4f6;
+}
+
+.bucket-header .el-icon {
+  transition: transform 0.2s ease;
+  color: #6b7280;
+}
+
+.bucket-header .el-icon.rotate {
+  transform: rotate(90deg);
+}
+
+.bucket-name {
+  font-weight: 600;
+  font-size: 14px;
+  color: #1f2937;
+}
+
+.bucket-stats {
+  margin-left: auto;
+  font-size: 12.5px;
+  color: #6b7280;
+}
+
+.zombie-badge {
+  color: #dc2626;
+  font-weight: 600;
+}
+
+.bucket-content {
+  padding: 0;
+  max-height: 400px;
+  overflow-y: auto;
+  border-top: 1px solid #e5e7eb;
+}
+
+.zombie-file-list {
+  padding: 0;
+}
+
+.zombie-file-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid #f3f4f6;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.zombie-file-item:last-child {
+  border-bottom: none;
+}
+
+.zombie-file-item:hover {
+  background: #f9fafb;
+}
+
+.zombie-file-item.selected {
+  background: #eff6ff;
+}
+
+.file-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.file-path {
+  font-size: 13px;
+  color: #1f2937;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: 'Courier New', monospace;
+}
+
+.file-meta {
+  font-size: 12px;
+  color: #6b7280;
+  margin-top: 2px;
+}
 
   .pagination-bar {
     justify-content: center;
