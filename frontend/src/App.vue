@@ -991,8 +991,8 @@ onMounted(() => {
             <el-table-column label="Subjects" min-width="180">
               <template #default="{ row }">
                 <template v-if="row.subjects && row.subjects.length > 0">
-                  <el-tag v-for="s in row.subjects" :key="s" size="small" type="info" effect="plain" class="subject-tag" style="margin-right: 4px">
-                    {{ getSubjectName(s) }}
+                  <el-tag v-for="s in row.subjects" :key="typeof s === 'object' ? s.subject : s" size="small" type="info" effect="plain" class="subject-tag" style="margin-right: 4px">
+                    {{ getSubjectName(typeof s === 'object' ? s.subject : s) }}
                   </el-tag>
                 </template>
                 <span v-else class="empty-text">未分配</span>
