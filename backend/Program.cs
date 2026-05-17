@@ -1,5 +1,9 @@
 using Admin.WebApi;
+using Admin.WebApi.Data;
+using Admin.WebApi.Services;
 using Grpc.Net.ClientFactory;
+using Microsoft.EntityFrameworkCore;
+using Ruoyu.Study.Common.Database;
 using Ruoyu.Study.Common.Oss;
 using Ruoyu.Study.Student.Contract.Protos;
 using MistakeProto = Ruoyu.Study.Mistake.Contract.Protos;
@@ -67,7 +71,22 @@ builder.Services.AddSingleton<IOssService>(sp =>
         ossOptions.BucketName);
 });
 
+var connectionString = builder.Configuration.GetConnectionString("AuditDb")
+    ?? "Host=localhost;Port=5432;Database=ruoyu_admin;Username=postgres;Password=postgres";
+
+builder.Services.AddDbContext<AuditDbContext>(options =>
+    options.UseNpgsql(connectionString));
+
+builder.Services.AddHostedService<OssAuditWorker>();
+
 var app = builder.Build();
+
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<AuditDbContext>();
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+    await DatabaseInitializer.InitializeAsync(db, logger);
+}
 
 app.UseCors("AdminWeb");
 app.UseMiddleware<IdentityProxyMiddleware>();

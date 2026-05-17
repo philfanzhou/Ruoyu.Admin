@@ -1,37 +1,25 @@
 import axios, { type AxiosInstance } from 'axios'
 
-export interface OssObjectInfoDto {
+export interface OssAuditRecordDto {
+  id: number
   objectPath: string
+  bucket: string
   size: number
-  lastModified: number | null
-  isZombie: boolean
+  lastModified: number
+  status: number
+  statusText: string
+  createdAt: number
+  resolvedAt: number | null
+  note: string | null
 }
 
-export interface OssBucketAuditResultDto {
-  bucket: number
-  totalObjects: number
-  totalSize: number
-  zombieObjects: OssObjectInfoDto[]
-  zombieSize: number
-}
-
-export interface OssAuditResultDto {
-  auditTime: number
-  bucketResults: OssBucketAuditResultDto[]
-  totalZombieObjects: number
-  totalZombieSize: number
-  mistakeServiceAvailable: boolean
-  registeredPathsCount: number
-  mistakeReferencedPathsCount: number
-  warnings: string[]
-}
-
-export interface DeleteZombieObjectsRequest {
-  objectPaths: string[]
-}
-
-export interface DeleteZombieObjectsResponse {
-  deletedCount: number
+export interface OssAuditRecordsResponse {
+  items: OssAuditRecordDto[]
+  totalCount: number
+  page: number
+  pageSize: number
+  statusCounts: Record<number, number>
+  bucketCounts: Record<string, number>
 }
 
 export interface OperationResponse {
@@ -39,29 +27,10 @@ export interface OperationResponse {
   message?: string
 }
 
-export interface UploadRecordDto {
-  id: string
-  studentId: string
-  status: number
-  imagePaths: string[]
-  comments: string
-  createdAt: number
-  updatedAt: number
-  classification: number
-}
-
-export interface UploadRecordsPageResult {
-  items: UploadRecordDto[]
-  totalCount: number
-  page: number
-  pageSize: number
-}
-
-export interface AssignZombieImageRequest {
-  objectPath: string
-  studentId: string
-  uploadRecordId: string
-  imageHash: string
+export interface BatchResolveResponse {
+  resolvedCount: number
+  errors: string[]
+  totalRequested: number
 }
 
 class OssAuditApiClient {
@@ -73,41 +42,31 @@ class OssAuditApiClient {
     })
   }
 
-  async auditAllBuckets() {
-    const response = await this.client.get<OssAuditResultDto>('/api/admin/oss-audit/audit-all')
+  async getRecords(page: number = 1, pageSize: number = 20, status?: number, bucket?: string) {
+    const params: any = { page, pageSize }
+    if (status !== undefined && status !== null) params.status = status
+    if (bucket) params.bucket = bucket
+    const response = await this.client.get<OssAuditRecordsResponse>('/api/admin/oss-audit/records', { params })
     return response.data
   }
 
-  async auditBucket(bucket: number) {
-    const response = await this.client.get<OssBucketAuditResultDto>(`/api/admin/oss-audit/audit-bucket/${bucket}`)
+  async triggerAudit() {
+    const response = await this.client.post<OperationResponse>('/api/admin/oss-audit/trigger')
     return response.data
   }
 
-  async deleteZombieObject(objectPath: string) {
-    const response = await this.client.delete<OperationResponse>('/api/admin/oss-audit/zombie-object', {
-      params: { objectPath }
-    })
+  async resolveRecord(id: number) {
+    const response = await this.client.post<OperationResponse>(`/api/admin/oss-audit/records/${id}/resolve`)
     return response.data
   }
 
-  async deleteZombieObjects(objectPaths: string[]) {
-    const response = await this.client.delete<DeleteZombieObjectsResponse>('/api/admin/oss-audit/zombie-objects', {
-      data: { objectPaths } as DeleteZombieObjectsRequest
-    })
+  async ignoreRecord(id: number, note?: string) {
+    const response = await this.client.post<OperationResponse>(`/api/admin/oss-audit/records/${id}/ignore`, { note })
     return response.data
   }
 
-  async getAllUploadRecords(page: number = 1, pageSize: number = 20, status: number = -1, studentId?: string) {
-    const params: any = { page, pageSize, status }
-    if (studentId) {
-      params.studentId = studentId
-    }
-    const response = await this.client.get<UploadRecordsPageResult>('/api/admin/oss-upload-records', { params })
-    return response.data
-  }
-
-  async assignZombieImageToRecord(request: AssignZombieImageRequest) {
-    const response = await this.client.post<OperationResponse>('/api/admin/oss-upload-records/assign-zombie', request)
+  async batchResolve(ids: number[]) {
+    const response = await this.client.post<BatchResolveResponse>('/api/admin/oss-audit/records/batch-resolve', { ids })
     return response.data
   }
 }
@@ -129,33 +88,4 @@ export function formatFileSize(bytes: number): string {
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
   const i = Math.floor(Math.log(bytes) / Math.log(k))
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
-}
-
-export function getBucketName(bucket: number): string {
-  switch (bucket) {
-    case 1: return 'Mistakes'
-    case 2: return 'Uploads'
-    case 3: return 'Questions'
-    default: return 'Unknown'
-  }
-}
-
-export function getUploadStatusName(status: number): string {
-  switch (status) {
-    case 1: return 'Pending'
-    case 2: return 'Processing'
-    case 3: return 'Completed'
-    case 4: return 'Failed'
-    case 5: return 'Returned'
-    default: return 'Unknown'
-  }
-}
-
-export function generateImageHash(): string {
-  const chars = 'abcdef0123456789'
-  let hash = ''
-  for (let i = 0; i < 64; i++) {
-    hash += chars.charAt(Math.floor(Math.random() * chars.length))
-  }
-  return hash
 }

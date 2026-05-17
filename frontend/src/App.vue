@@ -23,21 +23,26 @@ import {
   ossAuditClient,
   getOssAuditErrorMessage,
   formatFileSize,
-  getBucketName,
-  type OssAuditResultDto,
-  type OssBucketAuditResultDto,
-  type OssObjectInfoDto,
+  type OssAuditRecordDto,
+  type OssAuditRecordsResponse,
 } from './services/ossAuditApi'
 
 const appTitle = (window as any).__APP_TITLE__ || 'Student Management Console'
 
 // OSS Audit
-const ossAuditResult = ref<OssAuditResultDto | null>(null)
-const loadingOssAudit = ref(false)
-const selectedBucket = ref<number | null>(null)
-const selectedZombieObjects = ref<string[]>([])
-const deletingZombie = ref(false)
-const deletingZombies = ref(false)
+const auditRecords = ref<OssAuditRecordDto[]>([])
+const auditTotalCount = ref(0)
+const auditPage = ref(1)
+const auditPageSize = ref(20)
+const auditStatusFilter = ref<number | undefined>(undefined)
+const auditBucketFilter = ref<string | undefined>(undefined)
+const auditStatusCounts = ref<Record<number, number>>({})
+const auditBucketCounts = ref<Record<string, number>>({})
+const loadingAuditRecords = ref(false)
+const triggeringAudit = ref(false)
+const resolvingRecord = ref<number | null>(null)
+const batchResolving = ref(false)
+const selectedRecordIds = ref<number[]>([])
 const previewImage = ref('')
 const showImagePreview = computed(() => !!previewImage.value)
 
@@ -659,97 +664,109 @@ function getSubjectName(subjectValue: number): string {
 }
 
 // OSS Audit Functions
-async function auditAllBuckets() {
-  loadingOssAudit.value = true
+async function loadAuditRecords() {
+  loadingAuditRecords.value = true
   try {
-    ossAuditResult.value = await ossAuditClient.auditAllBuckets()
-    ElMessage.success('审计完成')
+    const result = await ossAuditClient.getRecords(auditPage.value, auditPageSize.value, auditStatusFilter.value, auditBucketFilter.value)
+    auditRecords.value = result.items
+    auditTotalCount.value = result.totalCount
+    auditStatusCounts.value = result.statusCounts
+    auditBucketCounts.value = result.bucketCounts
   } catch (error) {
-    ElMessage.error('审计失败: ' + getOssAuditErrorMessage(error))
+    ElMessage.error('加载审计记录失败: ' + getOssAuditErrorMessage(error))
   } finally {
-    loadingOssAudit.value = false
+    loadingAuditRecords.value = false
   }
 }
 
-async function auditBucket(bucket: number) {
-  loadingOssAudit.value = true
+async function triggerAudit() {
+  triggeringAudit.value = true
   try {
-    const result = await ossAuditClient.auditBucket(bucket)
-    if (ossAuditResult.value) {
-      const existingIndex = ossAuditResult.value.bucketResults.findIndex(r => r.bucket === bucket)
-      if (existingIndex >= 0) {
-        ossAuditResult.value.bucketResults[existingIndex] = result
-      } else {
-        ossAuditResult.value.bucketResults.push(result)
-      }
-    }
-    ElMessage.success('审计完成')
+    await ossAuditClient.triggerAudit()
+    ElMessage.success('审计已触发，结果将在稍后可用')
+    setTimeout(() => loadAuditRecords(), 5000)
   } catch (error) {
-    ElMessage.error('审计失败: ' + getOssAuditErrorMessage(error))
+    ElMessage.error('触发审计失败: ' + getOssAuditErrorMessage(error))
   } finally {
-    loadingOssAudit.value = false
+    triggeringAudit.value = false
   }
 }
 
-async function deleteZombieObject(objectPath: string) {
+async function resolveRecord(id: number) {
   try {
-    await ElMessageBox.confirm('确认删除这个僵尸文件吗？', '删除确认', {
+    await ElMessageBox.confirm('确认删除这个僵尸文件吗？删除后不可恢复。', '删除确认', {
       confirmButtonText: '确认',
       cancelButtonText: '取消',
       type: 'warning'
     })
-  } catch {
-    return
-  }
+  } catch { return }
 
-  deletingZombie.value = true
+  resolvingRecord.value = id
   try {
-    await ossAuditClient.deleteZombieObject(objectPath)
+    await ossAuditClient.resolveRecord(id)
     ElMessage.success('删除成功')
-    await auditAllBuckets()
+    await loadAuditRecords()
   } catch (error) {
     ElMessage.error('删除失败: ' + getOssAuditErrorMessage(error))
   } finally {
-    deletingZombie.value = false
+    resolvingRecord.value = null
   }
 }
 
-async function deleteSelectedZombieObjects() {
-  if (selectedZombieObjects.value.length === 0) {
-    ElMessage.warning('请先选择要删除的文件')
+async function ignoreRecord(id: number) {
+  try {
+    await ossAuditClient.ignoreRecord(id)
+    ElMessage.success('已忽略')
+    await loadAuditRecords()
+  } catch (error) {
+    ElMessage.error('操作失败: ' + getOssAuditErrorMessage(error))
+  }
+}
+
+async function batchResolveRecords() {
+  if (selectedRecordIds.value.length === 0) {
+    ElMessage.warning('请先选择要处理的记录')
     return
   }
 
   try {
-    await ElMessageBox.confirm(`确认删除 ${selectedZombieObjects.value.length} 个僵尸文件吗？`, '批量删除确认', {
+    await ElMessageBox.confirm(`确认删除 ${selectedRecordIds.value.length} 个僵尸文件吗？`, '批量删除确认', {
       confirmButtonText: '确认',
       cancelButtonText: '取消',
       type: 'warning'
     })
-  } catch {
-    return
-  }
+  } catch { return }
 
-  deletingZombies.value = true
+  batchResolving.value = true
   try {
-    await ossAuditClient.deleteZombieObjects(selectedZombieObjects.value)
-    ElMessage.success('删除成功')
-    selectedZombieObjects.value = []
-    await auditAllBuckets()
+    const result = await ossAuditClient.batchResolve(selectedRecordIds.value)
+    ElMessage.success(`成功删除 ${result.resolvedCount} 个文件`)
+    selectedRecordIds.value = []
+    await loadAuditRecords()
   } catch (error) {
-    ElMessage.error('删除失败: ' + getOssAuditErrorMessage(error))
+    ElMessage.error('批量删除失败: ' + getOssAuditErrorMessage(error))
   } finally {
-    deletingZombies.value = false
+    batchResolving.value = false
   }
 }
 
-function toggleZombieObjectSelection(objectPath: string) {
-  const index = selectedZombieObjects.value.indexOf(objectPath)
+function toggleRecordSelection(id: number) {
+  const index = selectedRecordIds.value.indexOf(id)
   if (index >= 0) {
-    selectedZombieObjects.value.splice(index, 1)
+    selectedRecordIds.value.splice(index, 1)
   } else {
-    selectedZombieObjects.value.push(objectPath)
+    selectedRecordIds.value.push(id)
   }
+}
+
+function onAuditPageChange(page: number) {
+  auditPage.value = page
+  loadAuditRecords()
+}
+
+function onAuditFilterChange() {
+  auditPage.value = 1
+  loadAuditRecords()
 }
 
 onMounted(() => {
@@ -757,6 +774,7 @@ onMounted(() => {
   void loadStudents()
   void loadSubjectOptions()
   void loadTeachers()
+  void loadAuditRecords()
   void loadAvailableSubjects()
 })
 </script>
@@ -1263,117 +1281,76 @@ onMounted(() => {
             <el-icon><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></el-icon>
             <span>OSS 僵尸文件审计</span>
           </div>
-          <el-button size="small" type="primary" :loading="loadingOssAudit" @click="auditAllBuckets">
-            <el-icon><svg viewBox="0 0 1024 1024" width="14" height="14"><path fill="currentColor" d="M784.512 230.272v-50.56a32 32 0 1 1 64 0v149.056a32 32 0 0 1-32 32H667.52a32 32 0 1 1 0-64h92.992A362.24 362.24 0 0 0 512 149.824C296.32 149.824 121.216 325.056 121.216 540.8c0 215.68 175.104 390.848 390.784 390.848a390.208 390.208 0 0 0 338.304-194.752 32 32 0 1 1 55.36 32.256A454.144 454.144 0 0 1 512 963.648c-233.152 0-422.848-189.632-422.848-422.848S278.848 117.952 512 117.952c124.544 0 236.608 53.952 314.24 139.712l-41.728-27.392z"/></svg></el-icon>
-            开始审计
+          <el-button size="small" type="primary" :loading="triggeringAudit" @click="triggerAudit">
+            立即审计
           </el-button>
         </div>
       </template>
 
-      <div v-if="!ossAuditResult" class="empty-state">
-        <el-empty description="点击“开始审计”按钮来检查 OSS 中的僵尸文件"></el-empty>
+      <div class="audit-toolbar">
+        <div class="audit-filters">
+          <el-select v-model="auditStatusFilter" placeholder="状态筛选" size="small" clearable style="width: 120px" @change="onAuditFilterChange">
+            <el-option label="待处理" :value="0" />
+            <el-option label="已删除" :value="1" />
+            <el-option label="已忽略" :value="2" />
+          </el-select>
+          <el-select v-model="auditBucketFilter" placeholder="Bucket 筛选" size="small" clearable style="width: 130px" @change="onAuditFilterChange">
+            <el-option v-for="(count, bucket) in auditBucketCounts" :key="bucket" :label="`${bucket} (${count})`" :value="bucket" />
+          </el-select>
+        </div>
+        <div class="audit-stats">
+          <el-tag type="danger" effect="plain" size="small">待处理: {{ auditStatusCounts[0] || 0 }}</el-tag>
+          <el-tag type="success" effect="plain" size="small">已删除: {{ auditStatusCounts[1] || 0 }}</el-tag>
+          <el-tag type="info" effect="plain" size="small">已忽略: {{ auditStatusCounts[2] || 0 }}</el-tag>
+        </div>
       </div>
 
-      <div v-else class="oss-audit-content">
-        <div v-if="ossAuditResult.warnings && ossAuditResult.warnings.length > 0" class="audit-warnings">
-          <div class="warning-header">
-            <el-icon :size="18" color="#e6a23c"><svg viewBox="0 0 1024 1024" width="18" height="18"><path fill="#e6a23c" d="M512 64a448 448 0 1 1 0 896 448 448 0 0 1 0-896zm0 192a32 32 0 0 0-32 32v192a32 32 0 0 0 64 0V288a32 32 0 0 0-32-32zm0 384a32 32 0 1 0 0-64 32 32 0 0 0 0 64z"/></svg></el-icon>
-            <span class="warning-title">审核结果可能不准确</span>
-          </div>
-          <div v-for="(warning, idx) in ossAuditResult.warnings" :key="idx" class="warning-item">{{ warning }}</div>
-        </div>
+      <div v-if="selectedRecordIds.length > 0" class="bulk-action-bar">
+        <el-button size="small" type="danger" :loading="batchResolving" @click="batchResolveRecords">
+          批量删除选中 ({{ selectedRecordIds.length }})
+        </el-button>
+      </div>
 
-        <div v-if="!ossAuditResult.mistakeServiceAvailable" class="audit-alert">
-          <div class="alert-header">
-            <el-icon :size="18" color="#f56c6c"><svg viewBox="0 0 1024 1024" width="18" height="18"><path fill="#f56c6c" d="M512 64a448 448 0 1 1 0 896 448 448 0 0 1 0-896zm0 192a32 32 0 0 0-32 32v192a32 32 0 0 0 64 0V288a32 32 0 0 0-32-32zm0 384a32 32 0 1 0 0-64 32 32 0 0 0 0 64z"/></svg></el-icon>
-            <span class="alert-title">Mistake 服务不可用</span>
+      <div v-if="loadingAuditRecords" class="empty-state">
+        <el-empty description="加载中..."></el-empty>
+      </div>
+      <div v-else-if="auditRecords.length === 0" class="empty-state">
+        <el-empty description="暂无审计记录"></el-empty>
+      </div>
+      <div v-else class="audit-record-list">
+        <div
+          v-for="record in auditRecords"
+          :key="record.id"
+          class="audit-record-item"
+          :class="{ selected: selectedRecordIds.includes(record.id), resolved: record.status !== 0 }"
+        >
+          <el-checkbox
+            v-if="record.status === 0"
+            :model-value="selectedRecordIds.includes(record.id)"
+            @click.stop="toggleRecordSelection(record.id)"
+          />
+          <el-tag v-else :type="record.status === 1 ? 'success' : 'info'" size="small" effect="dark" class="status-tag">{{ record.statusText }}</el-tag>
+          <div v-if="isImageFile(record.objectPath)" class="file-thumbnail" @click.stop="previewImage = record.objectPath">
+            <img :src="`/api/admin/image?path=${encodeURIComponent(record.objectPath)}`" loading="lazy" @error="($event.target as HTMLImageElement).style.display='none'" />
           </div>
-          <div class="alert-desc">无法获取错题引用数据，部分被错题引用的图片可能被误判为僵尸文件。请检查 Mistake 服务状态后重新审计。</div>
-        </div>
-
-        <div class="summary-cards">
-          <div class="summary-card">
-            <div class="summary-value">{{ ossAuditResult.totalZombieObjects }}</div>
-            <div class="summary-label">僵尸文件总数</div>
+          <div v-else class="file-thumbnail file-thumbnail-placeholder">
+            <el-icon :size="20"><svg viewBox="0 0 1024 1024" width="20" height="20"><path fill="currentColor" d="M832 384H576V128H192v768h640V384zm-26.496-64L640 154.496V320h165.504zM160 64h480l256 256v608a32 32 0 0 1-32 32H160a32 32 0 0 1-32-32V96a32 32 0 0 1 32-32z"/></svg></el-icon>
           </div>
-          <div class="summary-card">
-            <div class="summary-value">{{ formatFileSize(ossAuditResult.totalZombieSize) }}</div>
-            <div class="summary-label">占用空间</div>
-          </div>
-          <div class="summary-card">
-            <div class="summary-value">{{ ossAuditResult.bucketResults.length }}</div>
-            <div class="summary-label">存储桶数</div>
-          </div>
-          <div class="summary-card summary-card-info">
-            <div class="summary-value">{{ ossAuditResult.registeredPathsCount }}</div>
-            <div class="summary-label">上传记录引用</div>
-          </div>
-          <div class="summary-card" :class="ossAuditResult.mistakeServiceAvailable ? 'summary-card-success' : 'summary-card-danger'">
-            <div class="summary-value">{{ ossAuditResult.mistakeReferencedPathsCount }}</div>
-            <div class="summary-label">
-              错题引用
-              <el-tag v-if="ossAuditResult.mistakeServiceAvailable" size="small" type="success" effect="dark" class="service-status-tag">服务正常</el-tag>
-              <el-tag v-else size="small" type="danger" effect="dark" class="service-status-tag">服务不可用</el-tag>
+          <div class="file-info">
+            <div class="file-path">{{ record.objectPath }}</div>
+            <div class="file-meta">
+              <el-tag size="small" effect="plain" type="info">{{ record.bucket }}</el-tag>
+              {{ formatFileSize(record.size) }}
+              <span v-if="record.lastModified"> · {{ formatDate(record.lastModified) }}</span>
             </div>
           </div>
-        </div>
-
-        <div v-if="selectedZombieObjects.length > 0" class="bulk-action-bar">
-          <el-button size="small" type="danger" :loading="deletingZombies" @click="deleteSelectedZombieObjects">
-            删除选中 ({{ selectedZombieObjects.length }})
-          </el-button>
-        </div>
-
-        <div class="bucket-section" v-for="bucketResult in ossAuditResult.bucketResults" :key="bucketResult.bucket">
-          <div class="bucket-header" @click="selectedBucket = selectedBucket === bucketResult.bucket ? null : bucketResult.bucket">
-            <el-icon :class="{ rotate: selectedBucket === bucketResult.bucket }"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></el-icon>
-            <span class="bucket-name">{{ getBucketName(bucketResult.bucket) }}</span>
-            <span class="bucket-stats">
-              {{ bucketResult.totalObjects }} 个文件 · {{ formatFileSize(bucketResult.totalSize) }}
-              <span v-if="bucketResult.zombieObjects.length > 0" class="zombie-badge">
-                · {{ bucketResult.zombieObjects.length }} 个僵尸文件
-              </span>
-            </span>
+          <div v-if="record.status === 0" class="file-actions">
+            <el-button type="danger" size="small" link :loading="resolvingRecord === record.id" @click.stop="resolveRecord(record.id)">删除</el-button>
+            <el-button size="small" link @click.stop="ignoreRecord(record.id)">忽略</el-button>
           </div>
-
-          <div v-if="selectedBucket === bucketResult.bucket" class="bucket-content">
-            <div v-if="bucketResult.zombieObjects.length === 0" class="empty-state">
-              <el-empty description="该存储桶没有僵尸文件"></el-empty>
-            </div>
-            <div v-else class="zombie-file-list">
-              <div
-                v-for="file in bucketResult.zombieObjects"
-                :key="file.objectPath"
-                class="zombie-file-item"
-                :class="{ selected: selectedZombieObjects.includes(file.objectPath) }"
-                @click="toggleZombieObjectSelection(file.objectPath)"
-              >
-                <el-checkbox :model-value="selectedZombieObjects.includes(file.objectPath)" @click.stop></el-checkbox>
-                <div v-if="isImageFile(file.objectPath)" class="file-thumbnail" @click.stop="previewImage = file.objectPath">
-                  <img :src="`/api/admin/image?path=${encodeURIComponent(file.objectPath)}`" loading="lazy" @error="($event.target as HTMLImageElement).style.display='none'" />
-                </div>
-                <div v-else class="file-thumbnail file-thumbnail-placeholder">
-                  <el-icon :size="20"><svg viewBox="0 0 1024 1024" width="20" height="20"><path fill="currentColor" d="M832 384H576V128H192v768h640V384zm-26.496-64L640 154.496V320h165.504zM160 64h480l256 256v608a32 32 0 0 1-32 32H160a32 32 0 0 1-32-32V96a32 32 0 0 1 32-32z"/></svg></el-icon>
-                </div>
-                <div class="file-info">
-                  <div class="file-path">{{ file.objectPath }}</div>
-                  <div class="file-meta">
-                    {{ formatFileSize(file.size) }}
-                    <span v-if="file.lastModified"> · {{ formatDate(file.lastModified) }}</span>
-                  </div>
-                </div>
-                <el-button
-                  type="danger"
-                  size="small"
-                  link
-                  :loading="deletingZombie"
-                  @click.stop="deleteZombieObject(file.objectPath)"
-                >
-                  删除
-                </el-button>
-              </div>
-            </div>
-          </div>
+        </div>
+        <div v-if="auditTotalCount > auditPageSize" class="audit-pagination">
+          <el-pagination small layout="prev, pager, next" :total="auditTotalCount" :page-size="auditPageSize" :current-page="auditPage" @current-change="onAuditPageChange" />
         </div>
       </div>
     </el-card>
@@ -1474,11 +1451,7 @@ onMounted(() => {
   color: #1f2937;
 }
 
-.header-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
+
 
 /* ========== Main Layout ========== */
 .split-layout {
@@ -1945,10 +1918,6 @@ onMounted(() => {
   .filter-bar {
     flex-wrap: wrap;
   }
-
-  .summary-cards {
-    grid-template-columns: repeat(2, 1fr);
-  }
 }
 
 /* ========== OSS Audit ========== */
@@ -1957,112 +1926,65 @@ onMounted(() => {
   text-align: center;
 }
 
-.summary-cards {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 16px;
-  margin-bottom: 20px;
+.audit-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
-.summary-card {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  padding: 20px;
-  border-radius: 10px;
-  color: white;
+.audit-filters {
+  display: flex;
+  gap: 8px;
+}
+
+.audit-stats {
+  display: flex;
+  gap: 6px;
+}
+
+.audit-record-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.audit-record-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid #e4e7ed;
+  transition: all 0.2s;
+}
+
+.audit-record-item.selected {
+  border-color: #409eff;
+  background: #ecf5ff;
+}
+
+.audit-record-item.resolved {
+  opacity: 0.6;
+}
+
+.status-tag {
+  min-width: 56px;
   text-align: center;
 }
 
-.summary-card:nth-child(2) {
-  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-}
-
-.summary-card:nth-child(3) {
-  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-}
-
-.summary-value {
-  font-size: 28px;
-  font-weight: 700;
-  line-height: 1.2;
-  margin-bottom: 4px;
-}
-
-.summary-label {
-  font-size: 13px;
-  opacity: 0.9;
-}
-
-.summary-card-info {
-  background: linear-gradient(135deg, #36d1dc 0%, #5b86e5 100%);
-}
-
-.summary-card-success {
-  background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
-}
-
-.summary-card-danger {
-  background: linear-gradient(135deg, #cb2d3e 0%, #ef473a 100%);
-}
-
-.service-status-tag {
-  margin-left: 6px;
-  vertical-align: middle;
-}
-
-.audit-warnings {
-  background: #fdf6ec;
-  border: 1px solid #faecd8;
-  border-radius: 8px;
-  padding: 14px 16px;
-  margin-bottom: 16px;
-}
-
-.warning-header {
+.file-actions {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
+  gap: 4px;
+  flex-shrink: 0;
 }
 
-.warning-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: #e6a23c;
-}
-
-.warning-item {
-  font-size: 12.5px;
-  color: #8a6d3b;
-  line-height: 1.6;
-  padding-left: 26px;
-}
-
-.audit-alert {
-  background: #fef0f0;
-  border: 1px solid #fde2e2;
-  border-radius: 8px;
-  padding: 14px 16px;
-  margin-bottom: 16px;
-}
-
-.alert-header {
+.audit-pagination {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 6px;
-}
-
-.alert-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: #f56c6c;
-}
-
-.alert-desc {
-  font-size: 12.5px;
-  color: #8c4b4b;
-  line-height: 1.6;
-  padding-left: 26px;
+  justify-content: center;
+  margin-top: 16px;
 }
 
 .bulk-action-bar {
@@ -2073,75 +1995,6 @@ onMounted(() => {
   margin-bottom: 16px;
   display: flex;
   align-items: center;
-}
-
-.bucket-section {
-  border: 1px solid #e5e7eb;
-  border-radius: 10px;
-  margin-bottom: 12px;
-  overflow: hidden;
-}
-
-.bucket-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 14px 16px;
-  background: #f9fafb;
-  cursor: pointer;
-  transition: background 0.2s ease;
-  user-select: none;
-}
-
-.bucket-header:hover {
-  background: #f3f4f6;
-}
-
-.bucket-header .el-icon {
-  transition: transform 0.2s ease;
-  color: #6b7280;
-}
-
-.bucket-header .el-icon.rotate {
-  transform: rotate(90deg);
-}
-
-.bucket-name {
-  font-weight: 600;
-  font-size: 14px;
-  color: #1f2937;
-}
-
-.bucket-stats {
-  margin-left: auto;
-  font-size: 12.5px;
-  color: #6b7280;
-}
-
-.zombie-badge {
-  color: #dc2626;
-  font-weight: 600;
-}
-
-.bucket-content {
-  padding: 0;
-  max-height: 400px;
-  overflow-y: auto;
-  border-top: 1px solid #e5e7eb;
-}
-
-.zombie-file-list {
-  padding: 0;
-}
-
-.zombie-file-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
-  border-bottom: 1px solid #f3f4f6;
-  cursor: pointer;
-  transition: background 0.2s ease;
 }
 
 .file-thumbnail {
@@ -2171,18 +2024,6 @@ onMounted(() => {
   align-items: center;
   justify-content: center;
   color: #9ca3af;
-}
-
-.zombie-file-item:last-child {
-  border-bottom: none;
-}
-
-.zombie-file-item:hover {
-  background: #f9fafb;
-}
-
-.zombie-file-item.selected {
-  background: #eff6ff;
 }
 
 .file-info {
@@ -2276,13 +2117,6 @@ onMounted(() => {
 }
 
 /* ========== Teacher Subjects ========== */
-.subjects-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  align-items: center;
-}
-
 .subject-tag {
   margin: 0;
 }

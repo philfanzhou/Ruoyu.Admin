@@ -1,7 +1,8 @@
 using Microsoft.AspNetCore.Mvc;
-using Grpc.Core;
+using Microsoft.EntityFrameworkCore;
+using Admin.WebApi.Data;
 using Admin.WebApi.Models;
-using GrpcStatusCode = Grpc.Core.StatusCode;
+using Admin.WebApi.Services;
 using SProto = Ruoyu.Study.Student.Contract.Protos;
 using MProto = Ruoyu.Study.Mistake.Contract.Protos;
 
@@ -11,173 +12,175 @@ namespace Admin.WebApi.Controllers;
 [ApiController]
 public class OssAuditController : ControllerBase
 {
+    private readonly AuditDbContext _dbContext;
     private readonly SProto.StudentManagementGrpcService.StudentManagementGrpcServiceClient _studentClient;
     private readonly MProto.MistakeGrpcService.MistakeGrpcServiceClient _mistakeClient;
+    private readonly OssAuditWorker _auditWorker;
     private readonly ILogger<OssAuditController> _logger;
 
     public OssAuditController(
+        AuditDbContext dbContext,
         SProto.StudentManagementGrpcService.StudentManagementGrpcServiceClient studentClient,
         MProto.MistakeGrpcService.MistakeGrpcServiceClient mistakeClient,
+        OssAuditWorker auditWorker,
         ILogger<OssAuditController> logger)
     {
+        _dbContext = dbContext;
         _studentClient = studentClient;
         _mistakeClient = mistakeClient;
+        _auditWorker = auditWorker;
         _logger = logger;
     }
 
-    [HttpGet("audit-all")]
-    public async Task<IActionResult> AuditAllBuckets()
+    [HttpGet("records")]
+    public async Task<IActionResult> GetRecords(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20,
+        [FromQuery] int? status = null,
+        [FromQuery] string? bucket = null)
     {
-        var buckets = new[] { SProto.OssBucket.Mistakes, SProto.OssBucket.Uploads, SProto.OssBucket.Questions };
-        var bucketResults = new List<OssBucketAuditResultDto>();
-        var warnings = new List<string>();
+        var query = _dbContext.OssAuditRecords.AsQueryable();
 
-        HashSet<string> registeredPaths;
-        try
-        {
-            var pathsResponse = await _studentClient.GetRegisteredOssPathsAsync(new SProto.Empty());
-            registeredPaths = new HashSet<string>(pathsResponse.Paths, StringComparer.OrdinalIgnoreCase);
-            _logger.LogInformation("从 Student 服务获取到 {Count} 个已注册路径", registeredPaths.Count);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "无法获取 Student 服务的已注册路径");
-            return StatusCode(502, new ErrorResponse("Student 服务不可用，无法执行审核。请检查 Student 服务状态后重试。"));
-        }
+        if (status.HasValue)
+            query = query.Where(r => r.Status == status.Value);
 
-        HashSet<string> mistakePaths = new(StringComparer.OrdinalIgnoreCase);
-        bool mistakeServiceAvailable;
-        try
+        if (!string.IsNullOrWhiteSpace(bucket))
+            query = query.Where(r => r.Bucket == bucket);
+
+        var totalCount = await query.CountAsync();
+        var items = await query
+            .OrderByDescending(r => r.CreatedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync();
+
+        var statusCounts = await _dbContext.OssAuditRecords
+            .GroupBy(r => r.Status)
+            .Select(g => new { Status = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.Status, x => x.Count);
+
+        var bucketCounts = await _dbContext.OssAuditRecords
+            .Where(r => r.Status == 0)
+            .GroupBy(r => r.Bucket)
+            .Select(g => new { Bucket = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.Bucket, x => x.Count);
+
+        return Ok(new
         {
-            var mistakeResponse = await _mistakeClient.GetAllReferencedImagePathsAsync(
-                new MProto.Empty(),
-                deadline: DateTime.UtcNow.AddSeconds(30));
-            foreach (var path in mistakeResponse.ImagePaths)
+            items = items.Select(r => new
             {
-                if (!string.IsNullOrWhiteSpace(path))
-                    mistakePaths.Add(path);
-            }
-            mistakeServiceAvailable = true;
-            _logger.LogInformation("从 Mistake 服务获取到 {Count} 个错题引用路径", mistakePaths.Count);
-        }
-        catch (Exception ex)
-        {
-            mistakeServiceAvailable = false;
-            var msg = $"Mistake 服务不可用：{ex.Message}。审核结果可能包含被错题引用的图片（误报）。";
-            warnings.Add(msg);
-            _logger.LogWarning(ex, "无法获取 Mistake 服务的错题引用路径");
-        }
-
-        foreach (var bucket in buckets)
-        {
-            try
-            {
-                var listResponse = await _studentClient.ListOssObjectsAsync(
-                    new SProto.ListOssObjectsRequest { Bucket = bucket });
-
-                var zombieObjects = new List<OssObjectInfoDto>();
-                long zombieSize = 0;
-
-                foreach (var obj in listResponse.Objects)
-                {
-                    var inRegistered = registeredPaths.Contains(obj.ObjectPath);
-                    var inMistake = mistakePaths.Contains(obj.ObjectPath);
-                    var isZombie = !inRegistered && !inMistake;
-
-                    if (isZombie)
-                    {
-                        zombieObjects.Add(new OssObjectInfoDto(
-                            obj.ObjectPath,
-                            obj.Size,
-                            obj.LastModified > 0 ? obj.LastModified : null,
-                            true));
-                        zombieSize += obj.Size;
-                    }
-                }
-
-                bucketResults.Add(new OssBucketAuditResultDto(
-                    (int)bucket,
-                    listResponse.Objects.Count,
-                    listResponse.Objects.Sum(o => o.Size),
-                    zombieObjects,
-                    zombieSize));
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "无法列出存储桶 {Bucket} 的对象", bucket);
-                warnings.Add($"无法获取存储桶 {bucket} 的对象列表：{ex.Message}");
-            }
-        }
-
-        var result = new OssAuditResultDto(
-            DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
-            bucketResults,
-            bucketResults.Sum(r => r.ZombieObjects.Count),
-            bucketResults.Sum(r => r.ZombieSize),
-            mistakeServiceAvailable,
-            registeredPaths.Count,
-            mistakePaths.Count,
-            warnings);
-
-        return Ok(result);
+                r.Id,
+                r.ObjectPath,
+                r.Bucket,
+                r.Size,
+                r.LastModified,
+                Status = r.Status,
+                StatusText = r.Status switch { 0 => "Pending", 1 => "Resolved", 2 => "Ignored", _ => "Unknown" },
+                r.CreatedAt,
+                r.ResolvedAt,
+                r.Note,
+            }),
+            totalCount,
+            page,
+            pageSize,
+            statusCounts,
+            bucketCounts,
+        });
     }
 
-    [HttpDelete("zombie-object")]
-    public async Task<IActionResult> DeleteZombieObject([FromQuery] string objectPath)
+    [HttpPost("trigger")]
+    public async Task<IActionResult> TriggerAudit()
     {
-        if (string.IsNullOrWhiteSpace(objectPath))
-            return BadRequest(new ErrorResponse("Object path is required."));
+        _ = Task.Run(() => _auditWorker.RunAuditAsync());
+        return Ok(new OperationResponse(true, "Audit triggered. Results will be available shortly."));
+    }
+
+    [HttpPost("records/{id}/resolve")]
+    public async Task<IActionResult> ResolveRecord(long id)
+    {
+        var record = await _dbContext.OssAuditRecords.FindAsync(id);
+        if (record == null)
+            return NotFound(new ErrorResponse("Record not found."));
+
+        if (record.Status != 0)
+            return BadRequest(new ErrorResponse("Only pending records can be resolved."));
 
         try
         {
             var pathsResponse = await _studentClient.GetRegisteredOssPathsAsync(new SProto.Empty());
             var registeredPaths = new HashSet<string>(pathsResponse.Paths, StringComparer.OrdinalIgnoreCase);
-            if (registeredPaths.Contains(objectPath))
+            if (registeredPaths.Contains(record.ObjectPath))
                 return BadRequest(new ErrorResponse("该文件仍被上传记录引用，不能删除。"));
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "删除前无法验证 Student 服务引用");
-            return StatusCode(502, new ErrorResponse("Student 服务不可用，无法安全删除。请稍后重试。"));
+            return StatusCode(502, new ErrorResponse("Student 服务不可用，无法安全删除。"));
         }
 
         try
         {
-            var mistakeResponse = await _mistakeClient.GetAllReferencedImagePathsAsync(
-                new MProto.Empty(),
-                deadline: DateTime.UtcNow.AddSeconds(30));
+            var mistakeResponse = await _mistakeClient.GetAllReferencedImagePathsAsync(new MProto.Empty());
             var mistakePaths = new HashSet<string>(mistakeResponse.ImagePaths, StringComparer.OrdinalIgnoreCase);
-            if (mistakePaths.Contains(objectPath))
+            if (mistakePaths.Contains(record.ObjectPath))
                 return BadRequest(new ErrorResponse("该文件仍被错题记录引用，不能删除。"));
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "删除前无法验证 Mistake 服务引用");
-            return StatusCode(502, new ErrorResponse("Mistake 服务不可用，无法安全删除。请稍后重试。"));
+            return StatusCode(502, new ErrorResponse("Mistake 服务不可用，无法安全删除。"));
         }
 
         try
         {
             var response = await _studentClient.DeleteOssObjectAsync(
-                new SProto.DeleteOssObjectRequest { ObjectPath = objectPath });
-
+                new SProto.DeleteOssObjectRequest { ObjectPath = record.ObjectPath });
             if (!response.Success)
                 return BadRequest(new ErrorResponse(response.ErrorMessage));
-
-            return Ok(new OperationResponse(true, "Zombie object deleted successfully."));
         }
-        catch (RpcException ex)
+        catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to delete zombie object");
-            return StatusCode(500, new ErrorResponse($"Failed to delete object: {ex.Status.Detail}"));
+            _logger.LogError(ex, "Failed to delete OSS object");
+            return StatusCode(500, new ErrorResponse($"Failed to delete object: {ex.Message}"));
         }
+
+        record.Status = 1;
+        record.ResolvedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        await _dbContext.SaveChangesAsync();
+
+        return Ok(new OperationResponse(true, "Record resolved and object deleted."));
     }
 
-    [HttpDelete("zombie-objects")]
-    public async Task<IActionResult> DeleteZombieObjects([FromBody] DeleteZombieObjectsRequest request)
+    [HttpPost("records/{id}/ignore")]
+    public async Task<IActionResult> IgnoreRecord(long id, [FromBody] IgnoreRecordRequest? body)
     {
-        if (request.ObjectPaths == null || request.ObjectPaths.Count == 0)
-            return BadRequest(new ErrorResponse("At least one object path is required."));
+        var record = await _dbContext.OssAuditRecords.FindAsync(id);
+        if (record == null)
+            return NotFound(new ErrorResponse("Record not found."));
+
+        if (record.Status != 0)
+            return BadRequest(new ErrorResponse("Only pending records can be ignored."));
+
+        record.Status = 2;
+        record.ResolvedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        record.Note = body?.Note;
+        await _dbContext.SaveChangesAsync();
+
+        return Ok(new OperationResponse(true, "Record ignored."));
+    }
+
+    [HttpPost("records/batch-resolve")]
+    public async Task<IActionResult> BatchResolve([FromBody] BatchResolveRequest request)
+    {
+        if (request.Ids == null || request.Ids.Count == 0)
+            return BadRequest(new ErrorResponse("At least one record ID is required."));
+
+        var records = await _dbContext.OssAuditRecords
+            .Where(r => request.Ids.Contains(r.Id) && r.Status == 0)
+            .ToListAsync();
+
+        if (records.Count == 0)
+            return Ok(new { resolvedCount = 0, errors = new List<string>() });
 
         HashSet<string> registeredPaths;
         try
@@ -188,51 +191,70 @@ public class OssAuditController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "批量删除前无法验证 Student 服务引用");
-            return StatusCode(502, new ErrorResponse("Student 服务不可用，无法安全删除。请稍后重试。"));
+            return StatusCode(502, new ErrorResponse("Student 服务不可用，无法安全删除。"));
         }
 
         HashSet<string> mistakePaths;
         try
         {
-            var mistakeResponse = await _mistakeClient.GetAllReferencedImagePathsAsync(
-                new MProto.Empty(),
-                deadline: DateTime.UtcNow.AddSeconds(30));
+            var mistakeResponse = await _mistakeClient.GetAllReferencedImagePathsAsync(new MProto.Empty());
             mistakePaths = new HashSet<string>(mistakeResponse.ImagePaths, StringComparer.OrdinalIgnoreCase);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "批量删除前无法验证 Mistake 服务引用");
-            return StatusCode(502, new ErrorResponse("Mistake 服务不可用，无法安全删除。请稍后重试。"));
+            return StatusCode(502, new ErrorResponse("Mistake 服务不可用，无法安全删除。"));
         }
 
-        int deletedCount = 0;
+        int resolvedCount = 0;
         var errors = new List<string>();
 
-        foreach (var path in request.ObjectPaths)
+        foreach (var record in records)
         {
-            if (registeredPaths.Contains(path))
+            if (registeredPaths.Contains(record.ObjectPath))
             {
-                errors.Add($"{path}: 被上传记录引用，跳过");
+                errors.Add($"{record.ObjectPath}: 被上传记录引用，跳过");
                 continue;
             }
-            if (mistakePaths.Contains(path))
+            if (mistakePaths.Contains(record.ObjectPath))
             {
-                errors.Add($"{path}: 被错题记录引用，跳过");
+                errors.Add($"{record.ObjectPath}: 被错题记录引用，跳过");
                 continue;
             }
 
             try
             {
                 var response = await _studentClient.DeleteOssObjectAsync(
-                    new SProto.DeleteOssObjectRequest { ObjectPath = path });
-                if (response.Success) deletedCount++;
+                    new SProto.DeleteOssObjectRequest { ObjectPath = record.ObjectPath });
+                if (response.Success)
+                {
+                    record.Status = 1;
+                    record.ResolvedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                    resolvedCount++;
+                }
+                else
+                {
+                    errors.Add($"{record.ObjectPath}: {response.ErrorMessage}");
+                }
             }
             catch (Exception ex)
             {
-                errors.Add($"{path}: 删除失败 - {ex.Message}");
+                errors.Add($"{record.ObjectPath}: {ex.Message}");
             }
         }
 
-        return Ok(new { deletedCount, errors, totalRequested = request.ObjectPaths.Count });
+        await _dbContext.SaveChangesAsync();
+
+        return Ok(new { resolvedCount, errors, totalRequested = request.Ids.Count });
     }
+}
+
+public class IgnoreRecordRequest
+{
+    public string? Note { get; set; }
+}
+
+public class BatchResolveRequest
+{
+    public List<long> Ids { get; set; } = new();
 }
