@@ -1,5 +1,6 @@
 using Admin.WebApi;
 using Grpc.Net.ClientFactory;
+using Ruoyu.Study.Common.Oss;
 using Ruoyu.Study.Student.Contract.Protos;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -48,6 +49,16 @@ builder.Services.AddCors(options =>
 });
 
 builder.Services.AddControllers();
+
+builder.Services.AddSingleton<IOssService>(sp =>
+{
+    var ossOptions = builder.Configuration.GetSection("Oss").Get<OssOptions>() ?? new OssOptions();
+    return new S3OssService(
+        ossOptions.Endpoint,
+        ossOptions.AccessKey,
+        ossOptions.SecretKey,
+        ossOptions.BucketName);
+});
 
 var app = builder.Build();
 

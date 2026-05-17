@@ -38,6 +38,8 @@ const selectedBucket = ref<number | null>(null)
 const selectedZombieObjects = ref<string[]>([])
 const deletingZombie = ref(false)
 const deletingZombies = ref(false)
+const previewImage = ref('')
+const showImagePreview = computed(() => !!previewImage.value)
 
 const studentFilters = reactive({ name: '' })
 const accountSearch = ref('')
@@ -102,6 +104,11 @@ function formatAccountLabel(user: IdentityUser): string {
 function formatDate(timestamp?: number | null) {
   if (!timestamp) return '-'
   return new Date(timestamp * 1000).toLocaleString()
+}
+
+function isImageFile(path: string): boolean {
+  const ext = path.split('.').pop()?.toLowerCase() ?? ''
+  return ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'ico', 'tiff', 'tif', 'avif'].includes(ext)
 }
 
 function getSubjectDisplayName(subjectValue: number): string {
@@ -1314,6 +1321,12 @@ onMounted(() => {
                 @click="toggleZombieObjectSelection(file.objectPath)"
               >
                 <el-checkbox :model-value="selectedZombieObjects.includes(file.objectPath)" @click.stop></el-checkbox>
+                <div v-if="isImageFile(file.objectPath)" class="file-thumbnail" @click.stop="previewImage = file.objectPath">
+                  <img :src="`/api/admin/image?path=${encodeURIComponent(file.objectPath)}`" loading="lazy" @error="($event.target as HTMLImageElement).style.display='none'" />
+                </div>
+                <div v-else class="file-thumbnail file-thumbnail-placeholder">
+                  <el-icon :size="20"><svg viewBox="0 0 1024 1024" width="20" height="20"><path fill="currentColor" d="M832 384H576V128H192v768h640V384zm-26.496-64L640 154.496V320h165.504zM160 64h480l256 256v608a32 32 0 0 1-32 32H160a32 32 0 0 1-32-32V96a32 32 0 0 1 32-32z"/></svg></el-icon>
+                </div>
                 <div class="file-info">
                   <div class="file-path">{{ file.objectPath }}</div>
                   <div class="file-meta">
@@ -1336,6 +1349,13 @@ onMounted(() => {
         </div>
       </div>
     </el-card>
+
+    <el-dialog v-model="showImagePreview" title="图片预览" width="auto" :max-width="'90vw'" destroy-on-close @close="previewImage = ''">
+      <div class="image-preview-container">
+        <img :src="`/api/admin/image?path=${encodeURIComponent(previewImage)}`" class="image-preview-full" />
+        <div class="image-preview-path">{{ previewImage }}</div>
+      </div>
+    </el-dialog>
 
   </div>
 </template>
@@ -2019,6 +2039,35 @@ onMounted(() => {
   transition: background 0.2s ease;
 }
 
+.file-thumbnail {
+  width: 48px;
+  height: 48px;
+  border-radius: 6px;
+  overflow: hidden;
+  flex-shrink: 0;
+  border: 1px solid #e5e7eb;
+  background: #f9fafb;
+}
+
+.file-thumbnail img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+
+.file-thumbnail img:hover {
+  transform: scale(1.05);
+}
+
+.file-thumbnail-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #9ca3af;
+}
+
 .zombie-file-item:last-child {
   border-bottom: none;
 }
@@ -2049,6 +2098,28 @@ onMounted(() => {
   font-size: 12px;
   color: #6b7280;
   margin-top: 2px;
+}
+
+.image-preview-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.image-preview-full {
+  max-width: 80vw;
+  max-height: 70vh;
+  object-fit: contain;
+  border-radius: 8px;
+}
+
+.image-preview-path {
+  font-size: 12px;
+  color: #6b7280;
+  word-break: break-all;
+  text-align: center;
+  font-family: 'Courier New', monospace;
 }
 
 @media (max-width: 768px) {
