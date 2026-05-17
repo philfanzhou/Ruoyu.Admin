@@ -1275,6 +1275,22 @@ onMounted(() => {
       </div>
 
       <div v-else class="oss-audit-content">
+        <div v-if="ossAuditResult.warnings && ossAuditResult.warnings.length > 0" class="audit-warnings">
+          <div class="warning-header">
+            <el-icon :size="18" color="#e6a23c"><svg viewBox="0 0 1024 1024" width="18" height="18"><path fill="#e6a23c" d="M512 64a448 448 0 1 1 0 896 448 448 0 0 1 0-896zm0 192a32 32 0 0 0-32 32v192a32 32 0 0 0 64 0V288a32 32 0 0 0-32-32zm0 384a32 32 0 1 0 0-64 32 32 0 0 0 0 64z"/></svg></el-icon>
+            <span class="warning-title">审核结果可能不准确</span>
+          </div>
+          <div v-for="(warning, idx) in ossAuditResult.warnings" :key="idx" class="warning-item">{{ warning }}</div>
+        </div>
+
+        <div v-if="!ossAuditResult.mistakeServiceAvailable" class="audit-alert">
+          <div class="alert-header">
+            <el-icon :size="18" color="#f56c6c"><svg viewBox="0 0 1024 1024" width="18" height="18"><path fill="#f56c6c" d="M512 64a448 448 0 1 1 0 896 448 448 0 0 1 0-896zm0 192a32 32 0 0 0-32 32v192a32 32 0 0 0 64 0V288a32 32 0 0 0-32-32zm0 384a32 32 0 1 0 0-64 32 32 0 0 0 0 64z"/></svg></el-icon>
+            <span class="alert-title">Mistake 服务不可用</span>
+          </div>
+          <div class="alert-desc">无法获取错题引用数据，部分被错题引用的图片可能被误判为僵尸文件。请检查 Mistake 服务状态后重新审计。</div>
+        </div>
+
         <div class="summary-cards">
           <div class="summary-card">
             <div class="summary-value">{{ ossAuditResult.totalZombieObjects }}</div>
@@ -1287,6 +1303,18 @@ onMounted(() => {
           <div class="summary-card">
             <div class="summary-value">{{ ossAuditResult.bucketResults.length }}</div>
             <div class="summary-label">存储桶数</div>
+          </div>
+          <div class="summary-card summary-card-info">
+            <div class="summary-value">{{ ossAuditResult.registeredPathsCount }}</div>
+            <div class="summary-label">上传记录引用</div>
+          </div>
+          <div class="summary-card" :class="ossAuditResult.mistakeServiceAvailable ? 'summary-card-success' : 'summary-card-danger'">
+            <div class="summary-value">{{ ossAuditResult.mistakeReferencedPathsCount }}</div>
+            <div class="summary-label">
+              错题引用
+              <el-tag v-if="ossAuditResult.mistakeServiceAvailable" size="small" type="success" effect="dark" class="service-status-tag">服务正常</el-tag>
+              <el-tag v-else size="small" type="danger" effect="dark" class="service-status-tag">服务不可用</el-tag>
+            </div>
           </div>
         </div>
 
@@ -1917,6 +1945,10 @@ onMounted(() => {
   .filter-bar {
     flex-wrap: wrap;
   }
+
+  .summary-cards {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 
 /* ========== OSS Audit ========== */
@@ -1927,7 +1959,7 @@ onMounted(() => {
 
 .summary-cards {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 16px;
   margin-bottom: 20px;
 }
@@ -1958,6 +1990,79 @@ onMounted(() => {
 .summary-label {
   font-size: 13px;
   opacity: 0.9;
+}
+
+.summary-card-info {
+  background: linear-gradient(135deg, #36d1dc 0%, #5b86e5 100%);
+}
+
+.summary-card-success {
+  background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+}
+
+.summary-card-danger {
+  background: linear-gradient(135deg, #cb2d3e 0%, #ef473a 100%);
+}
+
+.service-status-tag {
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.audit-warnings {
+  background: #fdf6ec;
+  border: 1px solid #faecd8;
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+}
+
+.warning-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.warning-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #e6a23c;
+}
+
+.warning-item {
+  font-size: 12.5px;
+  color: #8a6d3b;
+  line-height: 1.6;
+  padding-left: 26px;
+}
+
+.audit-alert {
+  background: #fef0f0;
+  border: 1px solid #fde2e2;
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+}
+
+.alert-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.alert-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #f56c6c;
+}
+
+.alert-desc {
+  font-size: 12.5px;
+  color: #8c4b4b;
+  line-height: 1.6;
+  padding-left: 26px;
 }
 
 .bulk-action-bar {

@@ -2,11 +2,13 @@ using Admin.WebApi;
 using Grpc.Net.ClientFactory;
 using Ruoyu.Study.Common.Oss;
 using Ruoyu.Study.Student.Contract.Protos;
+using MistakeProto = Ruoyu.Study.Mistake.Contract.Protos;
 
 var builder = WebApplication.CreateBuilder(args);
 
 var adminApiPort = builder.Configuration.GetValue<int>("AdminApi:Port");
 var grpcServiceAddress = builder.Configuration["StudentGrpcService:Address"] ?? "http://localhost:5005";
+var mistakeGrpcAddress = builder.Configuration["MistakeGrpcService:Address"] ?? "http://localhost:5006";
 
 builder.WebHost.ConfigureKestrel(options =>
 {
@@ -16,6 +18,11 @@ builder.WebHost.ConfigureKestrel(options =>
 builder.Services.AddGrpcClient<StudentManagementGrpcService.StudentManagementGrpcServiceClient>(options =>
 {
     options.Address = new Uri(grpcServiceAddress);
+});
+
+builder.Services.AddGrpcClient<MistakeProto.MistakeGrpcService.MistakeGrpcServiceClient>(options =>
+{
+    options.Address = new Uri(mistakeGrpcAddress);
 });
 
 builder.Services.Configure<IdentityServiceOptions>(

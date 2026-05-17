@@ -20,6 +20,10 @@ export interface OssAuditResultDto {
   bucketResults: OssBucketAuditResultDto[]
   totalZombieObjects: number
   totalZombieSize: number
+  mistakeServiceAvailable: boolean
+  registeredPathsCount: number
+  mistakeReferencedPathsCount: number
+  warnings: string[]
 }
 
 export interface DeleteZombieObjectsRequest {

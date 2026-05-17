@@ -1,5 +1,4 @@
 using Microsoft.AspNetCore.Mvc;
-using Grpc.Net.Client;
 using SProto = Ruoyu.Study.Student.Contract.Protos;
 using Admin.WebApi.Models;
 
@@ -62,45 +61,4 @@ public class OssUploadRecordController : ControllerBase
             return StatusCode(500, new ErrorResponse("Failed to get upload records"));
         }
     }
-
-    [HttpPost("assign-zombie")]
-    public async Task<IActionResult> AssignZombieImageToRecord([FromBody] AssignZombieImageRequest request)
-    {
-        try
-        {
-            if (string.IsNullOrWhiteSpace(request.ObjectPath))
-                return BadRequest(new ErrorResponse("objectPath is required"));
-
-            if (string.IsNullOrWhiteSpace(request.StudentId))
-                return BadRequest(new ErrorResponse("studentId is required"));
-
-            if (string.IsNullOrWhiteSpace(request.UploadRecordId))
-                return BadRequest(new ErrorResponse("uploadRecordId is required"));
-
-            if (string.IsNullOrWhiteSpace(request.ImageHash))
-                return BadRequest(new ErrorResponse("imageHash is required"));
-
-            var grpcRequest = new SProto.AssignZombieImageToRecordRequest
-            {
-                ObjectPath = request.ObjectPath,
-                StudentId = request.StudentId,
-                UploadRecordId = request.UploadRecordId,
-                ImageHash = request.ImageHash
-            };
-
-            var response = await _grpcClient.AssignZombieImageToRecordAsync(grpcRequest);
-
-            if (!response.Success)
-                return BadRequest(new ErrorResponse(response.ErrorMessage));
-
-            return Ok(new OperationResponse(true, "Zombie image assigned successfully"));
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to assign zombie image");
-            return StatusCode(500, new ErrorResponse("Failed to assign zombie image"));
-        }
-    }
 }
-
-public record AssignZombieImageRequest(string ObjectPath, string StudentId, string UploadRecordId, string ImageHash);

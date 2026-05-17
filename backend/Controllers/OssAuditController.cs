@@ -3,6 +3,7 @@ using Grpc.Core;
 using Admin.WebApi.Models;
 using GrpcStatusCode = Grpc.Core.StatusCode;
 using SProto = Ruoyu.Study.Student.Contract.Protos;
+using MProto = Ruoyu.Study.Mistake.Contract.Protos;
 
 namespace Admin.WebApi.Controllers;
 
@@ -10,80 +11,160 @@ namespace Admin.WebApi.Controllers;
 [ApiController]
 public class OssAuditController : ControllerBase
 {
-    private readonly SProto.StudentManagementGrpcService.StudentManagementGrpcServiceClient _grpcClient;
+    private readonly SProto.StudentManagementGrpcService.StudentManagementGrpcServiceClient _studentClient;
+    private readonly MProto.MistakeGrpcService.MistakeGrpcServiceClient _mistakeClient;
     private readonly ILogger<OssAuditController> _logger;
 
     public OssAuditController(
-        SProto.StudentManagementGrpcService.StudentManagementGrpcServiceClient grpcClient,
+        SProto.StudentManagementGrpcService.StudentManagementGrpcServiceClient studentClient,
+        MProto.MistakeGrpcService.MistakeGrpcServiceClient mistakeClient,
         ILogger<OssAuditController> logger)
     {
-        _grpcClient = grpcClient;
+        _studentClient = studentClient;
+        _mistakeClient = mistakeClient;
         _logger = logger;
     }
 
     [HttpGet("audit-all")]
     public async Task<IActionResult> AuditAllBuckets()
     {
+        var buckets = new[] { SProto.OssBucket.Mistakes, SProto.OssBucket.Uploads, SProto.OssBucket.Questions };
+        var bucketResults = new List<OssBucketAuditResultDto>();
+        var warnings = new List<string>();
+
+        HashSet<string> registeredPaths;
         try
         {
-            var request = new SProto.Empty();
-            var response = await _grpcClient.AuditAllBucketsAsync(request);
-            var dto = ToDto(response);
-            return Ok(dto);
+            var pathsResponse = await _studentClient.GetRegisteredOssPathsAsync(new SProto.Empty());
+            registeredPaths = new HashSet<string>(pathsResponse.Paths, StringComparer.OrdinalIgnoreCase);
+            _logger.LogInformation("从 Student 服务获取到 {Count} 个已注册路径", registeredPaths.Count);
         }
-        catch (RpcException ex)
+        catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to audit all buckets");
-            return StatusCode(500, new ErrorResponse($"Failed to audit: {ex.Status.Detail}"));
+            _logger.LogError(ex, "无法获取 Student 服务的已注册路径");
+            return StatusCode(502, new ErrorResponse("Student 服务不可用，无法执行审核。请检查 Student 服务状态后重试。"));
         }
-    }
 
-    [HttpGet("audit-bucket/{bucket}")]
-    public async Task<IActionResult> AuditBucket(int bucket)
-    {
+        HashSet<string> mistakePaths = new(StringComparer.OrdinalIgnoreCase);
+        bool mistakeServiceAvailable;
         try
         {
-            if (bucket < 1 || bucket > 3)
-                return BadRequest(new ErrorResponse("Invalid bucket value. Must be 1 (Mistakes), 2 (Uploads), or 3 (Questions)."));
-
-            var request = new SProto.AuditBucketRequest
+            var mistakeResponse = await _mistakeClient.GetAllReferencedImagePathsAsync(
+                new MProto.Empty(),
+                deadline: DateTime.UtcNow.AddSeconds(30));
+            foreach (var path in mistakeResponse.ImagePaths)
             {
-                Bucket = (SProto.OssBucket)bucket
-            };
-            var response = await _grpcClient.AuditBucketAsync(request);
-            var dto = ToDto(response.Result);
-            return Ok(dto);
+                if (!string.IsNullOrWhiteSpace(path))
+                    mistakePaths.Add(path);
+            }
+            mistakeServiceAvailable = true;
+            _logger.LogInformation("从 Mistake 服务获取到 {Count} 个错题引用路径", mistakePaths.Count);
         }
-        catch (RpcException ex) when (ex.StatusCode == GrpcStatusCode.InvalidArgument)
+        catch (Exception ex)
         {
-            return BadRequest(new ErrorResponse(ex.Status.Detail));
+            mistakeServiceAvailable = false;
+            var msg = $"Mistake 服务不可用：{ex.Message}。审核结果可能包含被错题引用的图片（误报）。";
+            warnings.Add(msg);
+            _logger.LogWarning(ex, "无法获取 Mistake 服务的错题引用路径");
         }
-        catch (RpcException ex)
+
+        foreach (var bucket in buckets)
         {
-            _logger.LogError(ex, "Failed to audit bucket");
-            return StatusCode(500, new ErrorResponse($"Failed to audit bucket: {ex.Status.Detail}"));
+            try
+            {
+                var listResponse = await _studentClient.ListOssObjectsAsync(
+                    new SProto.ListOssObjectsRequest { Bucket = bucket });
+
+                var zombieObjects = new List<OssObjectInfoDto>();
+                long zombieSize = 0;
+
+                foreach (var obj in listResponse.Objects)
+                {
+                    var inRegistered = registeredPaths.Contains(obj.ObjectPath);
+                    var inMistake = mistakePaths.Contains(obj.ObjectPath);
+                    var isZombie = !inRegistered && !inMistake;
+
+                    if (isZombie)
+                    {
+                        zombieObjects.Add(new OssObjectInfoDto(
+                            obj.ObjectPath,
+                            obj.Size,
+                            obj.LastModified > 0 ? obj.LastModified : null,
+                            true));
+                        zombieSize += obj.Size;
+                    }
+                }
+
+                bucketResults.Add(new OssBucketAuditResultDto(
+                    (int)bucket,
+                    listResponse.Objects.Count,
+                    listResponse.Objects.Sum(o => o.Size),
+                    zombieObjects,
+                    zombieSize));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "无法列出存储桶 {Bucket} 的对象", bucket);
+                warnings.Add($"无法获取存储桶 {bucket} 的对象列表：{ex.Message}");
+            }
         }
+
+        var result = new OssAuditResultDto(
+            DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+            bucketResults,
+            bucketResults.Sum(r => r.ZombieObjects.Count),
+            bucketResults.Sum(r => r.ZombieSize),
+            mistakeServiceAvailable,
+            registeredPaths.Count,
+            mistakePaths.Count,
+            warnings);
+
+        return Ok(result);
     }
 
     [HttpDelete("zombie-object")]
     public async Task<IActionResult> DeleteZombieObject([FromQuery] string objectPath)
     {
+        if (string.IsNullOrWhiteSpace(objectPath))
+            return BadRequest(new ErrorResponse("Object path is required."));
+
         try
         {
-            if (string.IsNullOrWhiteSpace(objectPath))
-                return BadRequest(new ErrorResponse("Object path is required."));
+            var pathsResponse = await _studentClient.GetRegisteredOssPathsAsync(new SProto.Empty());
+            var registeredPaths = new HashSet<string>(pathsResponse.Paths, StringComparer.OrdinalIgnoreCase);
+            if (registeredPaths.Contains(objectPath))
+                return BadRequest(new ErrorResponse("该文件仍被上传记录引用，不能删除。"));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "删除前无法验证 Student 服务引用");
+            return StatusCode(502, new ErrorResponse("Student 服务不可用，无法安全删除。请稍后重试。"));
+        }
 
-            var request = new SProto.DeleteZombieObjectRequest { ObjectPath = objectPath };
-            var response = await _grpcClient.DeleteZombieObjectAsync(request);
+        try
+        {
+            var mistakeResponse = await _mistakeClient.GetAllReferencedImagePathsAsync(
+                new MProto.Empty(),
+                deadline: DateTime.UtcNow.AddSeconds(30));
+            var mistakePaths = new HashSet<string>(mistakeResponse.ImagePaths, StringComparer.OrdinalIgnoreCase);
+            if (mistakePaths.Contains(objectPath))
+                return BadRequest(new ErrorResponse("该文件仍被错题记录引用，不能删除。"));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "删除前无法验证 Mistake 服务引用");
+            return StatusCode(502, new ErrorResponse("Mistake 服务不可用，无法安全删除。请稍后重试。"));
+        }
+
+        try
+        {
+            var response = await _studentClient.DeleteOssObjectAsync(
+                new SProto.DeleteOssObjectRequest { ObjectPath = objectPath });
 
             if (!response.Success)
                 return BadRequest(new ErrorResponse(response.ErrorMessage));
 
             return Ok(new OperationResponse(true, "Zombie object deleted successfully."));
-        }
-        catch (RpcException ex) when (ex.StatusCode == GrpcStatusCode.InvalidArgument)
-        {
-            return BadRequest(new ErrorResponse(ex.Status.Detail));
         }
         catch (RpcException ex)
         {
@@ -95,44 +176,63 @@ public class OssAuditController : ControllerBase
     [HttpDelete("zombie-objects")]
     public async Task<IActionResult> DeleteZombieObjects([FromBody] DeleteZombieObjectsRequest request)
     {
+        if (request.ObjectPaths == null || request.ObjectPaths.Count == 0)
+            return BadRequest(new ErrorResponse("At least one object path is required."));
+
+        HashSet<string> registeredPaths;
         try
         {
-            if (request.ObjectPaths == null || request.ObjectPaths.Count == 0)
-                return BadRequest(new ErrorResponse("At least one object path is required."));
-
-            var grpcRequest = new SProto.DeleteZombieObjectsRequest();
-            grpcRequest.ObjectPaths.AddRange(request.ObjectPaths);
-
-            var response = await _grpcClient.DeleteZombieObjectsAsync(grpcRequest);
-            return Ok(new DeleteZombieObjectsResponse(response.DeletedCount));
+            var pathsResponse = await _studentClient.GetRegisteredOssPathsAsync(new SProto.Empty());
+            registeredPaths = new HashSet<string>(pathsResponse.Paths, StringComparer.OrdinalIgnoreCase);
         }
-        catch (RpcException ex) when (ex.StatusCode == GrpcStatusCode.InvalidArgument)
+        catch (Exception ex)
         {
-            return BadRequest(new ErrorResponse(ex.Status.Detail));
+            _logger.LogError(ex, "批量删除前无法验证 Student 服务引用");
+            return StatusCode(502, new ErrorResponse("Student 服务不可用，无法安全删除。请稍后重试。"));
         }
-        catch (RpcException ex)
+
+        HashSet<string> mistakePaths;
+        try
         {
-            _logger.LogError(ex, "Failed to delete zombie objects");
-            return StatusCode(500, new ErrorResponse($"Failed to delete objects: {ex.Status.Detail}"));
+            var mistakeResponse = await _mistakeClient.GetAllReferencedImagePathsAsync(
+                new MProto.Empty(),
+                deadline: DateTime.UtcNow.AddSeconds(30));
+            mistakePaths = new HashSet<string>(mistakeResponse.ImagePaths, StringComparer.OrdinalIgnoreCase);
         }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "批量删除前无法验证 Mistake 服务引用");
+            return StatusCode(502, new ErrorResponse("Mistake 服务不可用，无法安全删除。请稍后重试。"));
+        }
+
+        int deletedCount = 0;
+        var errors = new List<string>();
+
+        foreach (var path in request.ObjectPaths)
+        {
+            if (registeredPaths.Contains(path))
+            {
+                errors.Add($"{path}: 被上传记录引用，跳过");
+                continue;
+            }
+            if (mistakePaths.Contains(path))
+            {
+                errors.Add($"{path}: 被错题记录引用，跳过");
+                continue;
+            }
+
+            try
+            {
+                var response = await _studentClient.DeleteOssObjectAsync(
+                    new SProto.DeleteOssObjectRequest { ObjectPath = path });
+                if (response.Success) deletedCount++;
+            }
+            catch (Exception ex)
+            {
+                errors.Add($"{path}: 删除失败 - {ex.Message}");
+            }
+        }
+
+        return Ok(new { deletedCount, errors, totalRequested = request.ObjectPaths.Count });
     }
-
-    private static OssAuditResultDto ToDto(SProto.OssAuditResultResponse model) => new(
-        model.AuditTime,
-        model.BucketResults.Select(ToDto).ToList(),
-        model.TotalZombieObjects,
-        model.TotalZombieSize);
-
-    private static OssBucketAuditResultDto ToDto(SProto.OssBucketAuditResult model) => new(
-        (int)model.Bucket,
-        model.TotalObjects,
-        model.TotalSize,
-        model.ZombieObjects.Select(ToDto).ToList(),
-        model.ZombieSize);
-
-    private static OssObjectInfoDto ToDto(SProto.OssObjectInfo model) => new(
-        model.ObjectPath,
-        model.Size,
-        model.LastModified > 0 ? model.LastModified : null,
-        model.IsZombie);
 }
