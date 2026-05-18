@@ -13,6 +13,7 @@ import {
   type GradeOption,
   type OpenSubjectDto,
   type SubjectOption,
+  type UploadRecordDto,
 } from './services/studentAdminApi'
 import {
   teacherPortalClient,
@@ -45,6 +46,15 @@ const batchResolving = ref(false)
 const selectedRecordIds = ref<number[]>([])
 const previewImage = ref('')
 const showImagePreview = computed(() => !!previewImage.value)
+
+// Upload Records
+const uploadRecords = ref<UploadRecordDto[]>([])
+const uploadTotalCount = ref(0)
+const uploadPage = ref(1)
+const uploadPageSize = ref(20)
+const uploadStatusFilter = ref<number>(3) // Default: only show failed records
+const loadingUploadRecords = ref(false)
+const resettingRecord = ref<string | null>(null)
 
 const studentFilters = reactive({ name: '' })
 const accountSearch = ref('')
@@ -769,6 +779,75 @@ function onAuditFilterChange() {
   loadAuditRecords()
 }
 
+// Upload Record Functions
+function getUploadStatusText(status: number): string {
+  switch (status) {
+    case 0: return '待处理'
+    case 1: return '处理中'
+    case 2: return '已完成'
+    case 3: return '失败'
+    default: return '未知'
+  }
+}
+
+function getUploadStatusType(status: number): string {
+  switch (status) {
+    case 0: return 'warning'
+    case 1: return 'primary'
+    case 2: return 'success'
+    case 3: return 'danger'
+    default: return 'info'
+  }
+}
+
+async function loadUploadRecords() {
+  loadingUploadRecords.value = true
+  try {
+    const result = await studentAdminClient.getUploadRecords({
+      page: uploadPage.value,
+      pageSize: uploadPageSize.value,
+      status: uploadStatusFilter.value >= 0 ? uploadStatusFilter.value : undefined,
+    })
+    uploadRecords.value = result.items
+    uploadTotalCount.value = result.totalCount
+  } catch (error) {
+    ElMessage.error('加载上传记录失败: ' + getStudentErrorMessage(error))
+  } finally {
+    loadingUploadRecords.value = false
+  }
+}
+
+async function resetUploadRecord(record: UploadRecordDto) {
+  try {
+    await ElMessageBox.confirm('确认将该记录状态重置为"待处理"吗？系统会自动重新分析。', '重置确认', {
+      confirmButtonText: '确认',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+  } catch { return }
+
+  resettingRecord.value = record.id
+  try {
+    await studentAdminClient.resetUploadRecordStatus(record.id, record.studentId, 0) // 0 = Pending
+    ElMessage.success('已重置，系统将自动重新分析')
+    await loadUploadRecords()
+  } catch (error) {
+    ElMessage.error('重置失败: ' + getStudentErrorMessage(error))
+  } finally {
+    resettingRecord.value = null
+  }
+}
+
+function onUploadPageChange(page: number) {
+  uploadPage.value = page
+  loadUploadRecords()
+}
+
+function onUploadFilterChange() {
+  uploadPage.value = 1
+  loadUploadRecords()
+}
+
 onMounted(() => {
   void loadGradeOptions()
   void loadStudents()
@@ -776,6 +855,7 @@ onMounted(() => {
   void loadTeachers()
   void loadAuditRecords()
   void loadAvailableSubjects()
+  void loadUploadRecords()
 })
 </script>
 
@@ -1272,6 +1352,92 @@ onMounted(() => {
         </div>
       </template>
     </el-dialog>
+
+    <!-- Upload Records Panel -->
+    <el-card shadow="never" class="panel upload-records-panel">
+      <template #header>
+        <div class="panel-header">
+          <div class="panel-title">
+            <el-icon><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></el-icon>
+            <span>上传记录管理</span>
+          </div>
+          <el-button size="small" text @click="loadUploadRecords">
+            <el-icon class="refresh-icon" :class="{ spinning: loadingUploadRecords }"><svg viewBox="0 0 1024 1024" width="14" height="14"><path fill="currentColor" d="M784.512 230.272v-50.56a32 32 0 1 1 64 0v149.056a32 32 0 0 1-32 32H667.52a32 32 0 1 1 0-64h92.992A362.24 362.24 0 0 0 512 149.824C296.32 149.824 121.216 325.056 121.216 540.8c0 215.68 175.104 390.848 390.784 390.848a390.208 390.208 0 0 0 338.304-194.752 32 32 0 1 1 55.36 32.256A454.144 454.144 0 0 1 512 963.648c-233.152 0-422.848-189.632-422.848-422.848S278.848 117.952 512 117.952c124.544 0 236.608 53.952 314.24 139.712l-41.728-27.392z"/></svg></el-icon>
+            刷新
+          </el-button>
+        </div>
+      </template>
+
+      <div class="upload-toolbar">
+        <div class="upload-filters">
+          <el-select v-model="uploadStatusFilter" placeholder="状态筛选" size="small" clearable style="width: 150px" @change="onUploadFilterChange">
+            <el-option label="全部" :value="-1" />
+            <el-option label="待处理" :value="0" />
+            <el-option label="处理中" :value="1" />
+            <el-option label="已完成" :value="2" />
+            <el-option label="失败" :value="3" />
+          </el-select>
+        </div>
+      </div>
+
+      <div v-if="loadingUploadRecords" class="empty-state">
+        <el-empty description="加载中..."></el-empty>
+      </div>
+      <div v-else-if="uploadRecords.length === 0" class="empty-state">
+        <el-empty description="暂无上传记录"></el-empty>
+      </div>
+      <div v-else>
+        <el-table :data="uploadRecords" v-loading="loadingUploadRecords" empty-text="暂无数据" class="data-table" size="small">
+          <el-table-column prop="id" label="记录ID" min-width="150" show-overflow-tooltip />
+          <el-table-column prop="studentId" label="学生ID" min-width="150" show-overflow-tooltip />
+          <el-table-column label="状态" width="100">
+            <template #default="{ row }">
+              <el-tag :type="getUploadStatusType(row.status)" size="small" effect="light">
+                {{ getUploadStatusText(row.status) }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="图片数量" width="100">
+            <template #default="{ row }">{{ row.imagePaths?.length || 0 }}</template>
+          </el-table-column>
+          <el-table-column prop="comments" label="备注" min-width="150" show-overflow-tooltip />
+          <el-table-column label="创建时间" min-width="150">
+            <template #default="{ row }"><span class="time-text">{{ formatDate(row.createdAt) }}</span></template>
+          </el-table-column>
+          <el-table-column label="更新时间" min-width="150">
+            <template #default="{ row }"><span class="time-text">{{ formatDate(row.updatedAt) }}</span></template>
+          </el-table-column>
+          <el-table-column label="操作" width="120" fixed="right">
+            <template #default="{ row }">
+              <div class="table-actions">
+                <el-button
+                  v-if="row.status === 3"
+                  link
+                  type="primary"
+                  size="small"
+                  :loading="resettingRecord === row.id"
+                  @click="resetUploadRecord(row)"
+                >
+                  重新处理
+                </el-button>
+              </div>
+            </template>
+          </el-table-column>
+        </el-table>
+
+        <div class="pagination-bar">
+          <el-pagination
+            background
+            layout="total, sizes, prev, pager, next"
+            :total="uploadTotalCount"
+            :page-size="uploadPageSize"
+            :current-page="uploadPage"
+            :page-sizes="[10, 20, 50, 100]"
+            @current-change="onUploadPageChange"
+          />
+        </div>
+      </div>
+    </el-card>
 
     <!-- OSS Audit Panel -->
     <el-card shadow="never" class="panel oss-audit-panel">

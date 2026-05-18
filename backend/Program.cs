@@ -24,6 +24,11 @@ builder.Services.AddGrpcClient<StudentManagementGrpcService.StudentManagementGrp
     options.Address = new Uri(grpcServiceAddress);
 });
 
+builder.Services.AddGrpcClient<StudentLearningGrpcService.StudentLearningGrpcServiceClient>(options =>
+{
+    options.Address = new Uri(grpcServiceAddress);
+});
+
 builder.Services.AddGrpcClient<MistakeProto.MistakeGrpcService.MistakeGrpcServiceClient>(options =>
 {
     options.Address = new Uri(mistakeGrpcAddress);

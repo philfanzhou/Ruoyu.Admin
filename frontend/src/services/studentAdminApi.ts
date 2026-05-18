@@ -72,6 +72,25 @@ export interface SubjectOption {
   displayName: string
 }
 
+// Upload Record Types
+export interface UploadRecordDto {
+  id: string
+  studentId: string
+  status: number // 0: Pending, 1: Processing, 2: Completed, 3: Failed
+  imagePaths: string[]
+  comments: string
+  createdAt: number
+  updatedAt: number
+  classification: number
+}
+
+export interface UploadRecordListResponse {
+  items: UploadRecordDto[]
+  totalCount: number
+  page: number
+  pageSize: number
+}
+
 class StudentAdminApiClient {
   private client: AxiosInstance
 
@@ -153,6 +172,26 @@ class StudentAdminApiClient {
 
   async setStudentOpenSubjects(studentId: string, payload: SetOpenSubjectsRequest) {
     const response = await this.client.put<OperationResponse>(`/api/admin/students/${studentId}/open-subjects`, payload)
+    return response.data
+  }
+
+  // ========== Upload Records ==========
+
+  async getUploadRecords(params: {
+    page?: number
+    pageSize?: number
+    status?: number // -1: all, 0: pending, 1: processing, 2: completed, 3: failed
+    studentId?: string
+  }) {
+    const response = await this.client.get<UploadRecordListResponse>('/api/admin/oss-upload-records', { params })
+    return response.data
+  }
+
+  async resetUploadRecordStatus(recordId: string, studentId: string, targetStatus: number) {
+    const response = await this.client.post<OperationResponse>(
+      `/api/admin/oss-upload-records/${recordId}/reset-status`,
+      { studentId, targetStatus }
+    )
     return response.data
   }
 }

@@ -8,14 +8,17 @@ namespace Admin.WebApi.Controllers;
 [ApiController]
 public class OssUploadRecordController : ControllerBase
 {
-    private readonly SProto.StudentManagementGrpcService.StudentManagementGrpcServiceClient _grpcClient;
+    private readonly SProto.StudentManagementGrpcService.StudentManagementGrpcServiceClient _managementClient;
+    private readonly SProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient _learningClient;
     private readonly ILogger<OssUploadRecordController> _logger;
 
     public OssUploadRecordController(
-        SProto.StudentManagementGrpcService.StudentManagementGrpcServiceClient grpcClient,
+        SProto.StudentManagementGrpcService.StudentManagementGrpcServiceClient managementClient,
+        SProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient learningClient,
         ILogger<OssUploadRecordController> logger)
     {
-        _grpcClient = grpcClient;
+        _managementClient = managementClient;
+        _learningClient = learningClient;
         _logger = logger;
     }
 
@@ -36,7 +39,7 @@ public class OssUploadRecordController : ControllerBase
                 request.StudentId = studentId;
             }
 
-            var response = await _grpcClient.GetAllUploadRecordsAsync(request);
+            var response = await _managementClient.GetAllUploadRecordsAsync(request);
             return Ok(new
             {
                 items = response.Items.Select(r => new
@@ -61,4 +64,76 @@ public class OssUploadRecordController : ControllerBase
             return StatusCode(500, new ErrorResponse("Failed to get upload records"));
         }
     }
+
+    [HttpPost("{id}/reset-status")]
+    public async Task<IActionResult> ResetUploadRecordStatus(string id, [FromBody] ResetStatusRequest request)
+    {
+        try
+        {
+            var resetRequest = new SProto.ResetUploadRecordStatusRequest
+            {
+                RecordId = id,
+                StudentId = request.StudentId,
+                TargetStatus = (SProto.UploadStatus)request.TargetStatus
+            };
+
+            var response = await _learningClient.ResetUploadRecordStatusAsync(resetRequest);
+            
+            if (!response.Success)
+            {
+                return BadRequest(new ErrorResponse(response.ErrorMessage ?? "Failed to reset status"));
+            }
+
+            return Ok(new { success = true, message = "Status reset successfully" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to reset upload record status: {RecordId}", id);
+            return StatusCode(500, new ErrorResponse("Failed to reset upload record status"));
+        }
+    }
+
+    [HttpPost("{id}/assign")]
+    public async Task<IActionResult> AssignUploadRecord(string id, [FromBody] AssignUploadRecordRequest request)
+    {
+        try
+        {
+            var assignRequest = new SProto.UpdateUploadRecordClassificationRequest
+            {
+                RecordId = id,
+                StudentId = request.StudentId,
+                Classification = request.Classification,
+                Subject = request.Subject,
+                Grade = request.Grade
+            };
+
+            var response = await _learningClient.UpdateUploadRecordClassificationAsync(assignRequest);
+
+            if (!response.Success)
+            {
+                return BadRequest(new ErrorResponse(response.ErrorMessage ?? "Failed to assign record"));
+            }
+
+            return Ok(new { success = true, message = "Assignment successful" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to assign upload record: {RecordId}", id);
+            return StatusCode(500, new ErrorResponse("Failed to assign upload record"));
+        }
+    }
+}
+
+public class ResetStatusRequest
+{
+    public string StudentId { get; set; } = string.Empty;
+    public int TargetStatus { get; set; }
+}
+
+public class AssignUploadRecordRequest
+{
+    public string StudentId { get; set; } = string.Empty;
+    public int Classification { get; set; }
+    public int Subject { get; set; }
+    public int Grade { get; set; }
 }
