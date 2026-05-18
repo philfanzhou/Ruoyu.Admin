@@ -108,9 +108,7 @@ public class OssAuditWorker : BackgroundService
                 var bucketName = bucketNames[bucket];
                 _logger.LogInformation("Auditing bucket: {Bucket}", bucketName);
 
-                ListOssObjectsPaged(studentClient, bucket, cancellationToken)
-                    .WithCancellation(cancellationToken)
-                    .ConfigureAwait(false);
+
 
                 await foreach (var obj in ListOssObjectsPaged(studentClient, bucket, cancellationToken))
                 {
