@@ -82,7 +82,8 @@ var connectionString = builder.Configuration.GetConnectionString("AuditDb")
 builder.Services.AddDbContext<AuditDbContext>(options =>
     options.UseNpgsql(connectionString));
 
-builder.Services.AddHostedService<OssAuditWorker>();
+builder.Services.AddSingleton<OssAuditWorker>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<OssAuditWorker>());
 
 var app = builder.Build();
 
