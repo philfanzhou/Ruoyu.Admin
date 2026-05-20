@@ -1389,7 +1389,7 @@ onMounted(() => {
       <div v-else>
         <el-table :data="uploadRecords" v-loading="loadingUploadRecords" empty-text="暂无数据" class="data-table" size="small">
           <el-table-column prop="id" label="记录ID" min-width="150" show-overflow-tooltip />
-          <el-table-column prop="studentId" label="学生ID" min-width="150" show-overflow-tooltip />
+          <el-table-column prop="studentName" label="学生姓名" min-width="120" show-overflow-tooltip />
           <el-table-column label="状态" width="100">
             <template #default="{ row }">
               <el-tag :type="getUploadStatusType(row.status)" size="small" effect="light">

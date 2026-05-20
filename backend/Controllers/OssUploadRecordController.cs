@@ -40,12 +40,31 @@ public class OssUploadRecordController : ControllerBase
             }
 
             var response = await _managementClient.GetAllUploadRecordsAsync(request);
+
+            // 收集所有唯一的 studentId，批量查询学生姓名
+            var studentIds = response.Items.Select(r => r.StudentId).Distinct().ToList();
+            var studentNameMap = new Dictionary<string, string>();
+
+            foreach (var sid in studentIds)
+            {
+                try
+                {
+                    var student = await _managementClient.GetStudentAsync(new SProto.GetStudentRequest { StudentId = sid });
+                    studentNameMap[sid] = student.Name;
+                }
+                catch
+                {
+                    studentNameMap[sid] = sid; // 如果查不到学生，回退显示 studentId
+                }
+            }
+
             return Ok(new
             {
                 items = response.Items.Select(r => new
                 {
                     id = r.Id,
                     studentId = r.StudentId,
+                    studentName = studentNameMap.GetValueOrDefault(r.StudentId, r.StudentId),
                     status = (int)r.Status,
                     imagePaths = r.ImagePaths,
                     comments = r.Comments,

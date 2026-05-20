@@ -76,6 +76,7 @@ export interface SubjectOption {
 export interface UploadRecordDto {
   id: string
   studentId: string
+  studentName: string
   status: number // 0: Pending, 1: Processing, 2: Completed, 3: Failed
   imagePaths: string[]
   comments: string
