@@ -1516,7 +1516,7 @@ onMounted(() => {
           </div>
         </div>
         <div v-if="auditTotalCount > auditPageSize" class="audit-pagination">
-          <el-pagination small layout="prev, pager, next" :total="auditTotalCount" :page-size="auditPageSize" :current-page="auditPage" @current-change="onAuditPageChange" />
+          <el-pagination size="small" layout="prev, pager, next" :total="auditTotalCount" :page-size="auditPageSize" :current-page="auditPage" @current-change="onAuditPageChange" />
         </div>
       </div>
     </el-card>
