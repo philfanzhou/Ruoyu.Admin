@@ -1,8 +1,6 @@
 using Admin.WebApi;
 using Admin.WebApi.Data;
 using Admin.WebApi.Services;
-using Grpc.Net.Client;
-using Grpc.Net.ClientFactory;
 using Microsoft.EntityFrameworkCore;
 using Ruoyu.Study.Common.Database;
 using Ruoyu.Study.Common.Oss;
@@ -20,56 +18,22 @@ builder.WebHost.ConfigureKestrel(options =>
     options.ListenAnyIP(adminApiPort);
 });
 
-// Configure gRPC clients with proper HTTP/2 handler
+// Configure gRPC clients
+// Uses IHttpClientFactory internally to handle HTTP/2 over cleartext (h2c)
+// for internal Docker network communication.
 builder.Services.AddGrpcClient<StudentManagementGrpcService.StudentManagementGrpcServiceClient>(options =>
 {
     options.Address = new Uri(grpcServiceAddress);
-}).ConfigureChannel(options =>
-{
-    options.HttpHandler = new SocketsHttpHandler
-    {
-        EnableMultipleHttp2Connections = true,
-        ConnectTimeout = TimeSpan.FromSeconds(10),
-        // Disable TLS validation for internal Docker network
-        SslOptions = new System.Net.Security.SslClientAuthenticationOptions
-        {
-            RemoteCertificateValidationCallback = (sender, certificate, chain, errors) => true
-        }
-    };
 });
 
 builder.Services.AddGrpcClient<StudentLearningGrpcService.StudentLearningGrpcServiceClient>(options =>
 {
     options.Address = new Uri(grpcServiceAddress);
-}).ConfigureChannel(options =>
-{
-    options.HttpHandler = new SocketsHttpHandler
-    {
-        EnableMultipleHttp2Connections = true,
-        ConnectTimeout = TimeSpan.FromSeconds(10),
-        // Disable TLS validation for internal Docker network
-        SslOptions = new System.Net.Security.SslClientAuthenticationOptions
-        {
-            RemoteCertificateValidationCallback = (sender, certificate, chain, errors) => true
-        }
-    };
 });
 
 builder.Services.AddGrpcClient<MistakeProto.MistakeGrpcService.MistakeGrpcServiceClient>(options =>
 {
     options.Address = new Uri(mistakeGrpcAddress);
-}).ConfigureChannel(options =>
-{
-    options.HttpHandler = new SocketsHttpHandler
-    {
-        EnableMultipleHttp2Connections = true,
-        ConnectTimeout = TimeSpan.FromSeconds(10),
-        // Disable TLS validation for internal Docker network
-        SslOptions = new System.Net.Security.SslClientAuthenticationOptions
-        {
-            RemoteCertificateValidationCallback = (sender, certificate, chain, errors) => true
-        }
-    };
 });
 
 builder.Services.Configure<IdentityServiceOptions>(
