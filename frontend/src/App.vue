@@ -116,9 +116,10 @@ function formatAccountLabel(user: IdentityUser): string {
   return name
 }
 
-function formatDate(timestamp?: number | null) {
+function formatDate(timestamp?: number | string | null) {
   if (!timestamp) return '-'
-  return new Date(timestamp * 1000).toLocaleString()
+  const date = typeof timestamp === 'string' ? new Date(timestamp) : new Date(timestamp * 1000)
+  return isNaN(date.getTime()) ? '-' : date.toLocaleString()
 }
 
 function isImageFile(path: string): boolean {
