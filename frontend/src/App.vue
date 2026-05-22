@@ -56,15 +56,13 @@ const uploadStatusFilter = ref<number>(3) // Default: only show failed records
 const loadingUploadRecords = ref(false)
 const resettingRecord = ref<string | null>(null)
 const assigningRecord = ref<UploadRecordDto | null>(null)
-const showAssignDialog = ref(false)
+const showRecordDetailDialog = ref(false)
 const assignForm = reactive({
   classification: 1,
-  subject: 3, // 默认英语
+  subject: 3,
   grade: 1
 })
 const loadingAssign = ref(false)
-const showImagesDialog = ref(false)
-const currentImagesRecord = ref<UploadRecordDto | null>(null)
 
 const studentFilters = reactive({ name: '' })
 const accountSearch = ref('')
@@ -849,17 +847,13 @@ async function resetUploadRecord(record: UploadRecordDto) {
   }
 }
 
-function openImagesDialog(record: UploadRecordDto) {
-  currentImagesRecord.value = record
-  showImagesDialog.value = true
-}
-
-function openAssignDialog(record: UploadRecordDto) {
+function openRecordDetail(record: UploadRecordDto) {
   assigningRecord.value = record
   assignForm.classification = record.classification || 1
   assignForm.subject = record.subject || 3
-  assignForm.grade = record.grade || 1
-  showAssignDialog.value = true
+  const studentGrade = students.value.find(s => s.id === record.studentId)?.grade
+  assignForm.grade = record.grade || studentGrade || 1
+  showRecordDetailDialog.value = true
 }
 
 async function doAssign() {
@@ -873,7 +867,7 @@ async function doAssign() {
       grade: assignForm.grade
     })
     ElMessage.success('指派成功')
-    showAssignDialog.value = false
+    showRecordDetailDialog.value = false
     await loadUploadRecords()
   } catch (error) {
     ElMessage.error('指派失败: ' + getStudentErrorMessage(error))
@@ -1463,24 +1457,16 @@ onMounted(() => {
           <el-table-column label="更新时间" min-width="150">
             <template #default="{ row }"><span class="time-text">{{ formatDate(row.updatedAt) }}</span></template>
           </el-table-column>
-          <el-table-column label="操作" width="200" fixed="right">
+          <el-table-column label="操作" width="160" fixed="right">
             <template #default="{ row }">
               <div class="table-actions">
                 <el-button
                   link
                   type="primary"
                   size="small"
-                  @click="openImagesDialog(row)"
+                  @click="openRecordDetail(row)"
                 >
-                  查看图片
-                </el-button>
-                <el-button
-                  link
-                  type="success"
-                  size="small"
-                  @click="openAssignDialog(row)"
-                >
-                  指派
+                  查看指派
                 </el-button>
                 <el-button
                   v-if="row.status === 3"
@@ -1600,63 +1586,61 @@ onMounted(() => {
       </div>
     </el-dialog>
 
-    <!-- 上传记录图片查看对话框 -->
-    <el-dialog v-model="showImagesDialog" title="查看图片" width="80%" :max-width="'90vw'" destroy-on-close>
-      <div v-if="currentImagesRecord" class="images-dialog-container">
-        <div class="images-info">
-          <span>学生: {{ currentImagesRecord.studentName }}</span>
-          <span>共 {{ currentImagesRecord.imagePaths?.length || 0 }} 张图片</span>
+    <!-- 上传记录详情：图片查看 + 指派 -->
+    <el-dialog v-model="showRecordDetailDialog" title="查看图片 & 指派" width="90%" :max-width="'95vw'" destroy-on-close>
+      <div v-if="assigningRecord" class="record-detail-layout">
+        <div class="record-detail-images">
+          <div class="images-info">
+            <span>学生: {{ assigningRecord.studentName }}</span>
+            <span>共 {{ assigningRecord.imagePaths?.length || 0 }} 张图片</span>
+          </div>
+          <div class="images-grid">
+            <div
+              v-for="(path, index) in assigningRecord.imagePaths"
+              :key="index"
+              class="image-item"
+              @click="previewImage = path"
+            >
+              <img :src="`/api/admin/image?path=${encodeURIComponent(path)}`" :alt="`图片${index + 1}`" loading="lazy" />
+            </div>
+          </div>
         </div>
-        <div class="images-grid">
-          <div
-            v-for="(path, index) in currentImagesRecord.imagePaths"
-            :key="index"
-            class="image-item"
-            @click="previewImage = path"
-          >
-            <img :src="`/api/admin/image?path=${encodeURIComponent(path)}`" :alt="`图片${index + 1}`" loading="lazy" />
+        <div class="record-detail-assign">
+          <h4 class="assign-title">指派信息</h4>
+          <el-form label-width="80px" size="default">
+            <el-form-item label="分类">
+              <el-select v-model="assignForm.classification" style="width: 100%">
+                <el-option :value="1" label="错题" />
+                <el-option :value="2" label="作业" />
+                <el-option :value="3" label="笔记" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="学科">
+              <el-select v-model="assignForm.subject" style="width: 100%">
+                <el-option
+                  v-for="subject in subjectOptions"
+                  :key="subject.value"
+                  :value="subject.value"
+                  :label="subject.displayName"
+                />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="年级">
+              <el-select v-model="assignForm.grade" style="width: 100%">
+                <el-option
+                  v-for="grade in gradeOptions"
+                  :key="grade.value"
+                  :value="grade.value"
+                  :label="grade.label"
+                />
+              </el-select>
+            </el-form-item>
+          </el-form>
+          <div class="assign-actions">
+            <el-button type="primary" :loading="loadingAssign" @click="doAssign">确认指派</el-button>
           </div>
         </div>
       </div>
-    </el-dialog>
-
-    <!-- 指派对话框 -->
-    <el-dialog v-model="showAssignDialog" title="指派学科和年级" width="500px" destroy-on-close>
-      <el-form label-width="100px">
-        <el-form-item label="分类">
-          <el-select v-model="assignForm.classification" style="width: 100%">
-            <el-option :value="1" label="错题" />
-            <el-option :value="2" label="作业" />
-            <el-option :value="3" label="笔记" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="学科">
-          <el-select v-model="assignForm.subject" style="width: 100%">
-            <el-option
-              v-for="subject in subjectOptions"
-              :key="subject.value"
-              :value="subject.value"
-              :label="subject.displayName"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="年级">
-          <el-select v-model="assignForm.grade" style="width: 100%">
-            <el-option
-              v-for="grade in gradeOptions"
-              :key="grade.value"
-              :value="grade.value"
-              :label="grade.label"
-            />
-          </el-select>
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <div class="dialog-footer">
-          <el-button size="default" @click="showAssignDialog = false">取消</el-button>
-          <el-button type="primary" size="default" :loading="loadingAssign" @click="doAssign">确认</el-button>
-        </div>
-      </template>
     </el-dialog>
 
   </div>
@@ -2201,10 +2185,35 @@ onMounted(() => {
   }
 }
 
-/* ========== 图片查看对话框样式 ========== */
-.images-dialog-container {
-  max-height: 70vh;
+/* ========== 上传记录详情对话框样式 ========== */
+.record-detail-layout {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 24px;
+  max-height: 75vh;
+}
+
+.record-detail-images {
   overflow-y: auto;
+  min-width: 0;
+}
+
+.record-detail-assign {
+  border-left: 1px solid #e5e7eb;
+  padding-left: 24px;
+}
+
+.assign-title {
+  margin: 0 0 16px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.assign-actions {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid #f3f4f6;
 }
 
 .images-info {
@@ -2220,7 +2229,7 @@ onMounted(() => {
 
 .images-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   gap: 12px;
 }
 
@@ -2242,6 +2251,18 @@ onMounted(() => {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+@media (max-width: 900px) {
+  .record-detail-layout {
+    grid-template-columns: 1fr;
+  }
+  .record-detail-assign {
+    border-left: none;
+    padding-left: 0;
+    border-top: 1px solid #e5e7eb;
+    padding-top: 16px;
+  }
 }
 
 
