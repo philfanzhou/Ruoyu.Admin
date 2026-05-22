@@ -183,6 +183,45 @@ public class OssUploadRecordController : ControllerBase
         }
     }
 
+    [HttpPost("{id}/rotate")]
+    public async Task<IActionResult> RotateImage(string id, [FromBody] RotateImageRequest request)
+    {
+        try
+        {
+            if (!Guid.TryParse(id, out var recordId))
+            {
+                return BadRequest(new ErrorResponse("Invalid record ID"));
+            }
+
+            if (string.IsNullOrWhiteSpace(request.StudentId))
+            {
+                return BadRequest(new ErrorResponse("StudentId is required"));
+            }
+
+            var grpcRequest = new SProto.RotateUploadImageRequest
+            {
+                RecordId = id,
+                StudentId = request.StudentId,
+                ImageIndex = request.ImageIndex,
+                Rotation = request.Rotation
+            };
+
+            var result = await _learningClient.RotateUploadImageAsync(grpcRequest);
+
+            if (!result.Success)
+            {
+                return BadRequest(new ErrorResponse(result.ErrorMessage ?? "Failed to rotate image"));
+            }
+
+            return Ok(new { success = true });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to rotate image: RecordId={RecordId}", id);
+            return StatusCode(500, new ErrorResponse("Failed to rotate image"));
+        }
+    }
+
     private string GetContentType(string path)
     {
         var ext = Path.GetExtension(path).ToLowerInvariant();
@@ -197,6 +236,13 @@ public class OssUploadRecordController : ControllerBase
             _ => "application/octet-stream"
         };
     }
+}
+
+public class RotateImageRequest
+{
+    public string StudentId { get; set; } = string.Empty;
+    public int ImageIndex { get; set; }
+    public int Rotation { get; set; }
 }
 
 public class ResetStatusRequest

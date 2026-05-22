@@ -63,6 +63,8 @@ const assignForm = reactive({
   grade: 1
 })
 const loadingAssign = ref(false)
+const imageRotations = ref<Record<number, number>>({}) // key: image index, value: rotation
+const loadingRotation = ref(false)
 
 const studentFilters = reactive({ name: '' })
 const accountSearch = ref('')
@@ -853,6 +855,13 @@ function openRecordDetail(record: UploadRecordDto) {
   assignForm.subject = record.subject || 3
   const studentGrade = students.value.find(s => s.id === record.studentId)?.grade
   assignForm.grade = record.grade || studentGrade || 1
+  // Initialize rotations from record
+  imageRotations.value = {}
+  if (record.imageRotations && record.imageRotations.length > 0) {
+    for (let i = 0; i < record.imageRotations.length; i++) {
+      imageRotations.value[i] = record.imageRotations[i]
+    }
+  }
   showRecordDetailDialog.value = true
 }
 
@@ -873,6 +882,27 @@ async function doAssign() {
     ElMessage.error('指派失败: ' + getStudentErrorMessage(error))
   } finally {
     loadingAssign.value = false
+  }
+}
+
+async function rotateImage(imageIndex: number, rotation: number) {
+  if (!assigningRecord.value) return
+  loadingRotation.value = true
+  try {
+    await studentAdminClient.rotateUploadImage(assigningRecord.value.id, {
+      studentId: assigningRecord.value.studentId,
+      imageIndex: imageIndex,
+      rotation: rotation
+    })
+    // Update local rotation state
+    imageRotations.value[imageIndex] = ((imageRotations.value[imageIndex] || 0) + rotation + 360) % 360
+    // Reload records to get updated image paths
+    await loadUploadRecords()
+    ElMessage.success('旋转成功')
+  } catch (error) {
+    ElMessage.error('旋转失败: ' + getStudentErrorMessage(error))
+  } finally {
+    loadingRotation.value = false
   }
 }
 
@@ -1599,9 +1629,28 @@ onMounted(() => {
               v-for="(path, index) in assigningRecord.imagePaths"
               :key="index"
               class="image-item"
-              @click="previewImage = path"
             >
-              <img :src="`/api/admin/image?path=${encodeURIComponent(path)}`" :alt="`图片${index + 1}`" loading="lazy" />
+              <div class="image-wrapper" :style="{ transform: `rotate(${imageRotations[index] || 0}deg)` }">
+                <img :src="`/api/admin/image?path=${encodeURIComponent(path)}`" :alt="`图片${index + 1}`" loading="lazy" @click="previewImage = path" />
+              </div>
+              <div class="image-actions">
+                <el-button
+                  size="small"
+                  circle
+                  :loading="loadingRotation"
+                  @click.stop="rotateImage(index, -90)"
+                >
+                  <el-icon><svg viewBox="0 0 1024 1024" width="16" height="16"><path fill="currentColor" d="M768 341.333333a10.666667 10.666667 0 0 0-10.666666-10.666666H554.666666c-41.365333 0-74.666666 33.301333-74.666666 74.666666v202.666667a10.666667 10.666667 0 1 0 21.333333 0V405.333333c0-29.376 23.957333-53.333333 53.333333-53.333333h192a10.666667 10.666667 0 0 0 10.666667-10.666667zM512 64c245.76 0 448 202.24 448 448s-202.24 448-448 448S64 757.76 64 512 266.24 64 512 64z m0 85.333333c-199.146667 0-362.666667 163.52-362.666667 362.666667s163.52 362.666667 362.666667 362.666667 362.666667-163.52 362.666667-362.666667S711.146667 149.333333 512 149.333333z"/></svg></el-icon>
+                </el-button>
+                <el-button
+                  size="small"
+                  circle
+                  :loading="loadingRotation"
+                  @click.stop="rotateImage(index, 90)"
+                >
+                  <el-icon><svg viewBox="0 0 1024 1024" width="16" height="16"><path fill="currentColor" d="M256 341.333333a10.666667 10.666667 0 0 1 10.666667-10.666666h202.666666c41.365333 0 74.666667 33.301333 74.666667 74.666666v202.666667a10.666667 10.666667 0 0 1-21.333333 0V405.333333c0-29.376-23.957333-53.333333-53.333333-53.333333H266.666667a10.666667 10.666667 0 0 1-10.666667-10.666667zM512 64c245.76 0 448 202.24 448 448s-202.24 448-448 448S64 757.76 64 512 266.24 64 512 64z m0 85.333333c-199.146667 0-362.666667 163.52-362.666667 362.666667s163.52 362.666667 362.666667 362.666667 362.666667-163.52 362.666667-362.666667S711.146667 149.333333 512 149.333333z"/></svg></el-icon>
+                </el-button>
+              </div>
             </div>
           </div>
         </div>
@@ -2248,6 +2297,7 @@ onMounted(() => {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
   transition: transform 0.2s ease, box-shadow 0.2s ease;
   background: #f9fafb;
+  position: relative;
 }
 
 .image-item:hover {
@@ -2255,11 +2305,35 @@ onMounted(() => {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
-.image-item img {
+.image-wrapper {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  transition: transform 0.3s ease;
+}
+
+.image-wrapper img {
   width: 100%;
   height: 100%;
   object-fit: contain;
   background: #fff;
+}
+
+.image-actions {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  display: flex;
+  gap: 8px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.image-item:hover .image-actions {
+  opacity: 1;
 }
 
 @media (max-width: 900px) {

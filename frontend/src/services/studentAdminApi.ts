@@ -74,24 +74,31 @@ export interface SubjectOption {
 
 // Upload Record Types
 export interface UploadRecordDto {
-  id: string
-  studentId: string
-  studentName: string
-  status: number // 0: Pending, 1: Processing, 2: Completed, 3: Failed
-  imagePaths: string[]
-  comments: string
-  createdAt: number | string
-  updatedAt: number | string
-  classification: number
-  subject: number
-  grade: number
+    id: string
+    studentId: string
+    studentName: string
+    status: number // 0: Pending, 1: Processing, 2: Completed, 3: Failed
+    imagePaths: string[]
+    comments: string
+    createdAt: number | string
+    updatedAt: number | string
+    classification: number
+    subject: number
+    grade: number
+    imageRotations: number[]
 }
 
 export interface AssignUploadRecordRequest {
-  studentId: string
-  classification: number
-  subject: number
-  grade: number
+    studentId: string
+    classification: number
+    subject: number
+    grade: number
+}
+
+export interface RotateImageRequest {
+    studentId: string
+    imageIndex: number
+    rotation: number
 }
 
 export interface UploadRecordListResponse {
@@ -206,12 +213,20 @@ class StudentAdminApiClient {
   }
 
   async assignUploadRecord(recordId: string, payload: AssignUploadRecordRequest) {
-    const response = await this.client.post<OperationResponse>(
-      `/api/admin/oss-upload-records/${recordId}/assign`,
-      payload
-    )
-    return response.data
-  }
+        const response = await this.client.post<OperationResponse>(
+            `/api/admin/oss-upload-records/${recordId}/assign`,
+            payload
+        )
+        return response.data
+    }
+
+    async rotateUploadImage(recordId: string, payload: RotateImageRequest) {
+        const response = await this.client.post<OperationResponse>(
+            `/api/admin/oss-upload-records/${recordId}/rotate`,
+            payload
+        )
+        return response.data
+    }
 }
 
 export const studentAdminClient = new StudentAdminApiClient()
