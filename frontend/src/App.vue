@@ -55,6 +55,16 @@ const uploadPageSize = ref(20)
 const uploadStatusFilter = ref<number>(3) // Default: only show failed records
 const loadingUploadRecords = ref(false)
 const resettingRecord = ref<string | null>(null)
+const assigningRecord = ref<UploadRecordDto | null>(null)
+const showAssignDialog = ref(false)
+const assignForm = reactive({
+  classification: 1,
+  subject: 3, // 默认英语
+  grade: 1
+})
+const loadingAssign = ref(false)
+const showImagesDialog = ref(false)
+const currentImagesRecord = ref<UploadRecordDto | null>(null)
 
 const studentFilters = reactive({ name: '' })
 const accountSearch = ref('')
@@ -839,6 +849,39 @@ async function resetUploadRecord(record: UploadRecordDto) {
   }
 }
 
+function openImagesDialog(record: UploadRecordDto) {
+  currentImagesRecord.value = record
+  showImagesDialog.value = true
+}
+
+function openAssignDialog(record: UploadRecordDto) {
+  assigningRecord.value = record
+  assignForm.classification = record.classification || 1
+  assignForm.subject = record.subject || 3
+  assignForm.grade = record.grade || 1
+  showAssignDialog.value = true
+}
+
+async function doAssign() {
+  if (!assigningRecord.value) return
+  loadingAssign.value = true
+  try {
+    await studentAdminClient.assignUploadRecord(assigningRecord.value.id, {
+      studentId: assigningRecord.value.studentId,
+      classification: assignForm.classification,
+      subject: assignForm.subject,
+      grade: assignForm.grade
+    })
+    ElMessage.success('指派成功')
+    showAssignDialog.value = false
+    await loadUploadRecords()
+  } catch (error) {
+    ElMessage.error('指派失败: ' + getStudentErrorMessage(error))
+  } finally {
+    loadingAssign.value = false
+  }
+}
+
 function onUploadPageChange(page: number) {
   uploadPage.value = page
   loadUploadRecords()
@@ -1401,6 +1444,18 @@ onMounted(() => {
           <el-table-column label="图片数量" width="100">
             <template #default="{ row }">{{ row.imagePaths?.length || 0 }}</template>
           </el-table-column>
+          <el-table-column label="学科" width="120">
+            <template #default="{ row }">
+              <span v-if="row.subject">{{ getSubjectDisplayName(row.subject) }}</span>
+              <span v-else class="empty-text">-</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="年级" width="100">
+            <template #default="{ row }">
+              <span v-if="row.grade">{{ getGradeLabel(row.grade) }}</span>
+              <span v-else class="empty-text">-</span>
+            </template>
+          </el-table-column>
           <el-table-column prop="comments" label="备注" min-width="150" show-overflow-tooltip />
           <el-table-column label="创建时间" min-width="150">
             <template #default="{ row }"><span class="time-text">{{ formatDate(row.createdAt) }}</span></template>
@@ -1408,13 +1463,29 @@ onMounted(() => {
           <el-table-column label="更新时间" min-width="150">
             <template #default="{ row }"><span class="time-text">{{ formatDate(row.updatedAt) }}</span></template>
           </el-table-column>
-          <el-table-column label="操作" width="120" fixed="right">
+          <el-table-column label="操作" width="200" fixed="right">
             <template #default="{ row }">
               <div class="table-actions">
                 <el-button
-                  v-if="row.status === 3"
                   link
                   type="primary"
+                  size="small"
+                  @click="openImagesDialog(row)"
+                >
+                  查看图片
+                </el-button>
+                <el-button
+                  link
+                  type="success"
+                  size="small"
+                  @click="openAssignDialog(row)"
+                >
+                  指派
+                </el-button>
+                <el-button
+                  v-if="row.status === 3"
+                  link
+                  type="danger"
                   size="small"
                   :loading="resettingRecord === row.id"
                   @click="resetUploadRecord(row)"
@@ -1527,6 +1598,65 @@ onMounted(() => {
         <img :src="`/api/admin/image?path=${encodeURIComponent(previewImage)}`" class="image-preview-full" />
         <div class="image-preview-path">{{ previewImage }}</div>
       </div>
+    </el-dialog>
+
+    <!-- 上传记录图片查看对话框 -->
+    <el-dialog v-model="showImagesDialog" title="查看图片" width="80%" :max-width="'90vw'" destroy-on-close>
+      <div v-if="currentImagesRecord" class="images-dialog-container">
+        <div class="images-info">
+          <span>学生: {{ currentImagesRecord.studentName }}</span>
+          <span>共 {{ currentImagesRecord.imagePaths?.length || 0 }} 张图片</span>
+        </div>
+        <div class="images-grid">
+          <div
+            v-for="(path, index) in currentImagesRecord.imagePaths"
+            :key="index"
+            class="image-item"
+            @click="previewImage = path"
+          >
+            <img :src="`/api/admin/image?path=${encodeURIComponent(path)}`" :alt="`图片${index + 1}`" loading="lazy" />
+          </div>
+        </div>
+      </div>
+    </el-dialog>
+
+    <!-- 指派对话框 -->
+    <el-dialog v-model="showAssignDialog" title="指派学科和年级" width="500px" destroy-on-close>
+      <el-form label-width="100px">
+        <el-form-item label="分类">
+          <el-select v-model="assignForm.classification" style="width: 100%">
+            <el-option :value="1" label="错题" />
+            <el-option :value="2" label="作业" />
+            <el-option :value="3" label="笔记" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="学科">
+          <el-select v-model="assignForm.subject" style="width: 100%">
+            <el-option
+              v-for="subject in subjectOptions"
+              :key="subject.value"
+              :value="subject.value"
+              :label="subject.displayName"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="年级">
+          <el-select v-model="assignForm.grade" style="width: 100%">
+            <el-option
+              v-for="grade in gradeOptions"
+              :key="grade.value"
+              :value="grade.value"
+              :label="grade.label"
+            />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button size="default" @click="showAssignDialog = false">取消</el-button>
+          <el-button type="primary" size="default" :loading="loadingAssign" @click="doAssign">确认</el-button>
+        </div>
+      </template>
     </el-dialog>
 
   </div>
@@ -2070,6 +2200,50 @@ onMounted(() => {
     grid-template-columns: 1fr;
   }
 }
+
+/* ========== 图片查看对话框样式 ========== */
+.images-dialog-container {
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.images-info {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  padding: 8px 12px;
+  background: #f9fafb;
+  border-radius: 6px;
+  font-size: 14px;
+  color: #4b5563;
+}
+
+.images-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.image-item {
+  aspect-ratio: 4/3;
+  border-radius: 8px;
+  overflow: hidden;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.image-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.image-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 
 @media (max-width: 768px) {
   .app-shell {

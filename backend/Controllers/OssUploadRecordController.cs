@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using SProto = Ruoyu.Study.Student.Contract.Protos;
 using Admin.WebApi.Models;
+using Ruoyu.Study.Common.Oss;
 
 namespace Admin.WebApi.Controllers;
 
@@ -11,15 +12,18 @@ public class OssUploadRecordController : ControllerBase
     private readonly SProto.StudentManagementGrpcService.StudentManagementGrpcServiceClient _managementClient;
     private readonly SProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient _learningClient;
     private readonly ILogger<OssUploadRecordController> _logger;
+    private readonly IOssService _ossService;
 
     public OssUploadRecordController(
         SProto.StudentManagementGrpcService.StudentManagementGrpcServiceClient managementClient,
         SProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient learningClient,
-        ILogger<OssUploadRecordController> logger)
+        ILogger<OssUploadRecordController> logger,
+        IOssService ossService)
     {
         _managementClient = managementClient;
         _learningClient = learningClient;
         _logger = logger;
+        _ossService = ossService;
     }
 
     [HttpGet]
@@ -70,7 +74,9 @@ public class OssUploadRecordController : ControllerBase
                     comments = r.Comments,
                     createdAt = r.CreatedAt,
                     updatedAt = r.UpdatedAt,
-                    classification = r.Classification
+                    classification = r.Classification,
+                    subject = r.Subject,
+                    grade = r.Grade
                 }),
                 totalCount = response.TotalCount,
                 page = response.Page,
@@ -139,6 +145,31 @@ public class OssUploadRecordController : ControllerBase
         {
             _logger.LogError(ex, "Failed to assign upload record: {RecordId}", id);
             return StatusCode(500, new ErrorResponse("Failed to assign upload record"));
+        }
+    }
+
+    [HttpGet("image")]
+    public async Task<IActionResult> GetImage([FromQuery] string path)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return BadRequest(new ErrorResponse("Path is required"));
+            }
+
+            var (data, contentType) = await _ossService.DownloadAsync(path);
+            if (data == null || data.Length == 0)
+            {
+                return NotFound(new ErrorResponse("Image not found"));
+            }
+
+            return File(data, contentType ?? "application/octet-stream");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to get image: {Path}", path);
+            return StatusCode(500, new ErrorResponse("Failed to get image"));
         }
     }
 }

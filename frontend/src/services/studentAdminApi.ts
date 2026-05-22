@@ -80,9 +80,18 @@ export interface UploadRecordDto {
   status: number // 0: Pending, 1: Processing, 2: Completed, 3: Failed
   imagePaths: string[]
   comments: string
-  createdAt: number
-  updatedAt: number
+  createdAt: number | string
+  updatedAt: number | string
   classification: number
+  subject: number
+  grade: number
+}
+
+export interface AssignUploadRecordRequest {
+  studentId: string
+  classification: number
+  subject: number
+  grade: number
 }
 
 export interface UploadRecordListResponse {
@@ -192,6 +201,14 @@ class StudentAdminApiClient {
     const response = await this.client.post<OperationResponse>(
       `/api/admin/oss-upload-records/${recordId}/reset-status`,
       { studentId, targetStatus }
+    )
+    return response.data
+  }
+
+  async assignUploadRecord(recordId: string, payload: AssignUploadRecordRequest) {
+    const response = await this.client.post<OperationResponse>(
+      `/api/admin/oss-upload-records/${recordId}/assign`,
+      payload
     )
     return response.data
   }
