@@ -1587,7 +1587,7 @@ onMounted(() => {
     </el-dialog>
 
     <!-- 上传记录详情：图片查看 + 指派 -->
-    <el-dialog v-model="showRecordDetailDialog" title="查看图片 & 指派" width="90%" :max-width="'95vw'" destroy-on-close>
+    <el-dialog v-model="showRecordDetailDialog" title="查看图片 & 指派" width="1200px" top="5vh" destroy-on-close>
       <div v-if="assigningRecord" class="record-detail-layout">
         <div class="record-detail-images">
           <div class="images-info">
@@ -2187,20 +2187,27 @@ onMounted(() => {
 
 /* ========== 上传记录详情对话框样式 ========== */
 .record-detail-layout {
-  display: grid;
-  grid-template-columns: 1fr 320px;
+  display: flex;
   gap: 24px;
-  max-height: 75vh;
+  height: calc(85vh - 120px);
+  min-height: 400px;
 }
 
 .record-detail-images {
-  overflow-y: auto;
+  flex: 1;
   min-width: 0;
+  overflow-y: auto;
+  padding-right: 8px;
 }
 
 .record-detail-assign {
+  width: 280px;
+  flex-shrink: 0;
   border-left: 1px solid #e5e7eb;
   padding-left: 24px;
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
 }
 
 .assign-title {
@@ -2229,17 +2236,18 @@ onMounted(() => {
 
 .images-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
 }
 
 .image-item {
   aspect-ratio: 4/3;
-  border-radius: 8px;
+  border-radius: 6px;
   overflow: hidden;
   cursor: pointer;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
   transition: transform 0.2s ease, box-shadow 0.2s ease;
+  background: #f9fafb;
 }
 
 .image-item:hover {
@@ -2250,18 +2258,26 @@ onMounted(() => {
 .image-item img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
+  background: #fff;
 }
 
 @media (max-width: 900px) {
   .record-detail-layout {
-    grid-template-columns: 1fr;
+    flex-direction: column;
+    height: auto;
+    max-height: calc(85vh - 120px);
+  }
+  .record-detail-images {
+    max-height: 50vh;
   }
   .record-detail-assign {
+    width: 100%;
     border-left: none;
     padding-left: 0;
     border-top: 1px solid #e5e7eb;
     padding-top: 16px;
+    position: static;
   }
 }
 
