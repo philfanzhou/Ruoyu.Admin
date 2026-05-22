@@ -158,19 +158,44 @@ public class OssUploadRecordController : ControllerBase
                 return BadRequest(new ErrorResponse("Path is required"));
             }
 
-            var (data, contentType) = await _ossService.DownloadAsync(path);
-            if (data == null || data.Length == 0)
+            using var stream = await _ossService.DownloadAsync(path);
+            if (stream == null)
             {
                 return NotFound(new ErrorResponse("Image not found"));
             }
 
-            return File(data, contentType ?? "application/octet-stream");
+            var memoryStream = new MemoryStream();
+            await stream.CopyToAsync(memoryStream);
+            var data = memoryStream.ToArray();
+
+            if (data.Length == 0)
+            {
+                return NotFound(new ErrorResponse("Image not found"));
+            }
+
+            var contentType = GetContentType(path);
+            return File(data, contentType);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to get image: {Path}", path);
             return StatusCode(500, new ErrorResponse("Failed to get image"));
         }
+    }
+
+    private string GetContentType(string path)
+    {
+        var ext = Path.GetExtension(path).ToLowerInvariant();
+        return ext switch
+        {
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".png" => "image/png",
+            ".gif" => "image/gif",
+            ".webp" => "image/webp",
+            ".bmp" => "image/bmp",
+            ".svg" => "image/svg+xml",
+            _ => "application/octet-stream"
+        };
     }
 }
 
