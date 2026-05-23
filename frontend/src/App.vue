@@ -63,7 +63,6 @@ const assignForm = reactive({
   grade: 1
 })
 const loadingAssign = ref(false)
-const imageRotations = ref<Record<number, number>>({}) // key: image index, value: rotation
 const loadingRotation = ref(false)
 
 const studentFilters = reactive({ name: '' })
@@ -855,13 +854,6 @@ function openRecordDetail(record: UploadRecordDto) {
   assignForm.subject = record.subject || 3
   const studentGrade = students.value.find(s => s.id === record.studentId)?.grade
   assignForm.grade = record.grade || studentGrade || 1
-  // Initialize rotations from record
-  imageRotations.value = {}
-  if (record.imageRotations && record.imageRotations.length > 0) {
-    for (let i = 0; i < record.imageRotations.length; i++) {
-      imageRotations.value[i] = record.imageRotations[i]
-    }
-  }
   showRecordDetailDialog.value = true
 }
 
@@ -894,23 +886,11 @@ async function rotateImage(imageIndex: number, rotation: number) {
       imageIndex: imageIndex,
       rotation: rotation
     })
-    // Update local rotation state
-    imageRotations.value[imageIndex] = ((imageRotations.value[imageIndex] || 0) + rotation + 360) % 360
-    // Update the record's rotation data
-    if (!assigningRecord.value.imageRotations) {
-      assigningRecord.value.imageRotations = []
-    }
-    while (assigningRecord.value.imageRotations.length <= imageIndex) {
-      assigningRecord.value.imageRotations.push(0)
-    }
-    assigningRecord.value.imageRotations[imageIndex] = imageRotations.value[imageIndex]
     // Reload records to get updated image paths, but keep the current record open
     await loadUploadRecords()
     // Refresh the assigning record with new data
     const updatedRecord = uploadRecords.value.find(r => r.id === assigningRecord.value!.id)
     if (updatedRecord) {
-      // Preserve the rotation state
-      updatedRecord.imageRotations = assigningRecord.value.imageRotations
       assigningRecord.value = updatedRecord
     }
     ElMessage.success('旋转成功')
@@ -1645,7 +1625,7 @@ onMounted(() => {
               :key="index"
               class="image-item"
             >
-              <div class="image-wrapper" :style="{ transform: `rotate(${imageRotations[index] || 0}deg)` }">
+              <div class="image-wrapper">
                 <img :src="`/api/admin/image?path=${encodeURIComponent(path)}`" :alt="`图片${index + 1}`" loading="lazy" @click="previewImage = path" />
               </div>
               <div class="image-actions">
