@@ -932,12 +932,62 @@ const mistakeTotal = ref(0)
 const mistakePage = ref(1)
 const mistakePageSize = ref(20)
 const mistakeStudentId = ref<string>('')
+const mistakeStudentName = ref<string>('')
+const mistakeStudentSearch = ref<string>('')
+const mistakeStudentResults = ref<StudentDto[]>([])
+const loadingMistakeStudentSearch = ref(false)
 const mistakeSubject = ref<number | undefined>(undefined)
 const mistakeGrade = ref<number | undefined>(undefined)
 const mistakeReviewStatus = ref<number | undefined>(undefined)
 const loadingMistakes = ref(false)
 const showMistakeDetailDialog = ref(false)
 const currentMistakeDetail = ref<MistakeItemDto | null>(null)
+
+let mistakeStudentSearchTimeout: ReturnType<typeof setTimeout> | null = null
+
+async function searchMistakeStudent(query: string) {
+  if (mistakeStudentSearchTimeout) {
+    clearTimeout(mistakeStudentSearchTimeout)
+  }
+
+  if (!query.trim()) {
+    mistakeStudentResults.value = []
+    return
+  }
+
+  mistakeStudentSearchTimeout = setTimeout(async () => {
+    loadingMistakeStudentSearch.value = true
+    try {
+      const result = await studentAdminClient.getStudents({
+        name: query.trim(),
+        page: 1,
+        pageSize: 10
+      })
+      mistakeStudentResults.value = result.items
+    } catch (error) {
+      console.warn('Failed to search students:', error)
+      mistakeStudentResults.value = []
+    } finally {
+      loadingMistakeStudentSearch.value = false
+    }
+  }, 300)
+}
+
+function selectMistakeStudent(student: StudentDto) {
+  mistakeStudentId.value = student.id
+  mistakeStudentName.value = student.name
+  mistakeStudentSearch.value = ''
+  mistakeStudentResults.value = []
+  onMistakeFilterChange()
+}
+
+function clearMistakeStudent() {
+  mistakeStudentId.value = ''
+  mistakeStudentName.value = ''
+  mistakeStudentSearch.value = ''
+  mistakeStudentResults.value = []
+  onMistakeFilterChange()
+}
 
 async function loadMistakeItems() {
   loadingMistakes.value = true
@@ -1732,14 +1782,40 @@ onMounted(() => {
 
       <div class="mistake-toolbar">
         <div class="mistake-filters">
-          <el-input
-            v-model="mistakeStudentId"
-            placeholder="学生ID"
-            size="small"
-            clearable
-            style="width: 180px"
-            @keyup.enter="onMistakeFilterChange"
-          />
+          <div class="student-search-wrapper">
+            <el-input
+              v-model="mistakeStudentSearch"
+              placeholder="搜索学生姓名..."
+              size="small"
+              clearable
+              style="width: 160px"
+              @input="searchMistakeStudent"
+              @clear="clearMistakeStudent"
+            >
+              <template #prefix>
+                <el-icon><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg></el-icon>
+              </template>
+            </el-input>
+            <div v-if="mistakeStudentResults.length > 0" class="student-search-dropdown">
+              <div
+                v-for="student in mistakeStudentResults"
+                :key="student.id"
+                class="student-search-item"
+                @click="selectMistakeStudent(student)"
+              >
+                <span class="student-name">{{ student.name }}</span>
+                <span class="student-grade">{{ getGradeLabel(student.grade) }}</span>
+              </div>
+            </div>
+            <div v-else-if="mistakeStudentSearch && !loadingMistakeStudentSearch" class="student-search-dropdown">
+              <div class="student-search-empty">未找到学生</div>
+            </div>
+            <div v-if="mistakeStudentName" class="selected-student-tag">
+              <el-tag size="small" closable @close="clearMistakeStudent">
+                {{ mistakeStudentName }}
+              </el-tag>
+            </div>
+          </div>
           <el-select
             v-model="mistakeSubject"
             placeholder="学科"
@@ -2659,7 +2735,80 @@ onMounted(() => {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+.mistake-detail {
+  padding: 8px 0;
+}
+
+.student-search-wrapper {
+  position: relative;
+}
+
+.student-search-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 1000;
+  min-width: 200px;
+  max-height: 240px;
+  overflow-y: auto;
+  background: white;
+  border: 1px solid #e4e7ed;
+  border-radius: 4px;
+  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+  margin-top: 4px;
+}
+
+.student-search-item {
+  padding: 8px 12px;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
   align-items: center;
+  transition: background-color 0.15s;
+}
+
+.student-search-item:hover {
+  background-color: #f5f7fa;
+}
+
+.student-name {
+  font-weight: 500;
+  color: #303133;
+}
+
+.student-grade {
+  font-size: 12px;
+  color: #909399;
+}
+
+.student-search-empty {
+  padding: 12px;
+  text-align: center;
+  color: #909399;
+  font-size: 13px;
+}
+
+.selected-student-tag {
+  margin-top: 4px;
+}
+
+@media (max-width: 768px) {
+  .app-shell {
+    padding: 12px;
+  }
+
+  .mistake-filters {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .mistake-filters .el-input,
+  .mistake-filters .el-select {
+    width: 100% !important;
+  }
 }
 
 .mistake-detail {
