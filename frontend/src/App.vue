@@ -896,8 +896,23 @@ async function rotateImage(imageIndex: number, rotation: number) {
     })
     // Update local rotation state
     imageRotations.value[imageIndex] = ((imageRotations.value[imageIndex] || 0) + rotation + 360) % 360
-    // Reload records to get updated image paths
+    // Update the record's rotation data
+    if (!assigningRecord.value.imageRotations) {
+      assigningRecord.value.imageRotations = []
+    }
+    while (assigningRecord.value.imageRotations.length <= imageIndex) {
+      assigningRecord.value.imageRotations.push(0)
+    }
+    assigningRecord.value.imageRotations[imageIndex] = imageRotations.value[imageIndex]
+    // Reload records to get updated image paths, but keep the current record open
     await loadUploadRecords()
+    // Refresh the assigning record with new data
+    const updatedRecord = uploadRecords.value.find(r => r.id === assigningRecord.value!.id)
+    if (updatedRecord) {
+      // Preserve the rotation state
+      updatedRecord.imageRotations = assigningRecord.value.imageRotations
+      assigningRecord.value = updatedRecord
+    }
     ElMessage.success('旋转成功')
   } catch (error) {
     ElMessage.error('旋转失败: ' + getStudentErrorMessage(error))
@@ -1635,20 +1650,22 @@ onMounted(() => {
               </div>
               <div class="image-actions">
                 <el-button
-                  size="small"
-                  circle
+                  size="default"
+                  type="primary"
                   :loading="loadingRotation"
                   @click.stop="rotateImage(index, -90)"
                 >
-                  <el-icon><svg viewBox="0 0 1024 1024" width="16" height="16"><path fill="currentColor" d="M768 341.333333a10.666667 10.666667 0 0 0-10.666666-10.666666H554.666666c-41.365333 0-74.666666 33.301333-74.666666 74.666666v202.666667a10.666667 10.666667 0 1 0 21.333333 0V405.333333c0-29.376 23.957333-53.333333 53.333333-53.333333h192a10.666667 10.666667 0 0 0 10.666667-10.666667zM512 64c245.76 0 448 202.24 448 448s-202.24 448-448 448S64 757.76 64 512 266.24 64 512 64z m0 85.333333c-199.146667 0-362.666667 163.52-362.666667 362.666667s163.52 362.666667 362.666667 362.666667 362.666667-163.52 362.666667-362.666667S711.146667 149.333333 512 149.333333z"/></svg></el-icon>
+                  <el-icon><svg viewBox="0 0 1024 1024" width="18" height="18"><path fill="currentColor" d="M768 341.333333a10.666667 10.666667 0 0 0-10.666666-10.666666H554.666666c-41.365333 0-74.666666 33.301333-74.666666 74.666666v202.666667a10.666667 10.666667 0 1 0 21.333333 0V405.333333c0-29.376 23.957333-53.333333 53.333333-53.333333h192a10.666667 10.666667 0 0 0 10.666667-10.666667zM512 64c245.76 0 448 202.24 448 448s-202.24 448-448 448S64 757.76 64 512 266.24 64 512 64z m0 85.333333c-199.146667 0-362.666667 163.52-362.666667 362.666667s163.52 362.666667 362.666667 362.666667 362.666667-163.52 362.666667-362.666667S711.146667 149.333333 512 149.333333z"/></svg></el-icon>
+                  <span style="margin-left:4px">左旋</span>
                 </el-button>
                 <el-button
-                  size="small"
-                  circle
+                  size="default"
+                  type="success"
                   :loading="loadingRotation"
                   @click.stop="rotateImage(index, 90)"
                 >
-                  <el-icon><svg viewBox="0 0 1024 1024" width="16" height="16"><path fill="currentColor" d="M256 341.333333a10.666667 10.666667 0 0 1 10.666667-10.666666h202.666666c41.365333 0 74.666667 33.301333 74.666667 74.666666v202.666667a10.666667 10.666667 0 0 1-21.333333 0V405.333333c0-29.376-23.957333-53.333333-53.333333-53.333333H266.666667a10.666667 10.666667 0 0 1-10.666667-10.666667zM512 64c245.76 0 448 202.24 448 448s-202.24 448-448 448S64 757.76 64 512 266.24 64 512 64z m0 85.333333c-199.146667 0-362.666667 163.52-362.666667 362.666667s163.52 362.666667 362.666667 362.666667 362.666667-163.52 362.666667-362.666667S711.146667 149.333333 512 149.333333z"/></svg></el-icon>
+                  <span style="margin-right:4px">右旋</span>
+                  <el-icon><svg viewBox="0 0 1024 1024" width="18" height="18"><path fill="currentColor" d="M256 341.333333a10.666667 10.666667 0 0 1 10.666667-10.666666h202.666666c41.365333 0 74.666667 33.301333 74.666667 74.666666v202.666667a10.666667 10.666667 0 0 1-21.333333 0V405.333333c0-29.376-23.957333-53.333333-53.333333-53.333333H266.666667a10.666667 10.666667 0 0 1-10.666667-10.666667zM512 64c245.76 0 448 202.24 448 448s-202.24 448-448 448S64 757.76 64 512 266.24 64 512 64z m0 85.333333c-199.146667 0-362.666667 163.52-362.666667 362.666667s163.52 362.666667 362.666667 362.666667 362.666667-163.52 362.666667-362.666667S711.146667 149.333333 512 149.333333z"/></svg></el-icon>
                 </el-button>
               </div>
             </div>
@@ -2290,14 +2307,15 @@ onMounted(() => {
 }
 
 .image-item {
-  aspect-ratio: 4/3;
-  border-radius: 6px;
+  aspect-ratio: 3/4;
+  border-radius: 8px;
   overflow: hidden;
   cursor: pointer;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
   transition: transform 0.2s ease, box-shadow 0.2s ease;
   background: #f9fafb;
   position: relative;
+  min-height: 200px;
 }
 
 .image-item:hover {
@@ -2320,6 +2338,8 @@ onMounted(() => {
   height: 100%;
   object-fit: contain;
   background: #fff;
+  max-width: 100%;
+  max-height: 100%;
 }
 
 .image-actions {
@@ -2327,7 +2347,7 @@ onMounted(() => {
   bottom: 8px;
   right: 8px;
   display: flex;
-  gap: 8px;
+  gap: 12px;
   opacity: 0;
   transition: opacity 0.2s ease;
 }
