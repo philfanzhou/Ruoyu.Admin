@@ -36,6 +36,7 @@ export interface UpdateStudentRequest {
 export interface OperationResponse {
   success: boolean
   message: string
+  warning?: string
 }
 
 // Identity 账户信息（用于批量查询）

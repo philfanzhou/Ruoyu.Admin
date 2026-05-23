@@ -139,6 +139,16 @@ public class OssUploadRecordController : ControllerBase
                 return BadRequest(new ErrorResponse(response.ErrorMessage ?? "Failed to assign record"));
             }
 
+            if (!response.MistakeDispatched && !string.IsNullOrEmpty(response.DispatchErrorMessage))
+            {
+                return Ok(new
+                {
+                    success = true,
+                    message = "Assignment saved, but failed to create mistake record",
+                    warning = response.DispatchErrorMessage
+                });
+            }
+
             return Ok(new { success = true, message = "Assignment successful" });
         }
         catch (Exception ex)

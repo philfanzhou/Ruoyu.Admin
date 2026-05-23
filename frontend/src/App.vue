@@ -861,13 +861,17 @@ async function doAssign() {
   if (!assigningRecord.value) return
   loadingAssign.value = true
   try {
-    await studentAdminClient.assignUploadRecord(assigningRecord.value.id, {
+    const result = await studentAdminClient.assignUploadRecord(assigningRecord.value.id, {
       studentId: assigningRecord.value.studentId,
       classification: assignForm.classification,
       subject: assignForm.subject,
       grade: assignForm.grade
     })
-    ElMessage.success('指派成功')
+    if (result.warning) {
+      ElMessage.warning(result.warning)
+    } else {
+      ElMessage.success('指派成功')
+    }
     showRecordDetailDialog.value = false
     await loadUploadRecords()
   } catch (error) {
