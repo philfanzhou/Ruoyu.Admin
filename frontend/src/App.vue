@@ -1660,9 +1660,9 @@ onMounted(() => {
           <el-form label-width="80px" size="default">
             <el-form-item label="分类">
               <el-select v-model="assignForm.classification" style="width: 100%">
-                <el-option :value="1" label="错题" />
-                <el-option :value="2" label="作业" />
-                <el-option :value="3" label="笔记" />
+                <el-option :value="2" label="错题" />
+                <el-option :value="1" label="作业" />
+                <el-option :value="0" label="未分类" />
               </el-select>
             </el-form-item>
             <el-form-item label="学科">
