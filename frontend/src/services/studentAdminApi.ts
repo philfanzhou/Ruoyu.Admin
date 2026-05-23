@@ -115,6 +115,34 @@ export interface UploadRecordListResponse {
   pageSize: number
 }
 
+// ========== Mistake Query Types ==========
+export interface MistakeItemDto {
+  id: string
+  studentId: string
+  studentName: string
+  subject: number
+  grade: number
+  sourceUploadId: string
+  reviewStatus: number // 1: PendingReview, 2: Confirmed, 3: Rejected
+  reviewerId: string
+  reviewedAt: string
+  reviewComment: string
+  type: number
+  questionId: string
+  createdAt: string
+  updatedAt: string
+  imageCount: number
+  firstImagePath: string
+}
+
+export interface MistakeListResponse {
+  items: MistakeItemDto[]
+  total: number
+  page: number
+  pageSize: number
+  totalPages: number
+}
+
 class StudentAdminApiClient {
   private client: AxiosInstance
 
@@ -239,6 +267,23 @@ class StudentAdminApiClient {
         )
         return response.data
     }
+
+  async getMistakeItems(params: {
+    studentId?: string
+    subject?: number
+    grade?: number
+    reviewStatus?: number
+    page?: number
+    size?: number
+  }) {
+    const response = await this.client.get<MistakeListResponse>('/api/admin/mistakes', { params })
+    return response.data
+  }
+
+  async getMistakeItem(id: string) {
+    const response = await this.client.get<MistakeItemDto>(`/api/admin/mistakes/${id}`)
+    return response.data
+  }
 }
 
 export const studentAdminClient = new StudentAdminApiClient()

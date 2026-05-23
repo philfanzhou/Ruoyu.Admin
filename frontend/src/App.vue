@@ -15,6 +15,7 @@ import {
   type SubjectOption,
   type ClassificationOption,
   type UploadRecordDto,
+  type MistakeItemDto,
 } from './services/studentAdminApi'
 import {
   teacherPortalClient,
@@ -925,6 +926,93 @@ function onUploadFilterChange() {
   loadUploadRecords()
 }
 
+// ========== Mistake Query ==========
+const mistakeItems = ref<MistakeItemDto[]>([])
+const mistakeTotal = ref(0)
+const mistakePage = ref(1)
+const mistakePageSize = ref(20)
+const mistakeStudentId = ref<string>('')
+const mistakeSubject = ref<number | undefined>(undefined)
+const mistakeGrade = ref<number | undefined>(undefined)
+const mistakeReviewStatus = ref<number | undefined>(undefined)
+const loadingMistakes = ref(false)
+const showMistakeDetailDialog = ref(false)
+const currentMistakeDetail = ref<MistakeItemDto | null>(null)
+
+async function loadMistakeItems() {
+  loadingMistakes.value = true
+  try {
+    const result = await studentAdminClient.getMistakeItems({
+      studentId: mistakeStudentId.value || undefined,
+      subject: mistakeSubject.value,
+      grade: mistakeGrade.value,
+      reviewStatus: mistakeReviewStatus.value,
+      page: mistakePage.value,
+      size: mistakePageSize.value
+    })
+    mistakeItems.value = result.items
+    mistakeTotal.value = result.total
+  } catch (error) {
+    ElMessage.error('加载错题列表失败: ' + getStudentErrorMessage(error))
+  } finally {
+    loadingMistakes.value = false
+  }
+}
+
+async function viewMistakeDetail(item: MistakeItemDto) {
+  try {
+    currentMistakeDetail.value = await studentAdminClient.getMistakeItem(item.id)
+    showMistakeDetailDialog.value = true
+  } catch (error) {
+    ElMessage.error('加载错题详情失败: ' + getStudentErrorMessage(error))
+  }
+}
+
+function onMistakePageChange(page: number) {
+  mistakePage.value = page
+  loadMistakeItems()
+}
+
+function onMistakeFilterChange() {
+  mistakePage.value = 1
+  loadMistakeItems()
+}
+
+function clearMistakeFilters() {
+  mistakeStudentId.value = ''
+  mistakeSubject.value = undefined
+  mistakeGrade.value = undefined
+  mistakeReviewStatus.value = undefined
+  mistakePage.value = 1
+  loadMistakeItems()
+}
+
+function getReviewStatusText(status: number): string {
+  switch (status) {
+    case 1: return '待审核'
+    case 2: return '已确认'
+    case 3: return '已拒绝'
+    default: return '未知'
+  }
+}
+
+function getReviewStatusType(status: number): string {
+  switch (status) {
+    case 1: return 'warning'
+    case 2: return 'success'
+    case 3: return 'danger'
+    default: return 'info'
+  }
+}
+
+function getMistakeTypeText(type: number): string {
+  switch (type) {
+    case 1: return '作业'
+    case 2: return '考试'
+    default: return '其他'
+  }
+}
+
 onMounted(() => {
   void loadGradeOptions()
   void loadStudents()
@@ -934,6 +1022,7 @@ onMounted(() => {
   void loadAuditRecords()
   void loadAvailableSubjects()
   void loadUploadRecords()
+  void loadMistakeItems()
 })
 </script>
 
@@ -1623,6 +1712,163 @@ onMounted(() => {
       <div class="image-preview-container">
         <img :src="`/api/admin/image?path=${encodeURIComponent(previewImage)}`" class="image-preview-full" />
         <div class="image-preview-path">{{ previewImage }}</div>
+      </div>
+    </el-dialog>
+
+    <!-- 错题查询面板 -->
+    <el-card shadow="never" class="panel mistake-query-panel">
+      <template #header>
+        <div class="panel-header">
+          <div class="panel-title">
+            <el-icon><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg></el-icon>
+            <span>错题查询</span>
+          </div>
+          <el-button size="small" text @click="loadMistakeItems">
+            <el-icon class="refresh-icon" :class="{ spinning: loadingMistakes }"><svg viewBox="0 0 1024 1024" width="14" height="14"><path fill="currentColor" d="M784.512 230.272v-50.56a32 32 0 1 1 64 0v149.056a32 32 0 0 1-32 32H667.52a32 32 0 1 1 0-64h92.992A362.24 362.24 0 0 0 512 149.824C296.32 149.824 121.216 325.056 121.216 540.8c0 215.68 175.104 390.848 390.784 390.848a390.208 390.208 0 0 0 338.304-194.752 32 32 0 1 1 55.36 32.256A454.144 454.144 0 0 1 512 963.648c-233.152 0-422.848-189.632-422.848-422.848S278.848 117.952 512 117.952c124.544 0 236.608 53.952 314.24 139.712l-41.728-27.392z"/></svg></el-icon>
+            刷新
+          </el-button>
+        </div>
+      </template>
+
+      <div class="mistake-toolbar">
+        <div class="mistake-filters">
+          <el-input
+            v-model="mistakeStudentId"
+            placeholder="学生ID"
+            size="small"
+            clearable
+            style="width: 180px"
+            @keyup.enter="onMistakeFilterChange"
+          />
+          <el-select
+            v-model="mistakeSubject"
+            placeholder="学科"
+            size="small"
+            clearable
+            style="width: 120px"
+            @change="onMistakeFilterChange"
+          >
+            <el-option
+              v-for="subject in subjectOptions"
+              :key="subject.value"
+              :label="subject.displayName"
+              :value="subject.value"
+            />
+          </el-select>
+          <el-select
+            v-model="mistakeGrade"
+            placeholder="年级"
+            size="small"
+            clearable
+            style="width: 120px"
+            @change="onMistakeFilterChange"
+          >
+            <el-option
+              v-for="grade in gradeOptions"
+              :key="grade.value"
+              :label="grade.label"
+              :value="grade.value"
+            />
+          </el-select>
+          <el-select
+            v-model="mistakeReviewStatus"
+            placeholder="审核状态"
+            size="small"
+            clearable
+            style="width: 120px"
+            @change="onMistakeFilterChange"
+          >
+            <el-option label="待审核" :value="1" />
+            <el-option label="已确认" :value="2" />
+            <el-option label="已拒绝" :value="3" />
+          </el-select>
+          <el-button type="primary" size="small" @click="onMistakeFilterChange">查询</el-button>
+          <el-button size="small" @click="clearMistakeFilters">清除</el-button>
+        </div>
+      </div>
+
+      <div v-if="loadingMistakes" class="empty-state">
+        <el-empty description="加载中..."></el-empty>
+      </div>
+      <div v-else-if="mistakeItems.length === 0" class="empty-state">
+        <el-empty description="暂无错题记录"></el-empty>
+      </div>
+      <div v-else>
+        <el-table :data="mistakeItems" v-loading="loadingMistakes" empty-text="暂无数据" class="data-table" size="small">
+          <el-table-column prop="id" label="错题ID" min-width="180" show-overflow-tooltip />
+          <el-table-column prop="studentName" label="学生姓名" min-width="100" show-overflow-tooltip />
+          <el-table-column prop="studentId" label="学生ID" min-width="150" show-overflow-tooltip />
+          <el-table-column label="学科" width="100">
+            <template #default="{ row }">
+              {{ getSubjectDisplayName(row.subject) }}
+            </template>
+          </el-table-column>
+          <el-table-column label="年级" width="80">
+            <template #default="{ row }">
+              {{ getGradeLabel(row.grade) }}
+            </template>
+          </el-table-column>
+          <el-table-column label="类型" width="80">
+            <template #default="{ row }">
+              {{ getMistakeTypeText(row.type) }}
+            </template>
+          </el-table-column>
+          <el-table-column label="审核状态" width="100">
+            <template #default="{ row }">
+              <el-tag :type="getReviewStatusType(row.reviewStatus)" size="small" effect="light">
+                {{ getReviewStatusText(row.reviewStatus) }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="图片数量" width="100">
+            <template #default="{ row }">{{ row.imageCount }}</template>
+          </el-table-column>
+          <el-table-column label="创建时间" min-width="150">
+            <template #default="{ row }"><span class="time-text">{{ formatDate(row.createdAt) }}</span></template>
+          </el-table-column>
+          <el-table-column label="操作" width="100" fixed="right">
+            <template #default="{ row }">
+              <el-button link type="primary" size="small" @click="viewMistakeDetail(row)">查看详情</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+
+        <div class="pagination-bar">
+          <el-pagination
+            background
+            layout="total, sizes, prev, pager, next"
+            :total="mistakeTotal"
+            :page-size="mistakePageSize"
+            :current-page="mistakePage"
+            :page-sizes="[10, 20, 50, 100]"
+            @current-change="onMistakePageChange"
+          />
+        </div>
+      </div>
+    </el-card>
+
+    <!-- 错题详情对话框 -->
+    <el-dialog v-model="showMistakeDetailDialog" title="错题详情" width="900px" top="5vh" destroy-on-close>
+      <div v-if="currentMistakeDetail" class="mistake-detail">
+        <el-descriptions :column="2" border size="small">
+          <el-descriptions-item label="错题ID">{{ currentMistakeDetail.id }}</el-descriptions-item>
+          <el-descriptions-item label="学生姓名">{{ currentMistakeDetail.studentName }}</el-descriptions-item>
+          <el-descriptions-item label="学生ID">{{ currentMistakeDetail.studentId }}</el-descriptions-item>
+          <el-descriptions-item label="学科">{{ getSubjectDisplayName(currentMistakeDetail.subject) }}</el-descriptions-item>
+          <el-descriptions-item label="年级">{{ getGradeLabel(currentMistakeDetail.grade) }}</el-descriptions-item>
+          <el-descriptions-item label="类型">{{ getMistakeTypeText(currentMistakeDetail.type) }}</el-descriptions-item>
+          <el-descriptions-item label="审核状态">
+            <el-tag :type="getReviewStatusType(currentMistakeDetail.reviewStatus)" size="small" effect="light">
+              {{ getReviewStatusText(currentMistakeDetail.reviewStatus) }}
+            </el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="审核人ID">{{ currentMistakeDetail.reviewerId || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="审核时间">{{ currentMistakeDetail.reviewedAt || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="审核备注" :span="2">{{ currentMistakeDetail.reviewComment || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="来源上传ID" :span="2">{{ currentMistakeDetail.sourceUploadId }}</el-descriptions-item>
+          <el-descriptions-item label="创建时间">{{ currentMistakeDetail.createdAt }}</el-descriptions-item>
+          <el-descriptions-item label="更新时间">{{ currentMistakeDetail.updatedAt }}</el-descriptions-item>
+        </el-descriptions>
       </div>
     </el-dialog>
 
@@ -2403,6 +2649,126 @@ onMounted(() => {
   margin-bottom: 16px;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.mistake-toolbar {
+  margin-bottom: 16px;
+}
+
+.mistake-filters {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.mistake-detail {
+  padding: 8px 0;
+}
+
+@media (max-width: 768px) {
+  .mistake-filters {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .mistake-filters .el-input,
+  .mistake-filters .el-select {
+    width: 100% !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .pagination-bar {
+    justify-content: center;
+  }
+
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+
+  .subject-table-header,
+  .subject-row {
+    grid-template-columns: 80px 120px 120px 60px 60px;
+  }
+}
+
+/* ========== Teacher Panel ========== */
+.teacher-panel {
+  margin-top: 16px;
+}
+
+.teacher-layout {
+  display: grid;
+  grid-template-columns: 360px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.teacher-grant-section {
+  padding: 4px 0;
+}
+
+.section-label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #4b5563;
+  margin-bottom: 10px;
+}
+
+.teacher-list-section {
+  min-width: 0;
+}
+
+.teacher-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: #1f2937;
+}
+
+/* ========== Teacher Subjects ========== */
+.subject-tag {
+  margin: 0;
+}
+
+.subject-select {
+  margin: 12px 0;
+}
+
+.selected-subject-preview {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed #e5e7eb;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.teacher-info-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #f9fafb;
+  border-radius: 6px;
+}
+
+.info-label {
+  color: #6b7280;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.info-value {
+  color: #1f2937;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+@media (max-width: 992px) {
+  .teacher-layout {
+    grid-template-columns: 1fr;
+  }
 }
 
 .audit-filters {
