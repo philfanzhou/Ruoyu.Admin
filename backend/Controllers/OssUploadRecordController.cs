@@ -90,6 +90,24 @@ public class OssUploadRecordController : ControllerBase
         }
     }
 
+    [HttpGet("classification-options")]
+    public async Task<IActionResult> GetClassificationOptions()
+    {
+        try
+        {
+            var request = new SProto.Empty();
+            var response = await _learningClient.GetAvailableClassificationsAsync(request);
+
+            var options = response.Classifications.Select(c => new ClassificationOption(c.Value, c.Name, c.DisplayName)).ToList();
+            return Ok(options);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to get classification options");
+            return StatusCode(500, new ErrorResponse("Failed to get classification options"));
+        }
+    }
+
     [HttpPost("{id}/reset-status")]
     public async Task<IActionResult> ResetUploadRecordStatus(string id, [FromBody] ResetStatusRequest request)
     {

@@ -13,6 +13,7 @@ import {
   type GradeOption,
   type OpenSubjectDto,
   type SubjectOption,
+  type ClassificationOption,
   type UploadRecordDto,
 } from './services/studentAdminApi'
 import {
@@ -104,6 +105,7 @@ const listAccountCache = ref<Map<string, IdentityUser>>(new Map())
 const loadingListAccounts = ref(false)
 
 const subjectOptions = ref<SubjectOption[]>([])
+const classificationOptions = ref<ClassificationOption[]>([])
 const selectedOpenSubjects = ref<OpenSubjectDto[]>([])
 const loadingOpenSubjects = ref(false)
 
@@ -178,6 +180,14 @@ async function loadSubjectOptions() {
     subjectOptions.value = await studentAdminClient.getSubjectOptions()
   } catch (error) {
     console.warn('Failed to load subject options:', error)
+  }
+}
+
+async function loadClassificationOptions() {
+  try {
+    classificationOptions.value = await studentAdminClient.getClassificationOptions()
+  } catch (error) {
+    console.warn('Failed to load classification options:', error)
   }
 }
 
@@ -919,6 +929,7 @@ onMounted(() => {
   void loadGradeOptions()
   void loadStudents()
   void loadSubjectOptions()
+  void loadClassificationOptions()
   void loadTeachers()
   void loadAuditRecords()
   void loadAvailableSubjects()
@@ -1660,9 +1671,12 @@ onMounted(() => {
           <el-form label-width="80px" size="default">
             <el-form-item label="分类">
               <el-select v-model="assignForm.classification" style="width: 100%">
-                <el-option :value="2" label="错题" />
-                <el-option :value="1" label="作业" />
-                <el-option :value="0" label="未分类" />
+                <el-option
+                  v-for="cls in classificationOptions"
+                  :key="cls.value"
+                  :value="cls.value"
+                  :label="cls.displayName"
+                />
               </el-select>
             </el-form-item>
             <el-form-item label="学科">
