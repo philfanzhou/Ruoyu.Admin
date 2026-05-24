@@ -159,6 +159,67 @@ public class MistakeController : ControllerBase
         }
     }
 
+    [HttpGet("by-upload/{uploadId}")]
+    public async Task<IActionResult> GetMistakesByUploadId(string uploadId)
+    {
+        try
+        {
+            var request = new MistakeProto.GetMistakeItemsByUploadRequest
+            {
+                SourceUploadId = uploadId
+            };
+            var response = await _mistakeClient.GetMistakeItemsByUploadAsync(request);
+
+            var studentIds = response.Items.Select(i => i.StudentId).Distinct().ToList();
+            var studentNameMap = new Dictionary<string, string>();
+
+            foreach (var sid in studentIds)
+            {
+                if (string.IsNullOrWhiteSpace(sid)) continue;
+                try
+                {
+                    var student = await _managementClient.GetStudentAsync(new SProto.GetStudentRequest { StudentId = sid });
+                    studentNameMap[sid] = student.Name;
+                }
+                catch
+                {
+                    studentNameMap[sid] = sid;
+                }
+            }
+
+            var items = response.Items.Select(item => new
+            {
+                id = item.Id,
+                studentId = item.StudentId,
+                studentName = studentNameMap.GetValueOrDefault(item.StudentId, item.StudentId),
+                subject = item.Subject,
+                grade = item.Grade,
+                sourceUploadId = item.SourceUploadId,
+                reviewStatus = (int)item.ReviewStatus,
+                reviewerId = item.ReviewerId,
+                reviewedAt = item.ReviewedAt,
+                reviewComment = item.ReviewComment,
+                type = item.Type,
+                questionId = item.QuestionId,
+                createdAt = item.CreatedAt,
+                updatedAt = item.UpdatedAt,
+                imageCount = item.SourceRegions.Count,
+                firstImagePath = item.SourceRegions.FirstOrDefault()?.SourceImagePath ?? string.Empty
+            }).ToList();
+
+            return Ok(new
+            {
+                items,
+                total = items.Count
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to get mistakes by upload id: {UploadId}", uploadId);
+            return StatusCode(500, new ErrorResponse("Failed to get mistakes by upload id"));
+        }
+    }
+
     [HttpPut("{id}")]
     public async Task<IActionResult> UpdateMistakeItem(string id, [FromBody] UpdateMistakeRequest request)
     {

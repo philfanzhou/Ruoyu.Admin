@@ -293,6 +293,11 @@ class StudentAdminApiClient {
     const response = await this.client.put<MistakeItemDto>(`/api/admin/mistakes/${id}`, data)
     return response.data
   }
+
+  async getMistakesByUploadId(uploadId: string) {
+    const response = await this.client.get<{ items: MistakeItemDto[], total: number }>(`/api/admin/mistakes/by-upload/${uploadId}`)
+    return response.data
+  }
 }
 
 export const studentAdminClient = new StudentAdminApiClient()

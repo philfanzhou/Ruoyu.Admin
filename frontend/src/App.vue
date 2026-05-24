@@ -66,6 +66,8 @@ const assignForm = reactive({
 })
 const loadingAssign = ref(false)
 const loadingRotation = ref(false)
+const recordMistakes = ref<MistakeItemDto[]>([])
+const loadingRecordMistakes = ref(false)
 
 const studentFilters = reactive({ name: '' })
 const accountSearch = ref('')
@@ -859,13 +861,25 @@ async function resetUploadRecord(record: UploadRecordDto) {
   }
 }
 
-function openRecordDetail(record: UploadRecordDto) {
+async function openRecordDetail(record: UploadRecordDto) {
   assigningRecord.value = record
   assignForm.classification = record.classification || 1
   assignForm.subject = record.subject || 3
   const studentGrade = students.value.find(s => s.id === record.studentId)?.grade
   assignForm.grade = record.grade || studentGrade || 1
   showRecordDetailDialog.value = true
+  
+  // 加载关联的错题
+  recordMistakes.value = []
+  loadingRecordMistakes.value = true
+  try {
+    const result = await studentAdminClient.getMistakesByUploadId(record.id)
+    recordMistakes.value = result.items
+  } catch (error) {
+    console.error('Failed to load record mistakes:', error)
+  } finally {
+    loadingRecordMistakes.value = false
+  }
 }
 
 async function doAssign() {
@@ -2097,6 +2111,23 @@ onMounted(() => {
           <div class="assign-actions">
             <el-button type="primary" :loading="loadingAssign" @click="doAssign">确认指派</el-button>
           </div>
+          
+          <h4 class="assign-title" style="margin-top:24px">关联错题</h4>
+          <div v-if="loadingRecordMistakes" class="hint-text">加载中...</div>
+          <div v-else-if="recordMistakes.length === 0" class="hint-text">暂无关联错题</div>
+          <div v-else class="mistakes-list">
+            <div v-for="mistake in recordMistakes" :key="mistake.id" class="mistake-item">
+              <div class="mistake-info">
+                <div class="mistake-subject">
+                  {{ getSubjectDisplayName(mistake.subject) }}
+                  <el-tag size="small" :type="mistake.reviewStatus === 1 ? 'warning' : mistake.reviewStatus === 2 ? 'success' : 'danger'">
+                    {{ mistake.reviewStatus === 1 ? '待审核' : mistake.reviewStatus === 2 ? '已确认' : '已拒绝' }}
+                  </el-tag>
+                </div>
+                <div class="mistake-time">创建于: {{ formatDate(mistake.createdAt) }}</div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </el-dialog>
@@ -2679,6 +2710,44 @@ onMounted(() => {
   margin-top: 20px;
   padding-top: 16px;
   border-top: 1px solid #f3f4f6;
+}
+
+.hint-text {
+  font-size: 13px;
+  color: #6b7280;
+  margin: 8px 0;
+}
+
+.mistakes-list {
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.mistake-item {
+  padding: 10px 12px;
+  background: #f9fafb;
+  border-radius: 6px;
+  margin-bottom: 8px;
+}
+
+.mistake-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mistake-subject {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+  color: #1f2937;
+  font-size: 13px;
+}
+
+.mistake-time {
+  font-size: 11px;
+  color: #6b7280;
 }
 
 .images-info {
