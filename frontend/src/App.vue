@@ -942,6 +942,14 @@ const mistakeReviewStatus = ref<number | undefined>(undefined)
 const loadingMistakes = ref(false)
 const showMistakeDetailDialog = ref(false)
 const currentMistakeDetail = ref<MistakeItemDto | null>(null)
+const showMistakeEditDialog = ref(false)
+const currentMistakeEdit = ref<{
+  id: string
+  studentId: string
+  studentName: string
+  subject: number
+  grade: number
+} | null>(null)
 
 let mistakeStudentSearchTimeout: ReturnType<typeof setTimeout> | null = null
 
@@ -1060,6 +1068,34 @@ function getMistakeTypeText(type: number): string {
     case 1: return '作业'
     case 2: return '考试'
     default: return '其他'
+  }
+}
+
+async function openMistakeEdit(item: MistakeItemDto) {
+  currentMistakeEdit.value = {
+    id: item.id,
+    studentId: item.studentId,
+    studentName: item.studentName,
+    subject: item.subject,
+    grade: item.grade
+  }
+  showMistakeEditDialog.value = true
+}
+
+async function saveMistakeEdit() {
+  if (!currentMistakeEdit.value) return
+
+  try {
+    await studentAdminClient.updateMistakeItem(currentMistakeEdit.value.id, {
+      studentId: currentMistakeEdit.value.studentId,
+      subject: currentMistakeEdit.value.subject,
+      grade: currentMistakeEdit.value.grade
+    })
+    ElMessage.success('更新成功')
+    showMistakeEditDialog.value = false
+    await loadMistakeItems()
+  } catch (error) {
+    ElMessage.error('更新失败: ' + getStudentErrorMessage(error))
   }
 }
 
@@ -1902,9 +1938,10 @@ onMounted(() => {
           <el-table-column label="创建时间" min-width="150">
             <template #default="{ row }"><span class="time-text">{{ formatDate(row.createdAt) }}</span></template>
           </el-table-column>
-          <el-table-column label="操作" width="100" fixed="right">
+          <el-table-column label="操作" width="180" fixed="right">
             <template #default="{ row }">
               <el-button link type="primary" size="small" @click="viewMistakeDetail(row)">查看详情</el-button>
+              <el-button link type="warning" size="small" @click="openMistakeEdit(row)">编辑</el-button>
             </template>
           </el-table-column>
         </el-table>
@@ -1946,6 +1983,41 @@ onMounted(() => {
           <el-descriptions-item label="更新时间">{{ currentMistakeDetail.updatedAt }}</el-descriptions-item>
         </el-descriptions>
       </div>
+    </el-dialog>
+
+    <!-- 错题编辑对话框 -->
+    <el-dialog v-model="showMistakeEditDialog" title="编辑错题" width="500px" top="10vh" destroy-on-close>
+      <div v-if="currentMistakeEdit" class="mistake-edit">
+        <el-form label-width="100px">
+          <el-form-item label="学生姓名">
+            <el-input v-model="currentMistakeEdit.studentName" disabled />
+          </el-form-item>
+          <el-form-item label="学科">
+            <el-select v-model="currentMistakeEdit.subject" placeholder="请选择学科">
+              <el-option
+                v-for="subject in subjectOptions"
+                :key="subject.value"
+                :label="subject.displayName"
+                :value="subject.value"
+              />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="年级">
+            <el-select v-model="currentMistakeEdit.grade" placeholder="请选择年级">
+              <el-option
+                v-for="grade in gradeOptions"
+                :key="grade.value"
+                :label="grade.label"
+                :value="grade.value"
+              />
+            </el-select>
+          </el-form-item>
+        </el-form>
+      </div>
+      <template #footer>
+        <el-button @click="showMistakeEditDialog = false">取消</el-button>
+        <el-button type="primary" @click="saveMistakeEdit">保存</el-button>
+      </template>
     </el-dialog>
 
     <!-- 上传记录详情：图片查看 + 指派 -->

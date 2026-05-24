@@ -158,4 +158,52 @@ public class MistakeController : ControllerBase
             return StatusCode(500, new ErrorResponse("Failed to get mistake item"));
         }
     }
+
+    [HttpPut("{id}")]
+    public async Task<IActionResult> UpdateMistakeItem(string id, [FromBody] UpdateMistakeRequest request)
+    {
+        try
+        {
+            var updateRequest = new MistakeProto.UpdateMistakeItemRequest
+            {
+                Id = id,
+                StudentId = request.StudentId ?? "",
+                Subject = request.Subject ?? 0,
+                Grade = request.Grade ?? 0
+            };
+
+            var item = await _mistakeClient.UpdateMistakeItemAsync(updateRequest);
+
+            string studentName = item.StudentId;
+            try
+            {
+                var student = await _managementClient.GetStudentAsync(new SProto.GetStudentRequest { StudentId = item.StudentId });
+                studentName = student.Name;
+            }
+            catch { }
+
+            return Ok(new
+            {
+                id = item.Id,
+                studentId = item.StudentId,
+                studentName,
+                subject = item.Subject,
+                grade = item.Grade,
+                sourceUploadId = item.SourceUploadId,
+                reviewStatus = (int)item.ReviewStatus
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to update mistake item: {Id}", id);
+            return StatusCode(500, new ErrorResponse("Failed to update mistake item"));
+        }
+    }
+}
+
+public class UpdateMistakeRequest
+{
+    public string? StudentId { get; set; }
+    public int? Subject { get; set; }
+    public int? Grade { get; set; }
 }
