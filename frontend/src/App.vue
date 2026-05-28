@@ -16,6 +16,8 @@ import {
   type ClassificationOption,
   type UploadRecordDto,
   type MistakeItemDto,
+  type EnumOption,
+  type EnumOptionsResponse,
 } from './services/studentAdminApi'
 import {
   teacherPortalClient,
@@ -31,6 +33,35 @@ import {
 } from './services/ossAuditApi'
 
 const appTitle = (window as any).__APP_TITLE__ || 'Student Management Console'
+
+const enumOptions = ref<EnumOptionsResponse>({
+  uploadStatuses: [],
+  grades: [],
+  subjects: [],
+  classifications: [],
+  reviewStatuses: [],
+  mistakeTypes: [],
+})
+
+const enumMap = computed(() => {
+  const toMap = (options: EnumOption[]) => new Map(options.map(o => [o.value, o.displayName]))
+  return {
+    uploadStatus: toMap(enumOptions.value.uploadStatuses),
+    grade: toMap(enumOptions.value.grades),
+    subject: toMap(enumOptions.value.subjects),
+    classification: toMap(enumOptions.value.classifications),
+    reviewStatus: toMap(enumOptions.value.reviewStatuses),
+    mistakeType: toMap(enumOptions.value.mistakeTypes),
+  }
+})
+
+async function loadEnumOptions() {
+  try {
+    enumOptions.value = await studentAdminClient.getEnumOptions()
+  } catch {
+    console.warn('Failed to load enum options from backend')
+  }
+}
 
 // OSS Audit
 const auditRecords = ref<OssAuditRecordDto[]>([])
@@ -112,16 +143,8 @@ const classificationOptions = ref<ClassificationOption[]>([])
 const selectedOpenSubjects = ref<OpenSubjectDto[]>([])
 const loadingOpenSubjects = ref(false)
 
-const gradeLabelMap = computed(() => {
-  const map = new Map<number, string>()
-  for (const g of gradeOptions.value) {
-    map.set(g.value, g.label)
-  }
-  return map
-})
-
 function getGradeLabel(grade: number): string {
-  return gradeLabelMap.value.get(grade) ?? String(grade)
+  return enumMap.value.grade.get(grade) ?? String(grade)
 }
 
 function formatAccountLabel(user: IdentityUser): string {
@@ -142,8 +165,7 @@ function isImageFile(path: string): boolean {
 }
 
 function getSubjectDisplayName(subjectValue: number): string {
-  const option = subjectOptions.value.find(s => s.value === subjectValue)
-  return option?.displayName ?? `学科${subjectValue}`
+  return enumMap.value.subject.get(subjectValue) ?? `学科${subjectValue}`
 }
 
 function isSubjectSelected(subjectValue: number): boolean {
@@ -804,25 +826,16 @@ function onAuditFilterChange() {
 
 // Upload Record Functions
 function getUploadStatusText(status: number): string {
-  switch (status) {
-    case 1: return '待处理'
-    case 2: return '处理中'
-    case 3: return '已完成'
-    case 4: return '失败'
-    case 5: return '已退回'
-    default: return '未知'
-  }
+  return enumMap.value.uploadStatus.get(status) ?? '未知'
 }
 
 function getUploadStatusType(status: number): string {
-  switch (status) {
-    case 1: return 'warning'
-    case 2: return 'primary'
-    case 3: return 'success'
-    case 4: return 'danger'
-    case 5: return 'info'
-    default: return 'info'
-  }
+  const name = enumOptions.value.uploadStatuses.find(o => o.value === status)?.name ?? ''
+  if (name === 'PENDING') return 'warning'
+  if (name === 'PROCESSING') return 'primary'
+  if (name === 'COMPLETED') return 'success'
+  if (name === 'FAILED') return 'danger'
+  return 'info'
 }
 
 async function loadUploadRecords() {
@@ -1062,29 +1075,19 @@ function clearMistakeFilters() {
 }
 
 function getReviewStatusText(status: number): string {
-  switch (status) {
-    case 1: return '待审核'
-    case 2: return '已确认'
-    case 3: return '已拒绝'
-    default: return '未知'
-  }
+  return enumMap.value.reviewStatus.get(status) ?? '未知'
 }
 
 function getReviewStatusType(status: number): string {
-  switch (status) {
-    case 1: return 'warning'
-    case 2: return 'success'
-    case 3: return 'danger'
-    default: return 'info'
-  }
+  const name = enumOptions.value.reviewStatuses.find(o => o.value === status)?.name ?? ''
+  if (name === 'PENDING_REVIEW') return 'warning'
+  if (name === 'CONFIRMED') return 'success'
+  if (name === 'REJECTED') return 'danger'
+  return 'info'
 }
 
 function getMistakeTypeText(type: number): string {
-  switch (type) {
-    case 1: return '作业'
-    case 2: return '考试'
-    default: return '其他'
-  }
+  return enumMap.value.mistakeType.get(type) ?? '其他'
 }
 
 async function openMistakeEdit(item: MistakeItemDto) {
@@ -1115,7 +1118,8 @@ async function saveMistakeEdit() {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
+  await loadEnumOptions()
   void loadGradeOptions()
   void loadStudents()
   void loadSubjectOptions()
@@ -1641,11 +1645,7 @@ onMounted(() => {
         <div class="upload-filters">
           <el-select v-model="uploadStatusFilter" placeholder="状态筛选" size="small" clearable style="width: 150px" @change="onUploadFilterChange">
             <el-option label="全部" :value="-1" />
-            <el-option label="待处理" :value="1" />
-            <el-option label="处理中" :value="2" />
-            <el-option label="已完成" :value="3" />
-            <el-option label="失败" :value="4" />
-            <el-option label="已退回" :value="5" />
+            <el-option v-for="opt in enumOptions.uploadStatuses" :key="opt.value" :label="opt.displayName" :value="opt.value" />
           </el-select>
         </div>
       </div>

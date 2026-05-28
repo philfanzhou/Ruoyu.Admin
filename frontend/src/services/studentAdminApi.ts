@@ -79,6 +79,21 @@ export interface ClassificationOption {
   displayName: string
 }
 
+export interface EnumOption {
+  value: number
+  name: string
+  displayName: string
+}
+
+export interface EnumOptionsResponse {
+  uploadStatuses: EnumOption[]
+  grades: EnumOption[]
+  subjects: EnumOption[]
+  classifications: EnumOption[]
+  reviewStatuses: EnumOption[]
+  mistakeTypes: EnumOption[]
+}
+
 // Upload Record Types
 export interface UploadRecordDto {
     id: string
@@ -296,6 +311,11 @@ class StudentAdminApiClient {
 
   async getMistakesByUploadId(uploadId: string) {
     const response = await this.client.get<{ items: MistakeItemDto[], total: number }>(`/api/admin/mistakes/by-upload/${uploadId}`)
+    return response.data
+  }
+
+  async getEnumOptions() {
+    const response = await this.client.get<EnumOptionsResponse>('/api/admin/enum-options')
     return response.data
   }
 }
