@@ -866,7 +866,7 @@ async function resetUploadRecord(record: UploadRecordDto) {
 
   resettingRecord.value = record.id
   try {
-    await studentAdminClient.resetUploadRecordStatus(record.id, record.studentId, 0) // 0 = Pending
+    await studentAdminClient.resetUploadRecordStatus(record.id, record.studentId, 1)
     ElMessage.success('已重置，系统将自动重新分析')
     await loadUploadRecords()
   } catch (error) {
