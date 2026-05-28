@@ -1702,7 +1702,7 @@ onMounted(async () => {
                   查看指派
                 </el-button>
                 <el-button
-                  v-if="row.status === 3"
+                  v-if="row.status === 4"
                   link
                   type="danger"
                   size="small"
