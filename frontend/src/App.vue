@@ -866,7 +866,8 @@ async function resetUploadRecord(record: UploadRecordDto) {
 
   resettingRecord.value = record.id
   try {
-    await studentAdminClient.resetUploadRecordStatus(record.id, record.studentId, 1)
+    const pendingStatus = enumOptions.value.uploadStatuses.find(opt => opt.name === 'PENDING')?.value ?? 1
+    await studentAdminClient.resetUploadRecordStatus(record.id, record.studentId, pendingStatus)
     ElMessage.success('已重置，系统将自动重新分析')
     await loadUploadRecords()
   } catch (error) {
