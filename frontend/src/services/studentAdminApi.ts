@@ -84,7 +84,7 @@ export interface UploadRecordDto {
     id: string
     studentId: string
     studentName: string
-    status: number // 0: Pending, 1: Processing, 2: Completed, 3: Failed
+    status: number // 1: Pending, 2: Processing, 3: Completed, 4: Failed, 5: Returned
     imagePaths: string[]
     comments: string
     createdAt: number | string
@@ -237,7 +237,7 @@ class StudentAdminApiClient {
   async getUploadRecords(params: {
     page?: number
     pageSize?: number
-    status?: number // -1: all, 0: pending, 1: processing, 2: completed, 3: failed
+    status?: number // -1: all, 1: pending, 2: processing, 3: completed, 4: failed, 5: returned
     studentId?: string
   }) {
     const response = await this.client.get<UploadRecordListResponse>('/api/admin/oss-upload-records', { params })

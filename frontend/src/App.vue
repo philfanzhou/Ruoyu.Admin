@@ -54,7 +54,7 @@ const uploadRecords = ref<UploadRecordDto[]>([])
 const uploadTotalCount = ref(0)
 const uploadPage = ref(1)
 const uploadPageSize = ref(20)
-const uploadStatusFilter = ref<number>(3) // Default: only show failed records
+const uploadStatusFilter = ref<number>(4)
 const loadingUploadRecords = ref(false)
 const resettingRecord = ref<string | null>(null)
 const assigningRecord = ref<UploadRecordDto | null>(null)
@@ -805,20 +805,22 @@ function onAuditFilterChange() {
 // Upload Record Functions
 function getUploadStatusText(status: number): string {
   switch (status) {
-    case 0: return '待处理'
-    case 1: return '处理中'
-    case 2: return '已完成'
-    case 3: return '失败'
+    case 1: return '待处理'
+    case 2: return '处理中'
+    case 3: return '已完成'
+    case 4: return '失败'
+    case 5: return '已退回'
     default: return '未知'
   }
 }
 
 function getUploadStatusType(status: number): string {
   switch (status) {
-    case 0: return 'warning'
-    case 1: return 'primary'
-    case 2: return 'success'
-    case 3: return 'danger'
+    case 1: return 'warning'
+    case 2: return 'primary'
+    case 3: return 'success'
+    case 4: return 'danger'
+    case 5: return 'info'
     default: return 'info'
   }
 }
@@ -1639,10 +1641,11 @@ onMounted(() => {
         <div class="upload-filters">
           <el-select v-model="uploadStatusFilter" placeholder="状态筛选" size="small" clearable style="width: 150px" @change="onUploadFilterChange">
             <el-option label="全部" :value="-1" />
-            <el-option label="待处理" :value="0" />
-            <el-option label="处理中" :value="1" />
-            <el-option label="已完成" :value="2" />
-            <el-option label="失败" :value="3" />
+            <el-option label="待处理" :value="1" />
+            <el-option label="处理中" :value="2" />
+            <el-option label="已完成" :value="3" />
+            <el-option label="失败" :value="4" />
+            <el-option label="已退回" :value="5" />
           </el-select>
         </div>
       </div>
