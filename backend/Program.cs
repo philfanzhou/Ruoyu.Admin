@@ -103,8 +103,11 @@ using (var scope = app.Services.CreateScope())
 }
 
 app.UseCors("AdminWeb");
-app.UseSwagger();
-app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "Admin Portal API v1"));
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "Admin Portal API v1"));
+}
 app.UseMiddleware<IdentityProxyMiddleware>();
 app.UseMiddleware<TeacherPortalProxyMiddleware>();
 app.MapControllers();
