@@ -87,6 +87,12 @@ builder.Services.AddDbContext<AuditDbContext>(options =>
 builder.Services.AddSingleton<OssAuditWorker>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<OssAuditWorker>());
 
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(c =>
+{
+    c.SwaggerDoc("v1", new() { Title = "Admin Portal API", Version = "v1" });
+});
+
 var app = builder.Build();
 
 using (var scope = app.Services.CreateScope())
@@ -97,6 +103,8 @@ using (var scope = app.Services.CreateScope())
 }
 
 app.UseCors("AdminWeb");
+app.UseSwagger();
+app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "Admin Portal API v1"));
 app.UseMiddleware<IdentityProxyMiddleware>();
 app.UseMiddleware<TeacherPortalProxyMiddleware>();
 app.MapControllers();
