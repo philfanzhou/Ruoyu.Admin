@@ -53,7 +53,19 @@
         size="small"
         style="margin-top: 16px"
       >
-        <el-table-column prop="id" label="ID" width="220" show-overflow-tooltip />
+        <el-table-column label="缩略图" width="80">
+          <template #default="{ row }">
+            <el-image
+              v-if="row.imagePaths && row.imagePaths.length > 0"
+              :src="getImageUrl(row.imagePaths[0])"
+              :preview-src-list="getPreviewList(row.imagePaths)"
+              preview-teleported
+              fit="cover"
+              style="width: 50px; height: 50px; cursor: pointer"
+            />
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="studentName" label="学生姓名" width="120" />
         <el-table-column label="状态" width="100">
           <template #default="{ row }">
