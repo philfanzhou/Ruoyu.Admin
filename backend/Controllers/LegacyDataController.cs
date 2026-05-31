@@ -99,10 +99,13 @@ public class LegacyDataController : ControllerBase
                         StudentName = studentName,
                         MistakeCount = mistakeList.Items.Count,
                         HasUploadPathImage = hasUploadPathImage,
-                        CreatedAt = record.CreatedAt
+                        CreatedAt = long.Parse(record.CreatedAt)
                     });
                 }
             }
+
+            // 计算总页数
+            var totalPages = (int)Math.Ceiling((double)uploadRecordsResponse.TotalCount / (double)pageSize);
 
             return Ok(new
             {
@@ -110,7 +113,7 @@ public class LegacyDataController : ControllerBase
                 totalCount = uploadRecordsResponse.TotalCount,
                 page = page,
                 pageSize = pageSize,
-                totalPages = uploadRecordsResponse.TotalPages
+                totalPages = totalPages
             });
         }
         catch (Exception ex)
