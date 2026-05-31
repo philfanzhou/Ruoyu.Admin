@@ -77,7 +77,6 @@
         size="small"
         style="margin-top: 16px"
       >
-        <el-table-column prop="id" label="错题ID" width="220" show-overflow-tooltip />
         <el-table-column label="首图" width="80">
           <template #default="{ row }">
             <el-image
