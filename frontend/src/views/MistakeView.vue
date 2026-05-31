@@ -77,19 +77,20 @@
         size="small"
         style="margin-top: 16px"
       >
+        <el-table-column prop="id" label="错题ID" width="220" show-overflow-tooltip />
         <el-table-column label="首图" width="80">
           <template #default="{ row }">
             <el-image
               v-if="row.firstImagePath"
               :src="getMistakeImageUrl(row.firstImagePath)"
               :preview-src-list="[getMistakeImageUrl(row.firstImagePath)]"
+              preview-teleported
               fit="cover"
               style="width: 50px; height: 50px; cursor: pointer"
             />
             <span v-else>-</span>
           </template>
         </el-table-column>
-        <el-table-column prop="id" label="ID" width="220" show-overflow-tooltip />
         <el-table-column prop="studentName" label="学生姓名" width="120" />
         <el-table-column label="学科" width="100">
           <template #default="{ row }">
@@ -180,6 +181,7 @@
               :key="index"
               :src="img"
               :preview-src-list="currentMistakeImages"
+              preview-teleported
               fit="contain"
               class="detail-image"
             />

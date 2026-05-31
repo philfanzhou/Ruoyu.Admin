@@ -98,7 +98,7 @@ const currentRoute = computed(() => route.path)
 }
 
 .sidebar-menu .el-menu-item {
-  color: #bfcbd9;
+  color: #e2e8f0;
   height: 50px;
   line-height: 50px;
 }
@@ -110,7 +110,7 @@ const currentRoute = computed(() => route.path)
 }
 
 .sidebar-menu .el-sub-menu__title {
-  color: #bfcbd9;
+  color: #e2e8f0;
   height: 50px;
   line-height: 50px;
 }
@@ -122,6 +122,7 @@ const currentRoute = computed(() => route.path)
 
 .sidebar-menu .el-sub-menu .el-menu-item {
   background-color: #1f2d3d;
+  color: #cbd5e0;
 }
 
 .el-main {
