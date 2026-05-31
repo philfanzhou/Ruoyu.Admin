@@ -109,20 +109,29 @@ const currentRoute = computed(() => route.path)
   color: #409eff;
 }
 
-.sidebar-menu .el-sub-menu__title {
-  color: #e2e8f0;
+.sidebar-menu :deep(.el-sub-menu__title) {
+  color: #e2e8f0 !important;
   height: 50px;
   line-height: 50px;
 }
 
-.sidebar-menu .el-sub-menu__title:hover {
-  background-color: #263445;
-  color: #409eff;
+.sidebar-menu :deep(.el-sub-menu__title:hover) {
+  background-color: #263445 !important;
+  color: #409eff !important;
 }
 
-.sidebar-menu .el-sub-menu .el-menu-item {
+.sidebar-menu :deep(.el-sub-menu__title .el-sub-menu__icon-arrow) {
+  color: #a0aec0;
+}
+
+.sidebar-menu :deep(.el-sub-menu .el-menu-item) {
   background-color: #1f2d3d;
   color: #cbd5e0;
+}
+
+.sidebar-menu :deep(.el-sub-menu .el-menu-item:hover) {
+  background-color: #263445;
+  color: #409eff;
 }
 
 .el-main {
