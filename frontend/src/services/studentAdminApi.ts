@@ -322,6 +322,8 @@ class StudentAdminApiClient {
 
 export const studentAdminClient = new StudentAdminApiClient()
 
+export default studentAdminClient
+
 export function getStudentErrorMessage(error: unknown) {
   if (axios.isAxiosError(error)) {
     return (error.response?.data as { message?: string } | undefined)?.message ?? error.message

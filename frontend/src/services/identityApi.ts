@@ -55,6 +55,9 @@ export function getIdentityAdminApiClient(): IdentityAdminApiClient {
   return _instance
 }
 
+export const identityApiClient = getIdentityAdminApiClient()
+export default identityApiClient
+
 export function getIdentityErrorMessage(error: unknown) {
   if (axios.isAxiosError(error)) {
     return (error.response?.data as { message?: string } | undefined)?.message ?? error.message

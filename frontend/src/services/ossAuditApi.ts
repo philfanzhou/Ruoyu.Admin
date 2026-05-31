@@ -74,6 +74,8 @@ class OssAuditApiClient {
 export const ossAuditApi = new OssAuditApiClient()
 export const ossAuditClient = ossAuditApi
 
+export default ossAuditApi
+
 export function getOssAuditErrorMessage(error: unknown) {
   if (axios.isAxiosError(error)) {
     return (error.response?.data as { message?: string } | undefined)?.message ?? error.message

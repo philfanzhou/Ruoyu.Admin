@@ -108,6 +108,8 @@ class TeacherPortalApiClient {
 
 export const teacherPortalClient = new TeacherPortalApiClient()
 
+export default teacherPortalClient
+
 export function getTeacherPortalErrorMessage(error: unknown) {
   if (axios.isAxiosError(error)) {
     return (error.response?.data as { message?: string } | undefined)?.message ?? error.message
