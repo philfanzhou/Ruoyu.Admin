@@ -38,82 +38,113 @@ public class LegacyDataController : ControllerBase
             if (pageSize <= 0) pageSize = 20;
             if (pageSize > 100) pageSize = 100;
 
-            // 1. 获取所有上传记录（分页）
-            var uploadRecordsRequest = new SProto.GetAllUploadRecordsRequest
-            {
-                Page = page,
-                PageSize = pageSize
-            };
-            var uploadRecordsResponse = await _managementClient.GetAllUploadRecordsAsync(uploadRecordsRequest);
-
-            var results = new List<LegacyDataItem>();
+            var allResults = new List<LegacyDataItem>();
             var studentNameMap = new Dictionary<string, string>();
 
-            // 2. 逐个检查每个上传记录
-            foreach (var record in uploadRecordsResponse.Items)
+            int scanPage = 1;
+            const int scanPageSize = 100;
+            bool hasMore = true;
+
+            while (hasMore)
             {
-                // 获取该上传记录下的所有错题
-                var mistakeListRequest = new MistakeProto.GetMistakeItemsByUploadRequest
+                var uploadRecordsRequest = new SProto.GetAllUploadRecordsRequest
                 {
-                    SourceUploadId = record.Id
+                    Page = scanPage,
+                    PageSize = scanPageSize
                 };
-                var mistakeList = await _mistakeClient.GetMistakeItemsByUploadAsync(mistakeListRequest);
+                var uploadRecordsResponse = await _managementClient.GetAllUploadRecordsAsync(uploadRecordsRequest);
 
-                if (mistakeList.Items.Count == 0)
+                if (uploadRecordsResponse.Items.Count == 0)
                 {
-                    continue; // 没有错题，跳过
+                    hasMore = false;
+                    break;
                 }
 
-                // 检查错题状态
-                var allReviewed = mistakeList.Items.All(i => i.ReviewStatus == MistakeProto.ReviewStatus.Confirmed ||
-                                                              i.ReviewStatus == MistakeProto.ReviewStatus.Rejected);
-                var hasPending = mistakeList.Items.Any(i => i.ReviewStatus == MistakeProto.ReviewStatus.PendingReview);
-
-                // 检查图片路径是否还在 uploads/ 目录
-                var hasUploadPathImage = mistakeList.Items.SelectMany(i => i.SourceRegions)
-                    .Any(r => !string.IsNullOrWhiteSpace(r.SourceImagePath) &&
-                              r.SourceImagePath.StartsWith("uploads/", StringComparison.OrdinalIgnoreCase));
-
-                // 获取学生姓名
-                string studentName = record.StudentId;
-                if (!studentNameMap.TryGetValue(record.StudentId, out studentName))
+                foreach (var record in uploadRecordsResponse.Items)
                 {
-                    try
+                    var mistakeListRequest = new MistakeProto.GetMistakeItemsByUploadRequest
                     {
-                        var student = await _managementClient.GetStudentAsync(new SProto.GetStudentRequest { StudentId = record.StudentId });
-                        studentName = student.Name;
-                        studentNameMap[record.StudentId] = studentName;
+                        SourceUploadId = record.Id
+                    };
+                    var mistakeList = await _mistakeClient.GetMistakeItemsByUploadAsync(mistakeListRequest);
+
+                    if (mistakeList.Items.Count == 0)
+                    {
+                        continue;
                     }
-                    catch
+
+                    var allReviewed = mistakeList.Items.All(i => i.ReviewStatus == MistakeProto.ReviewStatus.Confirmed ||
+                                                                  i.ReviewStatus == MistakeProto.ReviewStatus.Rejected);
+                    var hasPending = mistakeList.Items.Any(i => i.ReviewStatus == MistakeProto.ReviewStatus.PendingReview);
+
+                    var hasUploadPathImage = mistakeList.Items.SelectMany(i => i.SourceRegions)
+                        .Any(r => !string.IsNullOrWhiteSpace(r.SourceImagePath) &&
+                                  r.SourceImagePath.StartsWith("uploads/", StringComparison.OrdinalIgnoreCase));
+
+                    if (!studentNameMap.TryGetValue(record.StudentId, out var studentName))
                     {
-                        studentNameMap[record.StudentId] = record.StudentId;
+                        try
+                        {
+                            var student = await _managementClient.GetStudentAsync(new SProto.GetStudentRequest { StudentId = record.StudentId });
+                            studentName = student.Name;
+                            studentNameMap[record.StudentId] = studentName;
+                        }
+                        catch
+                        {
+                            studentNameMap[record.StudentId] = record.StudentId;
+                        }
+                    }
+
+                    if (allReviewed && !hasPending)
+                    {
+                        long createdAtTimestamp = 0;
+                        if (!string.IsNullOrWhiteSpace(record.CreatedAt))
+                        {
+                            if (DateTimeOffset.TryParse(record.CreatedAt, out var dto))
+                            {
+                                createdAtTimestamp = dto.ToUnixTimeSeconds();
+                            }
+                            else if (long.TryParse(record.CreatedAt, out var ts))
+                            {
+                                createdAtTimestamp = ts;
+                            }
+                        }
+
+                        allResults.Add(new LegacyDataItem
+                        {
+                            UploadRecordId = record.Id,
+                            StudentId = record.StudentId,
+                            StudentName = studentName,
+                            MistakeCount = mistakeList.Items.Count,
+                            HasUploadPathImage = hasUploadPathImage,
+                            CreatedAt = createdAtTimestamp
+                        });
                     }
                 }
 
-                if (allReviewed && !hasPending)
+                if (scanPage * scanPageSize >= uploadRecordsResponse.TotalCount)
                 {
-                    results.Add(new LegacyDataItem
-                    {
-                        UploadRecordId = record.Id,
-                        StudentId = record.StudentId,
-                        StudentName = studentName,
-                        MistakeCount = mistakeList.Items.Count,
-                        HasUploadPathImage = hasUploadPathImage,
-                        CreatedAt = long.Parse(record.CreatedAt)
-                    });
+                    hasMore = false;
+                }
+                else
+                {
+                    scanPage++;
                 }
             }
 
-            // 计算总页数
-            var totalPages = (int)Math.Ceiling((double)uploadRecordsResponse.TotalCount / (double)pageSize);
+            var totalCount = allResults.Count;
+            var pagedResults = allResults
+                .OrderByDescending(r => r.CreatedAt)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToList();
 
             return Ok(new
             {
-                items = results,
-                totalCount = uploadRecordsResponse.TotalCount,
+                items = pagedResults,
+                totalCount,
                 page = page,
-                pageSize = pageSize,
-                totalPages = totalPages
+                pageSize = pageSize
             });
         }
         catch (Exception ex)
