@@ -8,6 +8,7 @@
 | UI 库 | Element Plus |
 | HTTP 客户端 | Axios |
 | 构建工具 | Vite |
+| 路由 | Vue Router 4 |
 | 入口 | `src/main.ts` |
 
 ---
@@ -16,134 +17,250 @@
 
 ```
 admin_portal/frontend/src/
-├── App.vue                    # 单文件应用，包含所有面板和对话框
-├── main.ts                    # 入口，注册 ElementPlus
-└── services/
-    ├── identityApi.ts         # Identity 用户管理 API
-    ├── studentAdminApi.ts     # 学生管理 + 上传记录 + 错题查询 API
-    ├── teacherPortalApi.ts    # 教师权限管理 API
-    └── ossAuditApi.ts         # OSS 僵尸文件审计 API
-```
-
-> **架构说明**：Admin Portal 采用单组件架构（Monolithic SFC），所有面板和对话框均内联在 `App.vue` 中，无路由、无状态管理库、无独立组件文件。
-
----
-
-## 页面布局
-
-### 整体结构
-
-```
-┌──────────────────────────────────────────────────────────┐
-│  Header: 应用标题 + 副标题                                 │
-├──────────────────────────────────────────────────────────┤
-│  ┌─────────────┐  ┌──────────────────────────────────┐  │
-│  │ 创建学生     │  │ 学生列表                          │  │
-│  │ - 姓名       │  │ - 搜索/年级筛选                   │  │
-│  │ - 年级       │  │ - 分页表格                        │  │
-│  │ - 关联账户   │  │ - 编辑/删除/开放学科               │  │
-│  └─────────────┘  └──────────────────────────────────┘  │
-├──────────────────────────────────────────────────────────┤
-│  教师权限管理                                             │
-│  - 授予教师权限（搜索 Identity 用户 → 授予）              │
-│  - 教师列表（科目管理/撤销权限）                           │
-├──────────────────────────────────────────────────────────┤
-│  上传记录管理                                             │
-│  - 状态筛选下拉框                                         │
-│  - 记录卡片列表（分页）                                   │
-│  - 指派/重置状态/旋转图片                                  │
-├──────────────────────────────────────────────────────────┤
-│  错题查询                                                 │
-│  - 学生搜索 + 学科/年级/审核状态筛选                       │
-│  - 错题卡片列表（分页）                                   │
-│  - 查看/编辑错题详情                                      │
-├──────────────────────────────────────────────────────────┤
-│  OSS 僵尸文件审计                                         │
-│  - 状态筛选 + Bucket 筛选                                 │
-│  - 审计记录表格（分页）                                   │
-│  - 触发审计/单条处理/批量处理                              │
-└──────────────────────────────────────────────────────────┘
+├── main.ts                      # 入口，注册 ElementPlus + VueRouter
+├── App.vue                      # 根组件，布局容器（含二级菜单）
+├── router/
+│   └── index.ts                 # 路由配置
+├── views/
+│   ├── StudentView.vue          # 学生管理页面
+│   ├── TeacherView.vue          # 教师管理页面
+│   ├── UploadRecordView.vue      # 上传记录管理页面
+│   ├── MistakeView.vue           # 错题管理页面
+│   ├── LegacyDataView.vue        # 历史遗留数据清理页面
+│   └── OssAuditView.vue          # OSS 审计页面
+├── services/
+│   ├── identityApi.ts           # Identity 用户管理 API
+│   ├── studentAdminApi.ts       # 学生管理 + 上传记录 + 错题查询 API
+│   ├── teacherPortalApi.ts      # 教师权限管理 API
+│   ├── ossAuditApi.ts           # OSS 审计 API
+│   └── legacyDataApi.ts         # 历史遗留数据清理 API
+└── components/
+    ├── ImagePreview.vue          # 图片预览组件
+    └── ImageViewer.vue           # 图片查看器组件
 ```
 
 ---
 
-## 功能模块详细说明
+## 页面架构
 
-### 1. 学生管理
+### 整体布局
 
-| 功能 | 说明 |
-|------|------|
-| 创建学生 | 输入姓名、选择年级、搜索并关联 Identity 账户 |
-| 学生列表 | 分页展示，支持姓名搜索和年级筛选 |
-| 编辑学生 | 对话框中修改姓名、年级、管理关联账户 |
-| 删除学生 | 二次确认后删除 |
-| 开放学科管理 | 为学生设置/修改开放学科及起止日期 |
-| 关联账户管理 | 搜索 Identity 用户 → 添加/移除关联 |
-
-**关键交互**：
-- 搜索 Identity 账户时，同时按 username 和 phone 搜索（phone 格式自动判断）
-- 关联账户显示为 Tag 列表，可逐个移除
-- 开放学科以复选框列表展示，每个学科可设置起止日期
-
-### 2. 教师权限管理
-
-| 功能 | 说明 |
-|------|------|
-| 授予权限 | 搜索 Identity 用户 → 选择科目 → 授予教师权限 |
-| 教师列表 | 展示所有教师及其负责科目 |
-| 科目管理 | 对话框中增删教师负责的科目 |
-| 撤销权限 | 删除教师记录 |
-
-**关键交互**：
-- 搜索用户时调用 Identity Gateway API
-- 授予权限支持两种路径：新增教师（`addTeacherByUserId`）或给已有 Identity 用户授权（`grantTeacher`）
-- 科目以 Tag 形式展示，点击管理弹出科目选择对话框
-
-### 3. 上传记录管理
-
-| 功能 | 说明 |
-|------|------|
-| 记录列表 | 分页展示，默认筛选状态为"失败"(status=4) |
-| 总记录数 | 显示当前查询条件的总记录数（位于筛选区域） |
-| 状态筛选 | 下拉框选择上传状态 |
-| 查看详情 | 对话框展示图片缩略图（支持旋转、预览大图） |
-| 指派记录 | 将上传记录指派给学生，设置分类/学科/年级 |
-| 重置状态 | 将记录状态重置为指定值 |
-| 旋转图片 | 对单张图片执行 90° 旋转 |
-
-**分页组件布局**：
 ```
 ┌──────────────────────────────────────────────────────────┐
-│  [状态筛选下拉框]  [搜索按钮]      共找到 1,234 条记录    │
-├──────────────────────────────────────────────────────────┤
-│  上传记录卡片列表                                        │
-│  ...                                                    │
-├──────────────────────────────────────────────────────────┤
-│              < 1 2 3 ... 12 >      每页 20 条            │
-└──────────────────────────────────────────────────────────┘
+│  Header: 应用标题 + 导航菜单                              │
+├────────────┬─────────────────────────────────────────────┤
+│            │                                             │
+│  Sidebar   │         Main Content Area                  │
+│  导航菜单   │         (根据路由显示对应页面)               │
+│            │                                             │
+│  - 学生管理 │                                             │
+│  - 教师管理 │                                             │
+│  - 数据管理 │ (可展开)                                    │
+│    ├─上传记录 │                                           │
+│    ├─历史遗留 │                                           │
+│    └─OSS审计 │                                             │
+│  - 错题管理 │                                             │
+│            │                                             │
+└────────────┴─────────────────────────────────────────────┘
 ```
 
-**状态枚举**：由后端 `/api/admin/enum-options` 返回
+### 页面清单
 
-### 4. 错题查询
+| 路由 | 页面 | 所属分组 | 说明 |
+|------|------|----------|------|
+| `/students` | StudentView.vue | - | 学生管理 |
+| `/teachers` | TeacherView.vue | - | 教师管理 |
+| `/upload-records` | UploadRecordView.vue | 数据管理 | 上传记录管理 |
+| `/mistakes` | MistakeView.vue | - | 错题查询与管理 |
+| `/legacy-data` | LegacyDataView.vue | 数据管理 | 历史遗留数据清理 |
+| `/oss-audit` | OssAuditView.vue | 数据管理 | OSS 僵尸文件审计 |
+
+---
+
+## 页面详细说明
+
+### 1. 学生管理页面 (`/students`)
+
+**功能列表**：
+- 创建学生（姓名、年级、关联账户）
+- 学生列表（搜索、年级筛选、分页）
+- 编辑学生（修改信息、管理关联账户、管理开放学科）
+- 删除学生
+
+**API 调用**（按需加载）：
+- `getGrades()` - 加载年级选项
+- `getStudents(params)` - 查询学生列表
+- `getIdentityAccountsByStudentId(id)` - 获取关联账户
+- `createStudent(payload)` - 创建学生
+- `updateStudent(id, payload)` - 更新学生
+- `deleteStudent(id)` - 删除学生
+- `linkIdentityAccount(id, accountId)` - 关联账户
+- `unlinkIdentityAccount(id, accountId)` - 取消关联
+- `getStudentOpenSubjects(id, activeOnly)` - 获取开放学科
+- `setStudentOpenSubjects(id, payload)` - 设置开放学科
+
+---
+
+### 2. 教师管理页面 (`/teachers`)
+
+**功能列表**：
+- 授予教师权限（搜索 Identity 用户 → 选择科目 → 授予）
+- 教师列表（查看科目、撤销权限）
+- 科目管理（增删教师负责科目）
+
+**API 调用**（按需加载）：
+- `getUsers(params)` - 搜索 Identity 用户
+- `getTeachers()` - 获取教师列表
+- `addTeacherByUserId(payload)` - 新增教师
+- `grantTeacher(userId, payload)` - 授予权限
+- `removeTeacherByUserId(userId)` - 撤销权限
+- `getTeacherSubjects(userId)` - 获取教师科目
+- `setTeacherSubjects(userId, subjects)` - 设置科目
+- `getAvailableSubjects()` - 获取可用科目
+
+---
+
+### 3. 上传记录管理页面 (`/upload-records`)
+
+**所属分组**：数据管理
+
+**功能列表**：
+- 上传记录列表（状态筛选、分页）
+- 总记录数显示
+- 查看详情（图片缩略图、旋转、预览大图）
+- 指派记录给学生
+- 重置状态
+- 旋转图片
+
+**API 调用**（按需加载）：
+- `getUploadRecords(params)` - 查询上传记录
+- `getSubjectOptions()` - 学科选项
+- `getClassificationOptions()` - 分类选项
+- `getGrades()` - 年级选项
+- `getStudents(params)` - 搜索学生（用于指派）
+- `getUploadRecord(id)` - 获取单条记录
+- `assignUploadRecord(id, payload)` - 指派记录
+- `resetUploadRecordStatus(id, status)` - 重置状态
+- `rotateUploadImage(id, payload)` - 旋转图片
+
+---
+
+### 4. 错题管理页面 (`/mistakes`)
+
+**功能列表**：
+- 错题列表（学生搜索、学科/年级/审核状态筛选、分页）
+- 总记录数显示
+- 查看详情（图片、完整信息）
+- 编辑错题（修改学生、学科、年级）
+
+**API 调用**（按需加载）：
+- `getStudents(params)` - 搜索学生
+- `getSubjectOptions()` - 学科选项
+- `getGrades()` - 年级选项
+- `getEnumOptions()` - 枚举选项（含审核状态）
+- `getMistakeItems(params)` - 查询错题列表
+- `getMistakeItem(id)` - 获取单个错题
+- `updateMistakeItem(id, data)` - 更新错题
+
+---
+
+### 5. 历史遗留数据清理页面 (`/legacy-data`)
+
+**所属分组**：数据管理
+
+#### 问题背景
+
+系统早期存在一个 Bug：教师审核错题通过后，**上传记录没有被删除**，**图片路径也没有迁移**（仍在 `uploads/` 而非 `mistakes/`）。这些遗留数据需要安全清理。
+
+#### 业务规则
+
+清理必须满足以下**全部条件**：
+
+| 条件 | 说明 |
+|------|------|
+| 错题全部审核 | 该上传记录关联的所有错题都已审核（非 PendingReview） |
+| 人工确认 | 每条记录需要管理员手动点击"清理"确认 |
+| 完整流程 | 迁移图片 → 更新错题路径 → 删除上传记录 |
+
+#### 清理流程（通过业务接口）
+
+```
+管理员查看遗留数据列表
+    ↓
+点击"清理" → 弹出确认对话框，显示：
+    - 上传记录ID
+    - 学生姓名
+    - 错题数量
+    - 清理操作说明
+    ↓
+点击"确认清理"
+    ↓
+后端处理流程：
+┌─────────────────────────────────────────────────────┐
+│ 1. CompleteUploadReview（gRPC）                      │
+│    - 检查所有错题是否已审核（失败则中止）               │
+│    - 获取该上传记录下的所有错题                        │
+│    - 迁移物理文件：uploads/ → mistakes/              │
+│    - 更新错题记录中的图片路径                          │
+│    - 保存到数据库                                      │
+└─────────────────────────────────────────────────────┘
+    ↓
+┌─────────────────────────────────────────────────────┐
+│ 2. DeleteUploadRecordAfterReview（gRPC）             │
+│    - 删除上传记录                                      │
+│    - 清理关联数据                                      │
+└─────────────────────────────────────────────────────┘
+    ↓
+返回成功 → 刷新列表
+```
+
+#### 功能特性
 
 | 功能 | 说明 |
 |------|------|
-| 筛选 | 学生姓名搜索 + 学科/年级/审核状态筛选 |
-| 列表 | 分页展示错题卡片，显示首图缩略图 |
-| 查看详情 | 对话框展示错题完整信息 |
-| 编辑错题 | 对话框修改学生、学科、年级 |
+| 扫描列表 | 分页展示所有"错题已审核但上传记录还在"的数据 |
+| 显示信息 | 上传记录ID、学生姓名、错题数量、图片路径状态、创建时间 |
+| 人工审核 | 每条记录需管理员手动点击"清理"确认 |
+| 二次确认 | 点击清理后弹出对话框，详细说明操作影响 |
+| 刷新 | 支持手动刷新列表 |
 
-**审核状态**：待审核(1) / 已确认(2) / 已驳回(3)
+#### 图片路径状态标识
 
-### 5. OSS 僵尸文件审计
-
-| 功能 | 说明 |
+| 状态 | 含义 |
 |------|------|
-| 触发审计 | 手动触发一次全量 OSS 扫描 |
-| 记录列表 | 分页展示，支持状态和 Bucket 筛选 |
-| 单条处理 | 删除僵尸文件（resolve）或忽略（ignore，可附注） |
-| 批量处理 | 勾选多条记录后批量 resolve |
+| `uploads/`（黄色标签） | 图片仍在 uploads/，需要迁移 |
+| `已迁移`（绿色标签） | 图片已迁移到 mistakes/ |
+
+#### 关键约束
+
+1. **不直接操作数据库**：所有操作通过 gRPC 业务接口完成
+2. **原子性**：图片迁移和路径更新在同一次请求中完成
+3. **先验证后清理**：系统会检查待清理数据是否满足条件
+4. **不可逆操作**：删除前需管理员二次确认
+
+**API 调用**（按需加载）：
+- `scanLegacyData(params)` - 扫描遗留数据
+- `cleanLegacyData(uploadRecordId)` - 清理单个遗留数据
+
+---
+
+### 6. OSS 审计页面 (`/oss-audit`)
+
+**所属分组**：数据管理
+
+**功能列表**：
+- 审计记录列表（状态筛选、Bucket 筛选、分页）
+- 总记录数显示
+- 触发审计（全量 OSS 扫描）
+- 单条处理（删除僵尸文件/忽略）
+- 批量处理（勾选多条后批量删除）
+
+**API 调用**（按需加载）：
+- `getRecords(params)` - 查询审计记录
+- `triggerAudit()` - 触发审计
+- `resolveRecord(id)` - 处理单条
+- `ignoreRecord(id, note)` - 忽略单条
+- `batchResolve(ids)` - 批量处理
 
 **状态**：待处理(0) / 已删除(1) / 已忽略(2)
 
@@ -151,42 +268,43 @@ admin_portal/frontend/src/
 
 ## API 服务层
 
-### identityApi.ts
-
-| 方法 | HTTP | 路径 | 说明 |
-|------|------|------|------|
-| `testConnection()` | GET | `/api/identity/gateway/users/search` | 测试 Identity 连通性 |
-| `getUsers(params)` | GET | `/api/identity/gateway/users/search` | 搜索用户（username/phone） |
-| `getUsersByIds(ids)` | POST | `/api/identity/gateway/users/batch` | 批量获取用户信息 |
-
 ### studentAdminApi.ts
 
 | 方法 | HTTP | 路径 | 说明 |
 |------|------|------|------|
 | `getGrades()` | GET | `/api/admin/students/grades` | 获取年级选项 |
-| `getStudents(params)` | GET | `/api/admin/students` | 分页查询学生，返回 `PaginatedResponse<StudentDto>` |
+| `getStudents(params)` | GET | `/api/admin/students` | 分页查询学生 |
 | `getStudent(id)` | GET | `/api/admin/students/:id` | 获取单个学生 |
 | `createStudent(payload)` | POST | `/api/admin/students` | 创建学生 |
 | `updateStudent(id, payload)` | PUT | `/api/admin/students/:id` | 更新学生 |
 | `deleteStudent(id)` | DELETE | `/api/admin/students/:id` | 删除学生 |
-| `getIdentityAccountsByStudentId(id)` | GET | `/api/admin/students/:id/accounts` | 获取学生关联账户ID列表 |
-| `linkIdentityAccount(id, accountId)` | POST | `/api/admin/students/:id/accounts` | 关联 Identity 账户 |
+| `getIdentityAccountsByStudentId(id)` | GET | `/api/admin/students/:id/accounts` | 获取关联账户 |
+| `linkIdentityAccount(id, accountId)` | POST | `/api/admin/students/:id/accounts` | 关联账户 |
 | `unlinkIdentityAccount(id, accountId)` | DELETE | `/api/admin/students/:id/accounts/:accountId` | 取消关联 |
 | `getStudentsByAccountId(accountId)` | GET | `/api/admin/accounts/:accountId/students` | 按账户查学生 |
-| `getIdentityAccountsBatch(ids)` | POST | `/api/admin/identity-accounts/batch` | 批量获取账户信息 |
+| `getIdentityAccountsBatch(ids)` | POST | `/api/admin/identity-accounts/batch` | 批量获取账户 |
 | `getSubjectOptions()` | GET | `/api/admin/students/subject-options` | 学科选项 |
 | `getClassificationOptions()` | GET | `/api/admin/oss-upload-records/classification-options` | 分类选项 |
-| `getStudentOpenSubjects(id, activeOnly)` | GET | `/api/admin/students/:id/open-subjects` | 获取开放学科 |
+| `getStudentOpenSubjects(id, activeOnly)` | GET | `/api/admin/students/:id/open-subjects` | 开放学科 |
 | `setStudentOpenSubjects(id, payload)` | PUT | `/api/admin/students/:id/open-subjects` | 设置开放学科 |
-| `getUploadRecords(params)` | GET | `/api/admin/oss-upload-records` | 分页查询上传记录，返回 `PaginatedResponse<UploadRecordDto>`，响应中包含 `total` 字段 |
-| `resetUploadRecordStatus(id, ...)` | POST | `/api/admin/oss-upload-records/:id/reset-status` | 重置记录状态 |
+| `getUploadRecords(params)` | GET | `/api/admin/oss-upload-records` | 查询上传记录 |
+| `getUploadRecord(id)` | GET | `/api/admin/oss-upload-records/:id` | 获取单条上传记录 |
+| `resetUploadRecordStatus(id, status)` | POST | `/api/admin/oss-upload-records/:id/reset-status` | 重置状态 |
 | `assignUploadRecord(id, payload)` | POST | `/api/admin/oss-upload-records/:id/assign` | 指派记录 |
 | `rotateUploadImage(id, payload)` | POST | `/api/admin/oss-upload-records/:id/rotate` | 旋转图片 |
-| `getMistakeItems(params)` | GET | `/api/admin/mistakes` | 分页查询错题，返回 `PaginatedResponse<MistakeItemDto>` |
+| `getMistakeItems(params)` | GET | `/api/admin/mistakes` | 查询错题列表 |
 | `getMistakeItem(id)` | GET | `/api/admin/mistakes/:id` | 获取单个错题 |
 | `updateMistakeItem(id, data)` | PUT | `/api/admin/mistakes/:id` | 更新错题 |
 | `getMistakesByUploadId(uploadId)` | GET | `/api/admin/mistakes/by-upload/:uploadId` | 按上传记录查错题 |
-| `getEnumOptions()` | GET | `/api/admin/enum-options` | 获取所有枚举选项 |
+| `getEnumOptions()` | GET | `/api/admin/enum-options` | 获取枚举选项 |
+
+### identityApi.ts
+
+| 方法 | HTTP | 路径 | 说明 |
+|------|------|------|------|
+| `testConnection()` | GET | `/api/identity/gateway/users/search` | 测试连通性 |
+| `getUsers(params)` | GET | `/api/identity/gateway/users/search` | 搜索用户 |
+| `getUsersByIds(ids)` | POST | `/api/identity/gateway/users/batch` | 批量获取用户 |
 
 ### teacherPortalApi.ts
 
@@ -194,23 +312,30 @@ admin_portal/frontend/src/
 |------|------|------|------|
 | `getTeachers()` | GET | `/api/teacher-portal/admin/teachers` | 获取教师列表 |
 | `addTeacherByUserId(payload)` | POST | `/api/teacher-portal/admin/teachers/by-user` | 新增教师 |
-| `grantTeacher(userId, payload)` | POST | `/api/teacher-portal/admin/identity-users/:userId/grant-teacher` | 授予教师权限 |
-| `removeTeacherByUserId(userId)` | DELETE | `/api/teacher-portal/admin/teachers/by-user/:userId` | 撤销教师权限 |
+| `grantTeacher(userId, payload)` | POST | `/api/teacher-portal/admin/identity-users/:userId/grant-teacher` | 授予权限 |
+| `removeTeacherByUserId(userId)` | DELETE | `/api/teacher-portal/admin/teachers/by-user/:userId` | 撤销权限 |
 | `checkTeacher(userId, phone?)` | GET | `/api/teacher-portal/auth/check-teacher` | 检查教师身份 |
 | `getTeacherSubjects(userId)` | GET | `/api/teacher-portal/admin/teachers/:userId/subjects` | 获取教师科目 |
-| `setTeacherSubjects(userId, subjects)` | PUT | `/api/teacher-portal/admin/teachers/:userId/subjects` | 设置教师科目 |
+| `setTeacherSubjects(userId, subjects)` | PUT | `/api/teacher-portal/admin/teachers/:userId/subjects` | 设置科目 |
 | `addTeacherSubject(userId, subject)` | POST | `/api/teacher-portal/admin/teachers/:userId/subjects/:subject` | 添加科目 |
 | `removeTeacherSubject(userId, subject)` | DELETE | `/api/teacher-portal/admin/teachers/:userId/subjects/:subject` | 移除科目 |
-| `getAvailableSubjects()` | GET | `/api/teacher-portal/admin/available-subjects` | 可用科目列表 |
+| `getAvailableSubjects()` | GET | `/api/teacher-portal/admin/available-subjects` | 可用科目 |
+
+### legacyDataApi.ts
+
+| 方法 | HTTP | 路径 | 说明 |
+|------|------|------|------|
+| `scanLegacyData(params)` | GET | `/api/admin/legacy-data/scan` | 扫描遗留数据 |
+| `cleanLegacyData(uploadRecordId)` | POST | `/api/admin/legacy-data/clean` | 清理单个遗留数据 |
 
 ### ossAuditApi.ts
 
 | 方法 | HTTP | 路径 | 说明 |
 |------|------|------|------|
-| `getRecords(page, pageSize, status?, bucket?)` | GET | `/api/admin/oss-audit/records` | 分页查询审计记录，返回 `PaginatedResponse<OssAuditRecordDto>` |
+| `getRecords(params)` | GET | `/api/admin/oss-audit/records` | 查询审计记录 |
 | `triggerAudit()` | POST | `/api/admin/oss-audit/trigger` | 触发审计 |
-| `resolveRecord(id)` | POST | `/api/admin/oss-audit/records/:id/resolve` | 处理单条（删除文件） |
-| `ignoreRecord(id, note?)` | POST | `/api/admin/oss-audit/records/:id/ignore` | 忽略单条 |
+| `resolveRecord(id)` | POST | `/api/admin/oss-audit/records/:id/resolve` | 处理单条 |
+| `ignoreRecord(id, note)` | POST | `/api/admin/oss-audit/records/:id/ignore` | 忽略单条 |
 | `batchResolve(ids)` | POST | `/api/admin/oss-audit/records/batch-resolve` | 批量处理 |
 
 ---
@@ -218,15 +343,13 @@ admin_portal/frontend/src/
 ## 核心类型定义
 
 ```typescript
-// ========== 分页响应基类 ==========
 interface PaginatedResponse<T> {
-  items: T[];        // 当前页数据
-  total: number;     // 总记录数
-  page: number;      // 当前页码（从1开始）
-  pageSize: number;  // 每页记录数
+  items: T[];
+  total: number;
+  page: number;
+  pageSize: number;
 }
 
-// ========== 业务 DTO ==========
 interface StudentDto {
   id: string; name: string; grade: number;
   identityAccountIds: string[]; createdAt: number; updatedAt: number;
@@ -257,6 +380,15 @@ interface MistakeItemDto {
   imageCount: number; firstImagePath: string;
 }
 
+interface LegacyDataItemDto {
+  uploadRecordId: string;
+  studentId: string;
+  studentName: string;
+  mistakeCount: number;
+  hasUploadPathImage: boolean;
+  createdAt: number;
+}
+
 interface OssAuditRecordDto {
   id: number; objectPath: string; bucket: string; size: number;
   lastModified: number; status: number; statusText: string;
@@ -272,25 +404,13 @@ interface EnumOptionsResponse {
 
 ---
 
-## 对话框清单
-
-| 对话框 | 触发方式 | 功能 |
-|--------|---------|------|
-| Edit Student | 学生列表点击编辑 | 修改姓名/年级/关联账户/开放学科 |
-| 管理教师科目 | 教师列表点击科目 Tag | 增删教师负责科目 |
-| 授予教师权限 | 搜索用户后点击授予权限 | 选择科目并授权 |
-| 图片预览 | 上传记录/错题中点击缩略图 | 全屏预览大图 |
-| 错题详情 | 错题列表点击查看 | 展示错题完整信息和图片 |
-| 编辑错题 | 错题详情中点击编辑 | 修改学生/学科/年级 |
-| 查看图片 & 指派 | 上传记录点击详情 | 查看图片、指派学生、旋转、重置状态 |
-
----
-
 ## 设计规范
 
 - **UI 框架**：Element Plus，使用 `size="small"` 紧凑模式
-- **布局**：单页纵向滚动，各面板使用 `el-card` 分隔
+- **布局**：侧边栏导航（含二级菜单）+ 主内容区，各页面独立
 - **分页**：统一每页 20 条
+- **懒加载路由**：按需加载页面组件
+- **按需调用 API**：每个页面只调用自己需要的接口
 - **错误处理**：Axios 错误统一提取 `response.data.message`，使用 `ElMessage.error` 提示
 - **确认操作**：删除等危险操作使用 `ElMessageBox.confirm` 二次确认
 - **认证**：依赖后端 Cookie/Session，前端 Axios 实例未设置全局 Authorization Header
