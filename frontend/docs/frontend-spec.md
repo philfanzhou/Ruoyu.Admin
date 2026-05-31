@@ -104,11 +104,24 @@ admin_portal/frontend/src/
 | 功能 | 说明 |
 |------|------|
 | 记录列表 | 分页展示，默认筛选状态为"失败"(status=4) |
+| 总记录数 | 显示当前查询条件的总记录数（位于筛选区域） |
 | 状态筛选 | 下拉框选择上传状态 |
 | 查看详情 | 对话框展示图片缩略图（支持旋转、预览大图） |
 | 指派记录 | 将上传记录指派给学生，设置分类/学科/年级 |
 | 重置状态 | 将记录状态重置为指定值 |
 | 旋转图片 | 对单张图片执行 90° 旋转 |
+
+**分页组件布局**：
+```
+┌──────────────────────────────────────────────────────────┐
+│  [状态筛选下拉框]  [搜索按钮]      共找到 1,234 条记录    │
+├──────────────────────────────────────────────────────────┤
+│  上传记录卡片列表                                        │
+│  ...                                                    │
+├──────────────────────────────────────────────────────────┤
+│              < 1 2 3 ... 12 >      每页 20 条            │
+└──────────────────────────────────────────────────────────┘
+```
 
 **状态枚举**：由后端 `/api/admin/enum-options` 返回
 
@@ -151,7 +164,7 @@ admin_portal/frontend/src/
 | 方法 | HTTP | 路径 | 说明 |
 |------|------|------|------|
 | `getGrades()` | GET | `/api/admin/students/grades` | 获取年级选项 |
-| `getStudents(params)` | GET | `/api/admin/students` | 分页查询学生 |
+| `getStudents(params)` | GET | `/api/admin/students` | 分页查询学生，返回 `PaginatedResponse<StudentDto>` |
 | `getStudent(id)` | GET | `/api/admin/students/:id` | 获取单个学生 |
 | `createStudent(payload)` | POST | `/api/admin/students` | 创建学生 |
 | `updateStudent(id, payload)` | PUT | `/api/admin/students/:id` | 更新学生 |
@@ -165,11 +178,11 @@ admin_portal/frontend/src/
 | `getClassificationOptions()` | GET | `/api/admin/oss-upload-records/classification-options` | 分类选项 |
 | `getStudentOpenSubjects(id, activeOnly)` | GET | `/api/admin/students/:id/open-subjects` | 获取开放学科 |
 | `setStudentOpenSubjects(id, payload)` | PUT | `/api/admin/students/:id/open-subjects` | 设置开放学科 |
-| `getUploadRecords(params)` | GET | `/api/admin/oss-upload-records` | 分页查询上传记录 |
+| `getUploadRecords(params)` | GET | `/api/admin/oss-upload-records` | 分页查询上传记录，返回 `PaginatedResponse<UploadRecordDto>`，响应中包含 `total` 字段 |
 | `resetUploadRecordStatus(id, ...)` | POST | `/api/admin/oss-upload-records/:id/reset-status` | 重置记录状态 |
 | `assignUploadRecord(id, payload)` | POST | `/api/admin/oss-upload-records/:id/assign` | 指派记录 |
 | `rotateUploadImage(id, payload)` | POST | `/api/admin/oss-upload-records/:id/rotate` | 旋转图片 |
-| `getMistakeItems(params)` | GET | `/api/admin/mistakes` | 分页查询错题 |
+| `getMistakeItems(params)` | GET | `/api/admin/mistakes` | 分页查询错题，返回 `PaginatedResponse<MistakeItemDto>` |
 | `getMistakeItem(id)` | GET | `/api/admin/mistakes/:id` | 获取单个错题 |
 | `updateMistakeItem(id, data)` | PUT | `/api/admin/mistakes/:id` | 更新错题 |
 | `getMistakesByUploadId(uploadId)` | GET | `/api/admin/mistakes/by-upload/:uploadId` | 按上传记录查错题 |
@@ -194,7 +207,7 @@ admin_portal/frontend/src/
 
 | 方法 | HTTP | 路径 | 说明 |
 |------|------|------|------|
-| `getRecords(page, pageSize, status?, bucket?)` | GET | `/api/admin/oss-audit/records` | 分页查询审计记录 |
+| `getRecords(page, pageSize, status?, bucket?)` | GET | `/api/admin/oss-audit/records` | 分页查询审计记录，返回 `PaginatedResponse<OssAuditRecordDto>` |
 | `triggerAudit()` | POST | `/api/admin/oss-audit/trigger` | 触发审计 |
 | `resolveRecord(id)` | POST | `/api/admin/oss-audit/records/:id/resolve` | 处理单条（删除文件） |
 | `ignoreRecord(id, note?)` | POST | `/api/admin/oss-audit/records/:id/ignore` | 忽略单条 |
@@ -205,6 +218,15 @@ admin_portal/frontend/src/
 ## 核心类型定义
 
 ```typescript
+// ========== 分页响应基类 ==========
+interface PaginatedResponse<T> {
+  items: T[];        // 当前页数据
+  total: number;     // 总记录数
+  page: number;      // 当前页码（从1开始）
+  pageSize: number;  // 每页记录数
+}
+
+// ========== 业务 DTO ==========
 interface StudentDto {
   id: string; name: string; grade: number;
   identityAccountIds: string[]; createdAt: number; updatedAt: number;
