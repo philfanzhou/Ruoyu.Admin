@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using SProto = Ruoyu.Study.Student.Contract.Protos;
+using MistakeProto = Ruoyu.Study.Mistake.Contract.Protos;
 using Admin.WebApi.Models;
 using Ruoyu.Study.Common.Oss;
 
@@ -11,17 +12,20 @@ public class OssUploadRecordController : ControllerBase
 {
     private readonly SProto.StudentManagementGrpcService.StudentManagementGrpcServiceClient _managementClient;
     private readonly SProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient _learningClient;
+    private readonly MistakeProto.MistakeGrpcService.MistakeGrpcServiceClient _mistakeClient;
     private readonly ILogger<OssUploadRecordController> _logger;
     private readonly IOssService _ossService;
 
     public OssUploadRecordController(
         SProto.StudentManagementGrpcService.StudentManagementGrpcServiceClient managementClient,
         SProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient learningClient,
+        MistakeProto.MistakeGrpcService.MistakeGrpcServiceClient mistakeClient,
         ILogger<OssUploadRecordController> logger,
         IOssService ossService)
     {
         _managementClient = managementClient;
         _learningClient = learningClient;
+        _mistakeClient = mistakeClient;
         _logger = logger;
         _ossService = ossService;
     }
@@ -247,6 +251,137 @@ public class OssUploadRecordController : ControllerBase
         {
             _logger.LogError(ex, "Failed to rotate image: RecordId={RecordId}", id);
             return StatusCode(500, new ErrorResponse("Failed to rotate image"));
+        }
+    }
+
+    [HttpGet("legacy-check/{id}")]
+    public async Task<IActionResult> LegacyCheck(string id)
+    {
+        try
+        {
+            var mistakeList = await _mistakeClient.GetMistakeItemsByUploadAsync(
+                new MistakeProto.GetMistakeItemsByUploadRequest
+                {
+                    SourceUploadId = id
+                });
+
+            if (mistakeList.Items.Count == 0)
+            {
+                return Ok(new { isLegacy = false, message = "该记录没有关联错题" });
+            }
+
+            var allReviewed = mistakeList.Items.All(i => i.ReviewStatus == MistakeProto.ReviewStatus.Confirmed ||
+                                                          i.ReviewStatus == MistakeProto.ReviewStatus.Rejected);
+            var pendingCount = mistakeList.Items.Count(i => i.ReviewStatus == MistakeProto.ReviewStatus.PendingReview);
+
+            if (allReviewed && pendingCount == 0)
+            {
+                var hasUploadPathImage = mistakeList.Items.SelectMany(i => i.SourceRegions)
+                    .Any(r => !string.IsNullOrWhiteSpace(r.SourceImagePath) &&
+                              r.SourceImagePath.StartsWith("uploads/", StringComparison.OrdinalIgnoreCase));
+
+                return Ok(new
+                {
+                    isLegacy = true,
+                    mistakeCount = mistakeList.Items.Count,
+                    hasUploadPathImage,
+                    message = "该记录的错题已全部审核完毕，但上传记录仍存在，属于遗留数据"
+                });
+            }
+
+            return Ok(new
+            {
+                isLegacy = false,
+                pendingCount,
+                message = $"该记录还有{pendingCount}条错题待审核"
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to check legacy status for upload record: {RecordId}", id);
+            return StatusCode(500, new ErrorResponse("Failed to check legacy status"));
+        }
+    }
+
+    [HttpPost("legacy-clean/{id}")]
+    public async Task<IActionResult> LegacyClean(string id)
+    {
+        try
+        {
+            _logger.LogInformation("Starting legacy data cleanup for upload record: {RecordId}", id);
+
+            var mistakeList = await _mistakeClient.GetMistakeItemsByUploadAsync(
+                new MistakeProto.GetMistakeItemsByUploadRequest
+                {
+                    SourceUploadId = id
+                });
+
+            if (mistakeList.Items.Count == 0)
+            {
+                return BadRequest(new ErrorResponse("该记录没有关联错题，无法清理"));
+            }
+
+            var allReviewed = mistakeList.Items.All(i => i.ReviewStatus == MistakeProto.ReviewStatus.Confirmed ||
+                                                          i.ReviewStatus == MistakeProto.ReviewStatus.Rejected);
+            var hasPending = mistakeList.Items.Any(i => i.ReviewStatus == MistakeProto.ReviewStatus.PendingReview);
+
+            if (!allReviewed || hasPending)
+            {
+                var pendingCount = mistakeList.Items.Count(i => i.ReviewStatus == MistakeProto.ReviewStatus.PendingReview);
+                return BadRequest(new ErrorResponse($"该记录还有{pendingCount}条错题待审核，无法清理"));
+            }
+
+            var studentId = mistakeList.Items.FirstOrDefault()?.StudentId ?? "";
+            if (string.IsNullOrWhiteSpace(studentId))
+            {
+                return BadRequest(new ErrorResponse("无法找到该上传记录的学生ID"));
+            }
+
+            _logger.LogInformation("Step 1: Calling CompleteUploadReview for {RecordId}", id);
+            var completeReviewResult = await _mistakeClient.CompleteUploadReviewAsync(
+                new MistakeProto.CompleteUploadReviewRequest
+                {
+                    SourceUploadId = id,
+                    ReviewerId = "admin-legacy-cleanup"
+                });
+
+            if (!completeReviewResult.Success)
+            {
+                _logger.LogWarning("CompleteUploadReview failed for {RecordId}: {Message}",
+                    id, completeReviewResult.ErrorMessage);
+                return BadRequest(new ErrorResponse(
+                    completeReviewResult.ErrorMessage ?? "Failed to complete upload review"));
+            }
+
+            _logger.LogInformation("Step 2: Calling DeleteUploadRecordAfterReview for {RecordId}", id);
+            var deleteResult = await _learningClient.DeleteUploadRecordAfterReviewAsync(
+                new SProto.DeleteUploadRecordAfterReviewRequest
+                {
+                    RecordId = id,
+                    StudentId = studentId
+                });
+
+            if (!deleteResult.Success)
+            {
+                _logger.LogWarning("DeleteUploadRecordAfterReview failed for {RecordId}: {Message}",
+                    id, deleteResult.ErrorMessage);
+                return BadRequest(new ErrorResponse(
+                    deleteResult.ErrorMessage ?? "Failed to delete upload record"));
+            }
+
+            _logger.LogInformation("Legacy data cleanup completed successfully for {RecordId}", id);
+
+            return Ok(new
+            {
+                success = true,
+                message = "清理完成",
+                uploadRecordId = id
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to clean legacy data for upload record: {RecordId}", id);
+            return StatusCode(500, new ErrorResponse("Failed to clean legacy data"));
         }
     }
 

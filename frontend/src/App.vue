@@ -28,10 +28,6 @@
               <el-icon><svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M9 16h6v-6h4l-7-7-7 7h4zm-4 2h14v2H5z"/></svg></el-icon>
               <span>上传记录</span>
             </el-menu-item>
-            <el-menu-item index="/legacy-data">
-              <el-icon><svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></el-icon>
-              <span>历史遗留</span>
-            </el-menu-item>
             <el-menu-item index="/oss-audit">
               <el-icon><svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg></el-icon>
               <span>OSS 审计</span>

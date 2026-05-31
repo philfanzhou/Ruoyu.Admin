@@ -32,12 +32,6 @@ const router = createRouter({
       meta: { title: '错题管理' }
     },
     {
-      path: '/legacy-data',
-      name: 'legacy-data',
-      component: () => import('../views/LegacyDataView.vue'),
-      meta: { title: '历史遗留数据' }
-    },
-    {
       path: '/oss-audit',
       name: 'oss-audit',
       component: () => import('../views/OssAuditView.vue'),

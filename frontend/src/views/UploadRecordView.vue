@@ -101,6 +101,9 @@
         </el-table-column>
         <el-table-column label="操作" width="280" fixed="right">
           <template #default="{ row }">
+            <el-button link type="success" size="small" @click="checkLegacy(row)">
+              检查清理
+            </el-button>
             <el-button link type="primary" size="small" @click="showDetailDialog(row)">
               详情
             </el-button>
@@ -275,6 +278,40 @@
         <el-button type="primary" @click="confirmReset" :loading="resetting">确认重置</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="showLegacyDialog" title="遗留数据检查" width="500px">
+      <div v-if="legacyCheckResult">
+        <el-alert
+          :type="legacyCheckResult.isLegacy ? 'warning' : 'success'"
+          :title="legacyCheckResult.message"
+          show-icon
+          :closable="false"
+          style="margin-bottom: 16px"
+        />
+        <el-descriptions v-if="legacyCheckResult.isLegacy" :column="1" border size="small">
+          <el-descriptions-item label="关联错题数">{{ legacyCheckResult.mistakeCount }}</el-descriptions-item>
+          <el-descriptions-item label="图片未迁移">{{ legacyCheckResult.hasUploadPathImage ? '是' : '否' }}</el-descriptions-item>
+        </el-descriptions>
+        <div v-if="legacyCheckResult.isLegacy" style="margin-top: 16px; color: #909399; font-size: 13px">
+          <p>清理操作将：</p>
+          <ol>
+            <li>迁移图片到 OSS 并更新错题中的图片路径</li>
+            <li>删除该上传记录</li>
+          </ol>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="showLegacyDialog = false">关闭</el-button>
+        <el-button
+          v-if="legacyCheckResult?.isLegacy"
+          type="danger"
+          @click="cleanLegacy"
+          :loading="legacyCleaning"
+        >
+          确认清理
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -322,6 +359,12 @@ const resetForm = ref({
   studentId: '',
   targetStatus: 1
 })
+
+const legacyChecking = ref(false)
+const legacyCheckResult = ref<{ isLegacy: boolean; mistakeCount?: number; hasUploadPathImage?: boolean; message: string } | null>(null)
+const showLegacyDialog = ref(false)
+const legacyCleaning = ref(false)
+const legacyTarget = ref<UploadRecordDto | null>(null)
 
 async function loadEnumOptions() {
   try {
@@ -585,6 +628,39 @@ async function confirmReset() {
     ElMessage.error(error.response?.data?.message || '重置失败')
   } finally {
     resetting.value = false
+  }
+}
+
+async function checkLegacy(record: UploadRecordDto) {
+  legacyChecking.value = true
+  try {
+    const result = await studentAdminClient.legacyCheck(record.id)
+    legacyTarget.value = record
+    legacyCheckResult.value = result
+    showLegacyDialog.value = true
+  } catch (error: any) {
+    ElMessage.error(error.response?.data?.message || error.message || '检查失败')
+  } finally {
+    legacyChecking.value = false
+  }
+}
+
+async function cleanLegacy() {
+  if (!legacyTarget.value) return
+  legacyCleaning.value = true
+  try {
+    const result = await studentAdminClient.legacyClean(legacyTarget.value.id)
+    if (result.success) {
+      ElMessage.success('清理成功')
+      showLegacyDialog.value = false
+      await loadUploadRecords()
+    } else {
+      ElMessage.error(result.message || '清理失败')
+    }
+  } catch (error: any) {
+    ElMessage.error(error.response?.data?.message || error.message || '清理失败')
+  } finally {
+    legacyCleaning.value = false
   }
 }
 

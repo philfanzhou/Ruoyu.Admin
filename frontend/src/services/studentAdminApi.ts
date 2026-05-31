@@ -318,6 +318,16 @@ class StudentAdminApiClient {
     const response = await this.client.get<EnumOptionsResponse>('/api/admin/enum-options')
     return response.data
   }
+
+  async legacyCheck(id: string) {
+    const response = await this.client.get<{ isLegacy: boolean; mistakeCount?: number; hasUploadPathImage?: boolean; message: string }>(`/api/admin/oss-upload-records/legacy-check/${id}`)
+    return response.data
+  }
+
+  async legacyClean(id: string) {
+    const response = await this.client.post<{ success: boolean; message: string; uploadRecordId: string }>(`/api/admin/oss-upload-records/legacy-clean/${id}`)
+    return response.data
+  }
 }
 
 export const studentAdminClient = new StudentAdminApiClient()

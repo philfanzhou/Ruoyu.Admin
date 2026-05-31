@@ -24,16 +24,14 @@ admin_portal/frontend/src/
 ├── views/
 │   ├── StudentView.vue          # 学生管理页面
 │   ├── TeacherView.vue          # 教师管理页面
-│   ├── UploadRecordView.vue      # 上传记录管理页面
+│   ├── UploadRecordView.vue      # 上传记录管理页面（含遗留数据检查清理）
 │   ├── MistakeView.vue           # 错题管理页面
-│   ├── LegacyDataView.vue        # 历史遗留数据清理页面
 │   └── OssAuditView.vue          # OSS 审计页面
 ├── services/
 │   ├── identityApi.ts           # Identity 用户管理 API
 │   ├── studentAdminApi.ts       # 学生管理 + 上传记录 + 错题查询 API
 │   ├── teacherPortalApi.ts      # 教师权限管理 API
-│   ├── ossAuditApi.ts           # OSS 审计 API
-│   └── legacyDataApi.ts         # 历史遗留数据清理 API
+│   └── ossAuditApi.ts           # OSS 审计 API
 └── components/
     ├── ImagePreview.vue          # 图片预览组件
     └── ImageViewer.vue           # 图片查看器组件
@@ -57,7 +55,6 @@ admin_portal/frontend/src/
 │  - 教师管理 │                                             │
 │  - 数据管理 │ (可展开)                                    │
 │    ├─上传记录 │                                           │
-│    ├─历史遗留 │                                           │
 │    └─OSS审计 │                                             │
 │  - 错题管理 │                                             │
 │            │                                             │
@@ -70,9 +67,8 @@ admin_portal/frontend/src/
 |------|------|----------|------|
 | `/students` | StudentView.vue | - | 学生管理 |
 | `/teachers` | TeacherView.vue | - | 教师管理 |
-| `/upload-records` | UploadRecordView.vue | 数据管理 | 上传记录管理 |
+| `/upload-records` | UploadRecordView.vue | 数据管理 | 上传记录管理（含遗留数据检查清理） |
 | `/mistakes` | MistakeView.vue | - | 错题查询与管理 |
-| `/legacy-data` | LegacyDataView.vue | 数据管理 | 历史遗留数据清理 |
 | `/oss-audit` | OssAuditView.vue | 数据管理 | OSS 僵尸文件审计 |
 
 ---
@@ -145,10 +141,73 @@ admin_portal/frontend/src/
 **功能列表**：
 - 上传记录列表（学生搜索筛选、状态筛选、分页）
 - 总记录数显示
+- 缩略图列（显示第一张图片缩略图，点击可预览所有图片）
 - 查看详情（图片缩略图、旋转、预览大图）
 - 指派记录给学生
 - 重置状态
 - 旋转图片
+- 遗留数据检查与清理（逐条检查）
+
+#### 遗留数据检查清理
+
+**问题背景**：系统早期存在一个 Bug：教师审核错题通过后，上传记录没有被删除，图片路径也没有迁移（仍在 `uploads/` 而非 `mistakes/`）。这些遗留数据需要安全清理。
+
+**设计思路**：不再使用独立的全量扫描页面，而是在每条上传记录的操作列提供"检查清理"按钮，逐条检查该记录是否为遗留数据。这样做的好处是：
+1. 每次只检查一条上传记录，而非全量扫描
+2. 管理员可以在浏览上传记录时随时检查可疑记录
+3. 减少不必要的全量扫描开销
+
+**检查逻辑**：
+
+| 条件 | 判定 | 返回信息 |
+|------|------|----------|
+| 无关联错题 | 非遗留 | "该记录没有关联错题" |
+| 全部错题已审核（Confirmed/Rejected）且无待审核 | **遗留数据** | isLegacy=true, mistakeCount, hasUploadPathImage |
+| 存在待审核错题 | 非遗留 | "该记录还有N条错题待审核" |
+
+**清理流程**：
+
+```
+管理员点击"检查清理"按钮
+    ↓
+调用 GET /api/admin/oss-upload-records/legacy-check/{id}
+    ↓
+显示检查结果对话框：
+    - 非遗留：显示提示信息，仅"关闭"按钮
+    - 遗留数据：显示错题数量、图片迁移状态、清理操作说明
+    ↓
+（遗留数据时）管理员点击"确认清理"
+    ↓
+调用 POST /api/admin/oss-upload-records/legacy-clean/{id}
+    ↓
+后端处理流程：
+┌─────────────────────────────────────────────────────┐
+│ 1. 验证是否为遗留数据（错题全部已审核）               │
+│    - 不满足条件则中止并返回错误                        │
+└─────────────────────────────────────────────────────┘
+    ↓
+┌─────────────────────────────────────────────────────┐
+│ 2. CompleteUploadReview（gRPC）                      │
+│    - 迁移物理文件：uploads/ → mistakes/              │
+│    - 更新错题记录中的图片路径                          │
+│    - 保存到数据库                                      │
+└─────────────────────────────────────────────────────┘
+    ↓
+┌─────────────────────────────────────────────────────┐
+│ 3. DeleteUploadRecordAfterReview（gRPC）             │
+│    - 删除上传记录                                      │
+│    - 清理关联数据                                      │
+└─────────────────────────────────────────────────────┘
+    ↓
+返回成功 → 刷新列表
+```
+
+**关键约束**：
+
+1. **不直接操作数据库**：所有操作通过 gRPC 业务接口完成
+2. **先验证后清理**：清理前必须先通过 legacy-check 验证
+3. **不可逆操作**：删除前需管理员二次确认
+4. **原子性**：图片迁移和路径更新在同一次请求中完成
 
 **API 调用**（按需加载）：
 - `getUploadRecords(params)` - 查询上传记录
@@ -160,6 +219,8 @@ admin_portal/frontend/src/
 - `assignUploadRecord(id, payload)` - 指派记录
 - `resetUploadRecordStatus(id, status)` - 重置状态
 - `rotateUploadImage(id, payload)` - 旋转图片
+- `legacyCheck(id)` - 检查单条上传记录是否为遗留数据
+- `legacyClean(id)` - 清理单条遗留数据
 
 ---
 
@@ -182,87 +243,7 @@ admin_portal/frontend/src/
 
 ---
 
-### 5. 历史遗留数据清理页面 (`/legacy-data`)
-
-**所属分组**：数据管理
-
-#### 问题背景
-
-系统早期存在一个 Bug：教师审核错题通过后，**上传记录没有被删除**，**图片路径也没有迁移**（仍在 `uploads/` 而非 `mistakes/`）。这些遗留数据需要安全清理。
-
-#### 业务规则
-
-清理必须满足以下**全部条件**：
-
-| 条件 | 说明 |
-|------|------|
-| 错题全部审核 | 该上传记录关联的所有错题都已审核（非 PendingReview） |
-| 人工确认 | 每条记录需要管理员手动点击"清理"确认 |
-| 完整流程 | 迁移图片 → 更新错题路径 → 删除上传记录 |
-
-#### 清理流程（通过业务接口）
-
-```
-管理员查看遗留数据列表
-    ↓
-点击"清理" → 弹出确认对话框，显示：
-    - 上传记录ID
-    - 学生姓名
-    - 错题数量
-    - 清理操作说明
-    ↓
-点击"确认清理"
-    ↓
-后端处理流程：
-┌─────────────────────────────────────────────────────┐
-│ 1. CompleteUploadReview（gRPC）                      │
-│    - 检查所有错题是否已审核（失败则中止）               │
-│    - 获取该上传记录下的所有错题                        │
-│    - 迁移物理文件：uploads/ → mistakes/              │
-│    - 更新错题记录中的图片路径                          │
-│    - 保存到数据库                                      │
-└─────────────────────────────────────────────────────┘
-    ↓
-┌─────────────────────────────────────────────────────┐
-│ 2. DeleteUploadRecordAfterReview（gRPC）             │
-│    - 删除上传记录                                      │
-│    - 清理关联数据                                      │
-└─────────────────────────────────────────────────────┘
-    ↓
-返回成功 → 刷新列表
-```
-
-#### 功能特性
-
-| 功能 | 说明 |
-|------|------|
-| 扫描列表 | 分页展示所有"错题已审核但上传记录还在"的数据 |
-| 显示信息 | 上传记录ID、学生姓名、错题数量、图片路径状态、创建时间 |
-| 人工审核 | 每条记录需管理员手动点击"清理"确认 |
-| 二次确认 | 点击清理后弹出对话框，详细说明操作影响 |
-| 刷新 | 支持手动刷新列表 |
-
-#### 图片路径状态标识
-
-| 状态 | 含义 |
-|------|------|
-| `uploads/`（黄色标签） | 图片仍在 uploads/，需要迁移 |
-| `已迁移`（绿色标签） | 图片已迁移到 mistakes/ |
-
-#### 关键约束
-
-1. **不直接操作数据库**：所有操作通过 gRPC 业务接口完成
-2. **原子性**：图片迁移和路径更新在同一次请求中完成
-3. **先验证后清理**：系统会检查待清理数据是否满足条件
-4. **不可逆操作**：删除前需管理员二次确认
-
-**API 调用**（按需加载）：
-- `scanLegacyData(params)` - 扫描遗留数据
-- `cleanLegacyData(uploadRecordId)` - 清理单个遗留数据
-
----
-
-### 6. OSS 审计页面 (`/oss-audit`)
+### 5. OSS 审计页面 (`/oss-audit`)
 
 **所属分组**：数据管理
 
@@ -315,6 +296,8 @@ admin_portal/frontend/src/
 | `updateMistakeItem(id, data)` | PUT | `/api/admin/mistakes/:id` | 更新错题 |
 | `getMistakesByUploadId(uploadId)` | GET | `/api/admin/mistakes/by-upload/:uploadId` | 按上传记录查错题 |
 | `getEnumOptions()` | GET | `/api/admin/enum-options` | 获取枚举选项 |
+| `legacyCheck(id)` | GET | `/api/admin/oss-upload-records/legacy-check/:id` | 检查单条上传记录是否为遗留数据 |
+| `legacyClean(id)` | POST | `/api/admin/oss-upload-records/legacy-clean/:id` | 清理单条遗留数据 |
 
 ### identityApi.ts
 
@@ -338,13 +321,6 @@ admin_portal/frontend/src/
 | `addTeacherSubject(userId, subject)` | POST | `/api/teacher-portal/admin/teachers/:userId/subjects/:subject` | 添加科目 |
 | `removeTeacherSubject(userId, subject)` | DELETE | `/api/teacher-portal/admin/teachers/:userId/subjects/:subject` | 移除科目 |
 | `getAvailableSubjects()` | GET | `/api/teacher-portal/admin/available-subjects` | 可用科目 |
-
-### legacyDataApi.ts
-
-| 方法 | HTTP | 路径 | 说明 |
-|------|------|------|------|
-| `scanLegacyData(params)` | GET | `/api/admin/legacy-data/scan` | 扫描遗留数据 |
-| `cleanLegacyData(uploadRecordId)` | POST | `/api/admin/legacy-data/clean` | 清理单个遗留数据 |
 
 ### ossAuditApi.ts
 
@@ -398,13 +374,11 @@ interface MistakeItemDto {
   imageCount: number; firstImagePath: string;
 }
 
-interface LegacyDataItemDto {
-  uploadRecordId: string;
-  studentId: string;
-  studentName: string;
-  mistakeCount: number;
-  hasUploadPathImage: boolean;
-  createdAt: number;
+interface LegacyCheckResult {
+  isLegacy: boolean;
+  mistakeCount?: number;
+  hasUploadPathImage?: boolean;
+  message: string;
 }
 
 interface OssAuditRecordDto {
