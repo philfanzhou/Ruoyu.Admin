@@ -18,6 +18,11 @@
         <el-table-column prop="userId" label="User ID" width="220" show-overflow-tooltip />
         <el-table-column prop="phone" label="手机号" width="120" />
         <el-table-column prop="username" label="用户名" width="120" />
+        <el-table-column label="备注" min-width="150">
+          <template #default="{ row }">
+            {{ getUserRemark(row.userId) }}
+          </template>
+        </el-table-column>
         <el-table-column label="科目" min-width="200">
           <template #default="{ row }">
             <el-tag
@@ -136,6 +141,7 @@ import { getIdentityAdminApiClient, type IdentityUser } from '../services/identi
 
 const teachers = ref<TeacherAccountDto[]>([])
 const loading = ref(false)
+const identityUserMap = ref<Record<string, IdentityUser>>({})
 
 const availableSubjects = ref<SubjectOption[]>([])
 
@@ -158,11 +164,34 @@ async function loadTeachers() {
   try {
     const result = await teacherPortalClient.getTeachers()
     teachers.value = result.data
+    await loadIdentityUsers()
   } catch (error) {
     ElMessage.error('加载教师列表失败')
   } finally {
     loading.value = false
   }
+}
+
+async function loadIdentityUsers() {
+  const userIds = teachers.value
+    .map(t => t.userId)
+    .filter((id): id is string => !!id)
+  if (userIds.length === 0) return
+  try {
+    const users = await getIdentityAdminApiClient().getUsersByIds(userIds)
+    const map: Record<string, IdentityUser> = {}
+    for (const u of users) {
+      map[u.userId] = u
+    }
+    identityUserMap.value = map
+  } catch (error) {
+    console.error('Failed to load identity users:', error)
+  }
+}
+
+function getUserRemark(userId: string | null): string {
+  if (!userId) return '-'
+  return identityUserMap.value[userId]?.remark || '-'
 }
 
 async function loadAvailableSubjects() {
