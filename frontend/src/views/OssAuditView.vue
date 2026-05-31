@@ -188,9 +188,29 @@ const statusOptions = [
   { value: 2, label: '已忽略' }
 ]
 
-function formatDate(timestamp: number) {
+function formatDate(timestamp: number | string) {
   if (!timestamp) return '-'
-  return new Date(timestamp).toLocaleString('zh-CN', {
+  if (typeof timestamp === 'string') {
+    if (/^\d+$/.test(timestamp.trim())) {
+      return new Date(Number(timestamp) * 1000).toLocaleString('zh-CN', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      })
+    }
+    return new Date(timestamp).toLocaleString('zh-CN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    })
+  }
+  return new Date(timestamp * 1000).toLocaleString('zh-CN', {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',

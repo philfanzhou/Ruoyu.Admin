@@ -179,10 +179,28 @@ function getSubjectName(subjectId: number): string {
   return subject?.name || `科目${subjectId}`
 }
 
-function formatDate(dateStr: string): string {
+function formatDate(dateStr: string | number): string {
   if (!dateStr) return '-'
-  const date = new Date(dateStr)
-  return date.toLocaleString('zh-CN', {
+  if (typeof dateStr === 'string') {
+    if (/^\d+$/.test(dateStr.trim())) {
+      return new Date(Number(dateStr) * 1000).toLocaleString('zh-CN', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+      })
+    }
+    const date = new Date(dateStr)
+    return date.toLocaleString('zh-CN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+  }
+  return new Date(dateStr * 1000).toLocaleString('zh-CN', {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',

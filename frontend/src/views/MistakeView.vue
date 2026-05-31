@@ -8,13 +8,27 @@
       </template>
 
       <div class="search-bar">
-        <el-input
-          v-model="searchStudent"
+        <el-select
+          v-model="searchStudentId"
           placeholder="搜索学生姓名"
           style="width: 200px; margin-right: 8px"
           clearable
-          @keyup.enter="loadMistakes"
-        />
+          filterable
+          remote
+          reserve-keyword
+          :remote-method="searchStudentsForFilter"
+          :loading="searchingStudent"
+        >
+          <el-option
+            v-for="student in filterStudentOptions"
+            :key="student.id"
+            :label="student.name"
+            :value="student.id"
+          >
+            <span>{{ student.name }}</span>
+            <span style="color: #999; font-size: 12px; margin-left: 8px">年级{{ student.grade }}</span>
+          </el-option>
+        </el-select>
         <el-select
           v-model="searchSubject"
           placeholder="学科"
@@ -67,8 +81,8 @@
           <template #default="{ row }">
             <el-image
               v-if="row.firstImagePath"
-              :src="row.firstImagePath"
-              :preview-src-list="[row.firstImagePath]"
+              :src="getMistakeImageUrl(row.firstImagePath)"
+              :preview-src-list="[getMistakeImageUrl(row.firstImagePath)]"
               fit="cover"
               style="width: 50px; height: 50px; cursor: pointer"
             />
@@ -243,10 +257,13 @@ const total = ref(0)
 const page = ref(1)
 const pageSize = 20
 
-const searchStudent = ref('')
+const searchStudentId = ref<string>()
 const searchSubject = ref<number>()
 const searchGrade = ref<number>()
 const searchReviewStatus = ref<number>()
+
+const filterStudentOptions = ref<any[]>([])
+const searchingStudent = ref(false)
 
 const subjectOptions = ref<{ value: number; label: string }[]>([])
 const gradeOptions = ref<{ value: number; label: string }[]>([])
@@ -283,6 +300,22 @@ async function loadSubjectOptions() {
   }
 }
 
+async function searchStudentsForFilter(query: string) {
+  if (!query || query.length < 1) {
+    filterStudentOptions.value = []
+    return
+  }
+  searchingStudent.value = true
+  try {
+    const result = await studentAdminApi.getStudents({ name: query, pageSize: 20 })
+    filterStudentOptions.value = result.items
+  } catch (error) {
+    console.error('Search students failed:', error)
+  } finally {
+    searchingStudent.value = false
+  }
+}
+
 async function loadGradeOptions() {
   try {
     const grades = await studentAdminApi.getGrades()
@@ -312,7 +345,7 @@ async function loadMistakes() {
     const result = await studentAdminApi.getMistakeItems({
       page: page.value,
       size: pageSize,
-      studentId: searchStudent.value || undefined,
+      studentId: searchStudentId.value || undefined,
       subject: searchSubject.value,
       grade: searchGrade.value,
       reviewStatus: searchReviewStatus.value
@@ -347,10 +380,21 @@ function getReviewStatusTagType(status: number) {
   }
 }
 
-function formatDate(dateStr: string | number) {
+function formatDate(dateStr: string | number | undefined) {
   if (!dateStr) return '-'
-  const date = new Date(dateStr)
-  return date.toLocaleString('zh-CN')
+  if (typeof dateStr === 'string') {
+    if (/^\d+$/.test(dateStr.trim())) {
+      return new Date(Number(dateStr) * 1000).toLocaleString('zh-CN')
+    }
+    return new Date(dateStr).toLocaleString('zh-CN')
+  }
+  return new Date(dateStr * 1000).toLocaleString('zh-CN')
+}
+
+function getMistakeImageUrl(path: string) {
+  if (!path) return ''
+  if (path.startsWith('http://') || path.startsWith('https://')) return path
+  return `/api/admin/oss-upload-records/image?path=${encodeURIComponent(path)}`
 }
 
 async function showDetailDialog(mistake: MistakeItem) {
@@ -363,7 +407,7 @@ async function showDetailDialog(mistake: MistakeItem) {
       const basePath = detail.firstImagePath.replace(/\/[^/]+\.[^.]+$/, '')
       const ext = detail.firstImagePath.match(/\.[^.]+$/)?.[0] || '.jpg'
       for (let i = 0; i < (detail.imageCount || 0); i++) {
-        images.push(`${basePath}/${i}${ext}`)
+        images.push(getMistakeImageUrl(`${basePath}/${i}${ext}`))
       }
     }
     currentMistakeImages.value = images

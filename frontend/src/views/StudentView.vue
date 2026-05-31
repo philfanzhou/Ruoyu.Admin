@@ -57,7 +57,7 @@
               closable
               @close="unlinkAccount(row.id, accountId)"
             >
-              {{ accountId }}
+              {{ getAccountDisplayName(accountId) }}
             </el-tag>
             <el-button
               size="small"
@@ -114,6 +114,35 @@
               :value="grade.value"
             />
           </el-select>
+        </el-form-item>
+        <el-form-item label="搜索账户">
+          <el-input
+            v-model="createSearchKeyword"
+            placeholder="输入 username 或手机号"
+            @input="searchCreateIdentityUsers"
+          />
+        </el-form-item>
+        <el-form-item label="选择账户" v-if="createIdentityUsers.length > 0">
+          <el-select v-model="createSelectedUserId" style="width: 100%" @change="addCreateIdentityAccount">
+            <el-option
+              v-for="user in createIdentityUsers"
+              :key="user.userId"
+              :label="`${user.username} (${user.phone || '无手机'})`"
+              :value="user.userId"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="已选账户" v-if="createForm.identityAccountIds.length > 0">
+          <el-tag
+            v-for="id in createForm.identityAccountIds"
+            :key="id"
+            size="small"
+            closable
+            @close="removeCreateIdentityAccount(id)"
+            style="margin-right: 4px"
+          >
+            {{ getAccountDisplayName(id) }}
+          </el-tag>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -195,7 +224,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import studentAdminApi from '../services/studentAdminApi'
+import studentAdminApi, { type IdentityAccountDto } from '../services/studentAdminApi'
 import identityApi from '../services/identityApi'
 
 const students = ref<any[]>([])
@@ -211,7 +240,10 @@ const gradeOptions = ref<any[]>([])
 const subjectOptions = ref<any[]>([])
 
 const showCreateDialog = ref(false)
-const createForm = ref({ name: '', grade: 0 })
+const createForm = ref({ name: '', grade: 0, identityAccountIds: [] as string[] })
+const createIdentityUsers = ref<any[]>([])
+const createSearchKeyword = ref('')
+const createSelectedUserId = ref('')
 
 const showEditDialog = ref(false)
 const editForm = ref({ id: '', name: '', grade: 0 })
@@ -220,6 +252,7 @@ const showLinkDialogVisible = ref(false)
 const currentStudentId = ref('')
 const linkForm = ref({ keyword: '', selectedUserId: '' })
 const identityUsers = ref<any[]>([])
+const accountMap = ref<Map<string, IdentityAccountDto>>(new Map())
 
 const showOpenSubjectsDialogVisible = ref(false)
 const currentStudent = ref<any>(null)
@@ -254,6 +287,7 @@ async function loadStudents() {
     })
     students.value = result.items
     total.value = result.total
+    await loadAccountMap()
   } catch (error) {
     ElMessage.error('加载学生列表失败')
   } finally {
@@ -261,16 +295,50 @@ async function loadStudents() {
   }
 }
 
+async function loadAccountMap() {
+  const allAccountIds = new Set<string>()
+  for (const student of students.value) {
+    for (const id of student.identityAccountIds || []) {
+      allAccountIds.add(id)
+    }
+  }
+  if (allAccountIds.size === 0) {
+    accountMap.value = new Map()
+    return
+  }
+  try {
+    const accounts = await studentAdminApi.getIdentityAccountsBatch([...allAccountIds])
+    const map = new Map<string, IdentityAccountDto>()
+    for (const acc of accounts) {
+      map.set(acc.userId, acc)
+    }
+    accountMap.value = map
+  } catch (error) {
+    console.error('Failed to load account info:', error)
+  }
+}
+
+function getAccountDisplayName(accountId: string): string {
+  return accountMap.value.get(accountId)?.username || accountId
+}
+
 function getGradeLabel(grade: number) {
   return gradeOptions.value.find(g => g.value === grade)?.label || `年级${grade}`
 }
 
 async function createStudent() {
+  if (createForm.value.identityAccountIds.length === 0) {
+    ElMessage.warning('请至少选择一个关联账户')
+    return
+  }
   try {
     await studentAdminApi.createStudent(createForm.value)
     ElMessage.success('创建成功')
     showCreateDialog.value = false
-    createForm.value = { name: '', grade: 0 }
+    createForm.value = { name: '', grade: 0, identityAccountIds: [] }
+    createIdentityUsers.value = []
+    createSearchKeyword.value = ''
+    createSelectedUserId.value = ''
     await loadStudents()
   } catch (error: any) {
     ElMessage.error(error.response?.data?.message || '创建失败')
@@ -325,11 +393,54 @@ async function searchIdentityUsers() {
     return
   }
   try {
-    const users = await identityApi.getUsers({ keyword: linkForm.value.keyword })
-    identityUsers.value = users
+    const keyword = linkForm.value.keyword
+    const isPhone = /^\d+$/.test(keyword)
+    const result = await identityApi.getUsers({
+      username: isPhone ? undefined : keyword,
+      phone: isPhone ? keyword : undefined,
+      page: 1,
+      pageSize: 20
+    })
+    identityUsers.value = result.items
   } catch (error) {
     console.error('Search users failed:', error)
   }
+}
+
+async function searchCreateIdentityUsers() {
+  if (!createSearchKeyword.value || createSearchKeyword.value.length < 2) {
+    return
+  }
+  try {
+    const keyword = createSearchKeyword.value
+    const isPhone = /^\d+$/.test(keyword)
+    const result = await identityApi.getUsers({
+      username: isPhone ? undefined : keyword,
+      phone: isPhone ? keyword : undefined,
+      page: 1,
+      pageSize: 20
+    })
+    createIdentityUsers.value = result.items
+  } catch (error) {
+    console.error('Search users for create failed:', error)
+  }
+}
+
+function addCreateIdentityAccount(userId: string) {
+  if (userId && !createForm.value.identityAccountIds.includes(userId)) {
+    createForm.value.identityAccountIds.push(userId)
+    const user = createIdentityUsers.value.find(u => u.userId === userId)
+    if (user && !accountMap.value.has(userId)) {
+      const newMap = new Map(accountMap.value)
+      newMap.set(userId, { userId: user.userId, username: user.username, displayName: user.displayName || user.username, phone: user.phone || '', remark: user.remark || '' })
+      accountMap.value = newMap
+    }
+  }
+  createSelectedUserId.value = ''
+}
+
+function removeCreateIdentityAccount(userId: string) {
+  createForm.value.identityAccountIds = createForm.value.identityAccountIds.filter(id => id !== userId)
 }
 
 async function linkAccount() {
@@ -369,7 +480,7 @@ function showOpenSubjectsDialog(student: any) {
 async function saveOpenSubjects() {
   try {
     await studentAdminApi.setStudentOpenSubjects(currentStudent.value.id, {
-      subjects: openSubjects.value.map(s => ({ subject: s }))
+      subjects: openSubjects.value.map(s => ({ subject: s, openStartDate: new Date().toISOString().split('T')[0], openEndDate: null }))
     })
     ElMessage.success('保存成功')
     showOpenSubjectsDialogVisible.value = false

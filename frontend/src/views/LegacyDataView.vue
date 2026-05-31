@@ -98,7 +98,7 @@ interface LegacyDataItem {
   studentId: string
   mistakeCount: number
   hasUploadPathImage: boolean
-  createdAt: string
+  createdAt: number | string
 }
 
 const legacyDataList = ref<LegacyDataItem[]>([])
@@ -116,7 +116,7 @@ async function loadLegacyData() {
       pageSize
     })
     legacyDataList.value = result.items || result.data || []
-    total.value = result.total || legacyDataList.value.length
+    total.value = result.totalCount || result.total || legacyDataList.value.length
   } catch (error: any) {
     ElMessage.error(error.response?.data?.message || '加载遗留数据失败')
   } finally {
@@ -124,10 +124,29 @@ async function loadLegacyData() {
   }
 }
 
-function formatDate(dateString: string): string {
-  if (!dateString) return '-'
-  const date = new Date(dateString)
-  return date.toLocaleString('zh-CN', {
+function formatDate(dateValue: number | string): string {
+  if (!dateValue) return '-'
+  if (typeof dateValue === 'string') {
+    if (/^\d+$/.test(dateValue.trim())) {
+      return new Date(Number(dateValue) * 1000).toLocaleString('zh-CN', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      })
+    }
+    return new Date(dateValue).toLocaleString('zh-CN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    })
+  }
+  return new Date(dateValue * 1000).toLocaleString('zh-CN', {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',

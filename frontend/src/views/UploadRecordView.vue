@@ -9,6 +9,28 @@
 
       <div class="filter-bar">
         <el-select
+          v-model="filterStudentId"
+          placeholder="搜索学生姓名"
+          style="width: 200px; margin-right: 8px"
+          clearable
+          filterable
+          remote
+          reserve-keyword
+          :remote-method="searchStudentsForFilter"
+          :loading="searchingFilterStudent"
+          size="small"
+        >
+          <el-option
+            v-for="student in filterStudentOptions"
+            :key="student.id"
+            :label="student.name"
+            :value="student.id"
+          >
+            <span>{{ student.name }}</span>
+            <span style="color: #999; font-size: 12px; margin-left: 8px">年级{{ student.grade }}</span>
+          </el-option>
+        </el-select>
+        <el-select
           v-model="filterStatus"
           placeholder="状态筛选"
           style="width: 200px; margin-right: 8px"
@@ -258,6 +280,9 @@ const page = ref(1)
 const pageSize = 20
 
 const filterStatus = ref<number>()
+const filterStudentId = ref<string>()
+const filterStudentOptions = ref<StudentDto[]>([])
+const searchingFilterStudent = ref(false)
 
 const statusOptions = ref<{ value: number; label: string }[]>([])
 const subjectOptions = ref<{ value: number; label: string }[]>([])
@@ -330,7 +355,8 @@ async function loadUploadRecords() {
     const result = await studentAdminClient.getUploadRecords({
       page: page.value,
       pageSize,
-      status: filterStatus.value === -1 ? undefined : filterStatus.value
+      status: filterStatus.value === -1 ? undefined : filterStatus.value,
+      studentId: filterStudentId.value || undefined
     })
     uploadRecords.value = result.items
     total.value = result.totalCount
@@ -377,8 +403,13 @@ function getGradeLabel(grade: number) {
 
 function formatDate(date: number | string | undefined) {
   if (!date) return '-'
-  const timestamp = typeof date === 'string' ? parseInt(date) : date
-  return new Date(timestamp).toLocaleString('zh-CN')
+  if (typeof date === 'string') {
+    if (/^\d+$/.test(date.trim())) {
+      return new Date(Number(date) * 1000).toLocaleString('zh-CN')
+    }
+    return new Date(date).toLocaleString('zh-CN')
+  }
+  return new Date(date * 1000).toLocaleString('zh-CN')
 }
 
 function getImageUrl(path: string) {
@@ -386,7 +417,7 @@ function getImageUrl(path: string) {
   if (path.startsWith('http://') || path.startsWith('https://')) {
     return path
   }
-  return `/api/images/${path}`
+  return `/api/admin/oss-upload-records/image?path=${encodeURIComponent(path)}`
 }
 
 function getPreviewList(imagePaths: string[]) {
@@ -421,6 +452,22 @@ async function rotateImage(record: UploadRecordDto, imageIndex: number, rotation
     ElMessage.success('图片旋转成功')
   } catch (error: any) {
     ElMessage.error(error.response?.data?.message || '旋转图片失败')
+  }
+}
+
+async function searchStudentsForFilter(query: string) {
+  if (!query || query.length < 1) {
+    filterStudentOptions.value = []
+    return
+  }
+  searchingFilterStudent.value = true
+  try {
+    const result = await studentAdminClient.getStudents({ name: query, pageSize: 20 })
+    filterStudentOptions.value = result.items
+  } catch (error) {
+    console.error('Search students for filter failed:', error)
+  } finally {
+    searchingFilterStudent.value = false
   }
 }
 
