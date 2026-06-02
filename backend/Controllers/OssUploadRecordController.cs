@@ -77,10 +77,7 @@ public class OssUploadRecordController : ControllerBase
                     imagePaths = r.ImagePaths,
                     comments = r.Comments,
                     createdAt = r.CreatedAt,
-                    updatedAt = r.UpdatedAt,
-                    classification = r.Classification,
-                    subject = r.Subject,
-                    grade = r.Grade
+                    updatedAt = r.UpdatedAt
                 }),
                 totalCount = response.TotalCount,
                 page = response.Page,
@@ -91,24 +88,6 @@ public class OssUploadRecordController : ControllerBase
         {
             _logger.LogError(ex, "Failed to get upload records");
             return StatusCode(500, new ErrorResponse("Failed to get upload records"));
-        }
-    }
-
-    [HttpGet("classification-options")]
-    public async Task<IActionResult> GetClassificationOptions()
-    {
-        try
-        {
-            var request = new SProto.Empty();
-            var response = await _learningClient.GetAvailableClassificationsAsync(request);
-
-            var options = response.Classifications.Select(c => new ClassificationOption(c.Value, c.Name, c.DisplayName)).ToList();
-            return Ok(options);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to get classification options");
-            return StatusCode(500, new ErrorResponse("Failed to get classification options"));
         }
     }
 
@@ -145,29 +124,76 @@ public class OssUploadRecordController : ControllerBase
     {
         try
         {
-            var assignRequest = new SProto.UpdateUploadRecordClassificationRequest
+            // 获取上传记录
+            var getRecordRequest = new SProto.GetUploadRecordRequest
             {
                 RecordId = id,
-                StudentId = request.StudentId,
-                Classification = request.Classification,
-                Subject = request.Subject,
-                Grade = request.Grade
+                StudentId = request.StudentId
             };
+            var record = await _learningClient.GetUploadRecordAsync(getRecordRequest);
 
-            var response = await _learningClient.UpdateUploadRecordClassificationAsync(assignRequest);
-
-            if (!response.Success)
+            if (record == null)
             {
-                return BadRequest(new ErrorResponse(response.ErrorMessage ?? "Failed to assign record"));
+                return BadRequest(new ErrorResponse("Upload record not found"));
             }
 
-            if (!response.MistakeDispatched && !string.IsNullOrEmpty(response.DispatchErrorMessage))
+            // 按图片粒度分配 - 每个分组可以有独立的 subject 和 grade
+            var warnings = new List<string>();
+            var allSuccess = true;
+
+            foreach (var assignment in request.Assignments)
+            {
+                // 获取指定索引的图片路径
+                var selectedImagePaths = assignment.ImageIndices
+                    .Where(idx => idx >= 0 && idx < record.ImagePaths.Count)
+                    .Select(idx => record.ImagePaths[idx])
+                    .ToList();
+
+                if (selectedImagePaths.Count == 0)
+                {
+                    warnings.Add($"No valid images found for assignment with indices: {string.Join(",", assignment.ImageIndices)}");
+                    continue;
+                }
+
+                // 调用 Mistake 服务创建错题
+                var submitRequest = new MistakeProto.SubmitMistakeUploadRequest
+                {
+                    StudentId = request.StudentId,
+                    Subject = assignment.Subject,
+                    Grade = assignment.Grade,
+                    ImagePaths = { selectedImagePaths },
+                    Comments = assignment.Comments ?? record.Comments ?? string.Empty,
+                    SourceUploadId = id
+                };
+
+                var submitResponse = await _mistakeClient.SubmitMistakeUploadAsync(submitRequest);
+
+                if (!submitResponse.Success)
+                {
+                    allSuccess = false;
+                    warnings.Add($"Failed to create mistake for images {string.Join(",", assignment.ImageIndices)}: {submitResponse.ErrorMessage}");
+                }
+                else
+                {
+                    _logger.LogInformation("Successfully created mistake items {ItemIds} for upload record {RecordId}",
+                        string.Join(",", submitResponse.CreatedItemIds), id);
+                }
+            }
+
+            // 标记上传记录为完成
+            await _learningClient.MarkUploadRecordCompletedAsync(new SProto.MarkUploadRecordCompletedRequest
+            {
+                RecordId = id,
+                StudentId = request.StudentId
+            });
+
+            if (warnings.Count > 0)
             {
                 return Ok(new
                 {
-                    success = true,
-                    message = "Assignment saved, but failed to create mistake record",
-                    warning = response.DispatchErrorMessage
+                    success = allSuccess,
+                    message = allSuccess ? "Assignment successful" : "Assignment completed with warnings",
+                    warnings
                 });
             }
 
@@ -414,10 +440,16 @@ public class ResetStatusRequest
     public int TargetStatus { get; set; }
 }
 
+public class ImageAssignment
+{
+    public List<int> ImageIndices { get; set; } = new();
+    public int Subject { get; set; }
+    public int Grade { get; set; }
+    public string? Comments { get; set; }
+}
+
 public class AssignUploadRecordRequest
 {
     public string StudentId { get; set; } = string.Empty;
-    public int Classification { get; set; }
-    public int Subject { get; set; }
-    public int Grade { get; set; }
+    public List<ImageAssignment> Assignments { get; set; } = new();
 }

@@ -143,7 +143,7 @@ admin_portal/frontend/src/
 - 总记录数显示
 - 缩略图列（显示第一张图片缩略图，点击可预览所有图片）
 - 查看详情（图片缩略图、旋转、预览大图）
-- 指派记录给学生
+- 按图片粒度分配记录（选择图片 → 指定学科/年级/类型 → 创建错题/作业条目）
 - 重置状态
 - 旋转图片
 - 遗留数据检查与清理（逐条检查）
@@ -211,12 +211,12 @@ admin_portal/frontend/src/
 
 **API 调用**（按需加载）：
 - `getUploadRecords(params)` - 查询上传记录
-- `getSubjectOptions()` - 学科选项
-- `getClassificationOptions()` - 分类选项
-- `getGrades()` - 年级选项
+- `getSubjectOptions()` - 学科选项（用于分配时选择学科）
+- `getGrades()` - 年级选项（用于分配时选择年级）
+- `getLinkedItems(id)` - 获取上传记录关联的业务实体
 - `getStudents(params)` - 搜索学生（用于指派）
 - `getUploadRecord(id)` - 获取单条记录
-- `assignUploadRecord(id, payload)` - 指派记录
+- `assignUploadRecord(id, payload)` - 按图片粒度分配记录（items 数组，每个 item 指定 imageIndices + subject + grade + classification）
 - `resetUploadRecordStatus(id, status)` - 重置状态
 - `rotateUploadImage(id, payload)` - 旋转图片
 - `legacyCheck(id)` - 检查单条上传记录是否为遗留数据
@@ -283,13 +283,13 @@ admin_portal/frontend/src/
 | `getStudentsByAccountId(accountId)` | GET | `/api/admin/accounts/:accountId/students` | 按账户查学生 |
 | `getIdentityAccountsBatch(ids)` | POST | `/api/admin/identity-accounts/batch` | 批量获取账户 |
 | `getSubjectOptions()` | GET | `/api/admin/students/subject-options` | 学科选项 |
-| `getClassificationOptions()` | GET | `/api/admin/oss-upload-records/classification-options` | 分类选项 |
 | `getStudentOpenSubjects(id, activeOnly)` | GET | `/api/admin/students/:id/open-subjects` | 开放学科 |
 | `setStudentOpenSubjects(id, payload)` | PUT | `/api/admin/students/:id/open-subjects` | 设置开放学科 |
 | `getUploadRecords(params)` | GET | `/api/admin/oss-upload-records` | 查询上传记录 |
 | `getUploadRecord(id)` | GET | `/api/admin/oss-upload-records/:id` | 获取单条上传记录 |
 | `resetUploadRecordStatus(id, status)` | POST | `/api/admin/oss-upload-records/:id/reset-status` | 重置状态 |
-| `assignUploadRecord(id, payload)` | POST | `/api/admin/oss-upload-records/:id/assign` | 指派记录 |
+| `assignUploadRecord(id, payload)` | POST | `/api/admin/oss-upload-records/:id/assign` | 按图片粒度分配记录（items 数组，每个 item 指定 imageIndices（使用原始索引）+ subject + grade + classification） |
+| `getLinkedItems(id)` | GET | `/api/admin/oss-upload-records/:id/linked-items` | 获取关联业务实体 |
 | `rotateUploadImage(id, payload)` | POST | `/api/admin/oss-upload-records/:id/rotate` | 旋转图片 |
 | `getMistakeItems(params)` | GET | `/api/admin/mistakes` | 查询错题列表 |
 | `getMistakeItem(id)` | GET | `/api/admin/mistakes/:id` | 获取单个错题 |
@@ -362,8 +362,30 @@ interface TeacherAccountDto {
 interface UploadRecordDto {
   id: string; studentId: string; studentName: string; status: number;
   imagePaths: string[]; comments: string; createdAt: number | string;
-  updatedAt: number | string; classification: number; subject: number;
-  grade: number; imageRotations: number[];
+  updatedAt: number | string; imageRotations: number[];
+}
+
+interface AssignItemRequest {
+  classification: number;
+  subject: number;
+  grade: number;
+  imageIndices: number[];
+}
+
+interface LinkedItemDto {
+  id: string;
+  subject: number;
+  grade: number;
+  reviewStatus: number;
+  imageIndices: number[];
+}
+
+// 注意：`imageIndices` 使用的是原始索引（上传时的顺序），不受后续移除操作影响。
+interface LinkedItemsResponse {
+  mistakeItems: LinkedItemDto[];
+  homeworkItems: LinkedItemDto[];
+  remainingImageCount: number;
+  totalImageCount: number;
 }
 
 interface MistakeItemDto {

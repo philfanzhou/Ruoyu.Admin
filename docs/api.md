@@ -421,9 +421,7 @@ Admin Portal 提供 REST API 接口，用于管理学生、错题记录、OSS �
       "comments": "string",
       "createdAt": 1234567890,
       "updatedAt": 1234567890,
-      "classification": 1,
-      "subject": 1,
-      "grade": 1
+      "imageRotations": []
     }
   ],
   "totalCount": 100,
@@ -432,23 +430,35 @@ Admin Portal 提供 REST API 接口，用于管理学生、错题记录、OSS �
 }
 ```
 
-### 获取分类选项
+### 获取上传记录关联的业务实体
 
-获取可用的分类选项。
+获取指定上传记录关联的错题/作业条目，用于展示上传记录的分类归属。
 
-**接口:** `GET /api/admin/oss-upload-records/classification-options`
+**接口:** `GET /api/admin/oss-upload-records/{id}/linked-items`
+
+**路径参数:**
+- `id` (string): 上传记录 ID
 
 **响应示例:**
 
 ```json
-[
-  {
-    "value": 1,
-    "name": "Homework",
-    "displayName": "作业"
-  }
-]
+{
+  "mistakeItems": [
+    {
+      "id": "string",
+      "subject": 1,
+      "grade": 1,
+      "reviewStatus": 0,
+      "imageIndices": [0, 1]
+    }
+  ],
+  "homeworkItems": [],
+  "remainingImageCount": 7,
+  "totalImageCount": 9
+}
 ```
+
+> **说明**：`imageIndices` 表示该业务实体引用了上传记录中的哪些图片（**原始索引**，即上传时的顺序，不受移除操作影响）。`remainingImageCount` 表示 `image_paths` 中剩余图片数量，`totalImageCount` 表示原始上传时的总图片数。
 
 ### 重置上传记录状态
 
@@ -477,9 +487,9 @@ Admin Portal 提供 REST API 接口，用于管理学生、错题记录、OSS �
 }
 ```
 
-### 分配上传记录
+### 按图片粒度分配上传记录
 
-分配上传记录给学生，并设置分类、科目和年级。
+将上传记录中的指定图片分配为错题或作业条目。每个条目可以独立指定学科、年级和类型。
 
 **接口:** `POST /api/admin/oss-upload-records/{id}/assign`
 
@@ -491,20 +501,59 @@ Admin Portal 提供 REST API 接口，用于管理学生、错题记录、OSS �
 ```json
 {
   "studentId": "string",
-  "classification": 1,
-  "subject": 1,
-  "grade": 1
+  "items": [
+    {
+      "classification": 1,
+      "subject": 1,
+      "grade": 7,
+      "imageIndices": [0, 1, 2]
+    },
+    {
+      "classification": 2,
+      "subject": 3,
+      "grade": 7,
+      "imageIndices": [3, 4]
+    }
+  ]
 }
 ```
+
+**请求字段说明:**
+- `studentId` (string, 必需): 学生 ID
+- `items` (array, 必需): 分配条目列表
+  - `classification` (int, 必需): 分类（1=Homework, 2=Mistake）
+  - `subject` (int, 必需): 科目
+  - `grade` (int, 必需): 年级
+  - `imageIndices` (array, 必需): 图片索引列表，指定该条目引用上传记录中的哪些图片
 
 **响应示例:**
 
 ```json
 {
   "success": true,
-  "message": "Assignment successful"
+  "message": "Assignment successful",
+  "createdItems": [
+    {
+      "classification": 2,
+      "subject": 1,
+      "grade": 7,
+      "itemId": "mistake-item-id-1",
+      "imageCount": 3
+    },
+    {
+      "classification": 1,
+      "subject": 3,
+      "grade": 7,
+      "itemId": "homework-item-id-1",
+      "imageCount": 2
+    }
+  ],
+  "remainingImageCount": 4,
+  "totalImageCount": 9
 }
 ```
+
+> **说明**：一次请求可以将同一上传记录的不同图片分配到不同学科、不同类型的业务实体。`remainingImageCount` 表示 `image_paths` 中剩余图片数量，`totalImageCount` 表示原始上传时的总图片数。
 
 ### 获取上传记录图片
 
