@@ -76,8 +76,8 @@ public class OssUploadRecordController : ControllerBase
                     status = (int)r.Status,
                     imagePaths = r.ImagePaths,
                     comments = r.Comments,
-                    createdAt = r.CreatedAt,
-                    updatedAt = r.UpdatedAt
+                    createdAt = ParseTimestampToUnixSeconds(r.CreatedAt),
+                    updatedAt = ParseTimestampToUnixSeconds(r.UpdatedAt)
                 }),
                 totalCount = response.TotalCount,
                 page = response.Page,
@@ -424,6 +424,14 @@ public class OssUploadRecordController : ControllerBase
             ".svg" => "image/svg+xml",
             _ => "application/octet-stream"
         };
+    }
+
+    private static long? ParseTimestampToUnixSeconds(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        if (long.TryParse(raw, out var asNumber)) return asNumber;
+        if (DateTimeOffset.TryParse(raw, out var dto)) return dto.ToUnixTimeSeconds();
+        return null;
     }
 }
 

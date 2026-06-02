@@ -110,11 +110,16 @@ export interface UploadRecordDto {
     imageRotations: number[]
 }
 
-export interface AssignUploadRecordRequest {
-    studentId: string
-    classification: number
+export interface ImageAssignmentPayload {
+    imageIndices: number[]
     subject: number
     grade: number
+    comments?: string
+}
+
+export interface AssignUploadRecordRequest {
+    studentId: string
+    assignments: ImageAssignmentPayload[]
 }
 
 export interface RotateImageRequest {

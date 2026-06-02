@@ -198,7 +198,7 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="showAssign" title="指派记录" width="500px">
+    <el-dialog v-model="showAssign" title="指派记录" width="600px">
       <el-form :model="assignForm" label-width="100px" size="small">
         <el-form-item label="学生">
           <el-select
@@ -222,6 +222,21 @@
               <span style="color: #999; font-size: 12px; margin-left: 8px">年级{{ student.grade }}</span>
             </el-option>
           </el-select>
+        </el-form-item>
+        <el-form-item label="选择图片">
+          <div class="assign-image-picker">
+            <el-checkbox-group v-model="assignForm.imageIndices">
+              <el-checkbox
+                v-for="(img, idx) in currentRecord?.imagePaths"
+                :key="idx"
+                :value="idx"
+                :label="`图片 ${idx + 1}`"
+              />
+            </el-checkbox-group>
+            <div v-if="!currentRecord?.imagePaths?.length" style="color: #909399; font-size: 12px">
+              当前记录无图片
+            </div>
+          </div>
         </el-form-item>
         <el-form-item label="学科">
           <el-select v-model="assignForm.subject" style="width: 100%">
@@ -252,6 +267,14 @@
               :value="classification.value"
             />
           </el-select>
+        </el-form-item>
+        <el-form-item label="备注">
+          <el-input
+            v-model="assignForm.comments"
+            type="textarea"
+            :rows="2"
+            placeholder="可选备注"
+          />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -347,7 +370,9 @@ const assignForm = ref({
   studentId: '',
   subject: 0,
   grade: 0,
-  classification: 0
+  classification: 0,
+  imageIndices: [] as number[],
+  comments: ''
 })
 const studentOptions = ref<StudentDto[]>([])
 const searchingStudent = ref(false)
@@ -563,7 +588,9 @@ function showAssignDialog(record: UploadRecordDto) {
     studentId: '',
     subject: record.subject || 0,
     grade: record.grade || 0,
-    classification: record.classification || 0
+    classification: record.classification || 0,
+    imageIndices: record.imagePaths?.map((_, idx) => idx) ?? [],
+    comments: record.comments || ''
   }
   currentRecord.value = record
   showAssign.value = true
@@ -580,13 +607,24 @@ async function confirmAssign() {
     return
   }
 
+  const imageIndices = assignForm.value.imageIndices
+  if (!imageIndices || imageIndices.length === 0) {
+    ElMessage.warning('请至少选择一张图片')
+    return
+  }
+
   assigning.value = true
   try {
     await studentAdminClient.assignUploadRecord(currentRecord.value.id, {
       studentId: assignForm.value.studentId,
-      subject: assignForm.value.subject,
-      grade: assignForm.value.grade,
-      classification: assignForm.value.classification
+      assignments: [
+        {
+          imageIndices: [...imageIndices],
+          subject: assignForm.value.subject,
+          grade: assignForm.value.grade,
+          comments: assignForm.value.comments || undefined
+        }
+      ]
     })
     ElMessage.success('指派成功')
     showAssign.value = false
