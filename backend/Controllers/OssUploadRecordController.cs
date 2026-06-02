@@ -140,6 +140,8 @@ public class OssUploadRecordController : ControllerBase
             // 按图片粒度分配 - 每个分组可以有独立的 subject 和 grade
             var warnings = new List<string>();
             var allSuccess = true;
+            var createdItems = new List<object>();
+            var assignedImagePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             foreach (var assignment in request.Assignments)
             {
@@ -178,6 +180,21 @@ public class OssUploadRecordController : ControllerBase
                 {
                     _logger.LogInformation("Successfully created mistake items {ItemIds} for upload record {RecordId}",
                         string.Join(",", submitResponse.CreatedItemIds), id);
+
+                    foreach (var itemId in submitResponse.CreatedItemIds)
+                    {
+                        createdItems.Add(new
+                        {
+                            subject = assignment.Subject,
+                            grade = assignment.Grade,
+                            itemId = itemId,
+                            imageCount = selectedImagePaths.Count
+                        });
+                    }
+                    foreach (var p in selectedImagePaths)
+                    {
+                        assignedImagePaths.Add(p);
+                    }
                 }
             }
 
@@ -188,17 +205,35 @@ public class OssUploadRecordController : ControllerBase
                 StudentId = request.StudentId
             });
 
+            var remainingImageCount = record.ImagePaths.Count(p => !assignedImagePaths.Contains(p));
+            var totalImageCount = record.ImagePaths.Count;
+
+            object payload;
             if (warnings.Count > 0)
             {
-                return Ok(new
+                payload = new
                 {
                     success = allSuccess,
                     message = allSuccess ? "Assignment successful" : "Assignment completed with warnings",
-                    warnings
-                });
+                    warnings,
+                    createdItems,
+                    remainingImageCount,
+                    totalImageCount
+                };
+            }
+            else
+            {
+                payload = new
+                {
+                    success = true,
+                    message = "Assignment successful",
+                    createdItems,
+                    remainingImageCount,
+                    totalImageCount
+                };
             }
 
-            return Ok(new { success = true, message = "Assignment successful" });
+            return Ok(payload);
         }
         catch (Exception ex)
         {
