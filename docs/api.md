@@ -489,7 +489,7 @@ Admin Portal 提供 REST API 接口，用于管理学生、错题记录、OSS �
 
 ### 按图片粒度分配上传记录
 
-将上传记录中的指定图片分配为错题或作业条目。每个条目可以独立指定学科、年级和类型。
+将上传记录中的指定图片分配为错题条目。一次请求可以包含多个 assignment，每个 assignment 内的图片共享同一道错题（一条 `mistake_item`）。
 
 **接口:** `POST /api/admin/oss-upload-records/{id}/assign`
 
@@ -501,18 +501,18 @@ Admin Portal 提供 REST API 接口，用于管理学生、错题记录、OSS �
 ```json
 {
   "studentId": "string",
-  "items": [
+  "assignments": [
     {
-      "classification": 1,
       "subject": 1,
       "grade": 7,
-      "imageIndices": [0, 1, 2]
+      "imageIndices": [0, 1],
+      "comments": "第 1、2 张图是同一道语文错题"
     },
     {
-      "classification": 2,
       "subject": 3,
       "grade": 7,
-      "imageIndices": [3, 4]
+      "imageIndices": [2],
+      "comments": "第 3 张图是另一道英语错题"
     }
   ]
 }
@@ -520,11 +520,18 @@ Admin Portal 提供 REST API 接口，用于管理学生、错题记录、OSS �
 
 **请求字段说明:**
 - `studentId` (string, 必需): 学生 ID
-- `items` (array, 必需): 分配条目列表
-  - `classification` (int, 必需): 分类（1=Homework, 2=Mistake）
-  - `subject` (int, 必需): 科目
-  - `grade` (int, 必需): 年级
-  - `imageIndices` (array, 必需): 图片索引列表，指定该条目引用上传记录中的哪些图片
+- `assignments` (array, 必需): 分配条目列表
+  - `subject` (int, 必需): 学科 (1-9)
+  - `grade` (int, 必需): 年级 (1-12)
+  - `imageIndices` (array, 必需): 该 assignment 引用的图片索引（基于上传记录的原始索引）。`imageIndices` 至少包含 1 个元素。
+  - `comments` (string, 可选): 备注
+
+**核心语义**：
+- **一个 assignment = 一道错题 = 一条 `mistake_item`**。
+- 一个 assignment 内的多张图片（如题目+解答）会被打包到同一条 `mistake_item` 的 `source_regions` 中。
+- 多个 assignment 可以分别指定不同的 `subject` / `grade`（实现跨学科分配）。
+- 同一上传记录可被多次分配（每次请求都会创建新的 `mistake_item`）。
+- 任何已被审核通过的图片（即不在 `image_upload_record.image_paths` 中的图片）不能再次被分配。
 
 **响应示例:**
 
@@ -534,18 +541,16 @@ Admin Portal 提供 REST API 接口，用于管理学生、错题记录、OSS �
   "message": "Assignment successful",
   "createdItems": [
     {
-      "classification": 2,
       "subject": 1,
       "grade": 7,
       "itemId": "mistake-item-id-1",
-      "imageCount": 3
+      "imageCount": 2
     },
     {
-      "classification": 1,
       "subject": 3,
       "grade": 7,
-      "itemId": "homework-item-id-1",
-      "imageCount": 2
+      "itemId": "mistake-item-id-2",
+      "imageCount": 1
     }
   ],
   "remainingImageCount": 4,
@@ -553,7 +558,19 @@ Admin Portal 提供 REST API 接口，用于管理学生、错题记录、OSS �
 }
 ```
 
-> **说明**：一次请求可以将同一上传记录的不同图片分配到不同学科、不同类型的业务实体。`remainingImageCount` 表示 `image_paths` 中剩余图片数量，`totalImageCount` 表示原始上传时的总图片数。
+**响应字段说明:**
+- `createdItems[]` (array): 每个 assignment 对应一个元素
+  - `subject` (int): 学科
+  - `grade` (int): 年级
+  - `itemId` (string): 新创建的 `mistake_item` ID
+  - `imageCount` (int): 该 item 引用的图片数量
+- `remainingImageCount` (int): 分配后 `image_upload_record.image_paths` 中剩余的图片数量（用于前端判断是否需要继续分配）
+- `totalImageCount` (int): 上传记录原始总图片数
+
+> **后续流程**：分配后的 `mistake_item` 进入 `PendingReview` 状态，由教师审核。教师完成整批审核（`CompleteUploadReview`）后：
+> 1. `Confirmed` 的图片被复制到 `mistakes/`。
+> 2. `Rejected` 和 `Confirmed` 的图片路径都会从 `image_upload_record.image_paths` 中移除。
+> 3. 当 `image_paths` 清空时，整条上传记录自动删除。
 
 ### 获取上传记录图片
 
