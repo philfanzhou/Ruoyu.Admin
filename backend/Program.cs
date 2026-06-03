@@ -68,8 +68,14 @@ builder.Services.AddCors(options =>
 
 builder.Services.AddControllers();
 
+var useLocalOss = Environment.GetEnvironmentVariable("USE_LOCAL_OSS") == "1";
 builder.Services.AddSingleton<IOssService>(sp =>
 {
+    if (useLocalOss)
+    {
+        var localPath = Environment.GetEnvironmentVariable("OSS_LOCAL_PATH") ?? "data/oss";
+        return new LocalFileOssService(localPath);
+    }
     var ossOptions = builder.Configuration.GetSection("Oss").Get<OssOptions>() ?? new OssOptions();
     return new S3OssService(
         ossOptions.Endpoint,
@@ -80,12 +86,30 @@ builder.Services.AddSingleton<IOssService>(sp =>
 
 var connectionString = builder.Configuration.GetConnectionString("AuditDb")
     ?? "Host=localhost;Port=5432;Database=ruoyu_admin;Username=postgres;Password=postgres";
+var isPostgreSql = connectionString.Contains("Host=", StringComparison.OrdinalIgnoreCase)
+                || connectionString.Contains("Server=", StringComparison.OrdinalIgnoreCase);
 
 builder.Services.AddDbContext<AuditDbContext>(options =>
-    options.UseNpgsql(connectionString));
+{
+    if (isPostgreSql)
+        options.UseNpgsql(connectionString);
+    else
+        options.UseSqlite(connectionString);
+});
 
-builder.Services.AddSingleton<OssAuditWorker>();
-builder.Services.AddHostedService(sp => sp.GetRequiredService<OssAuditWorker>());
+if (!isPostgreSql)
+{
+    var dir = Path.GetDirectoryName(connectionString.Replace("Data Source=", ""));
+    if (!string.IsNullOrEmpty(dir))
+        Directory.CreateDirectory(dir);
+}
+
+var useLocalDb = !isPostgreSql;
+if (!useLocalDb)
+{
+    builder.Services.AddSingleton<OssAuditWorker>();
+    builder.Services.AddHostedService(sp => sp.GetRequiredService<OssAuditWorker>());
+}
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
