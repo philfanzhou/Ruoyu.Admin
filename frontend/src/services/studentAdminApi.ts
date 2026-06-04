@@ -73,12 +73,6 @@ export interface SubjectOption {
   displayName: string
 }
 
-export interface ClassificationOption {
-  value: number
-  name: string
-  displayName: string
-}
-
 export interface EnumOption {
   value: number
   name: string
@@ -104,9 +98,6 @@ export interface UploadRecordDto {
     comments: string
     createdAt: number | string
     updatedAt: number | string
-    classification: number
-    subject: number
-    grade: number
     imageRotations: number[]
 }
 
@@ -232,11 +223,6 @@ class StudentAdminApiClient {
 
   async getSubjectOptions() {
     const response = await this.client.get<SubjectOption[]>('/api/admin/students/subject-options')
-    return response.data
-  }
-
-  async getClassificationOptions() {
-    const response = await this.client.get<ClassificationOption[]>('/api/admin/oss-upload-records/classification-options')
     return response.data
   }
 

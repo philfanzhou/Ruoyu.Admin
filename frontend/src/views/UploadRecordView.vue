@@ -79,21 +79,6 @@
             {{ row.imagePaths?.length || 0 }}
           </template>
         </el-table-column>
-        <el-table-column label="学科" width="100">
-          <template #default="{ row }">
-            {{ getSubjectLabel(row.subject) }}
-          </template>
-        </el-table-column>
-        <el-table-column label="分类" width="100">
-          <template #default="{ row }">
-            {{ getClassificationLabel(row.classification) }}
-          </template>
-        </el-table-column>
-        <el-table-column label="年级" width="80">
-          <template #default="{ row }">
-            {{ getGradeLabel(row.grade) }}
-          </template>
-        </el-table-column>
         <el-table-column label="创建时间" width="160">
           <template #default="{ row }">
             {{ formatDate(row.createdAt) }}
@@ -139,9 +124,6 @@
               {{ getStatusLabel(currentRecord.status) }}
             </el-tag>
           </el-descriptions-item>
-          <el-descriptions-item label="学科">{{ getSubjectLabel(currentRecord.subject) }}</el-descriptions-item>
-          <el-descriptions-item label="分类">{{ getClassificationLabel(currentRecord.classification) }}</el-descriptions-item>
-          <el-descriptions-item label="年级">{{ getGradeLabel(currentRecord.grade) }}</el-descriptions-item>
           <el-descriptions-item label="创建时间">{{ formatDate(currentRecord.createdAt) }}</el-descriptions-item>
           <el-descriptions-item label="更新时间">{{ formatDate(currentRecord.updatedAt) }}</el-descriptions-item>
           <el-descriptions-item label="备注" :span="2">{{ currentRecord.comments || '无' }}</el-descriptions-item>
@@ -238,8 +220,8 @@
             </div>
           </div>
         </el-form-item>
-        <el-form-item label="学科">
-          <el-select v-model="assignForm.subject" style="width: 100%">
+        <el-form-item label="学科" required>
+          <el-select v-model="assignForm.subject" style="width: 100%" placeholder="请选择学科">
             <el-option
               v-for="subject in subjectOptions"
               :key="subject.value"
@@ -248,23 +230,13 @@
             />
           </el-select>
         </el-form-item>
-        <el-form-item label="年级">
-          <el-select v-model="assignForm.grade" style="width: 100%">
+        <el-form-item label="年级" required>
+          <el-select v-model="assignForm.grade" style="width: 100%" placeholder="请选择年级">
             <el-option
               v-for="grade in gradeOptions"
               :key="grade.value"
               :label="grade.label"
               :value="grade.value"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="分类">
-          <el-select v-model="assignForm.classification" style="width: 100%">
-            <el-option
-              v-for="classification in classificationOptions"
-              :key="classification.value"
-              :label="classification.label"
-              :value="classification.value"
             />
           </el-select>
         </el-form-item>
@@ -358,7 +330,6 @@ const searchingFilterStudent = ref(false)
 
 const statusOptions = ref<{ value: number; label: string }[]>([])
 const subjectOptions = ref<{ value: number; label: string }[]>([])
-const classificationOptions = ref<{ value: number; label: string }[]>([])
 const gradeOptions = ref<{ value: number; label: string }[]>([])
 
 const showDetail = ref(false)
@@ -370,7 +341,6 @@ const assignForm = ref({
   studentId: '',
   subject: 0,
   grade: 0,
-  classification: 0,
   imageIndices: [] as number[],
   comments: ''
 })
@@ -407,16 +377,6 @@ async function loadEnumOptions() {
     }))
   } catch (error) {
     console.error('Failed to load subjects:', error)
-  }
-
-  try {
-    const classifications = await studentAdminClient.getClassificationOptions()
-    classificationOptions.value = classifications.map(c => ({
-      value: c.value,
-      label: c.displayName || c.name
-    }))
-  } catch (error) {
-    console.error('Failed to load classifications:', error)
   }
 
   statusOptions.value = [
@@ -471,10 +431,6 @@ function getStatusType(status: number) {
 
 function getSubjectLabel(subject: number) {
   return subjectOptions.value.find(s => s.value === subject)?.label || `学科${subject}`
-}
-
-function getClassificationLabel(classification: number) {
-  return classificationOptions.value.find(c => c.value === classification)?.label || `分类${classification}`
 }
 
 function getGradeLabel(grade: number) {
@@ -586,9 +542,8 @@ async function searchStudents(keyword: string) {
 function showAssignDialog(record: UploadRecordDto) {
   assignForm.value = {
     studentId: '',
-    subject: record.subject || 0,
-    grade: record.grade || 0,
-    classification: record.classification || 0,
+    subject: 0,
+    grade: 0,
     imageIndices: record.imagePaths?.map((_, idx) => idx) ?? [],
     comments: record.comments || ''
   }
@@ -599,6 +554,16 @@ function showAssignDialog(record: UploadRecordDto) {
 async function confirmAssign() {
   if (!assignForm.value.studentId) {
     ElMessage.warning('请选择学生')
+    return
+  }
+
+  if (assignForm.value.subject <= 0) {
+    ElMessage.warning('请选择学科')
+    return
+  }
+
+  if (assignForm.value.grade <= 0) {
+    ElMessage.warning('请选择年级')
     return
   }
 
