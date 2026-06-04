@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using MistakeProto = Ruoyu.Study.Mistake.Contract.Protos;
 using Admin.WebApi.Models;
+using Ruoyu.Study.Common.Oss;
 using SProto = Ruoyu.Study.Student.Contract.Protos;
 
 namespace Admin.WebApi.Controllers;
@@ -11,15 +12,18 @@ public class MistakeController : ControllerBase
 {
     private readonly MistakeProto.MistakeGrpcService.MistakeGrpcServiceClient _mistakeClient;
     private readonly SProto.StudentManagementGrpcService.StudentManagementGrpcServiceClient _managementClient;
+    private readonly IOssService _ossService;
     private readonly ILogger<MistakeController> _logger;
 
     public MistakeController(
         MistakeProto.MistakeGrpcService.MistakeGrpcServiceClient mistakeClient,
         SProto.StudentManagementGrpcService.StudentManagementGrpcServiceClient managementClient,
+        IOssService ossService,
         ILogger<MistakeController> logger)
     {
         _mistakeClient = mistakeClient;
         _managementClient = managementClient;
+        _ossService = ossService;
         _logger = logger;
     }
 
@@ -258,6 +262,91 @@ public class MistakeController : ControllerBase
         {
             _logger.LogError(ex, "Failed to update mistake item: {Id}", id);
             return StatusCode(500, new ErrorResponse("Failed to update mistake item"));
+        }
+    }
+
+    [HttpPost("migrate-images/{id}")]
+    public async Task<IActionResult> MigrateImages(string id)
+    {
+        try
+        {
+            var item = await _mistakeClient.GetMistakeItemAsync(new MistakeProto.IdRequest { Id = id });
+
+            var regionsToMigrate = item.SourceRegions
+                .Where(r => !string.IsNullOrWhiteSpace(r.SourceImagePath)
+                            && r.SourceImagePath.StartsWith("uploads/", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            if (regionsToMigrate.Count == 0)
+            {
+                return Ok(new { success = true, message = "所有图片路径已在 mistakes 下，无需迁移", migratedCount = 0 });
+            }
+
+            var pathMapping = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var migratedCount = 0;
+
+            foreach (var region in regionsToMigrate)
+            {
+                var oldPath = region.SourceImagePath;
+
+                if (pathMapping.TryGetValue(oldPath, out var cachedNewPath))
+                {
+                    region.SourceImagePath = cachedNewPath;
+                    continue;
+                }
+
+                var newPath = "mistakes" + oldPath.Substring("uploads".Length);
+
+                try
+                {
+                    await _ossService.CopyObjectAsync(oldPath, newPath);
+                    await _ossService.DeleteAsync(oldPath);
+                    pathMapping[oldPath] = newPath;
+                    region.SourceImagePath = newPath;
+                    migratedCount++;
+                    _logger.LogInformation("Migrated image from {OldPath} to {NewPath}", oldPath, newPath);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to migrate image {Path}", oldPath);
+                    return StatusCode(500, new ErrorResponse($"迁移图片失败: {oldPath} - {ex.Message}"));
+                }
+            }
+
+            // Build updated sourceRegions list (merge migrated + unchanged)
+            var updatedRegions = item.SourceRegions.Select(r =>
+            {
+                var region = new MistakeProto.SourceRegion
+                {
+                    SourceImagePath = r.SourceImagePath
+                };
+                if (r.BoundingBox != null)
+                {
+                    region.BoundingBox = new MistakeProto.BoundingBox
+                    {
+                        X1 = r.BoundingBox.X1,
+                        Y1 = r.BoundingBox.Y1,
+                        X2 = r.BoundingBox.X2,
+                        Y2 = r.BoundingBox.Y2
+                    };
+                }
+                return region;
+            }).ToList();
+
+            var updateRequest = new MistakeProto.UpdateMistakeItemRequest
+            {
+                Id = id
+            };
+            updateRequest.SourceRegions.AddRange(updatedRegions);
+
+            await _mistakeClient.UpdateMistakeItemAsync(updateRequest);
+
+            return Ok(new { success = true, message = $"已迁移 {migratedCount} 张图片", migratedCount });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to migrate images for mistake item: {Id}", id);
+            return StatusCode(500, new ErrorResponse("Failed to migrate images"));
         }
     }
 }

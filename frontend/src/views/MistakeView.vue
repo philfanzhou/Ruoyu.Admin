@@ -173,7 +173,18 @@
         </el-descriptions>
 
         <div v-if="currentMistake.sourceRegions && currentMistake.sourceRegions.length > 0" class="image-section">
-          <h4>错题图片 ({{ currentMistake.sourceRegions.length }})</h4>
+          <div class="image-section-header">
+            <h4>错题图片 ({{ currentMistake.sourceRegions.length }})</h4>
+            <el-button
+              v-if="hasUploadPrefixImages"
+              type="warning"
+              size="small"
+              @click="migrateImages"
+              :loading="migrating"
+            >
+              迁移图片到 mistakes 路径
+            </el-button>
+          </div>
           <div class="image-list">
             <div
               v-for="(region, index) in currentMistake.sourceRegions"
@@ -254,7 +265,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { DocumentCopy } from '@element-plus/icons-vue'
 import studentAdminApi from '../services/studentAdminApi'
@@ -288,6 +299,14 @@ const reviewStatusOptions = ref<{ value: number; label: string }[]>([
 
 const showDetailDialogVisible = ref(false)
 const currentMistake = ref<MistakeItem | null>(null)
+const migrating = ref(false)
+
+const hasUploadPrefixImages = computed(() => {
+  if (!currentMistake.value?.sourceRegions) return false
+  return currentMistake.value.sourceRegions.some(
+    r => r.sourceImagePath && r.sourceImagePath.startsWith('uploads/')
+  )
+})
 
 const showEditDialogVisible = ref(false)
 const editForm = ref({
@@ -417,6 +436,28 @@ function copyPath(path: string) {
   })
 }
 
+async function migrateImages() {
+  if (!currentMistake.value) return
+  migrating.value = true
+  try {
+    const result = await studentAdminApi.migrateMistakeImages(currentMistake.value.id)
+    if (result.success) {
+      ElMessage.success(result.message)
+      // Reload detail to reflect new paths
+      const detail = await studentAdminApi.getMistakeItem(currentMistake.value.id)
+      currentMistake.value = detail
+      // Also refresh the list
+      await loadMistakes()
+    } else {
+      ElMessage.error(result.message || '迁移失败')
+    }
+  } catch (error: any) {
+    ElMessage.error(error.response?.data?.message || '迁移图片失败')
+  } finally {
+    migrating.value = false
+  }
+}
+
 async function showDetailDialog(mistake: MistakeItem) {
   try {
     const detail = await studentAdminApi.getMistakeItem(mistake.id)
@@ -525,8 +566,15 @@ onMounted(async () => {
   margin-top: 20px;
 }
 
-.image-section h4 {
+.image-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   margin-bottom: 12px;
+}
+
+.image-section-header h4 {
+  margin: 0;
   color: #333;
 }
 

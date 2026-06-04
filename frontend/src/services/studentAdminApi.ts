@@ -311,6 +311,11 @@ class StudentAdminApiClient {
     return response.data
   }
 
+  async migrateMistakeImages(id: string) {
+    const response = await this.client.post<{ success: boolean; message: string; migratedCount: number }>(`/api/admin/mistakes/migrate-images/${id}`)
+    return response.data
+  }
+
   async getMistakesByUploadId(uploadId: string) {
     const response = await this.client.get<{ items: MistakeItemDto[], total: number }>(`/api/admin/mistakes/by-upload/${uploadId}`)
     return response.data
