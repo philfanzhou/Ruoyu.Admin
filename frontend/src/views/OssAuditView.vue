@@ -69,7 +69,25 @@
         <el-table-column type="selection" width="55" />
         <el-table-column prop="id" label="ID" width="80" show-overflow-tooltip />
         <el-table-column prop="bucket" label="Bucket" width="150" />
-        <el-table-column prop="objectPath" label="文件路径" min-width="300" show-overflow-tooltip />
+        <el-table-column prop="objectPath" label="文件路径" min-width="300" show-overflow-tooltip>
+          <template #default="{ row }">
+            <div class="path-cell">
+              <el-image
+                v-if="isImagePath(row.objectPath)"
+                :src="getImageUrl(row.objectPath)"
+                :preview-src-list="[getImageUrl(row.objectPath)]"
+                preview-teleported
+                fit="cover"
+                class="path-thumb"
+              >
+                <template #error>
+                  <div class="thumb-error">!</div>
+                </template>
+              </el-image>
+              <span class="path-text">{{ row.objectPath }}</span>
+            </div>
+          </template>
+        </el-table-column>
         <el-table-column label="大小" width="100">
           <template #default="{ row }">
             {{ formatFileSize(row.size) }}
@@ -227,6 +245,16 @@ function getStatusTagType(status: number) {
     2: 'warning'
   }
   return typeMap[status] || 'info'
+}
+
+function isImagePath(path: string) {
+  if (!path) return false
+  const ext = path.split('.').pop()?.toLowerCase() || ''
+  return ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].includes(ext)
+}
+
+function getImageUrl(path: string) {
+  return `/api/admin/image?path=${encodeURIComponent(path)}`
 }
 
 async function loadRecords() {
@@ -408,5 +436,37 @@ onMounted(async () => {
 .total-count {
   color: #606266;
   font-size: 14px;
+}
+
+.path-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.path-thumb {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: 4px;
+  border: 1px solid #ebeef5;
+  cursor: pointer;
+}
+
+.thumb-error {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f5f7fa;
+  color: #c0c4cc;
+  font-size: 14px;
+}
+
+.path-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>
