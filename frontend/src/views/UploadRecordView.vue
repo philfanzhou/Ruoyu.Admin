@@ -153,6 +153,12 @@
                   </div>
                 </template>
               </el-image>
+              <div class="image-path-row">
+                <span class="image-path-text" :title="img">{{ img }}</span>
+                <el-button link type="primary" size="small" @click="copyPath(img)">
+                  <el-icon><DocumentCopy /></el-icon>
+                </el-button>
+              </div>
               <div class="image-actions">
                 <el-button
                   size="small"
@@ -313,7 +319,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Picture, RefreshLeft, RefreshRight } from '@element-plus/icons-vue'
+import { Picture, RefreshLeft, RefreshRight, DocumentCopy } from '@element-plus/icons-vue'
 import { studentAdminClient } from '../services/studentAdminApi'
 import type { UploadRecordDto, StudentDto } from '../services/studentAdminApi'
 
@@ -458,6 +464,14 @@ function getImageUrl(path: string) {
 
 function getPreviewList(imagePaths: string[]) {
   return imagePaths.map(path => getImageUrl(path))
+}
+
+function copyPath(path: string) {
+  navigator.clipboard.writeText(path).then(() => {
+    ElMessage.success('已复制路径')
+  }).catch(() => {
+    ElMessage.error('复制失败')
+  })
 }
 
 function showDetailDialog(record: UploadRecordDto) {
@@ -759,5 +773,23 @@ onMounted(async () => {
 
 .image-item:hover .image-actions {
   opacity: 1;
+}
+
+.image-path-row {
+  display: flex;
+  align-items: center;
+  padding: 4px 6px;
+  background: #f5f7fa;
+  border-top: 1px solid #ebeef5;
+}
+
+.image-path-text {
+  flex: 1;
+  font-size: 11px;
+  color: #606266;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: monospace;
 }
 </style>

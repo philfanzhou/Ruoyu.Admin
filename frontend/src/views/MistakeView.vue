@@ -172,18 +172,29 @@
           </el-descriptions-item>
         </el-descriptions>
 
-        <div v-if="currentMistake.imageCount > 0" class="image-section">
-          <h4>错题图片 ({{ currentMistake.imageCount }})</h4>
+        <div v-if="currentMistake.sourceRegions && currentMistake.sourceRegions.length > 0" class="image-section">
+          <h4>错题图片 ({{ currentMistake.sourceRegions.length }})</h4>
           <div class="image-list">
-            <el-image
-              v-for="(img, index) in currentMistakeImages"
+            <div
+              v-for="(region, index) in currentMistake.sourceRegions"
               :key="index"
-              :src="img"
-              :preview-src-list="currentMistakeImages"
-              preview-teleported
-              fit="contain"
-              class="detail-image"
-            />
+              class="mistake-image-item"
+            >
+              <el-image
+                :src="getMistakeImageUrl(region.sourceImagePath)"
+                :preview-src-list="currentMistake.sourceRegions!.map(r => getMistakeImageUrl(r.sourceImagePath))"
+                :initial-index="index"
+                preview-teleported
+                fit="contain"
+                class="detail-image"
+              />
+              <div class="image-path-row">
+                <span class="image-path-text" :title="region.sourceImagePath">{{ region.sourceImagePath }}</span>
+                <el-button link type="primary" size="small" @click="copyPath(region.sourceImagePath)">
+                  <el-icon><DocumentCopy /></el-icon>
+                </el-button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -245,6 +256,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import { DocumentCopy } from '@element-plus/icons-vue'
 import studentAdminApi from '../services/studentAdminApi'
 import type { MistakeItemDto } from '../services/studentAdminApi'
 
@@ -276,7 +288,6 @@ const reviewStatusOptions = ref<{ value: number; label: string }[]>([
 
 const showDetailDialogVisible = ref(false)
 const currentMistake = ref<MistakeItem | null>(null)
-const currentMistakeImages = ref<string[]>([])
 
 const showEditDialogVisible = ref(false)
 const editForm = ref({
@@ -398,21 +409,18 @@ function getMistakeImageUrl(path: string) {
   return `/api/admin/oss-upload-records/image?path=${encodeURIComponent(path)}`
 }
 
+function copyPath(path: string) {
+  navigator.clipboard.writeText(path).then(() => {
+    ElMessage.success('已复制路径')
+  }).catch(() => {
+    ElMessage.error('复制失败')
+  })
+}
+
 async function showDetailDialog(mistake: MistakeItem) {
   try {
     const detail = await studentAdminApi.getMistakeItem(mistake.id)
     currentMistake.value = detail
-    
-    const images: string[] = []
-    if (detail.firstImagePath) {
-      const basePath = detail.firstImagePath.replace(/\/[^/]+\.[^.]+$/, '')
-      const ext = detail.firstImagePath.match(/\.[^.]+$/)?.[0] || '.jpg'
-      for (let i = 0; i < (detail.imageCount || 0); i++) {
-        images.push(getMistakeImageUrl(`${basePath}/${i}${ext}`))
-      }
-    }
-    currentMistakeImages.value = images
-    
     showDetailDialogVisible.value = true
   } catch (error: any) {
     ElMessage.error(error.response?.data?.message || '加载详情失败')
@@ -534,5 +542,31 @@ onMounted(async () => {
   border: 1px solid #eee;
   border-radius: 4px;
   cursor: pointer;
+}
+
+.mistake-image-item {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #ebeef5;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.image-path-row {
+  display: flex;
+  align-items: center;
+  padding: 4px 6px;
+  background: #f5f7fa;
+  border-top: 1px solid #ebeef5;
+}
+
+.image-path-text {
+  flex: 1;
+  font-size: 11px;
+  color: #606266;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: monospace;
 }
 </style>

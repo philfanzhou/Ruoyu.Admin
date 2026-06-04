@@ -127,6 +127,16 @@ export interface UploadRecordListResponse {
 }
 
 // ========== Mistake Query Types ==========
+export interface SourceRegionDto {
+  sourceImagePath: string
+  boundingBox: {
+    x1: number
+    y1: number
+    x2: number
+    y2: number
+  } | null
+}
+
 export interface MistakeItemDto {
   id: string
   studentId: string
@@ -144,6 +154,7 @@ export interface MistakeItemDto {
   updatedAt: string
   imageCount: number
   firstImagePath: string
+  sourceRegions?: SourceRegionDto[]
 }
 
 export interface MistakeListResponse {
