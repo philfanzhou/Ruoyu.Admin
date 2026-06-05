@@ -165,8 +165,7 @@ public class OssUploadRecordController : ControllerBase
                     Grade = assignment.Grade,
                     ImagePaths = { selectedImagePaths },
                     Comments = assignment.Comments ?? record.Comments ?? string.Empty,
-                    SourceUploadId = id,
-                    CreateEvenIfExists = true
+                    SourceUploadId = id
                 };
 
                 var submitResponse = await _mistakeClient.SubmitMistakeUploadAsync(submitRequest);
