@@ -446,6 +446,36 @@ public class OssUploadRecordController : ControllerBase
         }
     }
 
+    [HttpPost("{id}/analyze")]
+    public async Task<IActionResult> AnalyzeUploadRecord(string id)
+    {
+        try
+        {
+            var request = new SProto.AnalyzeUploadRecordRequest { RecordId = id };
+            var response = await _managementClient.AnalyzeUploadRecordAsync(request);
+
+            return Ok(new
+            {
+                success = response.Success,
+                errorMessage = response.ErrorMessage,
+                rawResponse = response.RawResponse,
+                skipped = response.Skipped,
+                groups = response.Groups.Select(g => new
+                {
+                    imageIndices = g.ImageIndices.ToList(),
+                    subject = g.Subject,
+                    grade = g.Grade,
+                    description = g.Description,
+                })
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to analyze upload record: {RecordId}", id);
+            return StatusCode(500, new ErrorResponse($"VL 分析失败: {ex.Message}"));
+        }
+    }
+
     private string GetContentType(string path)
     {
         var ext = Path.GetExtension(path).ToLowerInvariant();

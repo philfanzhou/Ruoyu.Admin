@@ -84,7 +84,7 @@
             {{ formatDate(row.createdAt) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="280" fixed="right">
+        <el-table-column label="操作" width="340" fixed="right">
           <template #default="{ row }">
             <el-button link type="success" size="small" @click="checkLegacy(row)">
               检查清理
@@ -97,6 +97,9 @@
             </el-button>
             <el-button link type="warning" size="small" @click="showResetDialog(row)">
               重置
+            </el-button>
+            <el-button link type="info" size="small" :loading="analyzingId === row.id" @click="handleVlAnalyze(row)">
+              VL分析
             </el-button>
           </template>
         </el-table-column>
@@ -313,6 +316,92 @@
         </el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="showVlResult" title="VL 图片分析结果" width="750px">
+      <div v-if="vlResult">
+        <el-alert
+          v-if="!vlResult.success"
+          type="error"
+          :title="vlResult.errorMessage || '分析失败'"
+          show-icon
+          :closable="false"
+          style="margin-bottom: 16px"
+        />
+        <el-alert
+          v-else-if="vlResult.skipped"
+          type="warning"
+          title="分析被跳过"
+          :description="vlResult.errorMessage || '该记录没有图片或 VL 未配置'"
+          show-icon
+          :closable="false"
+          style="margin-bottom: 16px"
+        />
+        <el-alert
+          v-else-if="vlResult.groups.length === 0"
+          type="warning"
+          title="VL 模型未返回有效分组"
+          description="模型返回了空内容，可能是图片质量问题或模型未能识别"
+          show-icon
+          :closable="false"
+          style="margin-bottom: 16px"
+        />
+        <el-alert
+          v-else
+          type="success"
+          :title="`识别到 ${vlResult.groups.length} 个分组`"
+          show-icon
+          :closable="false"
+          style="margin-bottom: 16px"
+        />
+
+        <div v-if="vlResult.groups.length > 0" style="margin-bottom: 16px">
+          <h4 style="margin-bottom: 12px; font-size: 14px">分组详情</h4>
+          <div v-for="(group, idx) in vlResult.groups" :key="idx" class="vl-group-card">
+            <div class="vl-group-header">
+              <el-tag type="primary" size="small">分组 {{ idx + 1 }}</el-tag>
+              <span class="vl-group-meta">
+                {{ getSubjectLabel(group.subject) }} · {{ getGradeLabel(group.grade) }}
+              </span>
+            </div>
+            <div class="vl-group-desc" v-if="group.description">{{ group.description }}</div>
+            <div class="vl-group-images">
+              <span class="vl-group-label">包含图片索引：</span>
+              <el-tag v-for="imgIdx in group.imageIndices" :key="imgIdx" size="small" style="margin-right: 4px">
+                图片 {{ imgIdx + 1 }}
+              </el-tag>
+            </div>
+            <div class="vl-group-preview" v-if="vlTargetRecord">
+              <div v-for="imgIdx in group.imageIndices" :key="imgIdx" class="vl-preview-item">
+                <el-image
+                  v-if="vlTargetRecord.imagePaths?.[imgIdx]"
+                  :src="getImageUrl(vlTargetRecord.imagePaths[imgIdx])"
+                  :preview-src-list="getPreviewList(vlTargetRecord.imagePaths || [])"
+                  :initial-index="imgIdx"
+                  preview-teleported
+                  fit="cover"
+                  class="vl-preview-img"
+                />
+                <span class="vl-preview-label">图片 {{ imgIdx + 1 }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="vlResult.rawResponse" style="margin-top: 16px">
+          <h4 style="margin-bottom: 8px; font-size: 14px">原始响应</h4>
+          <el-input
+            type="textarea"
+            :model-value="vlResult.rawResponse"
+            :rows="8"
+            readonly
+            style="font-family: monospace; font-size: 12px"
+          />
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="showVlResult = false">关闭</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -321,7 +410,7 @@ import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Picture, RefreshLeft, RefreshRight, DocumentCopy } from '@element-plus/icons-vue'
 import { studentAdminClient } from '../services/studentAdminApi'
-import type { UploadRecordDto, StudentDto } from '../services/studentAdminApi'
+import type { UploadRecordDto, StudentDto, VlAnalysisResponse } from '../services/studentAdminApi'
 
 const uploadRecords = ref<UploadRecordDto[]>([])
 const loading = ref(false)
@@ -366,6 +455,11 @@ const legacyCheckResult = ref<{ isLegacy: boolean; mistakeCount?: number; hasUpl
 const showLegacyDialog = ref(false)
 const legacyCleaning = ref(false)
 const legacyTarget = ref<UploadRecordDto | null>(null)
+
+const analyzingId = ref<string | null>(null)
+const showVlResult = ref(false)
+const vlResult = ref<VlAnalysisResponse | null>(null)
+const vlTargetRecord = ref<UploadRecordDto | null>(null)
 
 async function loadEnumOptions() {
   try {
@@ -681,6 +775,20 @@ async function cleanLegacy() {
   }
 }
 
+async function handleVlAnalyze(record: UploadRecordDto) {
+  analyzingId.value = record.id
+  try {
+    const result = await studentAdminClient.analyzeUploadRecord(record.id)
+    vlResult.value = result
+    vlTargetRecord.value = record
+    showVlResult.value = true
+  } catch (error: any) {
+    ElMessage.error(error.response?.data?.message || error.message || 'VL 分析失败')
+  } finally {
+    analyzingId.value = null
+  }
+}
+
 function onPageChange(p: number) {
   page.value = p
   loadUploadRecords()
@@ -791,5 +899,74 @@ onMounted(async () => {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-family: monospace;
+}
+
+.vl-group-card {
+  border: 1px solid #ebeef5;
+  border-radius: 4px;
+  padding: 12px;
+  margin-bottom: 12px;
+  background: #fafafa;
+}
+
+.vl-group-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.vl-group-meta {
+  font-size: 13px;
+  color: #606266;
+}
+
+.vl-group-desc {
+  font-size: 13px;
+  color: #303133;
+  margin-bottom: 8px;
+  padding: 8px;
+  background: #fff;
+  border-radius: 4px;
+  border: 1px solid #ebeef5;
+}
+
+.vl-group-images {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.vl-group-label {
+  font-size: 12px;
+  color: #909399;
+}
+
+.vl-group-preview {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.vl-preview-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.vl-preview-img {
+  width: 80px;
+  height: 80px;
+  border-radius: 4px;
+  border: 1px solid #ebeef5;
+  cursor: pointer;
+}
+
+.vl-preview-label {
+  font-size: 11px;
+  color: #909399;
 }
 </style>

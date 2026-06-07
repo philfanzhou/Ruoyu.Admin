@@ -126,6 +126,22 @@ export interface UploadRecordListResponse {
   pageSize: number
 }
 
+// VL Analysis Types
+export interface VlAnalysisGroup {
+  imageIndices: number[]
+  subject: number
+  grade: number
+  description: string
+}
+
+export interface VlAnalysisResponse {
+  success: boolean
+  errorMessage: string
+  rawResponse: string
+  skipped: boolean
+  groups: VlAnalysisGroup[]
+}
+
 // ========== Mistake Query Types ==========
 export interface SourceRegionDto {
   sourceImagePath: string
@@ -333,6 +349,13 @@ class StudentAdminApiClient {
 
   async legacyClean(id: string) {
     const response = await this.client.post<{ success: boolean; message: string; uploadRecordId: string }>(`/api/admin/oss-upload-records/legacy-clean/${id}`)
+    return response.data
+  }
+
+  async analyzeUploadRecord(id: string) {
+    const response = await this.client.post<VlAnalysisResponse>(`/api/admin/oss-upload-records/${id}/analyze`, null, {
+      timeout: 120000, // VL analysis can take a long time
+    })
     return response.data
   }
 }
