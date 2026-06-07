@@ -105,9 +105,9 @@ if (!isPostgreSql)
 }
 
 var useLocalDb = !isPostgreSql;
+builder.Services.AddSingleton<OssAuditWorker>();
 if (!useLocalDb)
 {
-    builder.Services.AddSingleton<OssAuditWorker>();
     builder.Services.AddHostedService(sp => sp.GetRequiredService<OssAuditWorker>());
 }
 
@@ -123,7 +123,21 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AuditDbContext>();
     var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
-    await DatabaseInitializer.InitializeAsync(db, logger);
+    await DatabaseInitializer.InitializeAsync(db, logger, tableName => tableName switch
+    {
+        "OssAuditRuns" => @"
+            CREATE TABLE IF NOT EXISTS ""OssAuditRuns"" (
+                ""Id"" bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                ""StartedAt"" bigint NOT NULL,
+                ""CompletedAt"" bigint NULL,
+                ""Status"" integer NOT NULL DEFAULT 0,
+                ""NewZombieCount"" integer NOT NULL DEFAULT 0,
+                ""TriggerType"" text NOT NULL DEFAULT 'scheduled',
+                ""ErrorMessage"" text NULL
+            );
+            CREATE INDEX IF NOT EXISTS ""IX_OssAuditRuns_StartedAt"" ON ""OssAuditRuns"" (""StartedAt"");",
+        _ => null
+    });
 }
 
 app.UseCors("AdminWeb");

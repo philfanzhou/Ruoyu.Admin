@@ -33,6 +33,30 @@ export interface BatchResolveResponse {
   totalRequested: number
 }
 
+export interface AuditRunInfo {
+  id: number
+  startedAt: number
+  completedAt: number | null
+  durationSeconds: number | null
+  newZombieCount: number
+  triggerType: string
+}
+
+export interface AuditFailedInfo {
+  id: number
+  startedAt: number
+  completedAt: number | null
+  errorMessage: string
+  triggerType: string
+}
+
+export interface AuditStatusResponse {
+  isRunning: boolean
+  lastCompleted: AuditRunInfo | null
+  lastFailed: AuditFailedInfo | null
+  pendingCount: number
+}
+
 class OssAuditApiClient {
   private client: AxiosInstance
 
@@ -67,6 +91,11 @@ class OssAuditApiClient {
 
   async batchResolve(ids: number[]) {
     const response = await this.client.post<BatchResolveResponse>('/api/admin/oss-audit/records/batch-resolve', { ids })
+    return response.data
+  }
+
+  async getStatus() {
+    const response = await this.client.get<AuditStatusResponse>('/api/admin/oss-audit/status')
     return response.data
   }
 }

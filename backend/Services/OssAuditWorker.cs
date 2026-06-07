@@ -47,22 +47,54 @@ public class OssAuditWorker : BackgroundService
                 return;
             }
 
-            await RunAuditAsync(stoppingToken);
+            await RunAuditAsync("scheduled", stoppingToken);
         }
     }
 
-    public async Task RunAuditAsync(CancellationToken cancellationToken = default)
+    public async Task RunAuditAsync(string triggerType = "manual", CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("Starting OSS audit...");
+        _logger.LogInformation("Starting OSS audit (trigger: {Trigger})...", triggerType);
+
+        using var scope = _serviceProvider.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AuditDbContext>();
+
+        // Create audit run record first (acts as a lock — only one running at a time)
+        var auditRun = new OssAuditRun
+        {
+            StartedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+            Status = 0,
+            TriggerType = triggerType,
+        };
+        dbContext.OssAuditRuns.Add(auditRun);
 
         try
         {
-            using var scope = _serviceProvider.CreateScope();
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException)
+        {
+            // Another audit may have started concurrently
+            _logger.LogWarning("Failed to create audit run record, another audit may be running");
+            return;
+        }
+
+        // Double-check: if there's another running record (Id != ours), abort
+        var otherRunning = await dbContext.OssAuditRuns
+            .AnyAsync(r => r.Status == 0 && r.Id != auditRun.Id, cancellationToken);
+        if (otherRunning)
+        {
+            _logger.LogWarning("Another audit is already running, removing this record");
+            dbContext.OssAuditRuns.Remove(auditRun);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return;
+        }
+
+        try
+        {
             var studentClient = scope.ServiceProvider
                 .GetRequiredService<SProto.StudentManagementGrpcService.StudentManagementGrpcServiceClient>();
             var mistakeClient = scope.ServiceProvider
                 .GetRequiredService<MProto.MistakeGrpcService.MistakeGrpcServiceClient>();
-            var dbContext = scope.ServiceProvider.GetRequiredService<AuditDbContext>();
 
             HashSet<string> registeredPaths;
             try
@@ -75,6 +107,10 @@ public class OssAuditWorker : BackgroundService
             catch (RpcException ex) when (ex.StatusCode == StatusCode.Unavailable)
             {
                 _logger.LogError("Student service unavailable, aborting audit: {Message}", ex.Message);
+                auditRun.Status = 2;
+                auditRun.CompletedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                auditRun.ErrorMessage = "Student service unavailable";
+                await dbContext.SaveChangesAsync(cancellationToken);
                 return;
             }
 
@@ -108,8 +144,6 @@ public class OssAuditWorker : BackgroundService
                 var bucketName = bucketNames[bucket];
                 _logger.LogInformation("Auditing bucket: {Bucket}", bucketName);
 
-
-
                 await foreach (var obj in ListOssObjectsPaged(studentClient, bucket, cancellationToken))
                 {
                     var path = obj.ObjectPath;
@@ -140,11 +174,20 @@ public class OssAuditWorker : BackgroundService
                 await dbContext.SaveChangesAsync(cancellationToken);
             }
 
+            auditRun.Status = 1;
+            auditRun.CompletedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            auditRun.NewZombieCount = totalNewZombies;
+            await dbContext.SaveChangesAsync(cancellationToken);
+
             _logger.LogInformation("OSS audit completed. New zombie objects found: {Count}", totalNewZombies);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "OSS audit failed with unexpected error");
+            auditRun.Status = 2;
+            auditRun.CompletedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            auditRun.ErrorMessage = ex.Message;
+            await dbContext.SaveChangesAsync(cancellationToken);
         }
     }
 

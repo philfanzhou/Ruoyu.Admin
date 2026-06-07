@@ -8,12 +8,43 @@
             type="danger"
             size="small"
             :loading="auditLoading"
+            :disabled="auditStatus.isRunning"
             @click="handleTriggerAudit"
           >
-            触发审计
+            {{ auditStatus.isRunning ? '审计运行中...' : '触发审计' }}
           </el-button>
         </div>
       </template>
+
+      <div class="status-bar" v-if="statusLoaded">
+        <div class="status-item">
+          <span class="status-label">当前状态：</span>
+          <el-tag v-if="auditStatus.isRunning" type="warning" size="small">运行中</el-tag>
+          <el-tag v-else type="success" size="small">空闲</el-tag>
+        </div>
+        <div class="status-item" v-if="auditStatus.lastCompleted">
+          <span class="status-label">上次完成：</span>
+          <span class="status-value">{{ formatDate(auditStatus.lastCompleted.completedAt!) }}</span>
+          <span class="status-detail">
+            （耗时 {{ formatDuration(auditStatus.lastCompleted.durationSeconds) }}，
+            发现 {{ auditStatus.lastCompleted.newZombieCount }} 个僵尸文件，
+            {{ auditStatus.lastCompleted.triggerType === 'manual' ? '手动触发' : '定时触发' }}）
+          </span>
+        </div>
+        <div class="status-item" v-if="!auditStatus.lastCompleted && !auditStatus.isRunning">
+          <span class="status-label">上次完成：</span>
+          <span class="status-value">暂无记录</span>
+        </div>
+        <div class="status-item" v-if="auditStatus.lastFailed">
+          <span class="status-label">上次失败：</span>
+          <span class="status-value">{{ formatDate(auditStatus.lastFailed.completedAt!) }}</span>
+          <span class="status-detail error-detail">{{ auditStatus.lastFailed.errorMessage }}</span>
+        </div>
+        <div class="status-item">
+          <span class="status-label">待处理记录：</span>
+          <span class="status-value">{{ auditStatus.pendingCount }}</span>
+        </div>
+      </div>
 
       <div class="search-bar">
         <el-select
@@ -170,13 +201,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   ossAuditApi,
   getOssAuditErrorMessage,
   formatFileSize,
-  type OssAuditRecordDto
+  type OssAuditRecordDto,
+  type AuditStatusResponse
 } from '../services/ossAuditApi'
 
 const records = ref<OssAuditRecordDto[]>([])
@@ -200,13 +232,23 @@ const ignoreForm = ref({
   note: ''
 })
 
+const statusLoaded = ref(false)
+const auditStatus = ref<AuditStatusResponse>({
+  isRunning: false,
+  lastCompleted: null,
+  lastFailed: null,
+  pendingCount: 0
+})
+
+let pollTimer: ReturnType<typeof setInterval> | null = null
+
 const statusOptions = [
   { value: 0, label: '待处理' },
   { value: 1, label: '已删除' },
   { value: 2, label: '已忽略' }
 ]
 
-function formatDate(timestamp: number | string) {
+function formatDate(timestamp: number | string | null) {
   if (!timestamp) return '-'
   if (typeof timestamp === 'string') {
     if (/^\d+$/.test(timestamp.trim())) {
@@ -238,6 +280,13 @@ function formatDate(timestamp: number | string) {
   })
 }
 
+function formatDuration(seconds: number | null | undefined) {
+  if (seconds == null) return '-'
+  if (seconds < 60) return `${seconds} 秒`
+  if (seconds < 3600) return `${Math.floor(seconds / 60)} 分 ${seconds % 60} 秒`
+  return `${Math.floor(seconds / 3600)} 时 ${Math.floor((seconds % 3600) / 60)} 分`
+}
+
 function getStatusTagType(status: number) {
   const typeMap: Record<number, string> = {
     0: 'info',
@@ -255,6 +304,15 @@ function isImagePath(path: string) {
 
 function getImageUrl(path: string) {
   return `/api/admin/image?path=${encodeURIComponent(path)}`
+}
+
+async function loadAuditStatus() {
+  try {
+    auditStatus.value = await ossAuditApi.getStatus()
+    statusLoaded.value = true
+  } catch {
+    // silent
+  }
 }
 
 async function loadRecords() {
@@ -287,6 +345,7 @@ async function handleTriggerAudit() {
     const result = await ossAuditApi.triggerAudit()
     if (result.success) {
       ElMessage.success(result.message || '审计任务已触发')
+      await loadAuditStatus()
       await loadRecords()
     } else {
       ElMessage.error(result.message || '触发失败')
@@ -325,6 +384,7 @@ async function handleResolve(record: OssAuditRecordDto) {
     if (result.success) {
       ElMessage.success('删除成功')
       await loadRecords()
+      await loadAuditStatus()
     } else {
       ElMessage.error(result.message || '删除失败')
     }
@@ -354,6 +414,7 @@ async function confirmIgnore() {
       ElMessage.success('已忽略')
       showIgnoreDialog.value = false
       await loadRecords()
+      await loadAuditStatus()
     } else {
       ElMessage.error(result.message || '操作失败')
     }
@@ -386,6 +447,7 @@ async function handleBatchResolve() {
     }
     selectedRecords.value = []
     await loadRecords()
+    await loadAuditStatus()
   } catch (error: any) {
     if (error !== 'cancel') {
       ElMessage.error(getOssAuditErrorMessage(error))
@@ -396,7 +458,24 @@ async function handleBatchResolve() {
 }
 
 onMounted(async () => {
-  await loadRecords()
+  await Promise.all([loadRecords(), loadAuditStatus()])
+  // Poll audit status every 10 seconds when running
+  pollTimer = setInterval(async () => {
+    if (auditStatus.value.isRunning) {
+      await loadAuditStatus()
+      if (!auditStatus.value.isRunning) {
+        // Audit just completed, refresh records
+        await loadRecords()
+      }
+    }
+  }, 10000)
+})
+
+onUnmounted(() => {
+  if (pollTimer) {
+    clearInterval(pollTimer)
+    pollTimer = null
+  }
 })
 </script>
 
@@ -409,6 +488,41 @@ onMounted(async () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+.status-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 12px 16px;
+  background-color: #f5f7fa;
+  border-radius: 4px;
+  margin-bottom: 16px;
+  font-size: 14px;
+}
+
+.status-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.status-label {
+  color: #909399;
+}
+
+.status-value {
+  color: #303133;
+  font-weight: 500;
+}
+
+.status-detail {
+  color: #606266;
+  font-size: 13px;
+}
+
+.error-detail {
+  color: #f56c6c;
 }
 
 .search-bar {

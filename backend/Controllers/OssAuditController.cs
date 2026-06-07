@@ -91,8 +91,55 @@ public class OssAuditController : ControllerBase
     [HttpPost("trigger")]
     public async Task<IActionResult> TriggerAudit()
     {
-        _ = Task.Run(() => _auditWorker.RunAuditAsync());
-        return Ok(new OperationResponse(true, "Audit triggered. Results will be available shortly."));
+        var isRunning = await _dbContext.OssAuditRuns.AnyAsync(r => r.Status == 0);
+        if (isRunning)
+            return BadRequest(new ErrorResponse("审计正在运行中，请等待完成后再触发。"));
+
+        _ = Task.Run(() => _auditWorker.RunAuditAsync("manual"));
+        return Ok(new OperationResponse(true, "审计已触发，请稍候查看结果。"));
+    }
+
+    [HttpGet("status")]
+    public async Task<IActionResult> GetStatus()
+    {
+        var isRunning = await _dbContext.OssAuditRuns.AnyAsync(r => r.Status == 0);
+
+        var lastCompleted = await _dbContext.OssAuditRuns
+            .Where(r => r.Status == 1)
+            .OrderByDescending(r => r.CompletedAt)
+            .FirstOrDefaultAsync();
+
+        var lastFailed = await _dbContext.OssAuditRuns
+            .Where(r => r.Status == 2)
+            .OrderByDescending(r => r.CompletedAt)
+            .FirstOrDefaultAsync();
+
+        var pendingCount = await _dbContext.OssAuditRecords.CountAsync(r => r.Status == 0);
+
+        return Ok(new
+        {
+            isRunning,
+            lastCompleted = lastCompleted == null ? null : new
+            {
+                lastCompleted.Id,
+                StartedAt = lastCompleted.StartedAt,
+                CompletedAt = lastCompleted.CompletedAt,
+                DurationSeconds = lastCompleted.CompletedAt.HasValue
+                    ? lastCompleted.CompletedAt.Value - lastCompleted.StartedAt
+                    : (long?)null,
+                lastCompleted.NewZombieCount,
+                lastCompleted.TriggerType,
+            },
+            lastFailed = lastFailed == null ? null : new
+            {
+                lastFailed.Id,
+                StartedAt = lastFailed.StartedAt,
+                CompletedAt = lastFailed.CompletedAt,
+                lastFailed.ErrorMessage,
+                lastFailed.TriggerType,
+            },
+            pendingCount,
+        });
     }
 
     [HttpPost("records/{id}/resolve")]
