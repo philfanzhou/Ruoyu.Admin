@@ -102,37 +102,40 @@ public class OssAuditController : ControllerBase
         if (record == null)
             return NotFound(new ErrorResponse("Record not found."));
 
-        if (record.Status != 0)
-            return BadRequest(new ErrorResponse("Only pending records can be resolved."));
+        // Only validate references for Pending records;
+        // Resolved records already had their OSS files deleted, skip re-validation
+        if (record.Status == 0)
+        {
+            try
+            {
+                var pathsResponse = await _studentClient.GetRegisteredOssPathsAsync(new SProto.Empty());
+                var registeredPaths = new HashSet<string>(pathsResponse.Paths, StringComparer.OrdinalIgnoreCase);
+                if (registeredPaths.Contains(record.ObjectPath))
+                    return BadRequest(new ErrorResponse("该文件仍被上传记录引用，不能删除。"));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "删除前无法验证 Student 服务引用");
+                return StatusCode(502, new ErrorResponse("Student 服务不可用，无法安全删除。"));
+            }
+
+            try
+            {
+                var mistakeResponse = await _mistakeClient.GetAllReferencedImagePathsAsync(new MProto.Empty());
+                var mistakePaths = new HashSet<string>(mistakeResponse.ImagePaths, StringComparer.OrdinalIgnoreCase);
+                if (mistakePaths.Contains(record.ObjectPath))
+                    return BadRequest(new ErrorResponse("该文件仍被错题记录引用，不能删除。"));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "删除前无法验证 Mistake 服务引用");
+                return StatusCode(502, new ErrorResponse("Mistake 服务不可用，无法安全删除。"));
+            }
+        }
 
         try
         {
-            var pathsResponse = await _studentClient.GetRegisteredOssPathsAsync(new SProto.Empty());
-            var registeredPaths = new HashSet<string>(pathsResponse.Paths, StringComparer.OrdinalIgnoreCase);
-            if (registeredPaths.Contains(record.ObjectPath))
-                return BadRequest(new ErrorResponse("该文件仍被上传记录引用，不能删除。"));
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "删除前无法验证 Student 服务引用");
-            return StatusCode(502, new ErrorResponse("Student 服务不可用，无法安全删除。"));
-        }
-
-        try
-        {
-            var mistakeResponse = await _mistakeClient.GetAllReferencedImagePathsAsync(new MProto.Empty());
-            var mistakePaths = new HashSet<string>(mistakeResponse.ImagePaths, StringComparer.OrdinalIgnoreCase);
-            if (mistakePaths.Contains(record.ObjectPath))
-                return BadRequest(new ErrorResponse("该文件仍被错题记录引用，不能删除。"));
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "删除前无法验证 Mistake 服务引用");
-            return StatusCode(502, new ErrorResponse("Mistake 服务不可用，无法安全删除。"));
-        }
-
-        try
-        {
+            // DeleteOssObject will also delete associated fingerprint data
             var response = await _studentClient.DeleteOssObjectAsync(
                 new SProto.DeleteOssObjectRequest { ObjectPath = record.ObjectPath });
             if (!response.Success)
@@ -140,15 +143,14 @@ public class OssAuditController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to delete OSS object");
+            _logger.LogError(ex, "Failed to delete OSS object and fingerprint");
             return StatusCode(500, new ErrorResponse($"Failed to delete object: {ex.Message}"));
         }
 
-        record.Status = 1;
-        record.ResolvedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        _dbContext.OssAuditRecords.Remove(record);
         await _dbContext.SaveChangesAsync();
 
-        return Ok(new OperationResponse(true, "Record resolved and object deleted."));
+        return Ok(new OperationResponse(true, "Record, OSS object and fingerprint deleted."));
     }
 
     [HttpPost("records/{id}/ignore")]
@@ -176,34 +178,40 @@ public class OssAuditController : ControllerBase
             return BadRequest(new ErrorResponse("At least one record ID is required."));
 
         var records = await _dbContext.OssAuditRecords
-            .Where(r => request.Ids.Contains(r.Id) && r.Status == 0)
+            .Where(r => request.Ids.Contains(r.Id) && r.Status != 2)
             .ToListAsync();
 
         if (records.Count == 0)
             return Ok(new { resolvedCount = 0, errors = new List<string>() });
 
-        HashSet<string> registeredPaths;
-        try
-        {
-            var pathsResponse = await _studentClient.GetRegisteredOssPathsAsync(new SProto.Empty());
-            registeredPaths = new HashSet<string>(pathsResponse.Paths, StringComparer.OrdinalIgnoreCase);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "批量删除前无法验证 Student 服务引用");
-            return StatusCode(502, new ErrorResponse("Student 服务不可用，无法安全删除。"));
-        }
+        // Only fetch reference paths for Pending records that need validation
+        var pendingRecords = records.Where(r => r.Status == 0).ToList();
+        HashSet<string> registeredPaths = new(StringComparer.OrdinalIgnoreCase);
+        HashSet<string> mistakePaths = new(StringComparer.OrdinalIgnoreCase);
 
-        HashSet<string> mistakePaths;
-        try
+        if (pendingRecords.Count > 0)
         {
-            var mistakeResponse = await _mistakeClient.GetAllReferencedImagePathsAsync(new MProto.Empty());
-            mistakePaths = new HashSet<string>(mistakeResponse.ImagePaths, StringComparer.OrdinalIgnoreCase);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "批量删除前无法验证 Mistake 服务引用");
-            return StatusCode(502, new ErrorResponse("Mistake 服务不可用，无法安全删除。"));
+            try
+            {
+                var pathsResponse = await _studentClient.GetRegisteredOssPathsAsync(new SProto.Empty());
+                registeredPaths = new HashSet<string>(pathsResponse.Paths, StringComparer.OrdinalIgnoreCase);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "批量删除前无法验证 Student 服务引用");
+                return StatusCode(502, new ErrorResponse("Student 服务不可用，无法安全删除。"));
+            }
+
+            try
+            {
+                var mistakeResponse = await _mistakeClient.GetAllReferencedImagePathsAsync(new MProto.Empty());
+                mistakePaths = new HashSet<string>(mistakeResponse.ImagePaths, StringComparer.OrdinalIgnoreCase);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "批量删除前无法验证 Mistake 服务引用");
+                return StatusCode(502, new ErrorResponse("Mistake 服务不可用，无法安全删除。"));
+            }
         }
 
         int resolvedCount = 0;
@@ -211,25 +219,29 @@ public class OssAuditController : ControllerBase
 
         foreach (var record in records)
         {
-            if (registeredPaths.Contains(record.ObjectPath))
+            // Only check references for Pending records; Resolved records already had files deleted
+            if (record.Status == 0)
             {
-                errors.Add($"{record.ObjectPath}: 被上传记录引用，跳过");
-                continue;
-            }
-            if (mistakePaths.Contains(record.ObjectPath))
-            {
-                errors.Add($"{record.ObjectPath}: 被错题记录引用，跳过");
-                continue;
+                if (registeredPaths.Contains(record.ObjectPath))
+                {
+                    errors.Add($"{record.ObjectPath}: 被上传记录引用，跳过");
+                    continue;
+                }
+                if (mistakePaths.Contains(record.ObjectPath))
+                {
+                    errors.Add($"{record.ObjectPath}: 被错题记录引用，跳过");
+                    continue;
+                }
             }
 
             try
             {
+                // DeleteOssObject will also delete associated fingerprint data (idempotent)
                 var response = await _studentClient.DeleteOssObjectAsync(
                     new SProto.DeleteOssObjectRequest { ObjectPath = record.ObjectPath });
                 if (response.Success)
                 {
-                    record.Status = 1;
-                    record.ResolvedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                    _dbContext.OssAuditRecords.Remove(record);
                     resolvedCount++;
                 }
                 else

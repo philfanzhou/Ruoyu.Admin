@@ -116,7 +116,7 @@
               link
               type="danger"
               size="small"
-              :disabled="row.status !== 0"
+              :disabled="row.status === 2"
               @click="handleResolve(row)"
             >
               删除
