@@ -457,7 +457,20 @@ public class OssUploadRecordController : ControllerBase
                     completeReviewResult.ErrorMessage ?? "Failed to complete upload review"));
             }
 
-            _logger.LogInformation("Step 2: Calling DeleteUploadRecordAfterReview for {RecordId}", id);
+            if (completeReviewResult.RemovedImagePaths.Count > 0)
+            {
+                _logger.LogInformation("Step 2: Removing {Count} image paths from upload record {RecordId}",
+                    completeReviewResult.RemovedImagePaths.Count, id);
+                var removeReq = new SProto.RemoveImagesFromRecordRequest
+                {
+                    RecordId = id,
+                    StudentId = studentId
+                };
+                removeReq.ImagePaths.AddRange(completeReviewResult.RemovedImagePaths);
+                await _learningClient.RemoveImagesFromRecordAsync(removeReq);
+            }
+
+            _logger.LogInformation("Step 3: Calling DeleteUploadRecordAfterReview for {RecordId}", id);
             var deleteResult = await _learningClient.DeleteUploadRecordAfterReviewAsync(
                 new SProto.DeleteUploadRecordAfterReviewRequest
                 {
