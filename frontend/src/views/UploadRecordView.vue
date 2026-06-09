@@ -366,6 +366,34 @@
           style="margin-bottom: 16px"
         />
 
+        <div v-if="vlResult.prompt" style="margin-bottom: 16px">
+          <h4 style="margin-bottom: 8px; font-size: 14px">分析提示词</h4>
+          <el-input
+            type="textarea"
+            :model-value="vlResult.prompt"
+            :rows="6"
+            readonly
+            style="font-family: monospace; font-size: 12px"
+          />
+        </div>
+
+        <div v-if="vlResult.compressedImages && vlResult.compressedImages.length > 0" style="margin-bottom: 16px">
+          <h4 style="margin-bottom: 8px; font-size: 14px">发送给 AI 的压缩图片</h4>
+          <div class="vl-compressed-images">
+            <div v-for="(imgData, idx) in vlResult.compressedImages" :key="idx" class="vl-compressed-item">
+              <el-image
+                :src="imgData"
+                :preview-src-list="vlResult.compressedImages"
+                :initial-index="idx"
+                preview-teleported
+                fit="contain"
+                class="vl-compressed-img"
+              />
+              <span class="vl-compressed-label">图片 {{ idx + 1 }}</span>
+            </div>
+          </div>
+        </div>
+
         <div v-if="vlResult.groups.length > 0" style="margin-bottom: 16px">
           <h4 style="margin-bottom: 12px; font-size: 14px">分组详情</h4>
           <div v-for="(group, idx) in vlResult.groups" :key="idx" class="vl-group-card">
@@ -1000,6 +1028,33 @@ onMounted(async () => {
 }
 
 .vl-preview-label {
+  font-size: 11px;
+  color: #909399;
+}
+
+.vl-compressed-images {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.vl-compressed-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.vl-compressed-img {
+  width: 150px;
+  height: 150px;
+  border-radius: 4px;
+  border: 1px solid #ebeef5;
+  cursor: pointer;
+  background: #fafafa;
+}
+
+.vl-compressed-label {
   font-size: 11px;
   color: #909399;
 }

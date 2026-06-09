@@ -140,6 +140,8 @@ export interface VlAnalysisResponse {
   rawResponse: string
   skipped: boolean
   groups: VlAnalysisGroup[]
+  prompt: string
+  compressedImages: string[]
 }
 
 // ========== Mistake Query Types ==========

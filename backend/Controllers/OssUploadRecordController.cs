@@ -503,6 +503,8 @@ public class OssUploadRecordController : ControllerBase
                 errorMessage = response.ErrorMessage,
                 rawResponse = response.RawResponse,
                 skipped = response.Skipped,
+                prompt = response.Prompt,
+                compressedImages = response.CompressedImages.ToList(),
                 groups = response.Groups.Select(g => new
                 {
                     imageIndices = g.ImageIndices.ToList(),
