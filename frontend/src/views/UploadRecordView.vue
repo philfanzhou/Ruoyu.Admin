@@ -179,6 +179,18 @@
                 >
                   <el-icon><RefreshRight /></el-icon>
                 </el-button>
+                <el-popconfirm
+                  title="确定要删除这张图片吗？"
+                  confirm-button-text="删除"
+                  cancel-button-text="取消"
+                  @confirm="deleteImage(currentRecord, index)"
+                >
+                  <template #reference>
+                    <el-button size="small" type="danger" circle>
+                      <el-icon><Delete /></el-icon>
+                    </el-button>
+                  </template>
+                </el-popconfirm>
               </div>
             </div>
           </div>
@@ -408,7 +420,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Picture, RefreshLeft, RefreshRight, DocumentCopy } from '@element-plus/icons-vue'
+import { Picture, RefreshLeft, RefreshRight, DocumentCopy, Delete } from '@element-plus/icons-vue'
 import { studentAdminClient } from '../services/studentAdminApi'
 import type { UploadRecordDto, StudentDto, VlAnalysisResponse } from '../services/studentAdminApi'
 
@@ -596,6 +608,28 @@ async function rotateImage(record: UploadRecordDto, imageIndex: number, rotation
     ElMessage.success('图片旋转成功')
   } catch (error: any) {
     ElMessage.error(error.response?.data?.message || '旋转图片失败')
+  }
+}
+
+async function deleteImage(record: UploadRecordDto, imageIndex: number) {
+  try {
+    const result = await studentAdminClient.removeImageFromRecord(record.id, record.studentId, imageIndex)
+    if (result.success) {
+      ElMessage.success(result.recordDeleted ? '已删除最后一张图片，记录已自动删除' : '图片已删除')
+      if (result.recordDeleted) {
+        showDetail.value = false
+        currentRecord.value = null
+      } else if (currentRecord.value) {
+        // 从本地状态中移除该图片
+        currentRecord.value.imagePaths.splice(imageIndex, 1)
+        currentRecord.value.imageRotations?.splice(imageIndex, 1)
+      }
+      await loadUploadRecords()
+    } else {
+      ElMessage.error(result.message || '删除失败')
+    }
+  } catch (error: any) {
+    ElMessage.error(error.response?.data?.message || '删除图片失败')
   }
 }
 

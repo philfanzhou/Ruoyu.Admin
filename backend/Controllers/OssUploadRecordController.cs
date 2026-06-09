@@ -315,6 +315,49 @@ public class OssUploadRecordController : ControllerBase
         }
     }
 
+    [HttpDelete("{id}/images/{imageIndex}")]
+    public async Task<IActionResult> RemoveImageFromRecord(string id, int imageIndex, [FromQuery] string studentId)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(studentId))
+            {
+                return BadRequest(new ErrorResponse("studentId is required"));
+            }
+
+            var request = new SProto.RemoveImageFromRecordRequest
+            {
+                RecordId = id,
+                StudentId = studentId,
+                ImageIndex = imageIndex
+            };
+
+            var response = await _learningClient.RemoveImageFromRecordAsync(request);
+
+            if (!response.Success)
+            {
+                return BadRequest(new ErrorResponse(response.Message ?? "Failed to remove image"));
+            }
+
+            _logger.LogInformation(
+                "Removed image at index {Index} from record {RecordId}, record deleted: {Deleted}, remaining: {Remaining}",
+                imageIndex, id, response.RecordDeleted, response.RemainingImageCount);
+
+            return Ok(new
+            {
+                success = true,
+                message = response.Message,
+                recordDeleted = response.RecordDeleted,
+                remainingImageCount = response.RemainingImageCount
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to remove image from record: {RecordId}, index: {Index}", id, imageIndex);
+            return StatusCode(500, new ErrorResponse("Failed to remove image"));
+        }
+    }
+
     [HttpGet("legacy-check/{id}")]
     public async Task<IActionResult> LegacyCheck(string id)
     {

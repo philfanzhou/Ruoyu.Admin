@@ -352,6 +352,18 @@ class StudentAdminApiClient {
     return response.data
   }
 
+  async removeImageFromRecord(recordId: string, studentId: string, imageIndex: number) {
+    const response = await this.client.delete<{
+      success: boolean
+      message: string
+      recordDeleted: boolean
+      remainingImageCount: number
+    }>(`/api/admin/oss-upload-records/${recordId}/images/${imageIndex}`, {
+      params: { studentId }
+    })
+    return response.data
+  }
+
   async analyzeUploadRecord(id: string) {
     const response = await this.client.post<VlAnalysisResponse>(`/api/admin/oss-upload-records/${id}/analyze`, null, {
       timeout: 120000, // VL analysis can take a long time
