@@ -143,6 +143,8 @@ public class MistakeController : ControllerBase
                 questionId = item.QuestionId,
                 createdAt = item.CreatedAt,
                 updatedAt = item.UpdatedAt,
+                imageCount = item.SourceRegions.Count,
+                firstImagePath = item.SourceRegions.FirstOrDefault()?.SourceImagePath ?? string.Empty,
                 sourceRegions = item.SourceRegions.Select(r => new
                 {
                     sourceImagePath = r.SourceImagePath,
