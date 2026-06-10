@@ -2,12 +2,12 @@
 
 本目录提供跨模块的开发执行信息，帮助开发者和 Agent 快速搭建环境、运行调试和验证。
 
-> 功能点级别的开发信息（如特定 API 的测试命令）在对应 feature 的 05-TESTS.md 中维护，此处不重复。
+> **何时用这里 vs 功能点文档**：如果信息只服务于单个功能点（如某 API 的测试命令），写在对应 feature 的 05-TESTS.md 中；如果信息跨多个功能点（如环境搭建、全局测试运行），写在这里。
 
 ## 文档索引
 
-| 文档 | 内容 |
-|------|------|
-| [LocalSetup.md](./LocalSetup.md) | 本地环境搭建、依赖安装、配置 |
-| [RunAndDebug.md](./RunAndDebug.md) | 启动、调试、热重载 |
-| [Verification.md](./Verification.md) | 测试运行、覆盖率、构建验证 |
+| 文档 | 内容 | 何时查看 |
+|------|------|----------|
+| [LocalSetup.md](./LocalSetup.md) | 本地环境搭建、依赖安装、配置 | 首次搭建开发环境时 |
+| [RunAndDebug.md](./RunAndDebug.md) | 启动、调试、热重载、数据库切换 | 运行或调试项目时 |
+| [Verification.md](./Verification.md) | 测试运行、覆盖率、构建验证、测试覆盖现状 | 执行测试或检查覆盖时 |
