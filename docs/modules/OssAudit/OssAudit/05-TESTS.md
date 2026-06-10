@@ -1,0 +1,164 @@
+# OssAudit 测试用例
+
+## 当前状态：[当前无测试覆盖]
+
+OssAuditController 和 OssAuditWorker 目前没有测试覆盖。以下为建议的测试用例。
+
+---
+
+## OssAuditController 测试
+
+### GET /records
+
+```gherkin
+Feature: 查看审计记录列表
+
+  Scenario: 获取所有审计记录（默认分页）
+    Given 数据库中存在审计记录
+    When 发送 GET /api/admin/oss-audit/records
+    Then 返回200和分页结果，包含items、statusCounts、bucketCounts
+
+  Scenario: 按状态筛选审计记录
+    Given 数据库中存在不同状态的审计记录
+    When 发送 GET /api/admin/oss-audit/records?status=0
+    Then 返回200，仅包含Pending状态的记录
+
+  Scenario: 按桶筛选审计记录
+    Given 数据库中存在不同桶的审计记录
+    When 发送 GET /api/admin/oss-audit/records?bucket=uploads
+    Then 返回200，仅包含uploads桶的记录
+```
+
+### POST /trigger
+
+```gherkin
+Feature: 手动触发审计
+
+  Scenario: 成功触发审计
+    Given 当前没有运行中的审计任务
+    When 发送 POST /api/admin/oss-audit/trigger
+    Then 返回200，后台启动审计任务
+
+  Scenario: 审计已在运行时触发
+    Given 当前已有运行中的审计任务
+    When 发送 POST /api/admin/oss-audit/trigger
+    Then 返回冲突错误，提示审计已在运行中
+```
+
+### GET /status
+
+```gherkin
+Feature: 查看审计状态
+
+  Scenario: 获取当前审计状态
+    Given 数据库中存在审计运行记录
+    When 发送 GET /api/admin/oss-audit/status
+    Then 返回200，包含isRunning、lastCompleted、lastFailed、pendingCount
+```
+
+### POST /records/{id}/resolve
+
+```gherkin
+Feature: 清理单条僵尸文件
+
+  Scenario: 成功清理Pending记录
+    Given 存在一条Pending状态的审计记录
+    And 该文件未被Student服务注册
+    And 该文件未被Mistake服务引用
+    When 发送 POST /api/admin/oss-audit/records/{id}/resolve
+    Then 调用Student服务DeleteOssObject删除OSS对象
+    And 从数据库移除该记录
+    And 返回200
+
+  Scenario: 清理仍被Student服务引用的文件
+    Given 存在一条Pending状态的审计记录
+    And 该文件仍被Student服务注册
+    When 发送 POST /api/admin/oss-audit/records/{id}/resolve
+    Then 返回错误，拒绝清理
+
+  Scenario: 清理仍被Mistake服务引用的文件
+    Given 存在一条Pending状态的审计记录
+    And 该文件仍被Mistake服务引用
+    When 发送 POST /api/admin/oss-audit/records/{id}/resolve
+    Then 返回错误，拒绝清理
+
+  Scenario: 清理已Resolved的记录
+    Given 存在一条Resolved状态的审计记录
+    When 发送 POST /api/admin/oss-audit/records/{id}/resolve
+    Then 跳过引用校验[推断]
+```
+
+### POST /records/{id}/ignore
+
+```gherkin
+Feature: 忽略单条僵尸文件
+
+  Scenario: 成功忽略记录
+    Given 存在一条Pending状态的审计记录
+    When 发送 POST /api/admin/oss-audit/records/{id}/ignore
+    Then 记录Status设为Ignored(2)
+    And 设置ResolvedAt为当前时间
+    And 返回200
+
+  Scenario: 忽略记录并添加备注
+    Given 存在一条Pending状态的审计记录
+    When 发送 POST /api/admin/oss-audit/records/{id}/ignore
+    And 请求体包含note="暂时保留"
+    Then 记录Status设为Ignored(2)
+    And Note字段设为"暂时保留"
+```
+
+### POST /records/batch-resolve
+
+```gherkin
+Feature: 批量清理僵尸文件
+
+  Scenario: 批量清理多条记录
+    Given 存在多条Pending状态的审计记录
+    And 这些文件均未被引用
+    When 发送 POST /api/admin/oss-audit/batch-resolve
+    And 请求体包含ids列表
+    Then 一次性获取引用路径
+    And 逐条校验并删除符合条件的记录
+    And 返回200
+
+  Scenario: 批量清理中部分文件仍被引用
+    Given 存在多条Pending状态的审计记录
+    And 其中部分文件仍被引用
+    When 发送 POST /api/admin/oss-audit/batch-resolve
+    Then 仅清理未被引用的记录
+    And 被引用的记录保留[推断]
+```
+
+---
+
+## OssAuditWorker 测试
+
+```gherkin
+Feature: 定时审计调度
+
+  Scenario: 按调度时间自动执行审计
+    Given OssAuditWorker已启动
+    And 配置的调度时间为凌晨2:00
+    When 到达调度时间
+    Then 自动调用RunAuditAsync("scheduled")
+
+  Scenario: 启动后延迟2分钟
+    Given OssAuditWorker刚启动
+    Then 等待2分钟后才开始调度计算
+
+  Scenario: Student服务不可用时中止审计
+    Given 审计任务正在运行
+    And Student服务不可用
+    When RunAuditAsync执行
+    Then 审计标记为Failed
+    And ErrorMessage记录Student服务不可用信息
+
+  Scenario: Mistake服务不可用时继续审计
+    Given 审计任务正在运行
+    And Student服务可用
+    And Mistake服务不可用
+    When RunAuditAsync执行
+    Then 记录警告日志
+    And 审计继续执行（仅使用Student服务路径进行判断）
+```
