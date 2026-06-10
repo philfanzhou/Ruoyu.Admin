@@ -155,7 +155,7 @@
 
 ## 配置结构
 
-所有配置通过 `appsettings.json` + 环境变量管理，详见 [deployment.md](deployment.md)。
+所有配置通过 `appsettings.json` + 环境变量管理，详见 [deployment.md](../deployment.md)。
 
 | 配置节 | 说明 |
 |--------|------|

@@ -46,4 +46,4 @@ Admin Portal 本地数据库仅包含 2 张表，且它们之间**没有外键�
 
 Admin Portal 的数据库不包含来自外部服务（Student、Mistake、Identity）的数据表。外部数据通过 gRPC/HTTP 实时查询获取，不在本地持久化。
 
-详见 [DataOwnership.md](../DataOwnership.md)。
+详见 [DataOwnership.md](../overview/DataOwnership.md)。
