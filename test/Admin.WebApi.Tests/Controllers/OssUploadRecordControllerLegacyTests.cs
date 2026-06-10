@@ -382,4 +382,193 @@ public class OssUploadRecordControllerLegacyTests
         result.Should().BeOfType<ObjectResult>()
             .Which.StatusCode.Should().Be(500);
     }
+
+    [Fact]
+    public async Task LegacyClean_WithRemovedImagePaths_CallsRemoveImagesFromRecord()
+    {
+        // Arrange
+        var mistake1 = new MistakeProto.MistakeItemDto
+        {
+            ReviewStatus = MistakeProto.ReviewStatus.Confirmed,
+            StudentId = "student-1"
+        };
+        var listResponse = new MistakeProto.MistakeItemListResponse();
+        listResponse.Items.Add(mistake1);
+
+        _mistakeClient
+            .Setup(c => c.GetMistakeItemsByUploadAsync(
+                It.IsAny<MistakeProto.GetMistakeItemsByUploadRequest>(),
+                It.IsAny<Metadata>(),
+                It.IsAny<DateTime?>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(CreateAsyncCall(listResponse));
+
+        var completeResponse = new MistakeProto.CompleteUploadReviewResponse { Success = true };
+        completeResponse.RemovedImagePaths.Add("uploads/img1.jpg");
+        completeResponse.RemovedImagePaths.Add("uploads/img2.jpg");
+        _mistakeClient
+            .Setup(c => c.CompleteUploadReviewAsync(
+                It.IsAny<MistakeProto.CompleteUploadReviewRequest>(),
+                It.IsAny<Metadata>(),
+                It.IsAny<DateTime?>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(CreateAsyncCall(completeResponse));
+
+        var removeResponse = new SProto.RemoveImagesFromRecordResponse { Success = true };
+        _learningClient
+            .Setup(c => c.RemoveImagesFromRecordAsync(
+                It.IsAny<SProto.RemoveImagesFromRecordRequest>(),
+                It.IsAny<Metadata>(),
+                It.IsAny<DateTime?>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(CreateAsyncCall(removeResponse));
+
+        var deleteResponse = new SProto.BoolResponse { Success = true };
+        _learningClient
+            .Setup(c => c.DeleteUploadRecordAfterReviewAsync(
+                It.IsAny<SProto.DeleteUploadRecordAfterReviewRequest>(),
+                It.IsAny<Metadata>(),
+                It.IsAny<DateTime?>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(CreateAsyncCall(deleteResponse));
+
+        // Act
+        var result = await _controller.LegacyClean("test-record-id");
+
+        // Assert
+        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
+        var typed = okResult.Value!;
+        typed.GetType().GetProperty("success")!.GetValue(typed).Should().Be(true);
+
+        _learningClient.Verify(c => c.RemoveImagesFromRecordAsync(
+            It.IsAny<SProto.RemoveImagesFromRecordRequest>(),
+            It.IsAny<Metadata>(),
+            It.IsAny<DateTime?>(),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task LegacyClean_EmptyRemovedImagePaths_SkipsRemoveImagesFromRecord()
+    {
+        // Arrange
+        var mistake1 = new MistakeProto.MistakeItemDto
+        {
+            ReviewStatus = MistakeProto.ReviewStatus.Confirmed,
+            StudentId = "student-1"
+        };
+        var listResponse = new MistakeProto.MistakeItemListResponse();
+        listResponse.Items.Add(mistake1);
+
+        _mistakeClient
+            .Setup(c => c.GetMistakeItemsByUploadAsync(
+                It.IsAny<MistakeProto.GetMistakeItemsByUploadRequest>(),
+                It.IsAny<Metadata>(),
+                It.IsAny<DateTime?>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(CreateAsyncCall(listResponse));
+
+        var completeResponse = new MistakeProto.CompleteUploadReviewResponse { Success = true };
+        // RemovedImagePaths is empty by default
+        _mistakeClient
+            .Setup(c => c.CompleteUploadReviewAsync(
+                It.IsAny<MistakeProto.CompleteUploadReviewRequest>(),
+                It.IsAny<Metadata>(),
+                It.IsAny<DateTime?>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(CreateAsyncCall(completeResponse));
+
+        var deleteResponse = new SProto.BoolResponse { Success = true };
+        _learningClient
+            .Setup(c => c.DeleteUploadRecordAfterReviewAsync(
+                It.IsAny<SProto.DeleteUploadRecordAfterReviewRequest>(),
+                It.IsAny<Metadata>(),
+                It.IsAny<DateTime?>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(CreateAsyncCall(deleteResponse));
+
+        // Act
+        var result = await _controller.LegacyClean("test-record-id");
+
+        // Assert
+        result.Should().BeOfType<OkObjectResult>();
+
+        _learningClient.Verify(c => c.RemoveImagesFromRecordAsync(
+            It.IsAny<SProto.RemoveImagesFromRecordRequest>(),
+            It.IsAny<Metadata>(),
+            It.IsAny<DateTime?>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task LegacyClean_EmptyStudentId_ReturnsBadRequest()
+    {
+        // Arrange - mistake item with empty StudentId
+        var mistake1 = new MistakeProto.MistakeItemDto
+        {
+            ReviewStatus = MistakeProto.ReviewStatus.Confirmed,
+            StudentId = ""
+        };
+        var listResponse = new MistakeProto.MistakeItemListResponse();
+        listResponse.Items.Add(mistake1);
+
+        _mistakeClient
+            .Setup(c => c.GetMistakeItemsByUploadAsync(
+                It.IsAny<MistakeProto.GetMistakeItemsByUploadRequest>(),
+                It.IsAny<Metadata>(),
+                It.IsAny<DateTime?>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(CreateAsyncCall(listResponse));
+
+        // Act
+        var result = await _controller.LegacyClean("test-record-id");
+
+        // Assert
+        result.Should().BeOfType<BadRequestObjectResult>();
+    }
+
+    [Fact]
+    public async Task LegacyClean_RemoveImagesThrowsException_Returns500()
+    {
+        // Arrange
+        var mistake1 = new MistakeProto.MistakeItemDto
+        {
+            ReviewStatus = MistakeProto.ReviewStatus.Confirmed,
+            StudentId = "student-1"
+        };
+        var listResponse = new MistakeProto.MistakeItemListResponse();
+        listResponse.Items.Add(mistake1);
+
+        _mistakeClient
+            .Setup(c => c.GetMistakeItemsByUploadAsync(
+                It.IsAny<MistakeProto.GetMistakeItemsByUploadRequest>(),
+                It.IsAny<Metadata>(),
+                It.IsAny<DateTime?>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(CreateAsyncCall(listResponse));
+
+        var completeResponse = new MistakeProto.CompleteUploadReviewResponse { Success = true };
+        completeResponse.RemovedImagePaths.Add("uploads/img1.jpg");
+        _mistakeClient
+            .Setup(c => c.CompleteUploadReviewAsync(
+                It.IsAny<MistakeProto.CompleteUploadReviewRequest>(),
+                It.IsAny<Metadata>(),
+                It.IsAny<DateTime?>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(CreateAsyncCall(completeResponse));
+
+        _learningClient
+            .Setup(c => c.RemoveImagesFromRecordAsync(
+                It.IsAny<SProto.RemoveImagesFromRecordRequest>(),
+                It.IsAny<Metadata>(),
+                It.IsAny<DateTime?>(),
+                It.IsAny<CancellationToken>()))
+            .Throws(new RpcException(new Status(StatusCode.Unavailable, "Service unavailable")));
+
+        // Act
+        var result = await _controller.LegacyClean("test-record-id");
+
+        // Assert
+        result.Should().BeOfType<ObjectResult>()
+            .Which.StatusCode.Should().Be(500);
+    }
 }
