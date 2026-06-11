@@ -153,6 +153,21 @@
 - SPA 路由回退处理
 - 支持 `__APP_TITLE__` 运行时替换
 
+### 6. gRPC 合约引用方式
+
+**决策**：通过 `ProjectReference` 引用 Contract 项目（`Ruoyu.Study.Student.Contract`、`Ruoyu.Study.Mistake.Contract`），而非直接引用 proto 文件。
+
+**原因**：
+- Contract 项目包含 proto 文件间的 import 依赖（如 `mistake.proto` import `mistake.common.proto`），直接引用 proto 文件会导致 import 路径解析失败
+- ProjectReference 方式确保 proto 编译由 Contract 项目统一管理
+
+**已知问题**：
+- Contract 项目使用 `GrpcServices="Both"` 生成 Client+Server 代码，Admin Portal 只需要 Client
+- 这会导致 Admin Portal 构建时生成不需要的 Server 端基类，增加编译时间
+- 在服务器构建时可能因缺少 Server 端依赖而失败
+
+**建议改进**：将 Contract 项目的 `GrpcServices` 改为 `"Client"`，让服务端项目单独引用 proto 文件生成 Server 代码。详见 [AgentAnnotationResolutionAudit.md](../AgentAnnotationResolutionAudit.md) ARN-01。
+
 ## 配置结构
 
 所有配置通过 `appsettings.json` + 环境变量管理，详见 [deployment.md](../deployment.md)。

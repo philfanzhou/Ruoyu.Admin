@@ -136,3 +136,22 @@
 - 需要 mock OSS SDK 的 ListObjects 和 DeleteObject 操作
 - 需要使用内存数据库（InMemory SQLite 或 InMemory EF Core Provider）模拟 AuditDbContext
 - 当前无任何测试代码，需从零搭建测试基础设施
+
+## 并发控制机制详解
+
+OssAuditWorker 使用数据库记录作为互斥锁，确保同一时间只有一个审计在运行。具体机制：
+
+1. **创建运行记录（加锁）**：RunAuditAsync 首先创建一条 OssAuditRun 记录（Status=0/Running），通过 `dbContext.SaveChangesAsync` 写入数据库
+2. **捕获并发冲突**：如果另一个审计同时创建记录，`DbUpdateException` 会被捕获，当前审计直接返回（代码第 74-79 行）
+3. **双重检查**：写入成功后，再次查询是否存在其他 Running 状态的记录（Id != 当前记录），如果存在则删除当前记录并返回（代码第 82-90 行）
+4. **失败时标记**：审计过程中任何异常都会将 OssAuditRun.Status 设为 2（Failed）并记录 ErrorMessage
+
+### SQLite 下的行为差异
+
+- PostgreSQL：`SaveChangesAsync` 在并发写入时会正确抛出 `DbUpdateException`，互斥锁可靠
+- SQLite：单写入者模式下并发写入行为不同，`DbUpdateException` 可能不被抛出，双重检查成为主要保护机制
+- **当前代码**：OssAuditWorker 仅在 PostgreSQL 模式下注册为 HostedService（Program.cs 中有条件判断），SQLite 环境下不会自动运行定时审计
+
+### 手动触发时的并发保护
+
+OssAuditController.TriggerAudit 使用 `Task.Run(_auditWorker.RunAuditAsync("manual"))`，与定时审计共享同一互斥锁机制。如果定时审计正在运行，手动触发会因为无法创建 OssAuditRun 记录而自动跳过。

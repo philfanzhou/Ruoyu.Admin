@@ -30,6 +30,7 @@ public class IdentityAccountsController : ControllerBase
 
         var targetIds = new HashSet<string>(accountIds, StringComparer.OrdinalIgnoreCase);
         var result = new List<IdentityAccountDto>();
+        var partialFailure = false;
 
         try
         {
@@ -66,9 +67,10 @@ public class IdentityAccountsController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to batch-query identity accounts");
+            partialFailure = true;
         }
 
-        return Ok(result);
+        return Ok(new { accounts = (IReadOnlyList<IdentityAccountDto>)result, partialFailure, warning = partialFailure ? "Identity 服务暂时不可用，部分账户信息无法加载" : (string?)null });
     }
 
     [HttpGet("accounts/{accountId:guid}/students")]

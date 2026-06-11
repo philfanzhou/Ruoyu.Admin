@@ -288,29 +288,15 @@ OSS 审计功能用于发现和清理 OSS 存储中未被引用的"僵尸"文件
 
 ### 数据库表结构
 
-```sql
-CREATE TABLE oss_audit_records (
-    id BIGSERIAL PRIMARY KEY,
-    object_path VARCHAR(500) UNIQUE NOT NULL,
-    bucket VARCHAR(100) NOT NULL,
-    size BIGINT NOT NULL,
-    last_modified BIGINT NOT NULL,
-    status INTEGER NOT NULL DEFAULT 0,  -- 0: Pending, 1: Resolved, 2: Ignored
-    created_at BIGINT NOT NULL,
-    resolved_at BIGINT,
-    note TEXT
-);
-
-CREATE INDEX idx_oss_audit_status ON oss_audit_records(status);
-CREATE INDEX idx_oss_audit_bucket ON oss_audit_records(bucket);
-CREATE INDEX idx_oss_audit_created_at ON oss_audit_records(created_at);
-```
+表结构和索引定义详见 [database/tables/oss_audit_records.md](./database/tables/oss_audit_records.md)（唯一事实源）。
 
 ### 审计状态说明
 
 - **Pending (0)**: 待处理，发现的未引用文件
 - **Resolved (1)**: 已解决，文件已被删除
 - **Ignored (2)**: 已忽略，管理员确认保留的文件
+
+> 完整的字段定义、索引和约束详见 [database/tables/oss_audit_records.md](./database/tables/oss_audit_records.md)。
 
 ### 配置审计时间
 

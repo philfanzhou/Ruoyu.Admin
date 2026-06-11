@@ -31,5 +31,6 @@ Admin Portal 是 Ruoyu.Study 系统的管理后台服务，基于 ASP.NET Core 8
 | 文档 | 说明 |
 |------|------|
 | [AgentReviewNotes.md](./AgentReviewNotes.md) | 审阅记录：遗留问题、证据缺口、人工复核项 |
+| [AgentAnnotationResolutionAudit.md](./AgentAnnotationResolutionAudit.md) | 整改审计：批注处理记录、代码修改、文档同步 |
 | [api.md](./api.md) | REST API 接口文档（与 modules/ 互补） |
 | [deployment.md](./deployment.md) | 部署文档（与 development/ 互补） |

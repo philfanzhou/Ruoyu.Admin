@@ -56,6 +56,7 @@
 - **已查阅的证据**: `Admin.WebApi.csproj` 中的 ProjectReference、Controllers 中的 gRPC client 调用代码、`Program.cs` 中的 AddGrpcClient 注册
 - **为什么仍无法完全确认**: proto 文件位于项目外部
 - **建议人工复核**: 对照 proto 文件验证各模块 03-DESIGN.md 中列出的 gRPC 方法签名是否完整准确
+这个问题也是我经常遇到的问题，我认为应该是 project 文件引用 proto 文件并且设置为 client，让 grpctool 来自动生成客户端代码，不知道目前你是怎么做的。而且这个问题以前总是影响我在服务器上的编译构建。
 
 ### 3.2 OssAuditWorker 并发控制机制
 
@@ -64,6 +65,7 @@
 - **已查阅的证据**: `OssAuditWorker.cs` try-catch DbUpdateException 逻辑
 - **为什么仍无法完全确认**: 代码注释未明确说明是否有意设计
 - **建议人工复核**: 确认并发控制策略是否符合预期
+wo 我需要更多细节来判断这个问题
 
 ### 3.3 LegacyClean 多步骤操作无回滚机制
 
@@ -72,6 +74,7 @@
 - **已查阅的证据**: `OssUploadRecordController.cs` LegacyClean 方法
 - **为什么仍无法完全确认**: 下游 gRPC 服务可能有幂等性保证
 - **建议人工复核**: 确认是否需要补偿机制
+wo 我需要更多细节来判断这个问题
 
 ### 3.4 IdentityAccountsController 批量查询的错误处理
 
@@ -80,6 +83,7 @@
 - **已查阅的证据**: `IdentityAccountsController.cs` catch 块仅记录 Warning 日志
 - **为什么仍无法完全确认**: 可能是有意设计（优雅降级）
 - **建议人工复核**: 确认此行为是否符合业务预期
+可以在界面上进行提示
 
 ### 3.5 MistakeController 学生姓名获取的 N+1 问题
 
@@ -88,6 +92,7 @@
 - **已查阅的证据**: `MistakeController.cs` foreach 循环
 - **为什么仍无法完全确认**: Student gRPC 服务可能没有批量查询接口
 - **建议人工复核**: 评估是否需要引入批量查询接口
+wo 我需要更多细节来判断这个问题
 
 ### 3.6 ImageMigration 的原子性
 
@@ -96,6 +101,7 @@
 - **已查阅的证据**: `MistakeController.cs` MigrateImages 方法
 - **为什么仍无法完全确认**: 缺少整体回滚机制
 - **建议人工复核**: 确认是否需要事务性保证或补偿机制
+wo 我需要更多细节来判断这个问题
 
 ### 3.7 deployment.md 中重复了数据库表结构
 
@@ -104,6 +110,7 @@
 - **已查阅的证据**: 对比 `deployment.md` 和 `database/tables/oss_audit_records.md`
 - **为什么仍无法完全确认**: `deployment.md` 是已有文档，修改可能影响其他使用者
 - **建议人工复核**: 考虑将 `deployment.md` 中的表结构 DDL 替换为指向 `database/tables/` 的链接
+需要修改
 
 ## 4. 证据不足但已落盘的内容
 
