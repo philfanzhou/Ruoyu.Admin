@@ -13,9 +13,34 @@
 - `SubjectItem`
 - `SubjectOption`
 
-## 缺失测试
+## 已实现测试
 
-**StudentsController 和开放科目相关模型均无测试。** 以下为需要补充的测试计划。
+### OpenSubjectManagementTests（Controller 测试）
+
+| 测试方法 | 验证内容 |
+| --- | --- |
+| `GetStudentOpenSubjects_Success` | UT-01 查询学生开放科目成功 |
+| `GetStudentOpenSubjects_ActiveOnlyTrue` | UT-02 查询学生开放科目 — activeOnly=true |
+| `GetStudentOpenSubjects_EmptyEndDate_MapsToNull` | UT-03 查询学生开放科目 — OpenEndDate 映射 |
+| `SetStudentOpenSubjects_Success` | UT-04 设置学生开放科目成功 |
+| `SetStudentOpenSubjects_InvalidSubjectValue_Returns400` | UT-05 设置学生开放科目 — 无效科目值 |
+| `SetStudentOpenSubjects_EmptyOpenStartDate_Returns400` | UT-06 设置学生开放科目 — 空 OpenStartDate |
+| `SetStudentOpenSubjects_InvalidOpenStartDateFormat_Returns400` | UT-07 设置学生开放科目 — 非法 OpenStartDate 格式 |
+| `SetStudentOpenSubjects_InvalidOpenEndDateFormat_Returns400` | UT-08 设置学生开放科目 — 非法 OpenEndDate 格式 |
+| `SetStudentOpenSubjects_GrpcSuccessFalse_Returns400` | UT-09 设置学生开放科目 — gRPC 返回 Success=false |
+| `SetStudentOpenSubjects_GrpcInvalidArgument_Returns400` | UT-10 设置学生开放科目 — gRPC InvalidArgument |
+| `SetStudentOpenSubjects_EmptySubjectsList_SkipsValidation_CallsGrpc` | EX-01 Subjects 列表为空 → 跳过校验，直接调用 gRPC |
+| `SetStudentOpenSubjects_NullOpenEndDate_SendsEmptyStringInGrpcRequest` | EX-04 OpenEndDate 为 null → gRPC 请求中为空字符串 |
+
+### OpenSubjectModelTests（模型测试）
+
+| 测试方法 | 验证内容 |
+| --- | --- |
+| `OpenSubjectDto_Constructor_SetsProperties` | OpenSubjectDto 构造函数正确赋值 |
+| `OpenSubjectDto_WithNullOpenEndDate_SetsProperty` | OpenSubjectDto OpenEndDate 为 null 时正确设置 |
+| `SubjectItem_Constructor_SetsProperties` | SubjectItem 构造函数正确赋值 |
+| `SetOpenSubjectsRequest_Constructor_SetsProperties` | SetOpenSubjectsRequest 构造函数正确赋值 |
+| `SubjectOption_Constructor_SetsProperties` | SubjectOption 构造函数正确赋值 |
 
 ## 单元测试 — Given-When-Then 格式
 
@@ -125,4 +150,27 @@
 
 ## 现有测试映射（到 SPEC 功能要求）
 
-当前无任何测试映射到本功能的 SPEC 功能要求。所有测试均需新建。
+### Controller 测试
+
+| 测试方法 | 验证 SPEC 项 |
+| --- | --- |
+| `GetStudentOpenSubjects_Success` | FR-01 |
+| `GetStudentOpenSubjects_ActiveOnlyTrue` | FR-02 |
+| `GetStudentOpenSubjects_EmptyEndDate_MapsToNull` | FR-10 |
+| `SetStudentOpenSubjects_Success` | FR-03 |
+| `SetStudentOpenSubjects_InvalidSubjectValue_Returns400` | FR-04 |
+| `SetStudentOpenSubjects_EmptyOpenStartDate_Returns400` | FR-05 |
+| `SetStudentOpenSubjects_InvalidOpenStartDateFormat_Returns400` | FR-06 |
+| `SetStudentOpenSubjects_InvalidOpenEndDateFormat_Returns400` | FR-07 |
+| `SetStudentOpenSubjects_GrpcSuccessFalse_Returns400` | FR-08 |
+| `SetStudentOpenSubjects_GrpcInvalidArgument_Returns400` | FR-09 |
+
+### 模型测试
+
+| 测试方法 | 验证 SPEC 项 |
+| --- | --- |
+| `OpenSubjectDto_Constructor_SetsProperties` | FR-01/FR-03（模型层） |
+| `OpenSubjectDto_WithNullOpenEndDate_SetsProperty` | FR-10（模型层） |
+| `SubjectItem_Constructor_SetsProperties` | FR-03（模型层） |
+| `SetOpenSubjectsRequest_Constructor_SetsProperties` | FR-03（模型层） |
+| `SubjectOption_Constructor_SetsProperties` | FR-07（模型层） |

@@ -63,9 +63,22 @@
     - When 调用 LegacyClean
     - Then 返回 500
 
-## 缺失测试（建议补充）
+12. **LegacyClean_WithRemovedImagePaths_CallsRemoveImagesFromRecord**
+    - Given 所有错题已审核且 CompleteUploadReview 返回 RemovedImagePaths
+    - When 调用 LegacyClean
+    - Then 调用 RemoveImagesFromRecord 后再调用 DeleteUploadRecordAfterReview
 
-- **Given** 所有错题已审核且 CompleteUploadReview 返回 RemovedImagePaths，**When** 调用 LegacyClean，**Then** 调用 RemoveImagesFromRecord 后再调用 DeleteUploadRecordAfterReview
-- **Given** 所有错题已审核且 CompleteUploadReview 返回空 RemovedImagePaths，**When** 调用 LegacyClean，**Then** 跳过 RemoveImagesFromRecord，直接调用 DeleteUploadRecordAfterReview
-- **Given** 关联错题的 StudentId 为空，**When** 调用 LegacyClean，**Then** 返回 400
-- **Given** RemoveImagesFromRecord 抛出异常，**When** 调用 LegacyClean，**Then** 返回 500
+13. **LegacyClean_EmptyRemovedImagePaths_SkipsRemoveImagesFromRecord**
+    - Given 所有错题已审核且 CompleteUploadReview 返回空 RemovedImagePaths
+    - When 调用 LegacyClean
+    - Then 跳过 RemoveImagesFromRecord，直接调用 DeleteUploadRecordAfterReview
+
+14. **LegacyClean_EmptyStudentId_ReturnsBadRequest**
+    - Given 关联错题的 StudentId 为空
+    - When 调用 LegacyClean
+    - Then 返回 400
+
+15. **LegacyClean_RemoveImagesThrowsException_Returns500**
+    - Given RemoveImagesFromRecord 抛出异常
+    - When 调用 LegacyClean
+    - Then 返回 500

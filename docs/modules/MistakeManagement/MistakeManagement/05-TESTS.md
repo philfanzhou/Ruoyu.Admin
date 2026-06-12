@@ -2,9 +2,35 @@
 
 ## 现有测试覆盖
 
-**无**。当前没有针对 MistakeController 任何端点的单元测试。
+### MistakeControllerTests（已实现）
 
-## 缺失测试（建议补充）
+| 测试方法 | 验证内容 |
+| --- | --- |
+| `GetMistakeItems_Success_ReturnsPaginatedItemsWithStudentNames` | GetMistakeItems 返回分页数据和学生姓名 |
+| `GetMistakeItems_StudentQueryFails_FallsBackToStudentId` | 学生查询失败时回退为 studentId |
+| `GetMistakeItems_Page0_ResetsTo1` | page=0 时重置为 1 |
+| `GetMistakeItems_Size0_ResetsTo10` | size=0 时重置为 10 |
+| `GetMistakeItems_Size200_ClampedTo100` | size=200 时限制为 100 |
+| `GetMistakeItems_ReviewStatus1_SendsConfirmedInGrpcRequest` | reviewStatus=1 时 gRPC 请求为 Confirmed |
+| `GetMistakeItems_GrpcException_Returns500` | gRPC 异常返回 500 |
+| `GetMistakeItem_Success_ReturnsItemWithSourceRegionsAndBoundingBox` | GetMistakeItem 返回包含 sourceRegions 和 boundingBox 的详情 |
+| `GetMistakeItem_BoundingBoxNull_InResponseStillNull` | boundingBox 为 null 时响应中也为 null |
+| `GetMistakeItem_StudentQueryFails_FallsBackToStudentId` | 学生查询失败时回退为 studentId |
+| `GetMistakeItem_GrpcException_Returns500` | gRPC 异常返回 500 |
+| `GetMistakesByUploadId_Success_ReturnsItemsWithStudentNames` | GetMistakesByUploadId 返回错题列表和学生姓名 |
+| `GetMistakesByUploadId_GrpcException_Returns500` | gRPC 异常返回 500 |
+| `UpdateMistakeItem_Success_ReturnsItemWithStudentName` | UpdateMistakeItem 返回更新结果和学生姓名 |
+| `UpdateMistakeItem_NullFields_SendsEmptyStringAndZeroInGrpcRequest` | null 字段在 gRPC 请求中为空字符串或 0 |
+| `UpdateMistakeItem_GrpcException_Returns500` | gRPC 异常返回 500 |
+| `MigrateImages_AllPathsAlreadyInMistakes_ReturnsMigratedCount0` | 所有路径已在 mistakes/ 下时 migratedCount=0 |
+| `MigrateImages_PathsInUploads_CopiesAndDeletes_ReturnsMigratedCount` | 有路径在 uploads/ 下时执行复制删除并返回 migratedCount |
+| `MigrateImages_SameOldPathMultipleTimes_MigratedOnlyOnce` | 同一旧路径出现多次时只迁移一次 |
+| `MigrateImages_CopyObjectAsyncThrows_Returns500` | CopyObjectAsync 异常返回 500 |
+| `MigrateImages_DeleteAsyncThrows_Returns500` | DeleteAsync 异常返回 500 |
+| `MigrateImages_GetMistakeItemThrows_Returns500` | GetMistakeItem 异常返回 500 |
+| `MigrateImages_UpdateMistakeItemThrows_Returns500` | UpdateMistakeItem 异常返回 500 |
+
+## 单元测试 — Given-When-Then 格式
 
 ### GetMistakeItems
 

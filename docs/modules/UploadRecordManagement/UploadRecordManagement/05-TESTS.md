@@ -2,9 +2,40 @@
 
 ## 现有测试覆盖
 
-**无**。当前没有针对 UploadRecordManagement 功能（GetAllUploadRecords、ResetUploadRecordStatus、AssignUploadRecord、GetImage、RotateImage、RemoveImageFromRecord、AnalyzeUploadRecord）的单元测试。
+### OssUploadRecordControllerTests（已实现）
 
-## 缺失测试（建议补充）
+| 测试方法 | 验证内容 |
+| --- | --- |
+| `GetAllUploadRecords_Success_ReturnsPagedDataWithStudentNames` | GetAllUploadRecords 返回分页数据和学生姓名 |
+| `GetAllUploadRecords_StudentQueryFails_FallbackToStudentId` | 学生查询失败时回退为 studentId |
+| `GetAllUploadRecords_GrpcException_Returns500` | gRPC 异常返回 500 |
+| `GetAllUploadRecords_StatusNegativeOne_SendsUnspecifiedInRequest` | status=-1 时 gRPC 请求为 Unspecified |
+| `GetAllUploadRecords_StatusOne_SendsUploadedInRequest` | status=1 时 gRPC 请求为 Uploaded |
+| `ResetUploadRecordStatus_Success_Returns200` | 重置上传记录状态成功 |
+| `ResetUploadRecordStatus_GrpcSuccessFalse_Returns400` | gRPC 返回 Success=false 时返回 400 |
+| `ResetUploadRecordStatus_GrpcException_Returns500` | gRPC 异常返回 500 |
+| `AssignUploadRecord_Success_AllAssignmentsValid` | 所有 assignment 有效时成功 |
+| `AssignUploadRecord_RecordNotFound_Returns400` | 上传记录不存在返回 400 |
+| `AssignUploadRecord_SomeImageIndicesOutOfRange_SkipsWithWarnings` | 部分图片索引超出范围时跳过并返回 warnings |
+| `AssignUploadRecord_SubmitMistakeFails_ReturnsAllSuccessFalseWithWarnings` | SubmitMistake 失败时 allSuccess=false 并返回 warnings |
+| `AssignUploadRecord_GrpcException_Returns500` | gRPC 异常返回 500 |
+| `GetImage_EmptyPath_Returns400` | path 为空返回 400 |
+| `GetImage_ImageExists_Returns200WithFileContent` | 图片存在返回 200 和文件内容 |
+| `GetImage_NullStream_Returns404` | OSS 流为 null 返回 404 |
+| `GetImage_OssServiceException_Returns500` | OssService 异常返回 500 |
+| `RotateImage_InvalidGuid_Returns400` | id 不是合法 GUID 返回 400 |
+| `RotateImage_EmptyStudentId_Returns400` | StudentId 为空返回 400 |
+| `RotateImage_GrpcSuccess_Returns200` | gRPC 成功返回 200 |
+| `RotateImage_GrpcSuccessFalse_Returns400` | gRPC 返回 Success=false 时返回 400 |
+| `RotateImage_GrpcException_Returns500` | gRPC 异常返回 500 |
+| `RemoveImageFromRecord_EmptyStudentId_Returns400` | studentId 为空返回 400 |
+| `RemoveImageFromRecord_GrpcSuccess_Returns200WithDetails` | gRPC 成功返回 200 和详情 |
+| `RemoveImageFromRecord_GrpcSuccessFalse_Returns400` | gRPC 返回 Success=false 时返回 400 |
+| `RemoveImageFromRecord_GrpcException_Returns500` | gRPC 异常返回 500 |
+| `AnalyzeUploadRecord_Success_Returns200WithAnalysisResults` | 分析上传记录成功返回 200 和分析结果 |
+| `AnalyzeUploadRecord_GrpcException_Returns500` | gRPC 异常返回 500 |
+
+## 单元测试 — Given-When-Then 格式
 
 ### GetAllUploadRecords
 

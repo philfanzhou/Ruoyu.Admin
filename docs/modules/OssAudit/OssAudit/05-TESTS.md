@@ -1,8 +1,34 @@
 # OssAudit 测试用例
 
-## 当前状态：[当前无测试覆盖]
+## 当前状态：[已实现]
 
-OssAuditController 和 OssAuditWorker 目前没有测试覆盖。以下为建议的测试用例。
+### OssAuditController 测试（已实现）
+
+| 测试方法 | 验证内容 |
+| --- | --- |
+| `GetRecords_ReturnsPaginatedRecords_WithStatusAndBucketCounts` | 获取审计记录列表，返回分页结果和状态/桶计数 |
+| `GetRecords_FilterByStatus_ReturnsOnlyMatchingRecords` | 按状态筛选审计记录 |
+| `GetRecords_FilterByBucket_ReturnsOnlyMatchingRecords` | 按桶筛选审计记录 |
+| `TriggerAudit_NoRunningAudit_ReturnsOk` | 成功触发审计 |
+| `TriggerAudit_AlreadyRunning_ReturnsBadRequest` | 审计已在运行时返回 400 |
+| `GetStatus_ReturnsIsRunning_LastCompleted_LastFailed_PendingCount` | 获取当前审计状态 |
+| `GetStatus_NoRuns_ReturnsDefaults` | 无运行记录时返回默认值 |
+| `ResolveRecord_NotFound_Returns404` | 记录不存在返回 404 |
+| `ResolveRecord_PendingWithNoReferences_DeletesAndRemovesFromDb` | Pending 记录无引用时删除并移除 |
+| `ResolveRecord_ReferencedByStudentService_Returns400` | 被 Student 服务引用时返回 400 |
+| `ResolveRecord_ReferencedByMistakeService_Returns400` | 被 Mistake 服务引用时返回 400 |
+| `ResolveRecord_AlreadyResolved_SkipsReferenceCheck_DeletesDirectly` | 已 Resolved 记录跳过引用检查直接删除 |
+| `IgnoreRecord_NotFound_Returns404` | 记录不存在返回 404 |
+| `IgnoreRecord_PendingRecord_SetsStatus2AndNote` | Pending 记录设置 Status=2 和 Note |
+| `IgnoreRecord_NonPendingRecord_Returns400` | 非 Pending 记录返回 400 |
+| `BatchResolve_EmptyIds_Returns400` | 空 ids 列表返回 400 |
+| `BatchResolve_NullIds_Returns400` | null ids 返回 400 |
+| `BatchResolve_Success_ResolvesMultipleRecords` | 批量清理多条记录成功 |
+| `BatchResolve_SomeReferenced_SkipsReferencedResolvesOthers` | 部分被引用时跳过引用的，清理其余的 |
+
+### OssAuditWorker 测试（待实现）
+
+OssAuditWorker 目前没有测试覆盖。
 
 ---
 

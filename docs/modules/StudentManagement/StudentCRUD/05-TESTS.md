@@ -17,9 +17,41 @@
 | `OperationResponseTests` | `Constructor_WithFailure_ShouldSetSuccessFalse` | Success=false 时正确设置 |
 | `ErrorResponseTests` | `Constructor_ShouldSetMessageCorrectly` | ErrorResponse.Message 正确赋值 |
 
-## 缺失测试
+## 已实现测试
 
-**StudentsController 无任何 Controller 级别测试。** 以下为需要补充的测试计划。
+### Controller 测试（StudentsControllerTests）
+
+| 测试方法 | 验证内容 |
+| --- | --- |
+| `ListStudents_Success_ReturnsPagedResponse` | UT-01 查询学生列表成功 |
+| `ListStudents_PaginationNormalization_Page0_PageSize200` | UT-02 分页参数规范化 |
+| `ListStudents_FilterByNameAndGrade` | UT-03 按姓名和年级筛选 |
+| `GetStudent_Success` | UT-04 获取学生详情成功 |
+| `GetStudent_NotFound_Returns404` | UT-05 获取学生详情 — 不存在 |
+| `CreateStudent_Success` | UT-06 创建学生成功 |
+| `CreateStudent_EmptyName_Returns400` | UT-07 创建学生 — 姓名为空 |
+| `CreateStudent_InvalidGrade_Returns400` | UT-08 创建学生 — 无效年级 |
+| `CreateStudent_EmptyIdentityAccountIds_Returns400` | UT-09 创建学生 — 空 IdentityAccountIds |
+| `CreateStudent_InvalidGuidFormat_Returns400` | UT-10 创建学生 — 非法 GUID 格式 |
+| `UpdateStudent_Success` | UT-11 更新学生成功 |
+| `UpdateStudent_GrpcSuccessFalse_Returns404` | UT-12 更新学生 — gRPC 返回 Success=false |
+| `DeleteStudent_Success` | UT-13 删除学生成功 |
+| `DeleteStudent_NotFound_Returns404` | UT-14 删除学生 — 不存在 |
+| `GetGrades_Returns12Options` | UT-15 获取年级选项 |
+| `GetSubjectOptions_Success` | UT-16 获取科目选项 |
+
+### 边界和异常测试（已实现）
+
+| 测试方法 | 验证内容 |
+| --- | --- |
+| `ListStudents_PageNegativeOne_ResetsTo1` | EX-01 page=-1 时修正为 1 |
+| `ListStudents_PageSizeZero_ResetsTo1` | EX-02 pageSize=0 时修正为 1 |
+| `ListStudents_PageSize200_ClampedTo100` | EX-03 pageSize=200 时修正为 100 |
+| `CreateStudent_WhitespaceOnlyName_Returns400` | EX-04 姓名仅含空格 → 返回 400 |
+| `CreateStudent_Grade13_Returns400` | EX-05 年级=13 → 返回 400 |
+| `CreateStudent_MultipleInvalidGuids_Returns400` | EX-06 多个 IdentityAccountIds 中部分非法 |
+| `UpdateStudent_NullIdentityAccountIds_SkipsValidation` | EX-07 更新时 IdentityAccountIds=null → 跳过校验 |
+| `CreateStudent_GrpcInvalidArgument_Returns400` | EX-08 gRPC 抛出 InvalidArgument → 返回 400 |
 
 ## 单元测试 — Given-When-Then 格式
 
@@ -132,6 +164,8 @@
 
 ## 现有测试映射（到 SPEC 功能要求）
 
+### 模型测试
+
 | 测试方法 | 验证 SPEC 项 |
 | --- | --- |
 | `StudentDtoTests.Constructor_ShouldSetPropertiesCorrectly` | FR-01/FR-02/FR-03（模型层） |
@@ -140,3 +174,24 @@
 | `PagedResponseTests.Constructor_ShouldSetPropertiesCorrectly` | FR-01（模型层） |
 | `OperationResponseTests.Constructor_ShouldSetPropertiesCorrectly` | FR-04/FR-05（模型层） |
 | `ErrorResponseTests.Constructor_ShouldSetMessageCorrectly` | FR-11/FR-12/FR-13（模型层） |
+
+### Controller 测试
+
+| 测试方法 | 验证 SPEC 项 |
+| --- | --- |
+| `ListStudents_Success_ReturnsPagedResponse` | FR-01 |
+| `ListStudents_PaginationNormalization_Page0_PageSize200` | FR-10 |
+| `ListStudents_FilterByNameAndGrade` | FR-01 |
+| `GetStudent_Success` | FR-02 |
+| `GetStudent_NotFound_Returns404` | FR-12 |
+| `CreateStudent_Success` | FR-03 |
+| `CreateStudent_EmptyName_Returns400` | FR-03 |
+| `CreateStudent_InvalidGrade_Returns400` | FR-03 |
+| `CreateStudent_EmptyIdentityAccountIds_Returns400` | FR-03 |
+| `CreateStudent_InvalidGuidFormat_Returns400` | FR-08 |
+| `UpdateStudent_Success` | FR-04 |
+| `UpdateStudent_GrpcSuccessFalse_Returns404` | FR-13 |
+| `DeleteStudent_Success` | FR-05 |
+| `DeleteStudent_NotFound_Returns404` | FR-13 |
+| `GetGrades_Returns12Options` | FR-06 |
+| `GetSubjectOptions_Success` | FR-07 |

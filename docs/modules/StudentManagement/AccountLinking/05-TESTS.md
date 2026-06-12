@@ -12,9 +12,39 @@
 | `IdentityAccountDtoTests` | `Constructor_ShouldSetPropertiesCorrectly` | IdentityAccountDto 所有属性正确赋值 |
 | `IdentityAccountDtoTests` | `Constructor_WithEmptyValues_ShouldAcceptEmptyStrings` | 所有字段为空字符串时正常工作 |
 
-## 缺失测试
+## 已实现测试
 
-**StudentsController 和 IdentityAccountsController 无任何 Controller 级别测试。** 以下为需要补充的测试计划。
+### AccountLinkingTests（StudentsController 关联/解关联）
+
+| 测试方法 | 验证内容 |
+| --- | --- |
+| `GetIdentityAccountsByStudentId_Success` | UT-01 查询学生关联的身份账户 ID 成功 |
+| `LinkIdentityAccountToStudent_Success` | UT-02 关联身份账户成功 |
+| `LinkIdentityAccount_EmptyIdentityAccountId_Returns400` | UT-03 关联身份账户 — IdentityAccountId 为空 |
+| `LinkIdentityAccount_InvalidGuid_Returns400` | UT-04 关联身份账户 — 非法 GUID 格式 |
+| `LinkIdentityAccount_GrpcSuccessFalse_Returns404` | UT-05 关联身份账户 — gRPC 返回 Success=false |
+| `LinkIdentityAccount_GrpcInvalidArgument_Returns400` | UT-06 关联身份账户 — gRPC InvalidArgument |
+| `UnlinkIdentityAccount_Success` | UT-07 解除身份账户关联成功 |
+| `UnlinkIdentityAccount_GrpcSuccessFalse_Returns404` | UT-08 解除关联 — gRPC 返回 Success=false |
+| `UnlinkIdentityAccount_GrpcInvalidArgument_Returns400` | UT-09 解除关联 — gRPC InvalidArgument |
+| `LinkIdentityAccount_WhitespaceOnlyIdentityAccountId_Returns400` | EX-01 IdentityAccountId 为纯空格 → 返回 400 |
+
+### IdentityAccountsControllerTests
+
+| 测试方法 | 验证内容 |
+| --- | --- |
+| `GetIdentityAccountsBatch_NullInput_ReturnsEmptyAccountsWithNoFailure` | 输入为 null 时返回空列表 |
+| `GetIdentityAccountsBatch_EmptyInput_ReturnsEmptyAccountsWithNoFailure` | 输入为空列表时返回空列表 |
+| `GetIdentityAccountsBatch_MissingCredentials_ReturnsEmptyAccountsWithNoFailure` | AppId 未配置时返回空列表 |
+| `GetIdentityAccountsBatch_Success_ReturnsFilteredAccounts` | 批量查询成功返回过滤后的账户 |
+| `GetIdentityAccountsBatch_FiltersOutUsersNotInTargetIds` | 过滤不在 targetIds 中的用户 |
+| `GetIdentityAccountsBatch_CaseInsensitiveMatching` | 大小写不敏感匹配 |
+| `GetIdentityAccountsBatch_NullFieldsDefaultToEmptyString` | null 字段降级为空字符串 |
+| `GetIdentityAccountsBatch_NonSuccessStatusCode_ReturnsEmptyAccountsWithNoFailure` | HTTP 请求失败时返回空列表 |
+| `GetIdentityAccountsBatch_NullDeserializedResponse_ReturnsEmptyAccountsWithNoFailure` | 反序列化响应为 null 时返回空列表 |
+| `GetIdentityAccountsBatch_ExceptionDuringHttp_ReturnsPartialFailureWithWarning` | HTTP 异常时返回部分失败并记录警告 |
+| `GetStudentsByIdentityAccountId_Success_ReturnsStudentDtos` | 通过身份账户反查学生成功 |
+| `GetStudentsByIdentityAccountId_GrpcException_Propagates` | gRPC 异常向上传播 |
 
 ## 单元测试 — Given-When-Then 格式
 
@@ -127,8 +157,30 @@
 
 ## 现有测试映射（到 SPEC 功能要求）
 
+### 模型测试
+
 | 测试方法 | 验证 SPEC 项 |
 | --- | --- |
 | `LinkUserRequestTests.Constructor_ShouldSetPropertiesCorrectly` | FR-02（模型层） |
 | `IdentityAccountDtoTests.Constructor_ShouldSetPropertiesCorrectly` | FR-04（模型层） |
 | `IdentityAccountDtoTests.Constructor_WithEmptyValues_ShouldAcceptEmptyStrings` | FR-04（模型层，null 降级为空字符串） |
+
+### Controller 测试
+
+| 测试方法 | 验证 SPEC 项 |
+| --- | --- |
+| `GetIdentityAccountsByStudentId_Success` | FR-01 |
+| `LinkIdentityAccountToStudent_Success` | FR-02 |
+| `LinkIdentityAccount_EmptyIdentityAccountId_Returns400` | FR-02 |
+| `LinkIdentityAccount_InvalidGuid_Returns400` | FR-02 |
+| `LinkIdentityAccount_GrpcSuccessFalse_Returns404` | FR-06 |
+| `LinkIdentityAccount_GrpcInvalidArgument_Returns400` | FR-07 |
+| `UnlinkIdentityAccount_Success` | FR-03 |
+| `UnlinkIdentityAccount_GrpcSuccessFalse_Returns404` | FR-08 |
+| `UnlinkIdentityAccount_GrpcInvalidArgument_Returns400` | FR-09 |
+| `GetIdentityAccountsBatch_Success_ReturnsFilteredAccounts` | FR-04 |
+| `GetIdentityAccountsBatch_NullInput_ReturnsEmptyAccountsWithNoFailure` | FR-10 |
+| `GetIdentityAccountsBatch_MissingCredentials_ReturnsEmptyAccountsWithNoFailure` | FR-11 |
+| `GetIdentityAccountsBatch_NonSuccessStatusCode_ReturnsEmptyAccountsWithNoFailure` | FR-10 |
+| `GetIdentityAccountsBatch_FiltersOutUsersNotInTargetIds` | FR-12 |
+| `GetStudentsByIdentityAccountId_Success_ReturnsStudentDtos` | FR-05 |
