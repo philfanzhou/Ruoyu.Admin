@@ -61,6 +61,46 @@
 | AppId | string | 管理后台的应用ID |
 | AppSecret | string | 管理后台的应用密钥 |
 
+## IdentityAccountsController 行为
+
+### POST /api/admin/identity-accounts/batch
+
+批量查询 Identity 账户信息。
+
+**请求体**: `List<string>` — 账户 ID 列表
+
+**响应体**:
+```json
+{
+  "accounts": [
+    { "userId": "...", "username": "...", "displayName": "...", "phone": "...", "remark": "..." }
+  ],
+  "partialFailure": false,
+  "warning": null
+}
+```
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| accounts | IdentityAccountDto[] | 匹配的账户列表（仅包含请求中存在的 userId） |
+| partialFailure | bool | Identity 服务是否不可用 |
+| warning | string? | 不可用时的提示信息，如 "Identity 服务暂时不可用，部分账户信息无法加载" |
+
+**行为规则**:
+1. 输入为 null 或空列表 → 返回空 accounts，partialFailure=false
+2. AppId 或 AppSecret 未配置 → 返回空 accounts，partialFailure=false
+3. Identity 服务返回非成功状态码 → 返回空 accounts，partialFailure=false
+4. Identity 服务返回 null 响应体 → 返回空 accounts，partialFailure=false
+5. Identity 服务可用且成功 → 返回过滤后的 accounts（仅包含请求中存在的 userId，大小写不敏感），partialFailure=false
+6. HTTP 调用异常 → 返回空 accounts，partialFailure=true，warning="Identity 服务暂时不可用，部分账户信息无法加载"
+7. IdentityUserItem 的 null 字段默认映射为空字符串
+
+### GET /api/admin/accounts/{accountId}/students
+
+按 Identity 账户 ID 查询关联学生。
+
+**响应体**: `IReadOnlyList<StudentDto>`
+
 ## 依赖服务
 
 | 服务 | 协议 | 用途 | 必要性 |

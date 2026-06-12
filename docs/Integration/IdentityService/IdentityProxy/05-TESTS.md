@@ -57,10 +57,52 @@ Feature: 身份服务代理
 ## IdentityAccountsController 测试
 
 ```gherkin
-Feature: 用户账户管理
+Feature: 用户账户批量查询
 
-  Scenario: [待确认具体测试用例]
-    Given [待确认]
-    When [待确认]
-    Then [待确认]
+  Scenario: 空输入返回空列表
+    When 发送 POST /api/admin/identity-accounts/batch with null or []
+    Then 返回 { accounts: [], partialFailure: false, warning: null }
+
+  Scenario: 缺少凭据返回空列表
+    Given AppId 或 AppSecret 为空
+    When 发送 POST /api/admin/identity-accounts/batch with ["user-1"]
+    Then 返回 { accounts: [], partialFailure: false, warning: null }
+
+  Scenario: 成功查询返回过滤后的账户
+    Given IdentityService可用
+    And 返回 user-1, user-2, user-3 的信息
+    When 发送 POST /api/admin/identity-accounts/batch with ["user-1", "user-3"]
+    Then 返回 { accounts: [user-1, user-3], partialFailure: false, warning: null }
+
+  Scenario: 大小写不敏感匹配
+    Given IdentityService返回 userId="User-1"
+    When 发送 POST /api/admin/identity-accounts/batch with ["user-1"]
+    Then 返回 { accounts: [User-1], partialFailure: false, warning: null }
+
+  Scenario: null字段默认为空字符串
+    Given IdentityService返回 username=null, phone=null 的用户
+    When 发送 POST /api/admin/identity-accounts/batch with ["user-1"]
+    Then 返回 accounts 中 null 字段映射为 ""
+
+  Scenario: 服务不可用返回partialFailure
+    Given IdentityService不可用(抛出异常)
+    When 发送 POST /api/admin/identity-accounts/batch with ["user-1"]
+    Then 返回 { accounts: [], partialFailure: true, warning: "Identity 服务暂时不可用，部分账户信息无法加载" }
+
+  Scenario: 非成功状态码返回空列表无partialFailure
+    Given IdentityService返回 500
+    When 发送 POST /api/admin/identity-accounts/batch with ["user-1"]
+    Then 返回 { accounts: [], partialFailure: false, warning: null }
+
+Feature: 按账户查询学生
+
+  Scenario: 成功查询返回学生列表
+    Given StudentManagement gRPC服务可用
+    When 发送 GET /api/admin/accounts/{accountId}/students
+    Then 返回 StudentDto 列表
+
+  Scenario: gRPC异常向上传播
+    Given StudentManagement gRPC服务抛出 NotFound
+    When 发送 GET /api/admin/accounts/{accountId}/students
+    Then 抛出 RpcException
 ```
