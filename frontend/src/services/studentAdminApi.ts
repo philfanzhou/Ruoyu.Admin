@@ -39,6 +39,13 @@ export interface OperationResponse {
   warning?: string
 }
 
+// Identity 账户批量查询响应
+export interface IdentityAccountBatchResponse {
+  accounts: IdentityAccountDto[]
+  partialFailure: boolean
+  warning: string | null
+}
+
 // Identity 账户信息（用于批量查询）
 export interface IdentityAccountDto {
   userId: string
@@ -244,7 +251,7 @@ class StudentAdminApiClient {
 
   // 批量获取 Identity 用户信息
   async getIdentityAccountsBatch(accountIds: string[]) {
-    const response = await this.client.post<IdentityAccountDto[]>('/api/admin/identity-accounts/batch', accountIds)
+    const response = await this.client.post<IdentityAccountBatchResponse>('/api/admin/identity-accounts/batch', accountIds)
     return response.data
   }
 

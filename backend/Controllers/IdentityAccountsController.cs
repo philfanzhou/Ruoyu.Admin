@@ -26,7 +26,7 @@ public class IdentityAccountsController : ControllerBase
     public async Task<IActionResult> GetIdentityAccountsBatch([FromBody] List<string> accountIds)
     {
         if (accountIds == null || accountIds.Count == 0)
-            return Ok(new List<IdentityAccountDto>());
+            return Ok(new { accounts = (IReadOnlyList<IdentityAccountDto>)new List<IdentityAccountDto>(), partialFailure = false, warning = (string?)null });
 
         var targetIds = new HashSet<string>(accountIds, StringComparer.OrdinalIgnoreCase);
         var result = new List<IdentityAccountDto>();
@@ -35,7 +35,7 @@ public class IdentityAccountsController : ControllerBase
         try
         {
             if (string.IsNullOrEmpty(_options.AppId) || string.IsNullOrEmpty(_options.AppSecret))
-                return Ok(result);
+                return Ok(new { accounts = (IReadOnlyList<IdentityAccountDto>)result, partialFailure, warning = (string?)null });
 
             var client = _httpClientFactory.CreateClient("IdentityService");
             var request = new HttpRequestMessage(HttpMethod.Post, $"{_options.Address.TrimEnd('/')}/api/gateway/users/batch");
@@ -45,11 +45,11 @@ public class IdentityAccountsController : ControllerBase
 
             var response = await client.SendAsync(request);
             if (!response.IsSuccessStatusCode)
-                return Ok(result);
+                return Ok(new { accounts = (IReadOnlyList<IdentityAccountDto>)result, partialFailure, warning = (string?)null });
 
             var accounts = await response.Content.ReadFromJsonAsync<List<IdentityUserItem>>();
             if (accounts == null)
-                return Ok(result);
+                return Ok(new { accounts = (IReadOnlyList<IdentityAccountDto>)result, partialFailure, warning = (string?)null });
 
             foreach (var user in accounts)
             {

@@ -307,12 +307,15 @@ async function loadAccountMap() {
     return
   }
   try {
-    const accounts = await studentAdminApi.getIdentityAccountsBatch([...allAccountIds])
+    const result = await studentAdminApi.getIdentityAccountsBatch([...allAccountIds])
     const map = new Map<string, IdentityAccountDto>()
-    for (const acc of accounts) {
+    for (const acc of result.accounts) {
       map.set(acc.userId, acc)
     }
     accountMap.value = map
+    if (result.partialFailure && result.warning) {
+      ElMessage.warning(result.warning)
+    }
   } catch (error) {
     console.error('Failed to load account info:', error)
   }
