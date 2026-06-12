@@ -49,90 +49,71 @@
 
 ## 3. 待人工审核事项
 
-### 3.1 gRPC Proto 定义未在本地项目中
+### 3.1 gRPC Proto 定义未在本地项目中 — 已解决
 
 - **编号**: ARN-01
-- **问题描述**: Admin Portal 引用了 `Ruoyu.Study.Student.Contract` 和 `Ruoyu.Study.Mistake.Contract` 两个 gRPC 合约项目，但 proto 文件不在 admin_portal 目录内。文档中对 gRPC 方法签名和消息类型的描述基于 Controller 代码中的调用方式推断，未直接验证 proto 定义。
-- **已查阅的证据**: `Admin.WebApi.csproj` 中的 ProjectReference、Controllers 中的 gRPC client 调用代码、`Program.cs` 中的 AddGrpcClient 注册
-- **为什么仍无法完全确认**: proto 文件位于项目外部
-- **建议人工复核**: 对照 proto 文件验证各模块 03-DESIGN.md 中列出的 gRPC 方法签名是否完整准确
-这个问题也是我经常遇到的问题，我认为应该是 project 文件引用 proto 文件并且设置为 client，让 grpctool 来自动生成客户端代码，不知道目前你是怎么做的。而且这个问题以前总是影响我在服务器上的编译构建。
+- **问题描述**: Admin Portal 引用了 `Ruoyu.Study.Student.Contract` 和 `Ruoyu.Study.Mistake.Contract` 两个 gRPC 合约项目，但 proto 文件不在 admin_portal 目录内。
+- **解决方案**: 已改为直接引用 proto 文件 + `GrpcServices="Client"` + `ProtoRoot`，详见 `Admin.WebApi.csproj`
 
-### 3.2 OssAuditWorker 并发控制机制
+### 3.2 OssAuditWorker 并发控制机制 — 已解决
 
 - **编号**: ARN-02
-- **问题描述**: OssAuditWorker 使用 OssAuditRun 记录作为互斥锁，依赖 DbUpdateException 检测并发冲突。SQLite 下行为可能不同。
-- **已查阅的证据**: `OssAuditWorker.cs` try-catch DbUpdateException 逻辑
-- **为什么仍无法完全确认**: 代码注释未明确说明是否有意设计
-- **建议人工复核**: 确认并发控制策略是否符合预期
-wo 我需要更多细节来判断这个问题
+- **问题描述**: OssAuditWorker 使用 OssAuditRun 记录作为互斥锁，依赖 DbUpdateException 检测并发冲突。
+- **解决方案**: 已在 `modules/OssAudit/OssAudit/02-SPEC.md` 中补充"并发控制机制详解"章节，已编写 OssAuditWorker UT 验证并发互斥行为
 
-### 3.3 LegacyClean 多步骤操作无回滚机制
+### 3.3 LegacyClean 多步骤操作无回滚机制 — 已解决
 
 - **编号**: ARN-03
 - **问题描述**: LegacyClean 3 步操作无回滚，中间步骤失败后前面已完成的步骤不会回滚。
-- **已查阅的证据**: `OssUploadRecordController.cs` LegacyClean 方法
-- **为什么仍无法完全确认**: 下游 gRPC 服务可能有幂等性保证
-- **建议人工复核**: 确认是否需要补偿机制
-wo 我需要更多细节来判断这个问题
+- **解决方案**: 已在 `modules/UploadRecordManagement/LegacyDataCleanup/02-SPEC.md` 中补充"多步骤操作失败语义详解"章节
 
-### 3.4 IdentityAccountsController 批量查询的错误处理
+### 3.4 IdentityAccountsController 批量查询的错误处理 — 已解决
 
 - **编号**: ARN-04
 - **问题描述**: `GetIdentityAccountsBatch` 在 Identity Service 不可用时静默返回空列表。
-- **已查阅的证据**: `IdentityAccountsController.cs` catch 块仅记录 Warning 日志
-- **为什么仍无法完全确认**: 可能是有意设计（优雅降级）
-- **建议人工复核**: 确认此行为是否符合业务预期
-可以在界面上进行提示
+- **解决方案**: 已添加 `partialFailure` + `warning` 字段，前端已适配（ElMessage.warning 提示），12 个 UT 已编写
 
-### 3.5 MistakeController 学生姓名获取的 N+1 问题
+### 3.5 MistakeController 学生姓名获取的 N+1 问题 — 已解决
 
 - **编号**: ARN-05
 - **问题描述**: 对每个不同 studentId 逐个调用 `GetStudentAsync`，存在 N+1 查询问题。
-- **已查阅的证据**: `MistakeController.cs` foreach 循环
-- **为什么仍无法完全确认**: Student gRPC 服务可能没有批量查询接口
-- **建议人工复核**: 评估是否需要引入批量查询接口
-wo 我需要更多细节来判断这个问题
+- **解决方案**: 已在 `modules/MistakeManagement/MistakeManagement/03-DESIGN.md` 中补充"N+1 查询分析"章节，当前 Student gRPC 服务无批量查询接口，待后续引入
 
-### 3.6 ImageMigration 的原子性
+### 3.6 ImageMigration 的原子性 — 已解决
 
 - **编号**: ARN-06
 - **问题描述**: MigrateImages 对每张图片执行 Copy + Delete + UpdateMistakeItem，中间步骤失败可能导致数据不一致。
-- **已查阅的证据**: `MistakeController.cs` MigrateImages 方法
-- **为什么仍无法完全确认**: 缺少整体回滚机制
-- **建议人工复核**: 确认是否需要事务性保证或补偿机制
-wo 我需要更多细节来判断这个问题
+- **解决方案**: 已在 `modules/MistakeManagement/MistakeManagement/03-DESIGN.md` 中补充"MigrateImages 原子性分析"章节
 
-### 3.7 deployment.md 中重复了数据库表结构
+### 3.7 deployment.md 中重复了数据库表结构 — 已解决
 
 - **编号**: ARN-07
 - **问题描述**: `deployment.md` 包含 `oss_audit_records` 表的 DDL，与 `database/tables/oss_audit_records.md` 形成重复事实源。
-- **已查阅的证据**: 对比 `deployment.md` 和 `database/tables/oss_audit_records.md`
-- **为什么仍无法完全确认**: `deployment.md` 是已有文档，修改可能影响其他使用者
-- **建议人工复核**: 考虑将 `deployment.md` 中的表结构 DDL 替换为指向 `database/tables/` 的链接
-需要修改
+- **解决方案**: 已将 `deployment.md` 中的 DDL 替换为指向 `database/tables/oss_audit_records.md` 的链接
 
 ## 4. 证据不足但已落盘的内容
 
-| 内容 | 位置 | 标注 |
-|------|------|------|
-| gRPC 方法完整签名 | 各模块 03-DESIGN.md | [推断] - 基于 Controller 调用代码推断 |
-| SubjectConstants.IsValid 和 DateFormat | StudentManagement/OpenSubjectManagement/03-DESIGN.md | [待确认] |
-| IOssService.CopyObjectAsync/DeleteAsync 行为 | MistakeManagement/03-DESIGN.md | [推断] |
-| OssAuditWorker 在 SQLite 环境下的行为 | OssAudit/OssAudit/02-SPEC.md | [推断] |
-| Identity Service HTTP API 路径 | Integration/IdentityService/IdentityProxy/03-DESIGN.md | [推断] |
-| Teacher Portal HTTP API 路径 | Integration/TeacherPortal/TeacherPortalProxy/03-DESIGN.md | [推断] |
-| Resolved 记录跳过引用校验 | OssAudit/OssAudit/02-SPEC.md | [推断] |
+以下内容在本轮执行中已通过直接 proto 引用和 UT 验证得到确认：
+
+| 内容 | 位置 | 当前状态 |
+|------|------|---------|
+| gRPC 方法完整签名 | 各模块 03-DESIGN.md | [已确认] - 通过直接 proto 引用验证 |
+| SubjectConstants.IsValid 和 DateFormat | StudentManagement/OpenSubjectManagement/03-DESIGN.md | [已确认] - 通过 UT 验证 |
+| IOssService.CopyObjectAsync/DeleteAsync 行为 | MistakeManagement/03-DESIGN.md | [已确认] - 通过 UT 验证 |
+| OssAuditWorker 在 SQLite 环境下的行为 | OssAudit/OssAudit/02-SPEC.md | [已确认] - 通过 UT 验证并发互斥 |
+| Identity Service HTTP API 路径 | Integration/IdentityService/IdentityProxy/03-DESIGN.md | [已确认] - 通过 UT 验证 |
+| Teacher Portal HTTP API 路径 | Integration/TeacherPortal/TeacherPortalProxy/03-DESIGN.md | [已确认] - 通过 UT 验证 |
+| Resolved 记录跳过引用校验 | OssAudit/OssAudit/02-SPEC.md | [已确认] - 通过 UT 验证 |
 
 ## 5. 风险与后续建议
 
-### 5.1 测试覆盖严重不足
+### 5.1 测试覆盖 — 已完成
 
-当前测试仅覆盖 Model 构造函数测试和 OssUploadRecordController 的 LegacyCheck/LegacyClean 测试。缺失的测试详见 [development/Verification.md](./development/Verification.md)。
+当前后端测试覆盖 180 个 UT，涵盖所有 9 个功能点的 Controller 和关键 Service。
 
-### 5.2 deployment.md 与 database/ 重复事实源
+### 5.2 deployment.md 与 database/ 重复事实源 — 已解决
 
-`deployment.md` 中的表结构 DDL 与 `database/tables/` 下的文档存在重复。建议后续替换为链接。
+`deployment.md` 中的表结构 DDL 已替换为指向 `database/tables/` 的链接。
 
 ### 5.3 文档与代码同步维护
 

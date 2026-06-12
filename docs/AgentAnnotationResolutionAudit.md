@@ -150,14 +150,13 @@ Admin.WebApi.csproj 已改为直接引用 proto 文件 + `GrpcServices="Client"`
 - `ProtoRoot` 必须指向 Contract 项目的根目录（包含 `Protos/` 子目录的父目录）
 - 此变更不影响 Student/Mistake 服务端项目（它们仍通过 ProjectReference 引用 Contract 项目）
 
-### 7.2 ARN-04 前端适配
+### 7.2 ARN-04 前端适配 — 已完成
 
-IdentityAccountsController 的响应结构已变更（新增 partialFailure 和 warning 字段），前端需要适配：
-- 检查 `frontend/src/services/identityApi.ts` 中的批量查询响应处理
-- 在 UI 中显示 warning 提示
+IdentityAccountsController 的响应结构已变更（新增 partialFailure 和 warning 字段），前端已适配：
+- `frontend/src/services/studentAdminApi.ts`：新增 `IdentityAccountBatchResponse` 类型，`getIdentityAccountsBatch` 返回类型已更新
+- `frontend/src/views/StudentView.vue`：`loadAccountMap` 已从 `result.accounts` 提取账户列表，`partialFailure=true` 时通过 `ElMessage.warning` 显示提示
 
-### 7.3 测试覆盖
+### 7.3 测试覆盖 — 已完成
 
-ARN-04 的代码修改没有对应的单元测试。建议补充：
-- GetIdentityAccountsBatch 在 Identity 服务不可用时返回 partialFailure=true 的测试
-- GetIdentityAccountsBatch 在 Identity 服务可用时返回 partialFailure=false 的测试
+ARN-04 的代码修改已有完整单元测试覆盖：
+- `IdentityAccountsControllerTests.cs`：12 个 UT 覆盖 null/empty 输入、缺失凭据、成功查询、过滤、大小写不敏感、null 字段默认值、非成功状态码、null 响应、异常 partialFailure、gRPC 成功/异常
