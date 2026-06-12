@@ -13,15 +13,24 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Google.Protobuf" Version="3.26.1" />
     <PackageReference Include="Grpc.Net.ClientFactory" Version="2.62.0" />
+    <PackageReference Include="Grpc.Tools" Version="2.62.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.11" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.11" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.5.0" />
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\backend\ruoyu.student\src\Contract\Ruoyu.Study.Student.Contract.csproj" />
-    <ProjectReference Include="..\..\backend\ruoyu.mistake\src\Contract\Ruoyu.Study.Mistake.Contract.csproj" />
+    <Protobuf Include="..\..\backend\ruoyu.student\src\Contract\Protos\student.proto" GrpcServices="Client" ProtoRoot="..\..\backend\ruoyu.student\src\Contract" />
+    <Protobuf Include="..\..\backend\ruoyu.mistake\src\Contract\Protos\mistake.proto" GrpcServices="Client" ProtoRoot="..\..\backend\ruoyu.mistake\src\Contract" />
+    <Protobuf Include="..\..\backend\ruoyu.mistake\src\Contract\Protos\mistake.common.proto" GrpcServices="None" ProtoRoot="..\..\backend\ruoyu.mistake\src\Contract" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\backend\ruoyu.common\src\Ruoyu.Study.Common\Ruoyu.Study.Common.csproj" />
   </ItemGroup>
 

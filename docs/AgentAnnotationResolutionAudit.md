@@ -20,7 +20,7 @@
 
 | 编号 | 来源位置 | 关联功能点/模块 | 批注意图类型 | 当前状态 |
 |------|----------|----------------|-------------|---------|
-| ARN-01 | AgentReviewNotes.md §3.1 | 全局/gRPC引用 | 事实纠正+根因追溯 | 部分完成 |
+| ARN-01 | AgentReviewNotes.md §3.1 | 全局/gRPC引用 | 事实纠正+根因追溯 | 已完成 |
 | ARN-02 | AgentReviewNotes.md §3.2 | OssAudit | 规则澄清+文档补写 | 已完成 |
 | ARN-03 | AgentReviewNotes.md §3.3 | LegacyDataCleanup | 规则澄清+文档补写 | 已完成 |
 | ARN-04 | AgentReviewNotes.md §3.4 | AccountLinking | 代码修复+文档补写 | 已完成 |
@@ -34,18 +34,33 @@
 
 - **批注原文摘要**: "这个问题也是我经常遇到的问题，我认为应该是 project 文件引用 proto 文件并且设置为 client，让 grpctool 来自动生成客户端代码，不知道目前你是怎么做的。而且这个问题以前总是影响我在服务器上的编译构建。"
 - **解读后的整改目标**: 将 Admin.WebApi.csproj 从 ProjectReference 引用 Contract 项目改为直接引用 proto 文件并设置 GrpcServices="Client"
-- **已核查的代码证据**: 
+- **已核查的代码证据**:
   - Admin.WebApi.csproj 使用 ProjectReference 引用 Student.Contract 和 Mistake.Contract
   - Student.Contract.csproj 使用 `GrpcServices="Both"` 生成 Client+Server 代码
   - Mistake.Contract.csproj 同样使用 `GrpcServices="Both"`
   - mistake.proto 通过 `import "Protos/mistake.common.proto"` 引入公共类型
-- **根因判断**: Contract 项目使用 `GrpcServices="Both"` 导致 Admin Portal 构建时生成了不需要的 Server 端代码，可能影响服务器编译构建
-- **实际修改项**: 
-  - 尝试将 Admin.WebApi.csproj 改为直接引用 proto 文件 + GrpcServices="Client" → 构建失败（mistake.proto 的 import 路径无法正确解析）
-  - 已回滚到 ProjectReference 方式
-- **同步更新的正式文档**: `docs/overview/Design.md` — 补充 gRPC 引用方式说明
-- **实际执行的验证命令**: `dotnet build` → 直接引用方式失败（26 个 proto 解析错误），回滚后成功
-- **结果摘要**: 部分完成。直接引用 proto 文件的方式因 import 路径问题无法工作，保留 ProjectReference 方式但在文档中记录了当前做法和已知问题
+- **根因判断**: Contract 项目使用 `GrpcServices="Both"` 导致 Admin Portal 构建时生成了不需要的 Server 端代码，影响服务器编译构建
+- **实际修改项**:
+  - 修改 `backend/Admin.WebApi.csproj`：
+    - 移除 Student.Contract 和 Mistake.Contract 的 ProjectReference
+    - 添加 Google.Protobuf 和 Grpc.Tools 包引用
+    - 添加 3 个 `<Protobuf>` 引用（student.proto + mistake.proto + mistake.common.proto），均设置 `GrpcServices="Client"` 或 `"None"`
+    - 使用 `ProtoRoot` 属性解决 mistake.proto 的 import 路径问题
+  - 更新 `docs/overview/Design.md`：新增设计决策 #6，记录 gRPC 引用方式和注意事项
+- **同步更新的正式文档**: `docs/overview/Design.md`
+- **实际执行的验证命令**:
+  - `dotnet build` → 0 Error, 0 Warning
+  - `dotnet test` → 164 通过, 0 失败
+  - `grep "class.*Base" obj/Debug/net8.0/Protos/*.cs` → 只找到 ClientBase 派生类，无 Server 端 Base 抽象类
+- **结果摘要**: 已完成。通过 `ProtoRoot` 属性解决了 proto import 路径问题，成功将引用方式从 ProjectReference 改为直接引用 proto 文件 + GrpcServices="Client"
+
+#### 调查过程
+
+1. **第一次尝试**：直接引用 proto 文件 + `GrpcServices="Client"`，未使用 `ProtoRoot` → 构建失败（26 个错误），mistake.proto 的 `import "Protos/mistake.common.proto"` 无法解析
+2. **回滚**：恢复 ProjectReference 方式
+3. **深入调查**：分析 mistake.proto 的 import 结构，发现 `import "Protos/mistake.common.proto"` 使用了相对于 Contract 项目根目录的路径
+4. **第二次尝试**：使用 `ProtoRoot` 属性指定 proto 文件的根目录 → 构建成功
+5. **验证**：确认生成的代码只包含 Client 类，无 Server 端 Base 抽象类
 
 ### ARN-02: OssAuditWorker 并发控制
 
@@ -124,28 +139,16 @@
 
 ## 6. 未完成或暂时跳过的批注
 
-### ARN-01: gRPC Proto 引用方式
-
-- **未完成原因**: 直接引用 proto 文件（GrpcServices="Client"）因 import 路径问题无法编译
-- **已做过哪些深度尝试**: 
-  1. 修改 Admin.WebApi.csproj 为直接引用 proto 文件 + GrpcServices="Client"
-  2. 添加 mistake.common.proto 引用（GrpcServices="None"）
-  3. 执行 `dotnet build` → 26 个错误，mistake.proto 的 import "Protos/mistake.common.proto" 无法解析
-  4. 回滚到 ProjectReference 方式
-- **仍缺少什么条件**: 需要修改 Contract 项目中的 proto import 路径，或重构 proto 文件组织方式，但这会影响其他服务项目
-- **建议人工如何继续**: 
-  1. **方案 A（推荐）**: 修改 Student.Contract.csproj 和 Mistake.Contract.csproj，将 `GrpcServices="Both"` 改为 `GrpcServices="Client"`，让服务端项目单独引用 proto 文件生成 Server 代码
-  2. **方案 B**: 在 Contract 项目中添加条件编译，根据目标框架或属性决定生成 Client 还是 Server
-  3. **方案 C**: 保持当前 ProjectReference 方式，在 CI/CD 中确保 Contract 项目先于 Admin Portal 构建
+本轮所有 7 条批注均已完成处理，无暂时跳过的批注。
 
 ## 7. 风险与待人工复核事项
 
-### 7.1 ARN-01 gRPC 引用方式
+### 7.1 ARN-01 gRPC 引用方式变更后的维护注意
 
-当前 ProjectReference + GrpcServices="Both" 的方式会导致 Admin Portal 构建时生成不需要的 Server 端代码。这不影响运行时行为，但：
-- 增加了编译时间
-- 在服务器构建时可能因缺少 Server 端依赖而失败
-- 建议优先采用方案 A（修改 Contract 项目为 Client-only）
+Admin.WebApi.csproj 已改为直接引用 proto 文件 + `GrpcServices="Client"` + `ProtoRoot`。维护注意：
+- 如果 Contract 项目新增了 proto 文件或 import 依赖，Admin.WebApi.csproj 需要同步添加对应的 `<Protobuf>` 引用
+- `ProtoRoot` 必须指向 Contract 项目的根目录（包含 `Protos/` 子目录的父目录）
+- 此变更不影响 Student/Mistake 服务端项目（它们仍通过 ProjectReference 引用 Contract 项目）
 
 ### 7.2 ARN-04 前端适配
 

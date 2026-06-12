@@ -155,18 +155,30 @@
 
 ### 6. gRPC 合约引用方式
 
-**决策**：通过 `ProjectReference` 引用 Contract 项目（`Ruoyu.Study.Student.Contract`、`Ruoyu.Study.Mistake.Contract`），而非直接引用 proto 文件。
+**决策**：直接引用 proto 文件并设置 `GrpcServices="Client"`，通过 `ProtoRoot` 解决 import 路径问题。
+
+**实现方式**：
+```xml
+<Protobuf Include="..\..\backend\ruoyu.student\src\Contract\Protos\student.proto"
+          GrpcServices="Client"
+          ProtoRoot="..\..\backend\ruoyu.student\src\Contract" />
+<Protobuf Include="..\..\backend\ruoyu.mistake\src\Contract\Protos\mistake.proto"
+          GrpcServices="Client"
+          ProtoRoot="..\..\backend\ruoyu.mistake\src\Contract" />
+<Protobuf Include="..\..\backend\ruoyu.mistake\src\Contract\Protos\mistake.common.proto"
+          GrpcServices="None"
+          ProtoRoot="..\..\backend\ruoyu.mistake\src\Contract" />
+```
 
 **原因**：
-- Contract 项目包含 proto 文件间的 import 依赖（如 `mistake.proto` import `mistake.common.proto`），直接引用 proto 文件会导致 import 路径解析失败
-- ProjectReference 方式确保 proto 编译由 Contract 项目统一管理
+- Admin Portal 只需要 gRPC Client 代码，不需要 Server 端基类
+- `GrpcServices="Client"` 只生成 `xxxClient` 类，避免生成无用的 Server 端代码
+- `ProtoRoot` 指定 proto 文件的根目录，使 `mistake.proto` 中的 `import "Protos/mistake.common.proto"` 能正确解析
+- 不再依赖 Contract 项目的 `GrpcServices="Both"` 设置，避免服务器构建时因生成不需要的 Server 代码而失败
 
-**已知问题**：
-- Contract 项目使用 `GrpcServices="Both"` 生成 Client+Server 代码，Admin Portal 只需要 Client
-- 这会导致 Admin Portal 构建时生成不需要的 Server 端基类，增加编译时间
-- 在服务器构建时可能因缺少 Server 端依赖而失败
-
-**建议改进**：将 Contract 项目的 `GrpcServices` 改为 `"Client"`，让服务端项目单独引用 proto 文件生成 Server 代码。详见 [AgentAnnotationResolutionAudit.md](../AgentAnnotationResolutionAudit.md) ARN-01。
+**注意事项**：
+- `ProtoRoot` 必须指向 Contract 项目的根目录（包含 `Protos/` 子目录的父目录），而不是 `Protos/` 目录本身
+- 如果 Contract 项目的 proto 文件新增了 import 依赖，Admin.WebApi.csproj 也需要同步添加对应的 `<Protobuf>` 引用（`GrpcServices="None"`）
 
 ## 配置结构
 
