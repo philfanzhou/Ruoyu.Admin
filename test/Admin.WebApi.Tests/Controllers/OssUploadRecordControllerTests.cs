@@ -327,8 +327,8 @@ public class OssUploadRecordControllerTests
 
         var markCompletedResponse = new SProto.BoolResponse { Success = true };
         _learningClient
-            .Setup(c => c.MarkUploadRecordCompletedAsync(
-                It.IsAny<SProto.MarkUploadRecordCompletedRequest>(),
+            .Setup(c => c.MarkUploadRecordUnderReviewAsync(
+                It.IsAny<SProto.MarkUploadRecordUnderReviewRequest>(),
                 It.IsAny<Metadata>(),
                 It.IsAny<DateTime?>(),
                 It.IsAny<CancellationToken>()))
@@ -404,8 +404,8 @@ public class OssUploadRecordControllerTests
 
         var markCompletedResponse = new SProto.BoolResponse { Success = true };
         _learningClient
-            .Setup(c => c.MarkUploadRecordCompletedAsync(
-                It.IsAny<SProto.MarkUploadRecordCompletedRequest>(),
+            .Setup(c => c.MarkUploadRecordUnderReviewAsync(
+                It.IsAny<SProto.MarkUploadRecordUnderReviewRequest>(),
                 It.IsAny<Metadata>(),
                 It.IsAny<DateTime?>(),
                 It.IsAny<CancellationToken>()))
@@ -463,8 +463,8 @@ public class OssUploadRecordControllerTests
 
         var markCompletedResponse = new SProto.BoolResponse { Success = true };
         _learningClient
-            .Setup(c => c.MarkUploadRecordCompletedAsync(
-                It.IsAny<SProto.MarkUploadRecordCompletedRequest>(),
+            .Setup(c => c.MarkUploadRecordUnderReviewAsync(
+                It.IsAny<SProto.MarkUploadRecordUnderReviewRequest>(),
                 It.IsAny<Metadata>(),
                 It.IsAny<DateTime?>(),
                 It.IsAny<CancellationToken>()))

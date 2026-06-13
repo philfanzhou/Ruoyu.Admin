@@ -198,7 +198,7 @@ public class OssUploadRecordController : ControllerBase
             }
 
             // 标记上传记录为完成
-            await _learningClient.MarkUploadRecordCompletedAsync(new SProto.MarkUploadRecordCompletedRequest
+            await _learningClient.MarkUploadRecordUnderReviewAsync(new SProto.MarkUploadRecordUnderReviewRequest
             {
                 RecordId = id,
                 StudentId = request.StudentId
@@ -407,6 +407,11 @@ public class OssUploadRecordController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// 运维兜底接口：清理审核完毕但上传记录未删除的遗留数据。
+    /// 在目标流程中，每次审核后 gRPC 层会自动编排状态检查和清理，
+    /// 正常流程不应遗留需要此接口处理的场景。
+    /// </summary>
     [HttpPost("legacy-clean/{id}")]
     public async Task<IActionResult> LegacyClean(string id)
     {
