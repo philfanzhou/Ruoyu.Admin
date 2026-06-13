@@ -12,7 +12,7 @@
 - **查流程**：看 [KeyFlows](./KeyFlows.md) 的关键时序图
 - **查需求**：看 [Requirements](./Requirements.md) 的需求摘要，详细需求下钻到 [modules/](../modules/)
 - **查设计**：看 [Design](./Design.md) 的架构概览，详细设计下钻到 [modules/](../modules/)
-- **查编码规范**：看 [DotNetCodingPolicy](./DotNetCodingPolicy.md)
+- **查编码规范**：看 [共享 .NET 编码规范](../../../.agent/rules/dotnet-coding-policy.md)
 
 ## 文档清单
 
@@ -24,4 +24,4 @@
 | [DataOwnership.md](./DataOwnership.md) | 数据主责、引用边界、双写禁区 | [database/](../database/) |
 | [Requirements.md](./Requirements.md) | 服务级需求摘要（精简） | [modules/](../modules/) |
 | [Design.md](./Design.md) | 服务级架构概览（精简） | [modules/](../modules/) |
-| [DotNetCodingPolicy.md](./DotNetCodingPolicy.md) | .NET 编码规范 | — |
+| [共享 .NET 编码规范](../../../.agent/rules/dotnet-coding-policy.md) | 仓库级共享 .NET 编码规范 | — |
