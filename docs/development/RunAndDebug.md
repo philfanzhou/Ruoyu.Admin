@@ -3,7 +3,7 @@
 ## 启动后端
 
 ```bash
-cd admin_portal/backend
+cd src/admin_portal/backend
 
 # 开发模式（带 Swagger UI）
 dotnet run
@@ -20,7 +20,7 @@ dotnet run --AdminApi:Port=5020
 ## 启动前端
 
 ```bash
-cd admin_portal/frontend
+cd src/admin_portal/frontend
 
 # 开发模式（热重载）
 npm run dev
@@ -34,7 +34,7 @@ npm run build
 将前端构建产物部署到后端 wwwroot：
 
 ```bash
-cd admin_portal/frontend
+cd src/admin_portal/frontend
 npm run build
 cp -r dist/* ../backend/wwwroot/
 ```

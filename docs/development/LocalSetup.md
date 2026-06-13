@@ -14,7 +14,7 @@
 
 1. 复制配置文件：
    ```bash
-   cd admin_portal/backend
+   cd src/admin_portal/backend
    # appsettings.json 已包含开发默认值，可直接使用
    ```
 
@@ -39,7 +39,7 @@
 ## 前端配置
 
 ```bash
-cd admin_portal/frontend
+cd src/admin_portal/frontend
 npm install
 ```
 

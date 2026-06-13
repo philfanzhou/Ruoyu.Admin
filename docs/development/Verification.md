@@ -3,7 +3,7 @@
 ## 运行测试
 
 ```bash
-cd admin_portal
+cd src/admin_portal
 
 # 运行全部测试
 dotnet test
@@ -38,7 +38,7 @@ dotnet test --collect:"XPlat Code Coverage"
 
 ```bash
 # Release 构建
-cd admin_portal/backend
+cd src/admin_portal/backend
 dotnet publish -c Release -o ./publish
 
 # 验证构建产物

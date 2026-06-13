@@ -3,7 +3,7 @@
 ## 本功能在项目中的目录与文件结构
 
 ```
-admin_portal/
+src/admin_portal/
 ├── backend/
 │   ├── Controllers/
 │   │   └── StudentsController.cs          # API 控制器（CRUD + GetGrades + GetSubjectOptions）

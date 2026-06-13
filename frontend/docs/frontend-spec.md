@@ -16,7 +16,7 @@
 ## 项目结构
 
 ```
-admin_portal/frontend/src/
+src/admin_portal/frontend/src/
 ├── main.ts                      # 入口，注册 ElementPlus + VueRouter
 ├── App.vue                      # 根组件，布局容器（含二级菜单）
 ├── router/
