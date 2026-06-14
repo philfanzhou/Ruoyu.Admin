@@ -9,19 +9,15 @@ NETWORK_NAME="ruoyu-net"
 
 ADMIN_HTTP_PORT="10901"
 
-IDENTITY_HTTP_HOST="ruoyu-identity"
-IDENTITY_HTTP_PORT="5002"
+IDENTITY_HTTP_ADDR="ruoyu-identity:5002"
 IDENTITY_APP_ID=""
 IDENTITY_APP_SECRET=""
 
-STUDENT_GRPC_HOST="ruoyu-student"
-STUDENT_GRPC_PORT="5005"
+STUDENT_GRPC_ADDR="ruoyu-student:5005"
 
-MISTAKE_GRPC_HOST="ruoyu-mistake"
-MISTAKE_GRPC_PORT="5006"
+MISTAKE_GRPC_ADDR="ruoyu-mistake:5006"
 
-TEACHER_API_HOST="ruoyu-teacher-api"
-TEACHER_API_PORT="5004"
+TEACHER_API_ADDR="ruoyu-teacher-api:5004"
 TEACHER_ADMIN_API_KEY=""
 
 # OSS 凭证（审计+运维所需，权限应限制为只读+有限写）
@@ -54,12 +50,12 @@ docker run -d \
   -p "${ADMIN_HTTP_PORT}:5020" \
   -e TZ=Asia/Shanghai \
   -e APP_TITLE="${CONTAINER_NAME}" \
-  -e StudentGrpcService__Address="http://${STUDENT_GRPC_HOST}:${STUDENT_GRPC_PORT}" \
-  -e MistakeGrpcService__Address="http://${MISTAKE_GRPC_HOST}:${MISTAKE_GRPC_PORT}" \
-  -e IdentityService__Address="http://${IDENTITY_HTTP_HOST}:${IDENTITY_HTTP_PORT}" \
+  -e StudentGrpcService__Address="http://${STUDENT_GRPC_ADDR}" \
+  -e MistakeGrpcService__Address="http://${MISTAKE_GRPC_ADDR}" \
+  -e IdentityService__Address="http://${IDENTITY_HTTP_ADDR}" \
   -e IdentityService__AppId="${IDENTITY_APP_ID}" \
   -e IdentityService__AppSecret="${IDENTITY_APP_SECRET}" \
-  -e TeacherPortal__Address="http://${TEACHER_API_HOST}:${TEACHER_API_PORT}" \
+  -e TeacherPortal__Address="http://${TEACHER_API_ADDR}" \
   -e TeacherPortal__AdminApiKey="${TEACHER_ADMIN_API_KEY}" \
   -e Oss__Endpoint="${OSS_ENDPOINT}" \
   -e Oss__AccessKey="${OSS_ACCESS_KEY}" \
