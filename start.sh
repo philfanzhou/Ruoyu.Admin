@@ -6,19 +6,15 @@ IMAGE_TAG="20260502"
 IMAGE_NAME="ruoyu.admin:${IMAGE_TAG}"
 CONTAINER_NAME="ruoyu-admin"
 NETWORK_NAME="ruoyu-net"
-
 ADMIN_HTTP_PORT="10901"
 
+STUDENT_GRPC_ADDR="ruoyu-student:5005"
+MISTAKE_GRPC_ADDR="ruoyu-mistake:5006"
+TEACHER_API_ADDR="ruoyu-teacher-api:5004"
+TEACHER_ADMIN_API_KEY=""
 IDENTITY_HTTP_ADDR="ruoyu-identity:5002"
 IDENTITY_APP_ID=""
 IDENTITY_APP_SECRET=""
-
-STUDENT_GRPC_ADDR="ruoyu-student:5005"
-
-MISTAKE_GRPC_ADDR="ruoyu-mistake:5006"
-
-TEACHER_API_ADDR="ruoyu-teacher-api:5004"
-TEACHER_ADMIN_API_KEY=""
 
 # OSS 凭证（审计+运维所需，权限应限制为只读+有限写）
 OSS_ENDPOINT="ruoyu-seaweedfs:8333"
