@@ -69,13 +69,4 @@ docker run -d \
   "$IMAGE_NAME"
 
 echo "${CONTAINER_NAME} started"
-echo "-> HTTP Port: ${ADMIN_HTTP_PORT}"
-echo "-> Student gRPC: ${STUDENT_GRPC_HOST}:${STUDENT_GRPC_PORT}"
-echo "-> Mistake gRPC: ${MISTAKE_GRPC_HOST}:${MISTAKE_GRPC_PORT}"
-echo "-> Identity HTTP: ${IDENTITY_HTTP_HOST}:${IDENTITY_HTTP_PORT}"
-echo "-> Teacher Portal: ${TEACHER_API_HOST}:${TEACHER_API_PORT}"
-echo "-> OSS: ${OSS_ENDPOINT}"
-echo "-> Network: ${NETWORK_NAME}"
-echo "-> Image: ${IMAGE_NAME}"
-echo "=== Real-time Logs ==="
 docker logs -f -t "$CONTAINER_NAME"

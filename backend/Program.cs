@@ -1,3 +1,4 @@
+using System.Data.Common;
 using Admin.WebApi;
 using Admin.WebApi.Data;
 using Admin.WebApi.Services;
@@ -116,6 +117,23 @@ builder.Services.AddSwaggerGen(c =>
 });
 
 var app = builder.Build();
+
+app.Logger.LogInformation("Admin Portal starting");
+app.Logger.LogInformation("Listening: port {Port}", adminApiPort);
+if (isPostgreSql)
+{
+    var csb = new DbConnectionStringBuilder { ConnectionString = connectionString };
+    app.Logger.LogInformation("Database: PostgreSQL {Host}:{Port}/{Database}", csb["Host"], csb.TryGetValue("Port", out var dbPort) ? dbPort : "5432", csb["Database"]);
+}
+else
+{
+    app.Logger.LogInformation("Database: SQLite");
+}
+app.Logger.LogInformation("OSS: {OssType}", useLocalOss ? "local" : "S3");
+app.Logger.LogInformation("Downstream: Student gRPC={StudentGrpc}, Mistake gRPC={MistakeGrpc}", grpcServiceAddress, mistakeGrpcAddress);
+app.Logger.LogInformation("Downstream: Identity={Identity}, Teacher Portal={TeacherPortal}",
+    builder.Configuration["IdentityService:Address"] ?? "(not configured)",
+    builder.Configuration["TeacherPortal:Address"] ?? "(not configured)");
 
 using (var scope = app.Services.CreateScope())
 {
