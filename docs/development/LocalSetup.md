@@ -51,6 +51,16 @@
 
    > 本地开发使用 `LocalFileOssService`（`USE_LOCAL_OSS=1`）时无权限限制；生产环境需配置对应权限的 OSS 凭证。
 
+5. PublicEndpoint 配置（oss-nginx-proxy 变更）：
+
+   `Oss:PublicEndpoint` 为可选配置，用于将预签名 URL 的内部 SeaweedFS 地址替换为外部可访问的 Nginx 代理地址。本地开发通常不需要配置此项。
+
+   | 配置键 | 说明 | 示例 |
+   |--------|------|------|
+   | `Oss:PublicEndpoint` | 公共访问端点（可选） | `https://admin.example.com` |
+
+   > 非空时，预签名 URL 的 scheme+host 替换为 `{PublicEndpoint}/oss`，前端通过 Nginx `/oss/` 代理访问 OSS。
+
 ## 前端配置
 
 ```bash

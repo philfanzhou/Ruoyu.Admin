@@ -197,6 +197,43 @@
 - SPA 路由回退处理
 - 支持 `__APP_TITLE__` 运行时替换
 
+### 5a. Nginx 容器前后端分离部署（oss-nginx-proxy 变更）
+
+**决策**：Admin Portal 新增 Nginx 容器，实现前后端分离部署 + OSS 反向代理。
+
+**原因**：
+- 前端静态文件由 Nginx 直接提供，性能优于 ASP.NET Core 静态文件中间件
+- Nginx `/oss/` location 代理到 SeaweedFS，前端无需直连内部 S3 端点
+- `proxy_set_header Host ruoyu-seaweedfs:8333` 确保 S3 签名验证通过
+- 缓存头 `Cache-Control: public, max-age=3600` 减少 SeaweedFS 请求压力
+
+**Nginx 配置要点**：
+
+```nginx
+location /oss/ {
+    proxy_pass http://ruoyu-seaweedfs:8333/;
+    proxy_set_header Host ruoyu-seaweedfs:8333;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    add_header Cache-Control "public, max-age=3600";
+}
+```
+
+- `proxy_pass` 末尾 `/` 实现 strip `/oss/` 前缀：`/oss/ruoyu-study/mistakes/xxx/image.jpg` → `/ruoyu-study/mistakes/xxx/image.jpg`
+- `proxy_set_header Host` 必须设为 SeaweedFS 内部地址，否则 S3 签名验证失败
+- `Cache-Control` 设置 1 小时公共缓存，适用于预签名 URL 的对象访问
+
+**PublicEndpoint 配置**：
+
+`OssOptions.PublicEndpoint` 控制预签名 URL 的 scheme+host 替换。非空时，`GetPresignedUrlAsync` 将内部 SeaweedFS 地址替换为 `{PublicEndpoint}/oss`，使前端通过 Nginx 代理访问 OSS 对象。
+
+| 配置键 | 说明 | 示例 |
+|--------|------|------|
+| `Oss:PublicEndpoint` | 公共访问端点（可选） | `https://admin.example.com` |
+
+> 仍支持原有的前后端集成部署模式（wwwroot），Nginx 容器为新增部署选项。
+
 ### 6. gRPC 合约引用方式
 
 **决策**：直接引用 proto 文件并设置 `GrpcServices="Client"`，通过 `ProtoRoot` 解决 import 路径问题。
@@ -237,5 +274,5 @@
 | `IdentityService:*` | Identity 服务地址和认证信息 |
 | `TeacherPortal:*` | Teacher Portal 地址和 API Key |
 | `OssAudit:*` | 审计定时任务配置 |
-| `Oss:*` | OSS 存储配置 |
+| `Oss:*` | OSS 存储配置（含 `PublicEndpoint`） |
 | `AdminWeb:AllowedOrigins` | CORS 允许的来源 |

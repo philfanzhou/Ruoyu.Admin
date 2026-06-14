@@ -19,6 +19,17 @@
 | `AssignUploadRecord_SomeImageIndicesOutOfRange_SkipsWithWarnings` | 部分图片索引超出范围时跳过并返回 warnings |
 | `AssignUploadRecord_SubmitMistakeFails_ReturnsAllSuccessFalseWithWarnings` | SubmitMistake 失败时 allSuccess=false 并返回 warnings |
 | `AssignUploadRecord_GrpcException_Returns500` | gRPC 异常返回 500 |
+| `Assign_EmptyImageIndices_SkipsAssignmentWithWarning` | imageIndices 空列表跳过并返回 warning |
+| `Assign_DuplicateImageIndices_SubmitsOnceWithDuplicatedPaths` | 重复索引提交包含重复路径 |
+| `Assign_OutOfRangeImageIndices_SkipsWithWarning` | 越界索引跳过并返回 warning |
+| `Assign_NegativeImageIndices_SkipsInvalidIndices` | 负数索引跳过并返回 warning |
+| `Assign_MixedValidAndInvalidIndices_OnlySubmitsValidOnes` | 混合索引仅提交有效路径 |
+| `Assign_AllImagesAssigned_RemainingImageCountIsZero` | 全部分配后 remainingImageCount=0 |
+| `Assign_PartialAssignment_RemainingImageCountReflectsUnassigned` | 部分分配 remainingImageCount 反映未分配数 |
+| `Assign_MultipleAssignmentsWithOverlap_RemainingImageCountDeduplicates` | 重叠索引 remainingImageCount 去重计算 |
+| `Assign_SubmitFails_ReturnsAllSuccessFalseWithWarnings` | SubmitMistake 失败 allSuccess=false |
+| `Assign_RecordFetchFails_Returns500` | GetUploadRecord 异常返回 500 |
+| `Assign_MultipleAssignments_PartialFailure_ContinuesWithRemaining` | 部分失败继续处理剩余 assignment |
 | `GetImage_EmptyPath_Returns400` | path 为空返回 400 |
 | `GetImage_ImageExists_Returns200WithFileContent` | 图片存在返回 200 和文件内容 |
 | `GetImage_NullStream_Returns404` | OSS 流为 null 返回 404 |
@@ -60,6 +71,26 @@
 - **Given** 部分 assignment 的图片索引超出范围，**When** 调用 AssignUploadRecord，**Then** 跳过无效 assignment，返回 warnings
 - **Given** SubmitMistakeUpload 返回失败，**When** 调用 AssignUploadRecord，**Then** 记录警告，allSuccess=false
 - **Given** gRPC 调用抛出异常，**When** 调用 AssignUploadRecord，**Then** 返回 500
+
+#### Assignment 解析 — imageIndices 边界校验
+
+- **Given** assignment 的 imageIndices 为空列表，**When** 调用 AssignUploadRecord，**Then** 跳过该 assignment，返回 warning 包含 "No valid images"，SubmitMistakeUpload 未被调用
+- **Given** assignment 的 imageIndices 包含重复索引（如 [0, 0]），**When** 调用 AssignUploadRecord，**Then** SubmitMistakeUpload 被调用一次，imagePaths 包含重复路径
+- **Given** assignment 的 imageIndices 全部越界（如 [5, 10]，记录仅 2 张图片），**When** 调用 AssignUploadRecord，**Then** 跳过该 assignment，返回 warning 包含越界索引，SubmitMistakeUpload 未被调用
+- **Given** assignment 的 imageIndices 包含负数（如 [-1, -2]），**When** 调用 AssignUploadRecord，**Then** 跳过无效索引，返回 warning
+- **Given** assignment 的 imageIndices 混合有效和无效索引（如 [0, 5, 2]，记录有 3 张图片），**When** 调用 AssignUploadRecord，**Then** 仅提交有效索引对应的图片路径
+
+#### remainingImageCount 计算
+
+- **Given** 所有图片均已分配，**When** 调用 AssignUploadRecord，**Then** remainingImageCount=0，totalImageCount=记录图片总数
+- **Given** 部分图片已分配（如 3 张中分配 1 张），**When** 调用 AssignUploadRecord，**Then** remainingImageCount=2，totalImageCount=3
+- **Given** 多个 assignment 包含重叠索引（同一张图片被多个 assignment 引用），**When** 调用 AssignUploadRecord，**Then** remainingImageCount 按去重后的已分配图片数计算
+
+#### 分配状态校验
+
+- **Given** SubmitMistakeUpload 返回 Success=false，**When** 调用 AssignUploadRecord，**Then** allSuccess=false，warnings 包含错误信息
+- **Given** GetUploadRecord gRPC 调用抛出异常，**When** 调用 AssignUploadRecord，**Then** 返回 500
+- **Given** 多个 assignment 中部分 SubmitMistakeUpload 失败，**When** 调用 AssignUploadRecord，**Then** 继续处理剩余 assignment，allSuccess=false，remainingImageCount 仅计入成功分配的图片
 
 ### GetImage
 

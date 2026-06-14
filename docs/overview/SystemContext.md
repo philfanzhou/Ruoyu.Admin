@@ -22,8 +22,9 @@ Admin Portal 是 Ruoyu.Study 平台的**管理后台服务**，为管理员提�
                                 │ HTTPS
                                 ▼
                     ┌─────────────────────────┐
-                    │   前端 Web UI            │
-                    │   Vue 3 + Element Plus   │
+                    │   Nginx 容器             │
+                    │   前端静态文件 + 反向代理  │
+                    │   /oss/ → SeaweedFS      │
                     └───────────┬─────────────┘
                                 │ HTTP/JSON
                                 ▼
@@ -58,23 +59,33 @@ Admin Portal 是 Ruoyu.Study 平台的**管理后台服务**，为管理员提�
 
 ## 上游（调用方）
 
-### 管理员浏览器 → 前端 Web UI
+### 管理员浏览器 → Nginx 容器
 
 | 属性 | 值 |
 |------|------|
 | 调用方 | 管理员浏览器 |
 | 协议 | HTTPS |
-| 说明 | 管理员通过浏览器访问 Vue 3 前端，前端通过 HTTP/JSON 调用后端 API |
+| 说明 | 管理员通过浏览器访问 Nginx 容器，Nginx 提供前端静态文件服务和 API/OSS 反向代理 |
 
-### 前端 Web UI → Admin Portal API
+### Nginx 容器 → Admin Portal API
 
 | 属性 | 值 |
 |------|------|
-| 调用方 | Vue 3 + Element Plus 前端 |
+| 调用方 | Nginx 容器 |
 | 协议 | HTTP/JSON |
 | 路由前缀 | `/api/admin/*` |
-| CORS | 通过 `AdminWeb:AllowedOrigins` 配置，开发环境允许所有来源 |
-| 说明 | 前端可以与后端集成部署（wwwroot）或独立部署 |
+| 说明 | Nginx 将 API 请求代理到 Admin Portal 后端 |
+
+### Nginx 容器 → SeaweedFS（OSS 代理）
+
+| 属性 | 值 |
+|------|------|
+| 调用方 | Nginx 容器 |
+| 协议 | HTTP |
+| 路由前缀 | `/oss/*` |
+| 代理目标 | `http://ruoyu-seaweedfs:8333` |
+| 路径重写 | strip `/oss/` 前缀 |
+| 说明 | 前端通过 Nginx 代理访问 OSS 预签名 URL 中的对象，`proxy_set_header Host ruoyu-seaweedfs:8333` 确保 S3 签名验证通过 |
 
 ## 下游（被调用方）
 
@@ -134,9 +145,10 @@ Admin Portal 是 Ruoyu.Study 平台的**管理后台服务**，为管理员提�
 | 属性 | 值 |
 |------|------|
 | 协议 | S3 兼容 API / 本地文件系统 |
-| 配置键 | `Oss:Endpoint`, `Oss:AccessKey`, `Oss:SecretKey`, `Oss:BucketName` |
+| 配置键 | `Oss:Endpoint`, `Oss:AccessKey`, `Oss:SecretKey`, `Oss:BucketName`, `Oss:PublicEndpoint` |
 | 环境变量切换 | `USE_LOCAL_OSS=1` → 使用 `LocalFileOssService` |
 | 使用场景 | 审计 ListObjects、清理 DeleteObject（权限降级为只读+有限写） |
+| Nginx 代理 | `/oss/` → SeaweedFS（strip `/oss/` 前缀），`Oss:PublicEndpoint` 控制预签名 URL 替换 |
 
 ## 服务边界
 

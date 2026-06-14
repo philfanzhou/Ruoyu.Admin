@@ -80,7 +80,8 @@ builder.Services.AddSingleton<IOssService>(sp =>
         ossOptions.Endpoint,
         ossOptions.AccessKey,
         ossOptions.SecretKey,
-        ossOptions.BucketName);
+        ossOptions.BucketName,
+        publicEndpoint: ossOptions.PublicEndpoint);
     // 不配置 allowedPrefixes：Admin Portal 需要访问所有路径前缀（审计+运维）
 });
 
