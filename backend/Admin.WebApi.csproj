@@ -25,13 +25,13 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Protobuf Include="..\..\backend\ruoyu.student\src\Contract\Protos\student.proto" GrpcServices="Client" ProtoRoot="..\..\backend\ruoyu.student\src\Contract" />
-    <Protobuf Include="..\..\backend\ruoyu.mistake\src\Contract\Protos\mistake.proto" GrpcServices="Client" ProtoRoot="..\..\backend\ruoyu.mistake\src\Contract" />
-    <Protobuf Include="..\..\backend\ruoyu.mistake\src\Contract\Protos\mistake.common.proto" GrpcServices="None" ProtoRoot="..\..\backend\ruoyu.mistake\src\Contract" />
+    <Protobuf Include="..\..\services\ruoyu.student\src\Contract\Protos\student.proto" GrpcServices="Client" ProtoRoot="..\..\services\ruoyu.student\src\Contract" />
+    <Protobuf Include="..\..\services\ruoyu.mistake\src\Contract\Protos\mistake.proto" GrpcServices="Client" ProtoRoot="..\..\services\ruoyu.mistake\src\Contract" />
+    <Protobuf Include="..\..\services\ruoyu.mistake\src\Contract\Protos\mistake.common.proto" GrpcServices="None" ProtoRoot="..\..\services\ruoyu.mistake\src\Contract" />
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\backend\ruoyu.common\src\Ruoyu.Study.Common\Ruoyu.Study.Common.csproj" />
+    <ProjectReference Include="..\..\services\ruoyu.common\src\Ruoyu.Study.Common\Ruoyu.Study.Common.csproj" />
   </ItemGroup>
 
 </Project>

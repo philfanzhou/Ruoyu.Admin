@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
-using Ruoyu.Study.Common.Oss;
+using Ruoyu.Study.Student.Contract.Protos;
+using MistakeProto = Ruoyu.Study.Mistake.Contract.Protos;
 
 namespace Admin.WebApi.Controllers;
 
@@ -7,12 +8,17 @@ namespace Admin.WebApi.Controllers;
 [ApiController]
 public class ImageController : ControllerBase
 {
-    private readonly IOssService _ossService;
+    private readonly StudentLearningGrpcService.StudentLearningGrpcServiceClient _studentClient;
+    private readonly MistakeProto.MistakeGrpcService.MistakeGrpcServiceClient _mistakeClient;
     private readonly ILogger<ImageController> _logger;
 
-    public ImageController(IOssService ossService, ILogger<ImageController> logger)
+    public ImageController(
+        StudentLearningGrpcService.StudentLearningGrpcServiceClient studentClient,
+        MistakeProto.MistakeGrpcService.MistakeGrpcServiceClient mistakeClient,
+        ILogger<ImageController> logger)
     {
-        _ossService = ossService;
+        _studentClient = studentClient;
+        _mistakeClient = mistakeClient;
         _logger = logger;
     }
 
@@ -20,6 +26,7 @@ public class ImageController : ControllerBase
     public async Task<IActionResult> GetImage(CancellationToken cancellationToken)
     {
         var objectPath = Request.Query["path"].ToString();
+        var sizeStr = Request.Query["size"].ToString();
 
         if (string.IsNullOrWhiteSpace(objectPath))
         {
@@ -31,47 +38,35 @@ public class ImageController : ControllerBase
             return BadRequest(new { message = "非法路径" });
         }
 
-        Stream? stream = null;
         try
         {
-            var exists = await _ossService.ObjectExistsAsync(objectPath);
-            if (!exists)
+            string presignedUrl;
+
+            if (objectPath.StartsWith("mistakes/", StringComparison.OrdinalIgnoreCase))
             {
-                return NotFound();
+                var grpcResponse = await _mistakeClient.GetPresignedUrlAsync(
+                    new MistakeProto.GetPresignedUrlRequest
+                    { ObjectPath = objectPath, ExpirySeconds = 3600 }, cancellationToken: cancellationToken);
+                presignedUrl = grpcResponse.Url;
+            }
+            else
+            {
+                var grpcResponse = await _studentClient.GetPresignedUrlAsync(
+                    new GetPresignedUrlRequest
+                    { ObjectPath = objectPath, ExpirySeconds = 3600, Size = sizeStr }, cancellationToken: cancellationToken);
+                presignedUrl = grpcResponse.Url;
             }
 
-            stream = await _ossService.DownloadAsync(objectPath);
-            if (stream.Length == 0)
-            {
-                await stream.DisposeAsync();
-                return NotFound();
-            }
-
-            var contentType = GetContentType(objectPath);
-            Response.Headers.CacheControl = "public, max-age=3600";
-            Response.Headers["X-Content-Type-Options"] = "nosniff";
-            return File(stream, contentType);
+            return Redirect(presignedUrl);
         }
-        catch (Exception ex)
+        catch (Grpc.Core.RpcException ex) when (ex.StatusCode == Grpc.Core.StatusCode.NotFound)
         {
-            if (stream != null)
-            {
-                await stream.DisposeAsync();
-            }
-            _logger.LogWarning(ex, "图片加载失败, Path: {Path}", objectPath);
             return NotFound();
         }
-    }
-
-    private static string GetContentType(string objectPath)
-    {
-        var ext = Path.GetExtension(objectPath).ToLowerInvariant();
-        return ext switch
+        catch (Grpc.Core.RpcException ex)
         {
-            ".png" => "image/png",
-            ".gif" => "image/gif",
-            ".webp" => "image/webp",
-            _ => "image/jpeg",
-        };
+            _logger.LogError(ex, "GetPresignedUrl 失败, Path: {Path}, StatusCode: {StatusCode}", objectPath, ex.StatusCode);
+            return StatusCode(502, new { message = "图片服务暂不可用" });
+        }
     }
 }

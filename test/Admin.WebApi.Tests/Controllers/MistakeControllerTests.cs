@@ -7,7 +7,6 @@ using Microsoft.Extensions.Logging;
 using Moq;
 using MistakeProto = Ruoyu.Study.Mistake.Contract.Protos;
 using SProto = Ruoyu.Study.Student.Contract.Protos;
-using Ruoyu.Study.Common.Oss;
 using Xunit;
 
 namespace Admin.WebApi.Tests.Controllers;
@@ -16,7 +15,7 @@ public class MistakeControllerTests
 {
     private readonly Mock<MistakeProto.MistakeGrpcService.MistakeGrpcServiceClient> _mistakeClient;
     private readonly Mock<SProto.StudentManagementGrpcService.StudentManagementGrpcServiceClient> _managementClient;
-    private readonly Mock<IOssService> _ossService;
+    private readonly Mock<SProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient> _studentLearningClient;
     private readonly Mock<ILogger<MistakeController>> _logger;
     private readonly MistakeController _controller;
 
@@ -24,12 +23,12 @@ public class MistakeControllerTests
     {
         _mistakeClient = new Mock<MistakeProto.MistakeGrpcService.MistakeGrpcServiceClient>();
         _managementClient = new Mock<SProto.StudentManagementGrpcService.StudentManagementGrpcServiceClient>();
-        _ossService = new Mock<IOssService>();
+        _studentLearningClient = new Mock<SProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient>();
         _logger = new Mock<ILogger<MistakeController>>();
         _controller = new MistakeController(
             _mistakeClient.Object,
             _managementClient.Object,
-            _ossService.Object,
+            _studentLearningClient.Object,
             _logger.Object);
     }
 
@@ -538,12 +537,15 @@ public class MistakeControllerTests
         dynamic data = okResult.Value!;
         ((int)data.migratedCount).Should().Be(0);
 
-        _ossService.Verify(o => o.CopyObjectAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
-        _ossService.Verify(o => o.DeleteAsync(It.IsAny<string>()), Times.Never);
+        _studentLearningClient.Verify(c => c.MigrateImagesToMistakeAsync(
+            It.IsAny<SProto.MigrateImagesToMistakeRequest>(),
+            It.IsAny<Metadata>(),
+            It.IsAny<DateTime?>(),
+            It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
-    public async Task MigrateImages_PathsInUploads_CopiesAndDeletes_ReturnsMigratedCount()
+    public async Task MigrateImages_PathsInUploads_CallsMigrateGrpc_ReturnsMigratedCount()
     {
         var item = CreateMistakeItemDto(id: "m1", studentId: "s1");
         item.SourceRegions.Add(CreateSourceRegion("uploads/2024/01/img1.jpg"));
@@ -566,13 +568,21 @@ public class MistakeControllerTests
                 It.IsAny<CancellationToken>()))
             .Returns(CreateAsyncCall(updateResponse));
 
-        _ossService
-            .Setup(o => o.CopyObjectAsync(It.IsAny<string>(), It.IsAny<string>()))
-            .Returns(Task.CompletedTask);
+        var migrateResponse = new SProto.MigrateImagesToMistakeResponse();
+        migrateResponse.Results.Add(new SProto.MigrateImageResult
+        {
+            SourcePath = "uploads/2024/01/img1.jpg",
+            NewPath = "mistakes/2024/01/img1.jpg",
+            Success = true
+        });
 
-        _ossService
-            .Setup(o => o.DeleteAsync(It.IsAny<string>()))
-            .ReturnsAsync(true);
+        _studentLearningClient
+            .Setup(c => c.MigrateImagesToMistakeAsync(
+                It.IsAny<SProto.MigrateImagesToMistakeRequest>(),
+                It.IsAny<Metadata>(),
+                It.IsAny<DateTime?>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(CreateAsyncCall(migrateResponse));
 
         var result = await _controller.MigrateImages("m1");
 
@@ -580,10 +590,11 @@ public class MistakeControllerTests
         dynamic data = okResult.Value!;
         ((int)data.migratedCount).Should().Be(1);
 
-        _ossService.Verify(o => o.CopyObjectAsync(
-            "uploads/2024/01/img1.jpg",
-            "mistakes/2024/01/img1.jpg"), Times.Once);
-        _ossService.Verify(o => o.DeleteAsync("uploads/2024/01/img1.jpg"), Times.Once);
+        _studentLearningClient.Verify(c => c.MigrateImagesToMistakeAsync(
+            It.IsAny<SProto.MigrateImagesToMistakeRequest>(),
+            It.IsAny<Metadata>(),
+            It.IsAny<DateTime?>(),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -611,27 +622,31 @@ public class MistakeControllerTests
                 It.IsAny<CancellationToken>()))
             .Returns(CreateAsyncCall(updateResponse));
 
-        _ossService
-            .Setup(o => o.CopyObjectAsync(It.IsAny<string>(), It.IsAny<string>()))
-            .Returns(Task.CompletedTask);
+        var migrateResponse = new SProto.MigrateImagesToMistakeResponse();
+        migrateResponse.Results.Add(new SProto.MigrateImageResult
+        {
+            SourcePath = "uploads/2024/01/img1.jpg",
+            NewPath = "mistakes/2024/01/img1.jpg",
+            Success = true
+        });
 
-        _ossService
-            .Setup(o => o.DeleteAsync(It.IsAny<string>()))
-            .ReturnsAsync(true);
+        _studentLearningClient
+            .Setup(c => c.MigrateImagesToMistakeAsync(
+                It.IsAny<SProto.MigrateImagesToMistakeRequest>(),
+                It.IsAny<Metadata>(),
+                It.IsAny<DateTime?>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(CreateAsyncCall(migrateResponse));
 
         var result = await _controller.MigrateImages("m1");
 
         var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
         dynamic data = okResult.Value!;
         ((int)data.migratedCount).Should().Be(1);
-
-        _ossService.Verify(o => o.CopyObjectAsync(
-            "uploads/2024/01/img1.jpg",
-            "mistakes/2024/01/img1.jpg"), Times.Once);
     }
 
     [Fact]
-    public async Task MigrateImages_CopyObjectAsyncThrows_Returns500()
+    public async Task MigrateImages_MigrateGrpcThrows_Returns500()
     {
         var item = CreateMistakeItemDto(id: "m1", studentId: "s1");
         item.SourceRegions.Add(CreateSourceRegion("uploads/2024/01/img1.jpg"));
@@ -644,37 +659,13 @@ public class MistakeControllerTests
                 It.IsAny<CancellationToken>()))
             .Returns(CreateAsyncCall(item));
 
-        _ossService
-            .Setup(o => o.CopyObjectAsync(It.IsAny<string>(), It.IsAny<string>()))
-            .ThrowsAsync(new Exception("OSS copy failed"));
-
-        var result = await _controller.MigrateImages("m1");
-
-        var statusResult = result.Should().BeOfType<ObjectResult>().Subject;
-        statusResult.StatusCode.Should().Be(500);
-    }
-
-    [Fact]
-    public async Task MigrateImages_DeleteAsyncThrows_Returns500()
-    {
-        var item = CreateMistakeItemDto(id: "m1", studentId: "s1");
-        item.SourceRegions.Add(CreateSourceRegion("uploads/2024/01/img1.jpg"));
-
-        _mistakeClient
-            .Setup(c => c.GetMistakeItemAsync(
-                It.IsAny<MistakeProto.IdRequest>(),
+        _studentLearningClient
+            .Setup(c => c.MigrateImagesToMistakeAsync(
+                It.IsAny<SProto.MigrateImagesToMistakeRequest>(),
                 It.IsAny<Metadata>(),
                 It.IsAny<DateTime?>(),
                 It.IsAny<CancellationToken>()))
-            .Returns(CreateAsyncCall(item));
-
-        _ossService
-            .Setup(o => o.CopyObjectAsync(It.IsAny<string>(), It.IsAny<string>()))
-            .Returns(Task.CompletedTask);
-
-        _ossService
-            .Setup(o => o.DeleteAsync(It.IsAny<string>()))
-            .ThrowsAsync(new Exception("OSS delete failed"));
+            .Throws(new RpcException(new Status(StatusCode.Internal, "gRPC error")));
 
         var result = await _controller.MigrateImages("m1");
 
@@ -715,13 +706,21 @@ public class MistakeControllerTests
                 It.IsAny<CancellationToken>()))
             .Returns(CreateAsyncCall(item));
 
-        _ossService
-            .Setup(o => o.CopyObjectAsync(It.IsAny<string>(), It.IsAny<string>()))
-            .Returns(Task.CompletedTask);
+        var migrateResponse = new SProto.MigrateImagesToMistakeResponse();
+        migrateResponse.Results.Add(new SProto.MigrateImageResult
+        {
+            SourcePath = "uploads/2024/01/img1.jpg",
+            NewPath = "mistakes/2024/01/img1.jpg",
+            Success = true
+        });
 
-        _ossService
-            .Setup(o => o.DeleteAsync(It.IsAny<string>()))
-            .ReturnsAsync(true);
+        _studentLearningClient
+            .Setup(c => c.MigrateImagesToMistakeAsync(
+                It.IsAny<SProto.MigrateImagesToMistakeRequest>(),
+                It.IsAny<Metadata>(),
+                It.IsAny<DateTime?>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(CreateAsyncCall(migrateResponse));
 
         _mistakeClient
             .Setup(c => c.UpdateMistakeItemAsync(

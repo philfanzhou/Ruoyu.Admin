@@ -10,8 +10,11 @@
 | 4 | 出站 | HTTP Proxy | Identity Service | HTTP/JSON | `IdentityService:Address` (默认 `:5002`) | 身份认证代理 | `IdentityProxyMiddleware`: `/api/identity/*` → `{Address}/api/*` |
 | 5 | 出站 | HTTP Client | Identity Service | HTTP/JSON | `IdentityService:Address` | 批量查询账户 | `POST {Address}/api/gateway/users/batch` (带 `X-Admin-AppId` + `X-Admin-AppSecret`) |
 | 6 | 出站 | HTTP Proxy | Teacher Portal | HTTP/JSON | `TeacherPortal:Address` (默认 `:5004`) | 教师端代理 | `TeacherPortalProxyMiddleware`: `/api/teacher-portal/*` → `{Address}/api/*` (带 `X-Admin-Key`) |
-| 7 | 出站 | S3 API | OSS 存储 | S3 / 本地文件 | `Oss:*` 配置 | 图片下载/迁移 | `IOssService`: DownloadAsync, ObjectExistsAsync, CopyObjectAsync, DeleteAsync |
-| 8 | 入站 | HTTP | 前端 Web UI | HTTP/JSON | `AdminApi:Port` (默认 `:5020`) | 管理 API | 所有 `/api/admin/*` 路由 |
+| 7 | 出站 | gRPC Client | Student Service | gRPC (h2c) | `StudentGrpcService:Address` (默认 `:5005`) | 图片预签名 URL | `StudentLearningGrpcService`: GetPresignedUrl |
+| 8 | 出站 | gRPC Client | Mistake Service | gRPC (h2c) | `MistakeGrpcService:Address` (默认 `:5006`) | 图片预签名 URL | `MistakeGrpcService`: GetPresignedUrl |
+| 9 | 出站 | gRPC Client | Student Service | gRPC (h2c) | `StudentGrpcService:Address` (默认 `:5005`) | 图片迁移 | `StudentLearningGrpcService`: MigrateImagesToMistake |
+| 10 | 出站 | S3 API | OSS 存储 | S3 / 本地文件 | `Oss:*` 配置 | 审计列表+清理删除 | `IOssService`: ListObjectsAsync, DeleteAsync |
+| 11 | 入站 | HTTP | 前端 Web UI | HTTP/JSON | `AdminApi:Port` (默认 `:5020`) | 管理 API | 所有 `/api/admin/*` 路由 |
 
 ## 失败语义总结
 
@@ -38,10 +41,10 @@
 
 | 场景 | 失败处理 | 影响 |
 |------|----------|------|
-| 图片下载失败 | 返回 404 或 500 | 图片无法预览 |
-| 图片迁移 Copy 失败 | 中止迁移，返回 500 | 迁移不完整，已复制的文件不会回滚 [推断] |
-| 图片迁移 Delete 失败 | 中止迁移，返回 500 | Copy 已完成但旧文件未删除 [推断] |
-| OSS 对象不存在 | 返回 404 | 图片代理返回 Not Found |
+| OSS ListObjects 失败 | 审计任务标记为 Failed | 审计无法完成 |
+| OSS DeleteObject 失败（审计清理） | 返回 500 | 审计记录已标记 Resolved 但 OSS 文件未删除 |
+| gRPC GetPresignedUrl 失败 | 返回 502 Bad Gateway | 图片无法预览 |
+| gRPC MigrateImagesToMistake 失败 | 返回 500 | 图片迁移不完整 |
 
 ### 数据库操作失败
 

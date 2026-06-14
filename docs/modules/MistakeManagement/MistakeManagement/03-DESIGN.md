@@ -21,7 +21,8 @@
 | GetMistakesByUploadId | GetMistakeItemsByUploadRequest | Mistake | 按上传记录查询错题 |
 | UpdateMistakeItem | UpdateMistakeItemRequest | Mistake | 更新错题信息 |
 | MigrateImages (步骤1) | IdRequest → GetMistakeItem | Mistake | 获取错题详情 |
-| MigrateImages (步骤4) | UpdateMistakeItemRequest | Mistake | 更新 sourceRegions |
+| MigrateImages (步骤3) | MigrateImagesToMistakeRequest | Student | 通过 Student gRPC 代理图片迁移 |
+| MigrateImages (步骤5) | UpdateMistakeItemRequest | Mistake | 更新 sourceRegions |
 
 ## 关键 gRPC 请求/响应字段
 
@@ -123,37 +124,36 @@ Student gRPC 服务的 proto 定义中没有 `ListStudentsByIds` 或类似的批
 
 ## MigrateImages 原子性分析
 
-### 当前实现
+### 当前实现（gRPC 代理模式）
 
-MigrateImages 对每张图片执行 3 步操作，整体无事务保证：
+MigrateImages 通过 Student gRPC `MigrateImagesToMistake` 代理图片迁移，整体无事务保证：
 
 ```
-对每个 region（uploads/ 前缀的图片）:
-  1. CopyObjectAsync(oldPath, newPath)  — 复制到 mistakes/ 路径
-  2. DeleteAsync(oldPath)               — 删除原 uploads/ 路径文件
-  3. 更新 region.SourceImagePath = newPath
-全部完成后:
-  4. UpdateMistakeItemAsync — 将所有更新后的 regions 写回 Mistake 服务
+1. GetMistakeItem → 获取错题详情
+2. 收集 uploads/ 前缀的图片路径 → sourcePaths
+3. 调用 StudentLearningGrpcServiceClient.MigrateImagesToMistakeAsync(sourcePaths)
+4. 遍历迁移结果：成功 → 更新 region.SourceImagePath = newPath
+5. UpdateMistakeItemAsync → 将更新后的 regions 写回 Mistake 服务
 ```
 
 ### 失败场景分析
 
 | 失败位置 | 已完成操作 | 数据状态 | 恢复方式 |
 |---------|-----------|---------|---------|
-| 步骤 1 失败（Copy） | 无 | 一致 | 重试即可 |
-| 步骤 2 失败（Delete） | Copy 完成 | 图片同时存在于 uploads/ 和 mistakes/ | 重新执行迁移，pathMapping 缓存会跳过已迁移的图片 |
-| 步骤 4 失败（Update） | Copy+Delete 完成 | OSS 中文件已迁移，但 Mistake 服务仍指向旧路径 | 需手动更新 Mistake 记录指向新路径 |
+| 步骤 3 失败（gRPC 调用） | 无 | 一致 | 重试即可 |
+| 步骤 3 部分成功 | 部分图片已迁移 | 已迁移图片路径已更新，未迁移图片路径未更新 | 重新执行迁移 |
+| 步骤 5 失败（Update） | 迁移完成 | OSS 中文件已迁移，但 Mistake 服务仍指向旧路径 | 需手动更新 Mistake 记录指向新路径 |
 
 ### 缓解机制
 
-1. **pathMapping 缓存**：同一图片不会重复执行 Copy+Delete，已迁移的图片直接使用缓存的新路径
-2. **逐张处理**：单张图片失败时立即返回 500，不会继续处理后续图片
-3. **幂等性**：[推断] CopyObjectAsync 对已存在的目标路径幂等；DeleteAsync 对已删除的路径幂等
+1. **Student 服务内部处理**：`MigrateImagesToMistake` 逐文件处理 Copy+Delete，单文件失败不影响其他文件
+2. **结果反馈**：gRPC 返回每张图片的迁移结果（成功/失败），Admin Portal 可据此决定是否更新路径
+3. **幂等性**：重新执行迁移时，已迁移到 mistakes/ 的文件 CopyObject 幂等
 
 ### 风险评估
 
-- **最大风险**：步骤 4（UpdateMistakeItemAsync）失败时，OSS 文件已迁移但 Mistake 记录仍指向旧路径，导致图片无法显示
+- **最大风险**：步骤 5（UpdateMistakeItemAsync）失败时，OSS 文件已迁移但 Mistake 记录仍指向旧路径
 - **发生概率**：低（仅在 Mistake 服务不可用时发生）
 - **恢复难度**：中等（需要手动更新 Mistake 记录或重新执行迁移）
 
-> **建议**: 如需更强的一致性保证，可考虑先 Update 再 Delete 的顺序（先更新引用再删除源文件），或在 Update 失败时回滚 Copy 操作。
+> **相比旧实现的改进**：旧实现中 Admin Portal 直接操作 OSS（Copy+Delete），现在改为通过 Student gRPC 代理，Admin Portal 不再持有 OSS 写权限（CopyObject/Upload）。

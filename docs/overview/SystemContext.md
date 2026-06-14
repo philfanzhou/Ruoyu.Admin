@@ -44,6 +44,7 @@ Admin Portal 是 Ruoyu.Study 平台的**管理后台服务**，为管理员提�
 │                         │                                  │
 │  ┌──────────────────────┴──────────────────────────────┐  │
 │  │              IOssService (S3 / Local)                │  │
+│  │         [仅用于审计 List + 清理 Delete]              │  │
 │  └─────────────────────────────────────────────────────┘  │
 └───────────┬──────────────────┬──────────────┬─────────────┘
             │ gRPC             │ gRPC         │ HTTP Proxy
@@ -85,7 +86,7 @@ Admin Portal 是 Ruoyu.Study 平台的**管理后台服务**，为管理员提�
 | 协议 | gRPC (HTTP/2, h2c) |
 | 默认地址 | `http://localhost:5005` |
 | 配置键 | `StudentGrpcService:Address` |
-| 使用的 gRPC 方法 | `ListStudents`, `GetStudent`, `CreateStudent`, `UpdateStudent`, `DeleteStudent`, `GetIdentityAccountsByStudentId`, `LinkIdentityAccountToStudent`, `UnlinkIdentityAccountFromStudent`, `GetStudentOpenSubjects`, `SetStudentOpenSubjects`, `GetAvailableSubjects`, `GetRegisteredOssPaths`, `ListOssObjects`, `DeleteOssObject`, `GetAllUploadRecords`, `GetUploadRecord`, `MarkUploadRecordCompleted`, `RotateUploadImage`, `RemoveImageFromRecord`, `RemoveImagesFromRecord`, `DeleteUploadRecordAfterReview`, `AnalyzeUploadRecord` |
+| 使用的 gRPC 方法 | `ListStudents`, `GetStudent`, `CreateStudent`, `UpdateStudent`, `DeleteStudent`, `GetIdentityAccountsByStudentId`, `LinkIdentityAccountToStudent`, `UnlinkIdentityAccountFromStudent`, `GetStudentOpenSubjects`, `SetStudentOpenSubjects`, `GetAvailableSubjects`, `GetRegisteredOssPaths`, `ListOssObjects`, `DeleteOssObject`, `GetAllUploadRecords`, `GetUploadRecord`, `MarkUploadRecordCompleted`, `RotateUploadImage`, `RemoveImageFromRecord`, `RemoveImagesFromRecord`, `DeleteUploadRecordAfterReview`, `AnalyzeUploadRecord`, `GetPresignedUrl`, `MigrateImagesToMistake` |
 | 不可用时行为 | gRPC `StatusCode.Unavailable` → 返回 500/502；审计任务中止（Student 服务不可用时标记为 Failed） |
 
 ### Mistake Service（gRPC）
@@ -96,7 +97,7 @@ Admin Portal 是 Ruoyu.Study 平台的**管理后台服务**，为管理员提�
 | 协议 | gRPC (HTTP/2, h2c) |
 | 默认地址 | `http://localhost:5006` |
 | 配置键 | `MistakeGrpcService:Address` |
-| 使用的 gRPC 方法 | `GetMistakeItemList`, `GetMistakeItem`, `GetMistakeItemsByUpload`, `UpdateMistakeItem`, `GetAllReferencedImagePaths`, `SubmitMistakeUpload`, `CompleteUploadReview` |
+| 使用的 gRPC 方法 | `GetMistakeItemList`, `GetMistakeItem`, `GetMistakeItemsByUpload`, `UpdateMistakeItem`, `GetAllReferencedImagePaths`, `SubmitMistakeUpload`, `CompleteUploadReview`, `GetPresignedUrl` |
 | 不可用时行为 | 审计任务继续但可能产生误报；Resolve 操作返回 502；查询操作返回 500 |
 
 ### Identity Service（HTTP）
@@ -135,7 +136,7 @@ Admin Portal 是 Ruoyu.Study 平台的**管理后台服务**，为管理员提�
 | 协议 | S3 兼容 API / 本地文件系统 |
 | 配置键 | `Oss:Endpoint`, `Oss:AccessKey`, `Oss:SecretKey`, `Oss:BucketName` |
 | 环境变量切换 | `USE_LOCAL_OSS=1` → 使用 `LocalFileOssService` |
-| 使用场景 | 图片代理下载、图片迁移（Copy + Delete） |
+| 使用场景 | 审计 ListObjects、清理 DeleteObject（权限降级为只读+有限写） |
 
 ## 服务边界
 
@@ -149,4 +150,5 @@ Admin Portal 的服务边界清晰定义如下：
 | 教师端数据 | Teacher Portal | Admin Portal 仅代理请求，不存储教师端数据 |
 | OSS 审计数据 | Admin Portal（本地） | 审计记录和运行记录由 Admin Portal 自有数据库管理 |
 | OSS 对象管理 | Student Service + OSS | Admin Portal 通过 Student Service 的 gRPC 方法间接操作 OSS |
-| 图片迁移 | Admin Portal 编排 | Admin Portal 直接操作 OSS（Copy + Delete），然后更新 Mistake Service |
+| 图片预签名 URL | Student/Mistake Service | Admin Portal 通过 gRPC GetPresignedUrl 获取预签名 URL，302 重定向 |
+| 图片迁移 | Student Service | Admin Portal 通过 Student gRPC MigrateImagesToMistake 代理迁移 |

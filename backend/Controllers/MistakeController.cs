@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using MistakeProto = Ruoyu.Study.Mistake.Contract.Protos;
 using Admin.WebApi.Models;
-using Ruoyu.Study.Common.Oss;
 using SProto = Ruoyu.Study.Student.Contract.Protos;
 
 namespace Admin.WebApi.Controllers;
@@ -12,18 +11,18 @@ public class MistakeController : ControllerBase
 {
     private readonly MistakeProto.MistakeGrpcService.MistakeGrpcServiceClient _mistakeClient;
     private readonly SProto.StudentManagementGrpcService.StudentManagementGrpcServiceClient _managementClient;
-    private readonly IOssService _ossService;
+    private readonly SProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient _studentLearningClient;
     private readonly ILogger<MistakeController> _logger;
 
     public MistakeController(
         MistakeProto.MistakeGrpcService.MistakeGrpcServiceClient mistakeClient,
         SProto.StudentManagementGrpcService.StudentManagementGrpcServiceClient managementClient,
-        IOssService ossService,
+        SProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient studentLearningClient,
         ILogger<MistakeController> logger)
     {
         _mistakeClient = mistakeClient;
         _managementClient = managementClient;
-        _ossService = ossService;
+        _studentLearningClient = studentLearningClient;
         _logger = logger;
     }
 
@@ -284,43 +283,36 @@ public class MistakeController : ControllerBase
                 return Ok(new { success = true, message = "所有图片路径已在 mistakes 下，无需迁移", migratedCount = 0 });
             }
 
+            var sourcePaths = regionsToMigrate.Select(r => r.SourceImagePath).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
+            var migrateRequest = new SProto.MigrateImagesToMistakeRequest();
+            migrateRequest.SourcePaths.AddRange(sourcePaths);
+
+            var migrateResponse = await _studentLearningClient.MigrateImagesToMistakeAsync(migrateRequest);
+
             var pathMapping = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             var migratedCount = 0;
 
-            foreach (var region in regionsToMigrate)
+            foreach (var result in migrateResponse.Results)
             {
-                var oldPath = region.SourceImagePath;
-
-                if (pathMapping.TryGetValue(oldPath, out var cachedNewPath))
+                if (result.Success)
                 {
-                    region.SourceImagePath = cachedNewPath;
-                    continue;
-                }
-
-                var newPath = "mistakes" + oldPath.Substring("uploads".Length);
-
-                try
-                {
-                    await _ossService.CopyObjectAsync(oldPath, newPath);
-                    await _ossService.DeleteAsync(oldPath);
-                    pathMapping[oldPath] = newPath;
-                    region.SourceImagePath = newPath;
+                    pathMapping[result.SourcePath] = result.NewPath;
                     migratedCount++;
-                    _logger.LogInformation("Migrated image from {OldPath} to {NewPath}", oldPath, newPath);
+                    _logger.LogInformation("Migrated image from {OldPath} to {NewPath}", result.SourcePath, result.NewPath);
                 }
-                catch (Exception ex)
+                else
                 {
-                    _logger.LogError(ex, "Failed to migrate image {Path}", oldPath);
-                    return StatusCode(500, new ErrorResponse($"迁移图片失败: {oldPath} - {ex.Message}"));
+                    _logger.LogError("Failed to migrate image {Path}", result.SourcePath);
                 }
             }
 
-            // Build updated sourceRegions list (merge migrated + unchanged)
+            // Build updated sourceRegions list
             var updatedRegions = item.SourceRegions.Select(r =>
             {
                 var region = new MistakeProto.SourceRegion
                 {
-                    SourceImagePath = r.SourceImagePath
+                    SourceImagePath = pathMapping.TryGetValue(r.SourceImagePath, out var newPath) ? newPath : r.SourceImagePath
                 };
                 if (r.BoundingBox != null)
                 {

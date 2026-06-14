@@ -47,6 +47,8 @@
 │  │  │ OssAuditWorker   │  │ IOssService               │ │  │
 │  │  │ (BackgroundService)│ │ (S3OssService /          │ │  │
 │  │  └──────────────────┘  │  LocalFileOssService)     │ │  │
+│  │                        │  [仅用于审计 ListObjects   │ │  │
+│  │                        │   和清理 DeleteObject]     │ │  │
 │  │                        └───────────────────────────┘ │  │
 │  └───────────────────────────────────────────────────────┘  │
 │                                                             │
@@ -70,7 +72,7 @@
 | 数据库 (生产) | PostgreSQL | 12+ | 通过 Npgsql.EntityFrameworkCore.PostgreSQL 8.0.11 |
 | 数据库 (测试) | SQLite | - | 通过 Microsoft.EntityFrameworkCore.Sqlite 8.0.11 |
 | API 文档 | Swashbuckle.AspNetCore | 6.5.0 | Swagger UI (仅 Development 环境) |
-| 对象存储 | S3 兼容 API / 本地文件 | - | 通过 IOssService 抽象 |
+| 对象存储 | S3 兼容 API / 本地文件 | - | 通过 IOssService 抽象（仅用于审计 ListObjects 和清理 DeleteObject） |
 | 前端 | Vue 3 + Element Plus | - | SPA，可集成部署到 wwwroot |
 | 构建工具 | Vite | - | 前端构建 |
 | 测试 | xUnit + Moq + FluentAssertions | - | 单元测试 + coverlet 覆盖率 |
@@ -85,11 +87,12 @@
             ▼            ▼                ▼
    Ruoyu.Study.    Ruoyu.Study.    Ruoyu.Study.
    Student.Contract Mistake.Contract  Common
-   (gRPC Protos)   (gRPC Protos)    (OSS, DB, Constants)
+   (gRPC Protos)   (gRPC Protos)    (Constants)
             │            │                │
             │            │                ├─ IOssService
             │            │                │  ├─ S3OssService
             │            │                │  └─ LocalFileOssService
+            │            │                │  [仅用于审计 List/清理 Delete]
             │            │                │
             │            │                ├─ DatabaseInitializer
             │            │                │
@@ -135,14 +138,21 @@
 - 无需引入 YARP 等重量级框架
 - 精确控制请求/响应处理
 
-### 4. IOssService 抽象
+### 4. IOssService 抽象（权限降级）
 
-**决策**：通过 `IOssService` 接口抽象 OSS 操作，支持 S3 和本地文件两种实现。
+**决策**：Admin Portal 保留 `IOssService`，但权限降级为只读 + 有限写。
 
 **原因**：
-- 测试环境使用本地文件系统，无需 S3 服务
-- 通过环境变量 `USE_LOCAL_OSS=1` 切换实现
-- 统一的下载、上传、复制、删除接口
+- 图片下载改为通过 Student/Mistake gRPC `GetPresignedUrl` 获取预签名 URL + 302 重定向
+- 图片迁移改为通过 Student gRPC `MigrateImagesToMistake` 代理
+- `IOssService` 仅用于审计场景的 `ListObjectsAsync` 和清理场景的 `DeleteAsync`
+- 凭证权限应降级为只读 + 有限写（仅允许 List + Delete）
+
+**变更影响**：
+- `ImageController`：不再使用 `IOssService`，改用 gRPC `GetPresignedUrl`
+- `MistakeController.MigrateImages`：不再使用 `IOssService`，改用 Student gRPC `MigrateImagesToMistake`
+- `OssAuditWorker`：保留 `IOssService` 用于 ListObjects，路径聚合改用通用 gRPC
+- `OssAuditController.ResolveRecord`：保留 `IOssService` 用于 DeleteObject
 
 ### 5. 前后端集成部署
 
