@@ -159,15 +159,15 @@
 
 **实现方式**：
 ```xml
-<Protobuf Include="..\..\backend\ruoyu.student\src\Contract\Protos\student.proto"
+<Protobuf Include="..\..\src\services\ruoyu.student\src\Contract\Protos\student.proto"
           GrpcServices="Client"
-          ProtoRoot="..\..\backend\ruoyu.student\src\Contract" />
-<Protobuf Include="..\..\backend\ruoyu.mistake\src\Contract\Protos\mistake.proto"
+          ProtoRoot="..\..\src\services\ruoyu.student\src\Contract" />
+<Protobuf Include="..\..\src/services/ruoyu.mistake\src\Contract\Protos\mistake.proto"
           GrpcServices="Client"
-          ProtoRoot="..\..\backend\ruoyu.mistake\src\Contract" />
-<Protobuf Include="..\..\backend\ruoyu.mistake\src\Contract\Protos\mistake.common.proto"
+          ProtoRoot="..\..\src/services/ruoyu.mistake\src\Contract" />
+<Protobuf Include="..\..\src/services/ruoyu.mistake\src\Contract\Protos\mistake.common.proto"
           GrpcServices="None"
-          ProtoRoot="..\..\backend\ruoyu.mistake\src\Contract" />
+          ProtoRoot="..\..\src/services/ruoyu.mistake\src\Contract" />
 ```
 
 **原因**：
