@@ -7,6 +7,7 @@ IMAGE_NAME="ruoyu.admin:${IMAGE_TAG}"
 CONTAINER_NAME="ruoyu-admin"
 NETWORK_NAME="ruoyu-net"
 ADMIN_HTTP_PORT="10901"
+ADMIN_API_PORT="5020"
 
 STUDENT_GRPC_ADDR="ruoyu-student:5005"
 MISTAKE_GRPC_ADDR="ruoyu-mistake:5006"
@@ -43,9 +44,10 @@ docker run -d \
   --name "$CONTAINER_NAME" \
   --restart unless-stopped \
   --network "$NETWORK_NAME" \
-  -p "${ADMIN_HTTP_PORT}:5020" \
+  -p "${ADMIN_HTTP_PORT}:${ADMIN_API_PORT}" \
   -e TZ=Asia/Shanghai \
   -e APP_TITLE="${CONTAINER_NAME}" \
+  -e AdminApi__Port="${ADMIN_API_PORT}" \
   -e StudentGrpcService__Address="http://${STUDENT_GRPC_ADDR}" \
   -e MistakeGrpcService__Address="http://${MISTAKE_GRPC_ADDR}" \
   -e IdentityService__Address="http://${IDENTITY_HTTP_ADDR}" \
