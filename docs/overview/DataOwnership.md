@@ -102,7 +102,7 @@ Admin Portal 通过下游服务 API 间接修改外部数据：
 | 创建/更新/删除学生 | Student Service | gRPC CRUD | 代理管理员操作 |
 | 关联/解绑身份账户 | Student Service | gRPC Link/Unlink | 代理管理员操作 |
 | 设置开放科目 | Student Service | gRPC SetOpenSubjects | 代理管理员操作 |
-| 删除 OSS 僵尸对象 | Admin Portal 直接操作 | `IOssService.DeleteAsync` + 通用 gRPC 清理指纹 | 审计 Resolve 时调用 |
+| 删除 OSS 僵尸对象 | Admin Portal 直接操作 | `IOssService.DeleteAsync`（自动清理关联缩略图） + 通用 gRPC 清理指纹 | 审计 Resolve 时调用 |
 | 移动 OSS 对象 | Admin Portal 直接操作 | `IOssService.CopyObjectAsync` + `DeleteAsync` | 迁移辅助 |
 | 更新错题信息 | Mistake Service | gRPC UpdateMistakeItem | 代理管理员操作 |
 | 提交错题上传 | Mistake Service | gRPC SubmitMistakeUpload | 上传记录分配 |
@@ -118,7 +118,7 @@ Admin Portal 通过下游服务 API 间接修改外部数据：
 | 操作 | 目标 | 说明 |
 |------|------|------|
 | OSS ListObjects | OSS 存储 | 审计浏览：扫描 OSS 对象列表 |
-| OSS DeleteObject | OSS 存储 | 僵尸文件清理 |
+| OSS DeleteObject | OSS 存储 | 僵尸文件清理（`DeleteAsync` 自动清理关联缩略图） |
 | OSS CopyObject + Delete | OSS 存储 | 迁移辅助（MoveOssObject 场景） |
 
 > **Phase 4 变更**：Admin Portal 直接操作 OSS 的范围从"仅图片迁移"扩展为"审计浏览 + 僵尸清理 + 迁移辅助"，但凭证权限降级为只读 + 有限写（Delete 仅限僵尸清理，CopyObject 仅限迁移辅助）。图片迁移不再直接操作 OSS，改为通过 Student gRPC `MigrateImagesToMistake`。

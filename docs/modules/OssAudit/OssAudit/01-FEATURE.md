@@ -16,6 +16,10 @@
 4. **失败降级**：Student 服务不可用时审计必须中止；Mistake 服务不可用时仅警告不中止
 5. **扫描桶范围**：uploads、mistakes、questions 三个桶
 6. **清理安全校验**：对 Pending 状态记录执行 resolve 前需再次验证文件未被 Student 或 Mistake 服务引用
+7. **缩略图跳过**：审计扫描使用 `ThumbnailHelper.IsThumbnailPath` 跳过缩略图文件，避免将缩略图误报为僵尸文件（缩略图与原图关联，删原图时自动清理）
+8. **缩略图自动清理**：`IOssService.DeleteAsync` 自动清理关联缩略图，删除僵尸原图时会连带删除同目录下的所有尺寸缩略图，无需调用方额外处理
+9. **无路径前缀校验**：Admin Portal 的 `S3OssService` 不配置路径前缀校验（`allowedPrefixes` 为 null），因为审计需要访问所有路径前缀（uploads/、mistakes/、questions/）
+10. **缩略图路径规则**：缩略图与原图同目录，路径格式 `{dirname}/{stem}_{size}.jpg`（旧规则 `uploads/thumbnails/` 已废弃）
 
 ## 关键验收条件摘要
 
@@ -26,6 +30,8 @@
 5. 可对僵尸文件执行清理（resolve）或忽略（ignore）操作
 6. 清理前需再次校验文件未被引用，防止误删
 7. Student 服务不可用时审计中止，Mistake 服务不可用时仅警告
+8. 审计扫描跳过缩略图文件，不将缩略图误报为僵尸文件
+9. 清理僵尸原图时自动删除关联缩略图
 
 ## 范围外
 

@@ -147,6 +147,11 @@ public class OssAuditWorker : BackgroundService
                 foreach (var obj in objects)
                 {
                     var path = obj.ObjectPath;
+
+                    // 跳过缩略图文件：缩略图与原图关联，删原图时自动清理，不应单独标记为僵尸
+                    if (ThumbnailHelper.IsThumbnailPath(path))
+                        continue;
+
                     var isInRegistered = registeredPaths.Contains(path);
                     var isInMistake = mistakeServiceAvailable && mistakePaths.Contains(path);
 

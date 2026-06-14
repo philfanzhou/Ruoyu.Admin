@@ -22,6 +22,8 @@
 - [ ] FR-08：同一时间只允许一个审计运行，重复触发应被拒绝
 - [ ] FR-09：清理 Pending 记录时必须验证对象未被 Student 和 Mistake 服务引用，若仍被引用则拒绝清理
 - [ ] FR-10：清理 Resolved 状态的记录时跳过引用校验[推断：允许对已标记为 Resolved 的记录执行清理]
+- [ ] FR-11：审计扫描跳过缩略图文件，使用 `ThumbnailHelper.IsThumbnailPath` 判断路径是否为缩略图（匹配 `_{size}.jpg` 模式），缩略图不作为僵尸文件记录
+- [ ] FR-12：清理僵尸原图时，`IOssService.DeleteAsync` 自动删除关联缩略图（`ThumbnailHelper.GetAllThumbnailPaths`），无需调用方额外处理
 
 ## 详细的验收标准
 
@@ -52,7 +54,7 @@
 ### AC-FR-05：清理单条 Pending 僵尸记录
 - **Given** 存在一条 Status=Pending 的 OssAuditRecord，且该 ObjectPath 未被 Student 服务注册、未被 Mistake 服务引用
 - **When** 管理员调用 `POST /api/admin/oss-audit/records/{id}/resolve`
-- **Then** 系统调用 `Student.DeleteOssObject` 删除 OSS 对象及指纹，从数据库移除该 OssAuditRecord
+- **Then** 系统调用 `IOssService.DeleteAsync` 删除 OSS 对象及关联缩略图（自动清理），从数据库移除该 OssAuditRecord
 
 - **Given** 存在一条 Status=Pending 的 OssAuditRecord，且该 ObjectPath 仍被 Student 或 Mistake 服务引用
 - **When** 管理员调用 `POST /api/admin/oss-audit/records/{id}/resolve`
@@ -87,6 +89,25 @@
 - **When** 管理员调用 `POST /api/admin/oss-audit/records/{id}/resolve`
 - **Then** 跳过引用验证，直接执行删除操作[推断]
 
+### AC-FR-11：审计扫描跳过缩略图
+- **Given** OSS 中存在缩略图文件（路径匹配 `_{size}.jpg` 模式，如 `uploads/2025/06/14/abc/image_small.jpg`）
+- **When** 审计扫描遍历 OSS 对象
+- **Then** `ThumbnailHelper.IsThumbnailPath` 返回 true，该对象被跳过，不创建 OssAuditRecord
+
+- **Given** OSS 中存在原图文件（路径不匹配 `_{size}.jpg` 模式，如 `uploads/2025/06/14/abc/image.jpg`）
+- **When** 审计扫描遍历 OSS 对象
+- **Then** `ThumbnailHelper.IsThumbnailPath` 返回 false，该对象正常参与僵尸判断
+
+### AC-FR-12：清理僵尸原图自动删除关联缩略图
+- **Given** 存在一条僵尸原图记录，ObjectPath 为 `uploads/2025/06/14/abc/image.jpg`
+- **And** OSS 中存在关联缩略图 `uploads/2025/06/14/abc/image_thumbnail.jpg`、`uploads/2025/06/14/abc/image_small.jpg`、`uploads/2025/06/14/abc/image_medium.jpg`
+- **When** 管理员执行 resolve 操作，调用 `IOssService.DeleteAsync("uploads/2025/06/14/abc/image.jpg")`
+- **Then** `S3OssService.DeleteAsync` 内部调用 `ThumbnailHelper.GetAllThumbnailPaths` 获取所有缩略图路径，逐一删除后删除原图，无需调用方额外处理
+
+- **Given** 调用 `IOssService.DeleteAsync` 传入缩略图路径（如 `uploads/2025/06/14/abc/image_small.jpg`）
+- **When** `ThumbnailHelper.IsThumbnailPath` 返回 true
+- **Then** 只删除该缩略图文件本身，不触发递归清理
+
 ## 非功能需求
 
 ### 性能
@@ -98,6 +119,7 @@
 - 清理接口仅限管理员角色访问（路由前缀 `/api/admin/`）
 - 清理前必须验证引用关系，防止误删业务数据
 - ObjectPath 设为 UNIQUE 约束，防止重复审计记录
+- Admin Portal 的 `S3OssService` 不配置路径前缀校验（审计需访问所有路径前缀），其他服务均配置了路径前缀校验
 
 ### 可靠性
 - 审计运行使用 `OssAuditRun` 记录作为互斥锁，防止并发执行
@@ -130,6 +152,8 @@
 5. 清理 Pending 记录时对象仍被 Mistake 引用 → 拒绝清理
 6. 审计扫描过程中异常 → OssAuditRun 标记 Failed，ErrorMessage 记录异常信息
 7. 批量清理中部分记录验证失败 → [待确认：是整体回滚还是部分成功部分失败]
+8. 审计扫描遇到缩略图文件 → 跳过，不创建 OssAuditRecord
+9. 清理僵尸原图时 `IOssService.DeleteAsync` 自动删除关联缩略图 → 缩略图一并被清理
 
 ### 测试环境要求
 - 需要 mock Student gRPC 服务和 Mistake gRPC 服务

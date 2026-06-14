@@ -19,7 +19,7 @@
 | 7 | 出站 | gRPC Client | Student Service | gRPC (h2c) | `StudentGrpcService:Address` (默认 `:5005`) | 图片预签名 URL | `StudentLearningGrpcService`: GetPresignedUrl |
 | 8 | 出站 | gRPC Client | Mistake Service | gRPC (h2c) | `MistakeGrpcService:Address` (默认 `:5006`) | 图片预签名 URL | `MistakeGrpcService`: GetPresignedUrl |
 | 9 | 出站 | gRPC Client | Student Service | gRPC (h2c) | `StudentGrpcService:Address` (默认 `:5005`) | 图片迁移 | `StudentLearningGrpcService`: MigrateImagesToMistake |
-| 10 | 出站 | S3 API | OSS 存储 | S3 / 本地文件 | `Oss:*` 配置 | 审计浏览+僵尸清理+迁移辅助 | `IOssService`: ListObjectsAsync, DeleteAsync, CopyObjectAsync, GetPresignedUrl, ObjectExists |
+| 10 | 出站 | S3 API | OSS 存储 | S3 / 本地文件 | `Oss:*` 配置 | 审计浏览+僵尸清理+迁移辅助 | `IOssService`: ListObjectsAsync, DeleteAsync（自动清理关联缩略图）, CopyObjectAsync, GetPresignedUrl, ObjectExists；无路径前缀校验（审计需访问所有路径前缀） |
 | 11 | 入站 | HTTP | 前端 Web UI | HTTP/JSON | `AdminApi:Port` (默认 `:5020`) | 管理 API | 所有 `/api/admin/*` 路由 |
 
 ## 失败语义总结
@@ -49,6 +49,7 @@
 |------|----------|------|
 | OSS ListObjects 失败 | 审计任务标记为 Failed | 审计无法完成 |
 | OSS DeleteObject 失败（审计清理） | 返回 500 | 审计记录已标记 Resolved 但 OSS 文件未删除 |
+| OSS DeleteObject 失败（缩略图清理） | 忽略错误，继续删除原图 | 缩略图可能残留，但不影响原图删除 |
 | OSS CopyObject 失败（迁移辅助） | 返回 500 | OSS 对象移动不完整 |
 | gRPC GetPresignedUrl 失败 | 返回 502 Bad Gateway | 图片无法预览 |
 | gRPC MigrateImagesToMistake 失败 | 返回 500 | 图片迁移不完整 |

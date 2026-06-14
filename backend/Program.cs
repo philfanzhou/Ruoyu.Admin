@@ -81,6 +81,7 @@ builder.Services.AddSingleton<IOssService>(sp =>
         ossOptions.AccessKey,
         ossOptions.SecretKey,
         ossOptions.BucketName);
+    // 不配置 allowedPrefixes：Admin Portal 需要访问所有路径前缀（审计+运维）
 });
 
 var connectionString = builder.Configuration.GetConnectionString("AuditDb")

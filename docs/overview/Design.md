@@ -168,6 +168,11 @@
 - `MistakeController.MigrateImages`：不再使用 `IOssService`，改用 Student gRPC `MigrateImagesToMistake`
 - `OssAuditWorker`：`ListOssObjectsPaged` 改为直接调用 `IOssService.ListObjectsAsync`；路径聚合改用通用 gRPC 分页获取后自行聚合
 - `OssAuditController.ResolveRecord`：保留 `IOssService` 用于 DeleteObject
+
+**oss-path-autonomy 变更**：
+- `IOssService.DeleteAsync` 自动清理关联缩略图：`S3OssService.DeleteAsync` 内部调用 `ThumbnailHelper.IsThumbnailPath` 判断是否为缩略图，若为原图则调用 `ThumbnailHelper.GetAllThumbnailPaths` 获取所有缩略图路径并逐一删除后再删除原图；若为缩略图则只删除该文件本身，不触发递归清理
+- Admin Portal 的 `S3OssService` 不配置路径前缀校验（`allowedPrefixes` 为 null），因为审计需要访问所有路径前缀（uploads/、mistakes/、questions/）
+- 缩略图路径规则变更：从 `uploads/thumbnails/` 改为与原图同目录，路径格式 `{dirname}/{stem}_{size}.jpg`
 - `OssUploadRecordController`：改用通用 gRPC + 直接 OSS 操作
 
 ### 4a. Admin Portal 自实现路径聚合（Phase 4 新增）

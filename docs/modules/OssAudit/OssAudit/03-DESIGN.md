@@ -77,10 +77,39 @@
 ```
 OssAuditRecord:
   创建 → RunAuditAsync 发现僵尸文件时创建（Status=Pending）
-  删除 → ResolveRecord 成功后从DB移除（文件已从OSS删除）
+         注意：缩略图文件（ThumbnailHelper.IsThumbnailPath 返回 true）被跳过，不创建记录
+  删除 → ResolveRecord 成功后从DB移除（文件已从OSS删除，关联缩略图由 IOssService.DeleteAsync 自动清理）
   更新 → IgnoreRecord 设置 Status=Ignored, ResolvedAt, Note
 
 OssAuditRun:
   创建 → 每次审计开始时创建（Status=Running）
   更新 → 审计完成或失败时更新 Status/CompletedAt/ErrorMessage
 ```
+
+## 缩略图处理设计
+
+### 审计扫描中的缩略图跳过
+
+审计扫描遍历 OSS 对象时，使用 `ThumbnailHelper.IsThumbnailPath(path)` 判断对象是否为缩略图：
+- 缩略图路径匹配 `_{size}.jpg` 模式（如 `image_small.jpg`、`image_thumbnail.jpg`、`image_medium.jpg`）
+- 缩略图与原图关联，删除原图时自动清理，不应单独标记为僵尸文件
+- 跳过缩略图避免了将缩略图误报为僵尸文件的问题
+
+### 清理僵尸原图时的缩略图自动清理
+
+`IOssService.DeleteAsync` 内部实现了缩略图自动清理逻辑（`S3OssService.DeleteAsync`）：
+1. 调用 `ThumbnailHelper.IsThumbnailPath(objectPath)` 判断是否为缩略图路径
+2. 若非缩略图路径（即原图），调用 `ThumbnailHelper.GetAllThumbnailPaths(objectPath)` 获取所有尺寸缩略图路径
+3. 逐一删除缩略图（不存在时忽略错误）
+4. 删除原图
+5. 若为缩略图路径，只删除该文件本身，不触发递归清理
+
+Admin Portal 的 `S3OssService` 不配置路径前缀校验（`allowedPrefixes` 为 null），因为审计需要访问所有路径前缀（uploads/、mistakes/、questions/）。
+
+### 缩略图路径规则
+
+缩略图与原图同目录，路径格式 `{dirname}/{stem}_{size}.jpg`：
+- 原图 `uploads/2025/06/14/abc/image.jpg` → 缩略图 `uploads/2025/06/14/abc/image_small.jpg`
+- 原图 `mistakes/2025/06/14/def/photo.png` → 缩略图 `mistakes/2025/06/14/def/photo_thumbnail.jpg`
+
+旧规则（已废弃）：缩略图存储在 `uploads/thumbnails/` 下，与原图不在同目录。
