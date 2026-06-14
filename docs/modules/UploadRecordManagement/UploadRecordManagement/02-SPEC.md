@@ -27,7 +27,7 @@
 | status | int | 否 | -1 | 上传状态（-1 表示所有） |
 | studentId | string | 否 | - | 学生 ID |
 
-**gRPC 调用：** `StudentManagement.GetAllUploadRecords`
+**gRPC 调用：** `StudentManagement.GetAllUploadRecords`（Admin 专用接口，待 Task 4.6 迁移至通用接口）
 
 **响应：**
 
@@ -275,7 +275,7 @@
 |------|------|------|
 | id | string | 上传记录 ID |
 
-**gRPC 调用：** `StudentManagement.AnalyzeUploadRecord`
+**gRPC 调用：** `StudentManagement.AnalyzeUploadRecord`（Admin 专用接口，待 Task 4.6 迁移至通用接口）
 
 **响应：**
 

@@ -24,6 +24,7 @@ TEACHER_API_HOST="ruoyu-teacher-api"
 TEACHER_API_PORT="5004"
 TEACHER_ADMIN_API_KEY=""
 
+# OSS 凭证（审计+运维所需，权限应限制为只读+有限写）
 OSS_ENDPOINT="ruoyu-seaweedfs:8333"
 OSS_ACCESS_KEY="seaweedfs_admin"
 OSS_SECRET_KEY="seaweedfs_admin"

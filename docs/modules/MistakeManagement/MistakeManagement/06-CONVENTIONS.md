@@ -10,13 +10,13 @@
 
 - 所有 endpoint 使用 try-catch 包裹，异常统一返回 500 + `ErrorResponse`
 - `ErrorResponse` 格式：`{ "message": "错误描述" }`
-- MigrateImages 中单张图片迁移失败时返回 500 + 中文错误消息（含路径和异常信息）
+- MigrateImages 中单张图片迁移失败时记录 Error 日志并保留原路径，不中断整体流程
 
 ## gRPC 调用约定
 
 - 错题操作通过 `MistakeGrpcServiceClient` 调用
 - 学生姓名通过 `StudentManagementGrpcServiceClient.GetStudent` 获取
-- 图片操作通过 `IOssService` 调用（CopyObjectAsync、DeleteAsync）
+- 图片迁移通过 `StudentLearningGrpcServiceClient.MigrateImagesToMistake` 调用（不再直接操作 OSS）
 
 ## 日志约定
 
@@ -39,9 +39,9 @@
 
 ## MigrateImages 约定
 
-- 路径替换规则：`uploads/xxx` → `mistakes/xxx`（仅替换前缀 `uploads` 为 `mistakes`）
+- 图片迁移委托给 Student gRPC `MigrateImagesToMistake`，路径映射由服务端处理
 - 同一请求内相同路径只迁移一次（pathMapping 缓存）
-- 迁移顺序：先 CopyObjectAsync，再 DeleteAsync，再更新 region.SourceImagePath
+- 迁移结果处理：成功 → 更新 region.SourceImagePath；失败 → 保留原路径，记录 Error 日志
 - 最后调用 UpdateMistakeItem 批量更新所有 sourceRegions（包括未迁移的）
 
 ## 响应字段差异约定

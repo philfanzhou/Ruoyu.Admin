@@ -13,7 +13,6 @@ namespace Admin.WebApi.Tests.Controllers;
 
 public class OssUploadRecordControllerLegacyTests
 {
-    private readonly Mock<SProto.StudentManagementGrpcService.StudentManagementGrpcServiceClient> _managementClient;
     private readonly Mock<SProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient> _learningClient;
     private readonly Mock<MistakeProto.MistakeGrpcService.MistakeGrpcServiceClient> _mistakeClient;
     private readonly Mock<ILogger<OssUploadRecordController>> _logger;
@@ -22,14 +21,12 @@ public class OssUploadRecordControllerLegacyTests
 
     public OssUploadRecordControllerLegacyTests()
     {
-        _managementClient = new Mock<SProto.StudentManagementGrpcService.StudentManagementGrpcServiceClient>();
         _learningClient = new Mock<SProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient>();
         _mistakeClient = new Mock<MistakeProto.MistakeGrpcService.MistakeGrpcServiceClient>();
         _logger = new Mock<ILogger<OssUploadRecordController>>();
         _ossService = new Mock<IOssService>();
 
         _controller = new OssUploadRecordController(
-            _managementClient.Object,
             _learningClient.Object,
             _mistakeClient.Object,
             _logger.Object,

@@ -21,11 +21,6 @@ builder.WebHost.ConfigureKestrel(options =>
 // Configure gRPC clients
 // Uses IHttpClientFactory internally to handle HTTP/2 over cleartext (h2c)
 // for internal Docker network communication.
-builder.Services.AddGrpcClient<StudentManagementGrpcService.StudentManagementGrpcServiceClient>(options =>
-{
-    options.Address = new Uri(grpcServiceAddress);
-});
-
 builder.Services.AddGrpcClient<StudentLearningGrpcService.StudentLearningGrpcServiceClient>(options =>
 {
     options.Address = new Uri(grpcServiceAddress);
@@ -68,6 +63,9 @@ builder.Services.AddCors(options =>
 
 builder.Services.AddControllers();
 
+// IOssService: 保留用于 OSS 审计和运维操作
+// 权限范围：只读（ListObjects, Download, GetPresignedUrl, ObjectExists）+ 有限写（Delete 僵尸清理, CopyObject 迁移辅助）
+// 理想状态：后续将 Delete/CopyObject 也走 gRPC，Admin 可完全去除写凭证
 var useLocalOss = Environment.GetEnvironmentVariable("USE_LOCAL_OSS") == "1";
 builder.Services.AddSingleton<IOssService>(sp =>
 {

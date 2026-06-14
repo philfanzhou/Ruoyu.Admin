@@ -1,5 +1,11 @@
 # 设计文档
 
+> **Phase 4 计划变更（尚未实施）**：本文档已更新为 Phase 4 目标状态。主要变更：
+> - `StudentManagementGrpcServiceClient` 移除，所有 Student gRPC 调用统一通过 `StudentLearningGrpcServiceClient`
+> - `IOssService` 权限降级为只读 + 有限写（僵尸清理 Delete + 迁移辅助 CopyObject）
+> - Admin Portal 自行实现路径聚合逻辑（从通用 gRPC 分页获取数据后聚合）
+> - OSS 审计使用直接 `IOssService.ListObjectsAsync` + 通用 gRPC 路径聚合
+
 ## 服务级架构
 
 ### 分层架构
@@ -46,9 +52,12 @@
 │  │  ┌──────────────────┐  ┌───────────────────────────┐ │  │
 │  │  │ OssAuditWorker   │  │ IOssService               │ │  │
 │  │  │ (BackgroundService)│ │ (S3OssService /          │ │  │
-│  │  └──────────────────┘  │  LocalFileOssService)     │ │  │
-│  │                        │  [仅用于审计 ListObjects   │ │  │
-│  │                        │   和清理 DeleteObject]     │ │  │
+│  │  │                  │  │  LocalFileOssService)     │ │  │
+│  │  │ 路径聚合：       │  │  [权限降级：只读 +       │ │  │
+│  │  │  Student 通用gRPC│  │   有限写(Delete/Copy)]   │ │  │
+│  │  │  Mistake 通用gRPC│  │  ListObjects(审计浏览)   │ │  │
+│  │  └──────────────────┘  │  Delete(僵尸清理)        │ │  │
+│  │                        │  CopyObject(迁移辅助)    │ │  │
 │  │                        └───────────────────────────┘ │  │
 │  └───────────────────────────────────────────────────────┘  │
 │                                                             │
@@ -72,7 +81,7 @@
 | 数据库 (生产) | PostgreSQL | 12+ | 通过 Npgsql.EntityFrameworkCore.PostgreSQL 8.0.11 |
 | 数据库 (测试) | SQLite | - | 通过 Microsoft.EntityFrameworkCore.Sqlite 8.0.11 |
 | API 文档 | Swashbuckle.AspNetCore | 6.5.0 | Swagger UI (仅 Development 环境) |
-| 对象存储 | S3 兼容 API / 本地文件 | - | 通过 IOssService 抽象（仅用于审计 ListObjects 和清理 DeleteObject） |
+| 对象存储 | S3 兼容 API / 本地文件 | - | 通过 IOssService 抽象（权限降级：只读 + 有限写，用于审计浏览 ListObjects、僵尸清理 Delete、迁移辅助 CopyObject） |
 | 前端 | Vue 3 + Element Plus | - | SPA，可集成部署到 wwwroot |
 | 构建工具 | Vite | - | 前端构建 |
 | 测试 | xUnit + Moq + FluentAssertions | - | 单元测试 + coverlet 覆盖率 |
@@ -92,7 +101,8 @@
             │            │                ├─ IOssService
             │            │                │  ├─ S3OssService
             │            │                │  └─ LocalFileOssService
-            │            │                │  [仅用于审计 List/清理 Delete]
+            │            │                │  [权限降级：只读 + 有限写]
+            │            │                │  ListObjects / Delete / CopyObject
             │            │                │
             │            │                ├─ DatabaseInitializer
             │            │                │
@@ -107,7 +117,12 @@
             ▼            ▼
      Student gRPC    Mistake gRPC
      :5005           :5006
+  (StudentLearning    (MistakeGrpcService
+   GrpcService         仅通用接口)
+   仅通用接口)
 ```
+
+> **Phase 4 变更说明**：`StudentManagementGrpcServiceClient` 已移除，所有 Student gRPC 调用统一通过 `StudentLearningGrpcServiceClient`。Admin 专用接口（ListOssObjects、GetRegisteredOssPaths、DeleteOssObject 等）不再由 Student 服务提供，改为 Admin Portal 自行实现（直接 IOssService + 通用 gRPC）。
 
 ## 关键设计决策
 
@@ -145,14 +160,28 @@
 **原因**：
 - 图片下载改为通过 Student/Mistake gRPC `GetPresignedUrl` 获取预签名 URL + 302 重定向
 - 图片迁移改为通过 Student gRPC `MigrateImagesToMistake` 代理
-- `IOssService` 仅用于审计场景的 `ListObjectsAsync` 和清理场景的 `DeleteAsync`
-- 凭证权限应降级为只读 + 有限写（仅允许 List + Delete）
+- `IOssService` 用于审计场景的 `ListObjectsAsync`、清理场景的 `DeleteAsync`、迁移辅助的 `CopyObjectAsync`
+- 凭证权限降级为只读 + 有限写（允许 List + Delete + CopyObject）
 
 **变更影响**：
 - `ImageController`：不再使用 `IOssService`，改用 gRPC `GetPresignedUrl`
 - `MistakeController.MigrateImages`：不再使用 `IOssService`，改用 Student gRPC `MigrateImagesToMistake`
-- `OssAuditWorker`：保留 `IOssService` 用于 ListObjects，路径聚合改用通用 gRPC
+- `OssAuditWorker`：`ListOssObjectsPaged` 改为直接调用 `IOssService.ListObjectsAsync`；路径聚合改用通用 gRPC 分页获取后自行聚合
 - `OssAuditController.ResolveRecord`：保留 `IOssService` 用于 DeleteObject
+- `OssUploadRecordController`：改用通用 gRPC + 直接 OSS 操作
+
+### 4a. Admin Portal 自实现路径聚合（Phase 4 新增）
+
+**决策**：Admin Portal 自行实现 OSS 审计中的路径聚合逻辑，不再依赖下游服务的专用接口。
+
+**原因**：
+- `StudentManagementGrpcService.GetRegisteredOssPaths` 被移除，Admin Portal 通过 Student 通用 gRPC（如 `GetAllUploadRecords`）分页获取上传记录后，自行提取和聚合图片路径
+- `MistakeGrpcService.GetAllReferencedImagePaths` 被移除，Admin Portal 通过 Mistake 通用 gRPC（如 `GetMistakeItemList`）分页遍历错题条目后，自行提取和聚合图片路径
+- 路径聚合是 Admin 审计特有需求，不应要求其他服务提供专用接口
+
+**实现方式**：
+- Student 路径聚合：调用 `StudentLearningGrpcService.GetAllUploadRecords` 分页获取所有上传记录，提取 `ImagePaths` 字段去重聚合
+- Mistake 路径聚合：调用 `MistakeGrpcService.GetMistakeItemList` 分页遍历所有错题条目，提取 `ImagePath` 字段去重聚合
 
 ### 5. 前后端集成部署
 

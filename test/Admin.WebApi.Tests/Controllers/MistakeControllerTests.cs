@@ -14,7 +14,6 @@ namespace Admin.WebApi.Tests.Controllers;
 public class MistakeControllerTests
 {
     private readonly Mock<MistakeProto.MistakeGrpcService.MistakeGrpcServiceClient> _mistakeClient;
-    private readonly Mock<SProto.StudentManagementGrpcService.StudentManagementGrpcServiceClient> _managementClient;
     private readonly Mock<SProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient> _studentLearningClient;
     private readonly Mock<ILogger<MistakeController>> _logger;
     private readonly MistakeController _controller;
@@ -22,12 +21,10 @@ public class MistakeControllerTests
     public MistakeControllerTests()
     {
         _mistakeClient = new Mock<MistakeProto.MistakeGrpcService.MistakeGrpcServiceClient>();
-        _managementClient = new Mock<SProto.StudentManagementGrpcService.StudentManagementGrpcServiceClient>();
         _studentLearningClient = new Mock<SProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient>();
         _logger = new Mock<ILogger<MistakeController>>();
         _controller = new MistakeController(
             _mistakeClient.Object,
-            _managementClient.Object,
             _studentLearningClient.Object,
             _logger.Object);
     }
@@ -106,7 +103,7 @@ public class MistakeControllerTests
             UpdatedAt = 2000
         };
 
-        _managementClient
+        _studentLearningClient
             .Setup(c => c.GetStudentAsync(
                 It.Is<SProto.GetStudentRequest>(r => r.StudentId == studentId),
                 It.IsAny<Metadata>(),
@@ -117,7 +114,7 @@ public class MistakeControllerTests
 
     private void SetupGetStudentAsyncThrows(string studentId)
     {
-        _managementClient
+        _studentLearningClient
             .Setup(c => c.GetStudentAsync(
                 It.Is<SProto.GetStudentRequest>(r => r.StudentId == studentId),
                 It.IsAny<Metadata>(),

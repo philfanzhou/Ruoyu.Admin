@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Moq;
+using Ruoyu.Study.Common.Oss;
 using SProto = Ruoyu.Study.Student.Contract.Protos;
 using MProto = Ruoyu.Study.Mistake.Contract.Protos;
 using Xunit;
@@ -17,8 +18,9 @@ namespace Admin.WebApi.Tests.Controllers;
 public class OssAuditControllerTests : IDisposable
 {
     private readonly AuditDbContext _dbContext;
-    private readonly Mock<SProto.StudentManagementGrpcService.StudentManagementGrpcServiceClient> _studentClient;
+    private readonly Mock<SProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient> _studentClient;
     private readonly Mock<MProto.MistakeGrpcService.MistakeGrpcServiceClient> _mistakeClient;
+    private readonly Mock<IOssService> _ossService;
     private readonly Mock<OssAuditWorker> _auditWorker;
     private readonly Mock<ILogger<OssAuditController>> _logger;
     private readonly OssAuditController _controller;
@@ -30,8 +32,9 @@ public class OssAuditControllerTests : IDisposable
             .Options;
         _dbContext = new AuditDbContext(options);
 
-        _studentClient = new Mock<SProto.StudentManagementGrpcService.StudentManagementGrpcServiceClient>();
+        _studentClient = new Mock<SProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient>();
         _mistakeClient = new Mock<MProto.MistakeGrpcService.MistakeGrpcServiceClient>();
+        _ossService = new Mock<IOssService>();
         _auditWorker = new Mock<OssAuditWorker>(null!, null!, null!);
         _logger = new Mock<ILogger<OssAuditController>>();
 
@@ -39,6 +42,7 @@ public class OssAuditControllerTests : IDisposable
             _dbContext,
             _studentClient.Object,
             _mistakeClient.Object,
+            _ossService.Object,
             _auditWorker.Object,
             _logger.Object);
     }
@@ -110,11 +114,21 @@ public class OssAuditControllerTests : IDisposable
 
     private void SetupStudentPaths(params string[] paths)
     {
-        var response = new SProto.GetRegisteredOssPathsResponse();
-        response.Paths.AddRange(paths);
+        var record = new SProto.UploadRecordDto();
+        record.ImagePaths.AddRange(paths);
+
+        var response = new SProto.UploadRecordsPageResult
+        {
+            TotalCount = paths.Length > 0 ? 1 : 0,
+            Page = 1,
+            PageSize = 100,
+        };
+        if (paths.Length > 0)
+            response.Items.Add(record);
+
         _studentClient
-            .Setup(c => c.GetRegisteredOssPathsAsync(
-                It.IsAny<SProto.Empty>(),
+            .Setup(c => c.GetAllUploadRecordsAsync(
+                It.IsAny<SProto.GetAllUploadRecordsRequest>(),
                 It.IsAny<Metadata>(),
                 It.IsAny<DateTime?>(),
                 It.IsAny<CancellationToken>()))
@@ -123,11 +137,27 @@ public class OssAuditControllerTests : IDisposable
 
     private void SetupMistakePaths(params string[] paths)
     {
-        var response = new MProto.GetAllReferencedImagePathsResponse();
-        response.ImagePaths.AddRange(paths);
+        var response = new MProto.MistakeItemPageResult
+        {
+            PageMeta = new MProto.PageMeta
+            {
+                Page = 1,
+                Size = 100,
+                TotalCount = paths.Length,
+                TotalPages = paths.Length > 0 ? 1 : 0,
+            }
+        };
+
+        foreach (var path in paths)
+        {
+            var item = new MProto.MistakeItemDto();
+            item.SourceRegions.Add(new MProto.SourceRegion { SourceImagePath = path });
+            response.Items.Add(item);
+        }
+
         _mistakeClient
-            .Setup(c => c.GetAllReferencedImagePathsAsync(
-                It.IsAny<MProto.Empty>(),
+            .Setup(c => c.GetMistakeItemListAsync(
+                It.IsAny<MProto.GetMistakeItemListRequest>(),
                 It.IsAny<Metadata>(),
                 It.IsAny<DateTime?>(),
                 It.IsAny<CancellationToken>()))
@@ -136,14 +166,18 @@ public class OssAuditControllerTests : IDisposable
 
     private void SetupDeleteOssObject(bool success = true, string? errorMessage = null)
     {
-        var response = new SProto.BoolResponse { Success = success, ErrorMessage = errorMessage ?? "" };
-        _studentClient
-            .Setup(c => c.DeleteOssObjectAsync(
-                It.IsAny<SProto.DeleteOssObjectRequest>(),
-                It.IsAny<Metadata>(),
-                It.IsAny<DateTime?>(),
-                It.IsAny<CancellationToken>()))
-            .Returns(CreateAsyncCall(response));
+        if (success)
+        {
+            _ossService
+                .Setup(s => s.DeleteAsync(It.IsAny<string>()))
+                .ReturnsAsync(true);
+        }
+        else
+        {
+            _ossService
+                .Setup(s => s.DeleteAsync(It.IsAny<string>()))
+                .ThrowsAsync(new Exception(errorMessage ?? "Delete failed"));
+        }
     }
 
     // ============================================================
@@ -400,15 +434,15 @@ public class OssAuditControllerTests : IDisposable
 
         // Verify that reference-check gRPC calls were NOT made
         _studentClient.Verify(
-            c => c.GetRegisteredOssPathsAsync(
-                It.IsAny<SProto.Empty>(),
+            c => c.GetAllUploadRecordsAsync(
+                It.IsAny<SProto.GetAllUploadRecordsRequest>(),
                 It.IsAny<Metadata>(),
                 It.IsAny<DateTime?>(),
                 It.IsAny<CancellationToken>()),
             Times.Never);
         _mistakeClient.Verify(
-            c => c.GetAllReferencedImagePathsAsync(
-                It.IsAny<MProto.Empty>(),
+            c => c.GetMistakeItemListAsync(
+                It.IsAny<MProto.GetMistakeItemListRequest>(),
                 It.IsAny<Metadata>(),
                 It.IsAny<DateTime?>(),
                 It.IsAny<CancellationToken>()),

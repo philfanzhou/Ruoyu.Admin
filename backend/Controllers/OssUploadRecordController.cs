@@ -10,20 +10,17 @@ namespace Admin.WebApi.Controllers;
 [ApiController]
 public class OssUploadRecordController : ControllerBase
 {
-    private readonly SProto.StudentManagementGrpcService.StudentManagementGrpcServiceClient _managementClient;
     private readonly SProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient _learningClient;
     private readonly MistakeProto.MistakeGrpcService.MistakeGrpcServiceClient _mistakeClient;
     private readonly ILogger<OssUploadRecordController> _logger;
     private readonly IOssService _ossService;
 
     public OssUploadRecordController(
-        SProto.StudentManagementGrpcService.StudentManagementGrpcServiceClient managementClient,
         SProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient learningClient,
         MistakeProto.MistakeGrpcService.MistakeGrpcServiceClient mistakeClient,
         ILogger<OssUploadRecordController> logger,
         IOssService ossService)
     {
-        _managementClient = managementClient;
         _learningClient = learningClient;
         _mistakeClient = mistakeClient;
         _logger = logger;
@@ -47,7 +44,7 @@ public class OssUploadRecordController : ControllerBase
                 request.StudentId = studentId;
             }
 
-            var response = await _managementClient.GetAllUploadRecordsAsync(request);
+            var response = await _learningClient.GetAllUploadRecordsAsync(request);
 
             // 收集所有唯一的 studentId，批量查询学生姓名
             var studentIds = response.Items.Select(r => r.StudentId).Distinct().ToList();
@@ -57,7 +54,7 @@ public class OssUploadRecordController : ControllerBase
             {
                 try
                 {
-                    var student = await _managementClient.GetStudentAsync(new SProto.GetStudentRequest { StudentId = sid });
+                    var student = await _learningClient.GetStudentAsync(new SProto.GetStudentRequest { StudentId = sid });
                     studentNameMap[sid] = student.Name;
                 }
                 catch
@@ -507,36 +504,11 @@ public class OssUploadRecordController : ControllerBase
         }
     }
 
+    [Obsolete("AnalyzeUploadRecord 是管理员调试接口，StudentManagementGrpcService 已移除，此端点暂不可用")]
     [HttpPost("{id}/analyze")]
-    public async Task<IActionResult> AnalyzeUploadRecord(string id)
+    public IActionResult AnalyzeUploadRecord(string id)
     {
-        try
-        {
-            var request = new SProto.AnalyzeUploadRecordRequest { RecordId = id };
-            var response = await _managementClient.AnalyzeUploadRecordAsync(request);
-
-            return Ok(new
-            {
-                success = response.Success,
-                errorMessage = response.ErrorMessage,
-                rawResponse = response.RawResponse,
-                skipped = response.Skipped,
-                prompt = response.Prompt,
-                compressedImages = response.CompressedImages.ToList(),
-                groups = response.Groups.Select(g => new
-                {
-                    imageIndices = g.ImageIndices.ToList(),
-                    subject = g.Subject,
-                    grade = g.Grade,
-                    description = g.Description,
-                })
-            });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to analyze upload record: {RecordId}", id);
-            return StatusCode(500, new ErrorResponse($"VL 分析失败: {ex.Message}"));
-        }
+        return StatusCode(410, new ErrorResponse("AnalyzeUploadRecord 接口已随 StudentManagementGrpcService 移除，请联系后端恢复"));
     }
 
     private string GetContentType(string path)

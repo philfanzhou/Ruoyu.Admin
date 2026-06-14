@@ -7,6 +7,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Moq;
+using Ruoyu.Study.Common.Oss;
 using SProto = Ruoyu.Study.Student.Contract.Protos;
 using MProto = Ruoyu.Study.Mistake.Contract.Protos;
 using Xunit;
@@ -18,8 +19,9 @@ public class OssAuditWorkerTests : IDisposable
     private readonly AuditDbContext _dbContext;
     private readonly Mock<ILogger<OssAuditWorker>> _logger;
     private readonly IConfiguration _configuration;
-    private readonly Mock<SProto.StudentManagementGrpcService.StudentManagementGrpcServiceClient> _studentClient;
+    private readonly Mock<SProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient> _studentClient;
     private readonly Mock<MProto.MistakeGrpcService.MistakeGrpcServiceClient> _mistakeClient;
+    private readonly Mock<IOssService> _ossService;
     private readonly Mock<IServiceProvider> _serviceProvider;
     private readonly OssAuditWorker _worker;
 
@@ -39,8 +41,9 @@ public class OssAuditWorkerTests : IDisposable
             })
             .Build();
 
-        _studentClient = new Mock<SProto.StudentManagementGrpcService.StudentManagementGrpcServiceClient>();
+        _studentClient = new Mock<SProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient>();
         _mistakeClient = new Mock<MProto.MistakeGrpcService.MistakeGrpcServiceClient>();
+        _ossService = new Mock<IOssService>();
 
         _serviceProvider = BuildServiceProvider();
 
@@ -76,12 +79,16 @@ public class OssAuditWorkerTests : IDisposable
             .Returns(_dbContext);
 
         scopedServiceProviderMock
-            .Setup(sp => sp.GetService(typeof(SProto.StudentManagementGrpcService.StudentManagementGrpcServiceClient)))
+            .Setup(sp => sp.GetService(typeof(SProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient)))
             .Returns(_studentClient.Object);
 
         scopedServiceProviderMock
             .Setup(sp => sp.GetService(typeof(MProto.MistakeGrpcService.MistakeGrpcServiceClient)))
             .Returns(_mistakeClient.Object);
+
+        scopedServiceProviderMock
+            .Setup(sp => sp.GetService(typeof(IOssService)))
+            .Returns(_ossService.Object);
 
         var scopeMock = new Mock<IServiceScope>();
         scopeMock.Setup(s => s.ServiceProvider).Returns(scopedServiceProviderMock.Object);
@@ -97,48 +104,82 @@ public class OssAuditWorkerTests : IDisposable
         return serviceProviderMock;
     }
 
-    private void SetupStudentPaths(params string[] paths)
+    /// <summary>
+    /// 模拟 GetAllUploadRecords 分页返回包含指定 image_paths 的上传记录。
+    /// </summary>
+    private void SetupStudentUploadRecords(params string[] imagePaths)
     {
-        var response = new SProto.GetRegisteredOssPathsResponse();
-        response.Paths.AddRange(paths);
+        var record = new SProto.UploadRecordDto();
+        record.ImagePaths.AddRange(imagePaths);
+
+        var response = new SProto.UploadRecordsPageResult
+        {
+            TotalCount = imagePaths.Length > 0 ? 1 : 0,
+            Page = 1,
+            PageSize = 100,
+        };
+        if (imagePaths.Length > 0)
+            response.Items.Add(record);
+
         _studentClient
-            .Setup(c => c.GetRegisteredOssPathsAsync(
-                It.IsAny<SProto.Empty>(),
+            .Setup(c => c.GetAllUploadRecordsAsync(
+                It.IsAny<SProto.GetAllUploadRecordsRequest>(),
                 It.IsAny<Metadata>(),
                 It.IsAny<DateTime?>(),
                 It.IsAny<CancellationToken>()))
             .Returns(CreateAsyncCall(response));
     }
 
-    private void SetupMistakePaths(params string[] paths)
+    /// <summary>
+    /// 模拟 GetMistakeItemList 分页返回包含指定 source_image_path 的错题条目。
+    /// </summary>
+    private void SetupMistakeItems(params string[] imagePaths)
     {
-        var response = new MProto.GetAllReferencedImagePathsResponse();
-        response.ImagePaths.AddRange(paths);
+        var response = new MProto.MistakeItemPageResult
+        {
+            PageMeta = new MProto.PageMeta
+            {
+                Page = 1,
+                Size = 100,
+                TotalCount = imagePaths.Length,
+                TotalPages = imagePaths.Length > 0 ? 1 : 0,
+            }
+        };
+
+        foreach (var path in imagePaths)
+        {
+            var item = new MProto.MistakeItemDto();
+            item.SourceRegions.Add(new MProto.SourceRegion { SourceImagePath = path });
+            response.Items.Add(item);
+        }
+
         _mistakeClient
-            .Setup(c => c.GetAllReferencedImagePathsAsync(
-                It.IsAny<MProto.Empty>(),
+            .Setup(c => c.GetMistakeItemListAsync(
+                It.IsAny<MProto.GetMistakeItemListRequest>(),
                 It.IsAny<Metadata>(),
                 It.IsAny<DateTime?>(),
                 It.IsAny<CancellationToken>()))
             .Returns(CreateAsyncCall(response));
     }
 
-    private void SetupListOssObjects(SProto.OssBucket bucket, params SProto.OssObjectInfo[] objects)
+    /// <summary>
+    /// 模拟 IOssService.ListObjectsWithBucketAsync 返回指定 bucket 的对象列表。
+    /// </summary>
+    private void SetupOssListObjects(OssBucket bucket, params OssObjectInfo[] objects)
     {
-        var response = new SProto.ListOssObjectsResponse();
-        response.Objects.AddRange(objects);
-        _studentClient
-            .Setup(c => c.ListOssObjectsAsync(
-                It.Is<SProto.ListOssObjectsRequest>(r => r.Bucket == bucket),
-                It.IsAny<Metadata>(),
-                It.IsAny<DateTime?>(),
-                It.IsAny<CancellationToken>()))
-            .Returns(CreateAsyncCall(response));
+        _ossService
+            .Setup(s => s.ListObjectsWithBucketAsync(bucket, It.IsAny<string?>()))
+            .ReturnsAsync(objects.ToList());
     }
 
-    private static SProto.OssObjectInfo CreateOssObject(string path, long size = 1024, long lastModified = 1000)
+    private static OssObjectInfo CreateOssObject(string path, long size = 1024, DateTimeOffset? lastModified = null)
     {
-        return new SProto.OssObjectInfo { ObjectPath = path, Size = size, LastModified = lastModified };
+        return new OssObjectInfo
+        {
+            ObjectPath = path,
+            Size = size,
+            LastModified = lastModified ?? DateTimeOffset.FromUnixTimeSeconds(1000),
+        };
     }
 
     // ============================================================
@@ -149,22 +190,22 @@ public class OssAuditWorkerTests : IDisposable
     public async Task RunAuditAsync_Success_FindsZombieObjects()
     {
         // Arrange
-        // Student service returns registered paths
-        SetupStudentPaths("uploads/registered.png", "mistakes/referenced.png");
+        // Student service returns registered paths via upload records
+        SetupStudentUploadRecords("uploads/registered.png", "mistakes/referenced.png");
 
-        // Mistake service returns referenced paths
-        SetupMistakePaths("mistakes/referenced.png", "questions/mistake-ref.png");
+        // Mistake service returns referenced paths via mistake items
+        SetupMistakeItems("mistakes/referenced.png", "questions/mistake-ref.png");
 
-        // List objects in each bucket
-        SetupListOssObjects(SProto.OssBucket.Uploads,
+        // List objects in each bucket via IOssService
+        SetupOssListObjects(OssBucket.Uploads,
             CreateOssObject("uploads/registered.png"),
             CreateOssObject("uploads/zombie.png"));
 
-        SetupListOssObjects(SProto.OssBucket.Mistakes,
+        SetupOssListObjects(OssBucket.Mistakes,
             CreateOssObject("mistakes/referenced.png"),
             CreateOssObject("mistakes/zombie.png"));
 
-        SetupListOssObjects(SProto.OssBucket.Questions,
+        SetupOssListObjects(OssBucket.Questions,
             CreateOssObject("questions/mistake-ref.png"),
             CreateOssObject("questions/zombie.png"));
 
@@ -190,8 +231,8 @@ public class OssAuditWorkerTests : IDisposable
     {
         // Arrange
         _studentClient
-            .Setup(c => c.GetRegisteredOssPathsAsync(
-                It.IsAny<SProto.Empty>(),
+            .Setup(c => c.GetAllUploadRecordsAsync(
+                It.IsAny<SProto.GetAllUploadRecordsRequest>(),
                 It.IsAny<Metadata>(),
                 It.IsAny<DateTime?>(),
                 It.IsAny<CancellationToken>()))
@@ -215,24 +256,24 @@ public class OssAuditWorkerTests : IDisposable
     public async Task RunAuditAsync_MistakeServiceUnavailable_ContinuesWithWarning()
     {
         // Arrange
-        SetupStudentPaths("uploads/registered.png");
+        SetupStudentUploadRecords("uploads/registered.png");
 
         _mistakeClient
-            .Setup(c => c.GetAllReferencedImagePathsAsync(
-                It.IsAny<MProto.Empty>(),
+            .Setup(c => c.GetMistakeItemListAsync(
+                It.IsAny<MProto.GetMistakeItemListRequest>(),
                 It.IsAny<Metadata>(),
                 It.IsAny<DateTime?>(),
                 It.IsAny<CancellationToken>()))
             .Throws(new RpcException(new Status(StatusCode.Unavailable, "Mistake service down")));
 
         // List objects — only mistakes/zombie.png is unreferenced since mistake service is down
-        SetupListOssObjects(SProto.OssBucket.Uploads,
+        SetupOssListObjects(OssBucket.Uploads,
             CreateOssObject("uploads/registered.png"));
 
-        SetupListOssObjects(SProto.OssBucket.Mistakes,
+        SetupOssListObjects(OssBucket.Mistakes,
             CreateOssObject("mistakes/zombie.png"));
 
-        SetupListOssObjects(SProto.OssBucket.Questions);
+        SetupOssListObjects(OssBucket.Questions);
 
         // Act
         await _worker.RunAuditAsync("manual");
@@ -260,11 +301,11 @@ public class OssAuditWorkerTests : IDisposable
         });
         await _dbContext.SaveChangesAsync();
 
-        SetupStudentPaths();
-        SetupMistakePaths();
-        SetupListOssObjects(SProto.OssBucket.Uploads);
-        SetupListOssObjects(SProto.OssBucket.Mistakes);
-        SetupListOssObjects(SProto.OssBucket.Questions);
+        SetupStudentUploadRecords();
+        SetupMistakeItems();
+        SetupOssListObjects(OssBucket.Uploads);
+        SetupOssListObjects(OssBucket.Mistakes);
+        SetupOssListObjects(OssBucket.Questions);
 
         // Act
         await _worker.RunAuditAsync("manual");

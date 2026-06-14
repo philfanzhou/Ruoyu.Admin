@@ -202,12 +202,12 @@
 
 **执行流程：**
 1. 调用 `Mistake.GetMistakeItem` 获取错题详情
-2. 筛选 `sourceRegions` 中 `SourceImagePath` 以 `uploads/` 开头的区域
-3. 对每个需要迁移的图片：
-   - 通过 `IOssService.CopyObjectAsync` 复制到 `mistakes/` 路径
-   - 通过 `IOssService.DeleteAsync` 删除旧路径文件
-   - 更新 region 的 `SourceImagePath` 为新路径
-4. 调用 `Mistake.UpdateMistakeItem` 更新错题的 sourceRegions
+2. 筛选 `sourceRegions` 中 `SourceImagePath` 以 `uploads/` 开头的区域，去重得到 `sourcePaths`
+3. 调用 `StudentLearning.MigrateImagesToMistake` gRPC 接口，传入 `sourcePaths`
+4. 遍历 gRPC 返回的每张图片迁移结果：
+   - 成功 → 将 `sourcePath → newPath` 记入 pathMapping，更新 region 的 `SourceImagePath` 为新路径
+   - 失败 → 记录 Error 日志，保留原路径
+5. 调用 `Mistake.UpdateMistakeItem` 更新错题的 sourceRegions
 
 **响应（无需迁移）：**
 
@@ -230,8 +230,7 @@
 ```
 
 **错误响应：**
-- 500 - 迁移图片失败: {path} - {exception message}（单张图片迁移失败）
-- 500 - Failed to migrate images（其他异常）
+- 500 - Failed to migrate images（gRPC 调用异常、GetMistakeItem 异常、UpdateMistakeItem 异常等）
 
 ---
 

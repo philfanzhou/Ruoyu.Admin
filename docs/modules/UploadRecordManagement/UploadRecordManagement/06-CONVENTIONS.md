@@ -15,7 +15,11 @@
 
 ## gRPC 调用约定
 
-- 上传记录查询/操作通过 `StudentManagementGrpcServiceClient` 和 `StudentLearningGrpcServiceClient` 调用
+- 上传记录操作优先通过 `StudentLearningGrpcServiceClient`（通用接口）调用
+- 以下操作仍通过 `StudentManagementGrpcServiceClient`（Admin 专用接口）调用，待 Task 4.6 迁移至通用接口：
+  - `GetAllUploadRecords`：管理端分页查询所有上传记录（无需 studentId）
+  - `AnalyzeUploadRecord`：管理端 VL 分析（Admin 专用调试接口）
+  - `GetStudent`：查询学生姓名（用于 GetAllUploadRecords 返回数据中填充 studentName）
 - 错题创建通过 `MistakeGrpcServiceClient` 调用
 - 学生姓名通过逐个调用 `StudentManagement.GetStudent` 获取（非批量），查询失败时回退为 studentId
 - 图片操作通过 `IOssService` 调用

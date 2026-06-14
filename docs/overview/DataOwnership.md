@@ -1,5 +1,10 @@
 # 数据所有权
 
+> **Phase 4 计划变更（尚未实施）**：本文档已更新为 Phase 4 目标状态。主要变更：
+> - Admin Portal 现拥有 OSS 审计逻辑（路径聚合、僵尸检测），不再依赖下游服务专用接口
+> - `StudentManagementGrpcService` 的 10 个 Admin 专用接口被移除，改为通用 gRPC + 直接 OSS 操作
+> - `MistakeGrpcService.GetAllReferencedImagePaths` 被移除，Admin Portal 通过通用 gRPC 分页遍历后自行聚合
+
 ## 概述
 
 Admin Portal 作为管理聚合层，仅拥有少量自有数据，大部分数据来自下游服务的实时查询。
@@ -39,10 +44,15 @@ Admin Portal 作为管理聚合层，仅拥有少量自有数据，大部分数�
 | 学生列表/详情 | gRPC: `ListStudents`, `GetStudent` | 学生管理 CRUD |
 | 身份账户关联 | gRPC: `GetIdentityAccountsByStudentId`, `LinkIdentityAccountToStudent`, `UnlinkIdentityAccountFromStudent` | 账户关联管理 |
 | 开放科目 | gRPC: `GetStudentOpenSubjects`, `SetStudentOpenSubjects` | 科目开放配置 |
-| OSS 注册路径 | gRPC: `GetRegisteredOssPaths` | 审计时判断对象是否被引用 |
-| OSS 对象列表 | gRPC: `ListOssObjects` | 审计时扫描 OSS 对象 |
-| OSS 对象删除 | gRPC: `DeleteOssObject` | 审计 Resolve 时删除僵尸对象 |
+| OSS 注册路径 | Admin Portal 自行聚合：调用通用 gRPC `GetAllUploadRecords` 分页获取后提取图片路径 | 审计时判断对象是否被引用 |
+| OSS 对象列表 | 直接调用 `IOssService.ListObjectsAsync` | 审计时扫描 OSS 对象 |
+| OSS 对象删除 | 直接调用 `IOssService.DeleteAsync` + 通用 gRPC 清理指纹 | 审计 Resolve 时删除僵尸对象 |
+| OSS 对象移动 | 直接调用 `IOssService.CopyObjectAsync` + `DeleteAsync` | 迁移辅助 |
 | 上传记录 | gRPC: `GetAllUploadRecords`, `GetUploadRecord` 等 | 上传记录管理 |
+| 图片预签名 URL | gRPC: `GetPresignedUrl` | 图片查看 |
+| 图片迁移 | gRPC: `MigrateImagesToMistake` | 图片迁移（uploads→mistakes） |
+
+> **Phase 4 变更**：`StudentManagementGrpcService` 整体移除。原 Admin 专用接口（`GetRegisteredOssPaths`、`ListOssObjects`、`DeleteOssObject`、`MoveOssObject`）改为 Admin Portal 自行实现（直接 IOssService + 通用 gRPC 聚合）。原 `GetAllUploadRecords`、`AdminDeleteUploadRecord` 等接口改为通用 gRPC 调用。
 
 ### Mistake（来自 Mistake Service）
 
@@ -50,9 +60,12 @@ Admin Portal 作为管理聚合层，仅拥有少量自有数据，大部分数�
 |------|----------|------|
 | 错题列表/详情 | gRPC: `GetMistakeItemList`, `GetMistakeItem`, `GetMistakeItemsByUpload` | 错题查询/管理 |
 | 错题更新 | gRPC: `UpdateMistakeItem` | 错题信息修改 |
-| 错题图片引用路径 | gRPC: `GetAllReferencedImagePaths` | 审计时判断对象是否被引用 |
+| 错题图片引用路径 | Admin Portal 自行聚合：调用通用 gRPC `GetMistakeItemList` 分页遍历后提取图片路径 | 审计时判断对象是否被引用 |
 | 提交错题上传 | gRPC: `SubmitMistakeUpload` | 上传记录分配为错题 |
 | 完成上传审核 | gRPC: `CompleteUploadReview` | 遗留数据清理 |
+| 图片预签名 URL | gRPC: `GetPresignedUrl` | 图片查看 |
+
+> **Phase 4 变更**：`MistakeGrpcService.GetAllReferencedImagePaths` 被移除。Admin Portal 通过通用 gRPC 分页遍历错题条目后自行聚合图片路径。
 
 ### Identity Account（来自 Identity Service）
 
@@ -89,15 +102,23 @@ Admin Portal 通过下游服务 API 间接修改外部数据：
 | 创建/更新/删除学生 | Student Service | gRPC CRUD | 代理管理员操作 |
 | 关联/解绑身份账户 | Student Service | gRPC Link/Unlink | 代理管理员操作 |
 | 设置开放科目 | Student Service | gRPC SetOpenSubjects | 代理管理员操作 |
-| 删除 OSS 僵尸对象 | Student Service | gRPC DeleteOssObject | 审计 Resolve 时调用 |
+| 删除 OSS 僵尸对象 | Admin Portal 直接操作 | `IOssService.DeleteAsync` + 通用 gRPC 清理指纹 | 审计 Resolve 时调用 |
+| 移动 OSS 对象 | Admin Portal 直接操作 | `IOssService.CopyObjectAsync` + `DeleteAsync` | 迁移辅助 |
 | 更新错题信息 | Mistake Service | gRPC UpdateMistakeItem | 代理管理员操作 |
 | 提交错题上传 | Mistake Service | gRPC SubmitMistakeUpload | 上传记录分配 |
 | 完成上传审核 | Mistake Service | gRPC CompleteUploadReview | 遗留数据清理 |
 | 标记上传记录完成 | Student Service | gRPC MarkUploadRecordCompleted | 上传记录分配后 |
 | 删除上传记录 | Student Service | gRPC DeleteUploadRecordAfterReview | 遗留数据清理 |
+| 图片迁移 | Student Service | gRPC MigrateImagesToMistake | 图片迁移（uploads→mistakes） |
+
+> **Phase 4 变更**：原通过 `StudentManagementGrpcService.DeleteOssObject` 删除僵尸对象，改为 Admin Portal 直接调用 `IOssService.DeleteAsync` + 通用 gRPC 清理指纹。原通过 `StudentManagementGrpcService.MoveOssObject` 移动对象，改为 Admin Portal 直接操作 OSS。图片迁移从直接 OSS Copy+Delete 改为调用 Student gRPC `MigrateImagesToMistake`。
 
 ### 直接操作的外部资源
 
 | 操作 | 目标 | 说明 |
 |------|------|------|
-| OSS 图片 Copy + Delete | OSS 存储 | 图片迁移时直接操作 OSS，然后通过 Mistake Service 更新路径引用 |
+| OSS ListObjects | OSS 存储 | 审计浏览：扫描 OSS 对象列表 |
+| OSS DeleteObject | OSS 存储 | 僵尸文件清理 |
+| OSS CopyObject + Delete | OSS 存储 | 迁移辅助（MoveOssObject 场景） |
+
+> **Phase 4 变更**：Admin Portal 直接操作 OSS 的范围从"仅图片迁移"扩展为"审计浏览 + 僵尸清理 + 迁移辅助"，但凭证权限降级为只读 + 有限写（Delete 仅限僵尸清理，CopyObject 仅限迁移辅助）。图片迁移不再直接操作 OSS，改为通过 Student gRPC `MigrateImagesToMistake`。

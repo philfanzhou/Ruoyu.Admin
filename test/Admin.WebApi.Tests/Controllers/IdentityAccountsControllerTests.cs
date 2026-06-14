@@ -300,7 +300,7 @@ public class IdentityAccountsControllerTests
     {
         // Arrange
         var accountId = Guid.NewGuid();
-        var grpcClient = new Mock<SProto.StudentManagementGrpcService.StudentManagementGrpcServiceClient>();
+        var grpcClient = new Mock<SProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient>();
 
         var protoStudent = new SProto.StudentDto
         {
@@ -343,7 +343,7 @@ public class IdentityAccountsControllerTests
     {
         // Arrange
         var accountId = Guid.NewGuid();
-        var grpcClient = new Mock<SProto.StudentManagementGrpcService.StudentManagementGrpcServiceClient>();
+        var grpcClient = new Mock<SProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient>();
 
         grpcClient
             .Setup(c => c.GetStudentsByIdentityAccountIdAsync(

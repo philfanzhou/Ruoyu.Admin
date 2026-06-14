@@ -14,13 +14,13 @@ namespace Admin.WebApi.Tests.Controllers;
 
 public class StudentsControllerTests
 {
-    private readonly Mock<SProto.StudentManagementGrpcService.StudentManagementGrpcServiceClient> _grpcClient;
+    private readonly Mock<SProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient> _grpcClient;
     private readonly Mock<ILogger<StudentsController>> _logger;
     private readonly StudentsController _controller;
 
     public StudentsControllerTests()
     {
-        _grpcClient = new Mock<SProto.StudentManagementGrpcService.StudentManagementGrpcServiceClient>();
+        _grpcClient = new Mock<SProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient>();
         _logger = new Mock<ILogger<StudentsController>>();
         _controller = new StudentsController(_grpcClient.Object, _logger.Object);
     }
@@ -628,13 +628,13 @@ public class StudentsControllerTests
 
 public class AccountLinkingTests
 {
-    private readonly Mock<SProto.StudentManagementGrpcService.StudentManagementGrpcServiceClient> _grpcClient;
+    private readonly Mock<SProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient> _grpcClient;
     private readonly Mock<ILogger<StudentsController>> _logger;
     private readonly StudentsController _controller;
 
     public AccountLinkingTests()
     {
-        _grpcClient = new Mock<SProto.StudentManagementGrpcService.StudentManagementGrpcServiceClient>();
+        _grpcClient = new Mock<SProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient>();
         _logger = new Mock<ILogger<StudentsController>>();
         _controller = new StudentsController(_grpcClient.Object, _logger.Object);
     }
@@ -863,13 +863,13 @@ public class AccountLinkingTests
 
 public class OpenSubjectManagementTests
 {
-    private readonly Mock<SProto.StudentManagementGrpcService.StudentManagementGrpcServiceClient> _grpcClient;
+    private readonly Mock<SProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient> _grpcClient;
     private readonly Mock<ILogger<StudentsController>> _logger;
     private readonly StudentsController _controller;
 
     public OpenSubjectManagementTests()
     {
-        _grpcClient = new Mock<SProto.StudentManagementGrpcService.StudentManagementGrpcServiceClient>();
+        _grpcClient = new Mock<SProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient>();
         _logger = new Mock<ILogger<StudentsController>>();
         _controller = new StudentsController(_grpcClient.Object, _logger.Object);
     }

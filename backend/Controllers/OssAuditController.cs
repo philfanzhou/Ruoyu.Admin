@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Admin.WebApi.Data;
 using Admin.WebApi.Models;
 using Admin.WebApi.Services;
+using Ruoyu.Study.Common.Oss;
 using SProto = Ruoyu.Study.Student.Contract.Protos;
 using MProto = Ruoyu.Study.Mistake.Contract.Protos;
 
@@ -10,24 +11,27 @@ namespace Admin.WebApi.Controllers;
 
 [Route("api/admin/oss-audit")]
 [ApiController]
-public class OssAuditController : ControllerBase
+public partial class OssAuditController : ControllerBase
 {
     private readonly AuditDbContext _dbContext;
-    private readonly SProto.StudentManagementGrpcService.StudentManagementGrpcServiceClient _studentClient;
+    private readonly SProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient _studentClient;
     private readonly MProto.MistakeGrpcService.MistakeGrpcServiceClient _mistakeClient;
+    private readonly IOssService _ossService;
     private readonly OssAuditWorker _auditWorker;
     private readonly ILogger<OssAuditController> _logger;
 
     public OssAuditController(
         AuditDbContext dbContext,
-        SProto.StudentManagementGrpcService.StudentManagementGrpcServiceClient studentClient,
+        SProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient studentClient,
         MProto.MistakeGrpcService.MistakeGrpcServiceClient mistakeClient,
+        IOssService ossService,
         OssAuditWorker auditWorker,
         ILogger<OssAuditController> logger)
     {
         _dbContext = dbContext;
         _studentClient = studentClient;
         _mistakeClient = mistakeClient;
+        _ossService = ossService;
         _auditWorker = auditWorker;
         _logger = logger;
     }
@@ -155,8 +159,7 @@ public class OssAuditController : ControllerBase
         {
             try
             {
-                var pathsResponse = await _studentClient.GetRegisteredOssPathsAsync(new SProto.Empty());
-                var registeredPaths = new HashSet<string>(pathsResponse.Paths, StringComparer.OrdinalIgnoreCase);
+                var registeredPaths = await GetRegisteredOssPathsAsync();
                 if (registeredPaths.Contains(record.ObjectPath))
                     return BadRequest(new ErrorResponse("该文件仍被上传记录引用，不能删除。"));
             }
@@ -168,8 +171,7 @@ public class OssAuditController : ControllerBase
 
             try
             {
-                var mistakeResponse = await _mistakeClient.GetAllReferencedImagePathsAsync(new MProto.Empty());
-                var mistakePaths = new HashSet<string>(mistakeResponse.ImagePaths, StringComparer.OrdinalIgnoreCase);
+                var mistakePaths = await GetMistakeImagePathsAsync();
                 if (mistakePaths.Contains(record.ObjectPath))
                     return BadRequest(new ErrorResponse("该文件仍被错题记录引用，不能删除。"));
             }
@@ -182,15 +184,11 @@ public class OssAuditController : ControllerBase
 
         try
         {
-            // DeleteOssObject will also delete associated fingerprint data
-            var response = await _studentClient.DeleteOssObjectAsync(
-                new SProto.DeleteOssObjectRequest { ObjectPath = record.ObjectPath });
-            if (!response.Success)
-                return BadRequest(new ErrorResponse(response.ErrorMessage));
+            await _ossService.DeleteAsync(record.ObjectPath);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to delete OSS object and fingerprint");
+            _logger.LogError(ex, "Failed to delete OSS object");
             return StatusCode(500, new ErrorResponse($"Failed to delete object: {ex.Message}"));
         }
 
@@ -240,8 +238,7 @@ public class OssAuditController : ControllerBase
         {
             try
             {
-                var pathsResponse = await _studentClient.GetRegisteredOssPathsAsync(new SProto.Empty());
-                registeredPaths = new HashSet<string>(pathsResponse.Paths, StringComparer.OrdinalIgnoreCase);
+                registeredPaths = await GetRegisteredOssPathsAsync();
             }
             catch (Exception ex)
             {
@@ -251,8 +248,7 @@ public class OssAuditController : ControllerBase
 
             try
             {
-                var mistakeResponse = await _mistakeClient.GetAllReferencedImagePathsAsync(new MProto.Empty());
-                mistakePaths = new HashSet<string>(mistakeResponse.ImagePaths, StringComparer.OrdinalIgnoreCase);
+                mistakePaths = await GetMistakeImagePathsAsync();
             }
             catch (Exception ex)
             {
@@ -283,18 +279,9 @@ public class OssAuditController : ControllerBase
 
             try
             {
-                // DeleteOssObject will also delete associated fingerprint data (idempotent)
-                var response = await _studentClient.DeleteOssObjectAsync(
-                    new SProto.DeleteOssObjectRequest { ObjectPath = record.ObjectPath });
-                if (response.Success)
-                {
-                    _dbContext.OssAuditRecords.Remove(record);
-                    resolvedCount++;
-                }
-                else
-                {
-                    errors.Add($"{record.ObjectPath}: {response.ErrorMessage}");
-                }
+                await _ossService.DeleteAsync(record.ObjectPath);
+                _dbContext.OssAuditRecords.Remove(record);
+                resolvedCount++;
             }
             catch (Exception ex)
             {
@@ -316,4 +303,72 @@ public class IgnoreRecordRequest
 public class BatchResolveRequest
 {
     public List<long> Ids { get; set; } = new();
+}
+
+// Partial class extension for OssAuditController helper methods
+public partial class OssAuditController
+{
+    /// <summary>
+    /// 通过分页获取所有上传记录，本地聚合 image_paths，替代原 GetRegisteredOssPaths 专用接口。
+    /// </summary>
+    private async Task<HashSet<string>> GetRegisteredOssPathsAsync()
+    {
+        var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        int page = 1;
+        const int pageSize = 100;
+
+        while (true)
+        {
+            var response = await _studentClient.GetAllUploadRecordsAsync(
+                new SProto.GetAllUploadRecordsRequest { Page = page, PageSize = pageSize });
+
+            foreach (var record in response.Items)
+            {
+                foreach (var imagePath in record.ImagePaths)
+                {
+                    paths.Add(imagePath);
+                }
+            }
+
+            if (page * pageSize >= response.TotalCount)
+                break;
+
+            page++;
+        }
+
+        return paths;
+    }
+
+    /// <summary>
+    /// 通过分页获取所有错题条目，本地聚合 source_regions.source_image_path，替代原 GetAllReferencedImagePaths 专用接口。
+    /// </summary>
+    private async Task<HashSet<string>> GetMistakeImagePathsAsync()
+    {
+        var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        int page = 1;
+        const int pageSize = 100;
+
+        while (true)
+        {
+            var response = await _mistakeClient.GetMistakeItemListAsync(
+                new MProto.GetMistakeItemListRequest { Page = page, Size = pageSize });
+
+            foreach (var item in response.Items)
+            {
+                foreach (var region in item.SourceRegions)
+                {
+                    if (!string.IsNullOrWhiteSpace(region.SourceImagePath))
+                        paths.Add(region.SourceImagePath);
+                }
+            }
+
+            var totalCount = response.PageMeta?.TotalCount ?? 0;
+            if (page * pageSize >= totalCount)
+                break;
+
+            page++;
+        }
+
+        return paths;
+    }
 }

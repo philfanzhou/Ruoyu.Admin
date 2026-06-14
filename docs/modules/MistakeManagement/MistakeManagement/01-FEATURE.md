@@ -12,10 +12,10 @@
 
 1. **幂等性**：图片迁移为幂等操作，所有路径已在 `mistakes/` 下时返回 migratedCount=0
 2. **并发**：迁移操作通过 `pathMapping` 字典缓存同一请求内相同旧路径只迁移一次，但跨请求无并发控制
-3. **事务边界**：单张图片迁移失败时立即中止并返回 500，已迁移的图片不会回滚
+3. **事务边界**：单张图片迁移失败时不中断整体流程，仅记录 Error 日志并保留原路径；已迁移的图片不会回滚
 4. **失败降级**：查询学生姓名失败时回退显示 studentId
 5. **分页参数**：page ≤ 0 重置为 1，size ≤ 0 重置为 10，size > 100 限制为 100
-6. **迁移路径映射**：`uploads/xxx` → `mistakes/xxx`（仅替换前缀）
+6. **迁移路径映射**：由 Student gRPC `MigrateImagesToMistake` 服务端处理（`uploads/xxx` → `mistakes/xxx`），Admin Portal 根据返回结果更新路径
 7. **UpdateMistakeItem 可选字段**：StudentId、Subject、Grade 均为可选，未传时使用默认值
 
 ## 关键验收条件摘要

@@ -27,11 +27,11 @@ public class StudentsController : ControllerBase
         [12] = "高中三年级",
     };
 
-    private readonly SProto.StudentManagementGrpcService.StudentManagementGrpcServiceClient _grpcClient;
+    private readonly SProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient _grpcClient;
     private readonly ILogger<StudentsController> _logger;
 
     public StudentsController(
-        SProto.StudentManagementGrpcService.StudentManagementGrpcServiceClient grpcClient,
+        SProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient grpcClient,
         ILogger<StudentsController> logger)
     {
         _grpcClient = grpcClient;

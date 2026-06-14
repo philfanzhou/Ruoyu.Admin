@@ -23,10 +23,9 @@
 | `UpdateMistakeItem_NullFields_SendsEmptyStringAndZeroInGrpcRequest` | null 字段在 gRPC 请求中为空字符串或 0 |
 | `UpdateMistakeItem_GrpcException_Returns500` | gRPC 异常返回 500 |
 | `MigrateImages_AllPathsAlreadyInMistakes_ReturnsMigratedCount0` | 所有路径已在 mistakes/ 下时 migratedCount=0 |
-| `MigrateImages_PathsInUploads_CopiesAndDeletes_ReturnsMigratedCount` | 有路径在 uploads/ 下时执行复制删除并返回 migratedCount |
+| `MigrateImages_PathsInUploads_CallsMigrateGrpc_ReturnsMigratedCount` | 有路径在 uploads/ 下时调用 gRPC 迁移并返回 migratedCount |
 | `MigrateImages_SameOldPathMultipleTimes_MigratedOnlyOnce` | 同一旧路径出现多次时只迁移一次 |
-| `MigrateImages_CopyObjectAsyncThrows_Returns500` | CopyObjectAsync 异常返回 500 |
-| `MigrateImages_DeleteAsyncThrows_Returns500` | DeleteAsync 异常返回 500 |
+| `MigrateImages_MigrateGrpcThrows_Returns500` | MigrateImagesToMistake gRPC 异常返回 500 |
 | `MigrateImages_GetMistakeItemThrows_Returns500` | GetMistakeItem 异常返回 500 |
 | `MigrateImages_UpdateMistakeItemThrows_Returns500` | UpdateMistakeItem 异常返回 500 |
 
@@ -63,9 +62,8 @@
 ### MigrateImages
 
 - **Given** 所有图片路径已在 mistakes/ 下，**When** 调用 MigrateImages，**Then** 返回 200，migratedCount=0
-- **Given** 有图片在 uploads/ 下，**When** 调用 MigrateImages，**Then** 执行 CopyObjectAsync + DeleteAsync，更新 sourceRegions，返回 migratedCount
+- **Given** 有图片在 uploads/ 下，**When** 调用 MigrateImages，**Then** 调用 StudentLearning gRPC MigrateImagesToMistake，更新 sourceRegions，返回 migratedCount
 - **Given** 同一旧路径出现多次，**When** 调用 MigrateImages，**Then** 只迁移一次（使用缓存）
-- **Given** CopyObjectAsync 抛出异常，**When** 调用 MigrateImages，**Then** 返回 500
-- **Given** DeleteAsync 抛出异常，**When** 调用 MigrateImages，**Then** 返回 500
+- **Given** MigrateImagesToMistake gRPC 抛出异常，**When** 调用 MigrateImages，**Then** 返回 500
 - **Given** GetMistakeItem 抛出异常，**When** 调用 MigrateImages，**Then** 返回 500
 - **Given** UpdateMistakeItem（更新 sourceRegions）抛出异常，**When** 调用 MigrateImages，**Then** 返回 500

@@ -1,6 +1,7 @@
 using Grpc.Core;
 using Admin.WebApi.Data;
 using Microsoft.EntityFrameworkCore;
+using Ruoyu.Study.Common.Oss;
 using SProto = Ruoyu.Study.Student.Contract.Protos;
 using MProto = Ruoyu.Study.Mistake.Contract.Protos;
 
@@ -91,18 +92,17 @@ public class OssAuditWorker : BackgroundService
 
         try
         {
+            var ossService = scope.ServiceProvider.GetRequiredService<IOssService>();
             var studentClient = scope.ServiceProvider
-                .GetRequiredService<SProto.StudentManagementGrpcService.StudentManagementGrpcServiceClient>();
+                .GetRequiredService<SProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient>();
             var mistakeClient = scope.ServiceProvider
                 .GetRequiredService<MProto.MistakeGrpcService.MistakeGrpcServiceClient>();
 
             HashSet<string> registeredPaths;
             try
             {
-                var regResponse = await studentClient.GetRegisteredOssPathsAsync(
-                    new SProto.Empty(), cancellationToken: cancellationToken);
-                registeredPaths = new HashSet<string>(regResponse.Paths, StringComparer.OrdinalIgnoreCase);
-                _logger.LogInformation("Got {Count} registered paths from Student service", registeredPaths.Count);
+                registeredPaths = await GetRegisteredOssPathsAsync(studentClient, cancellationToken);
+                _logger.LogInformation("Got {Count} registered paths from Student service (aggregated from upload records)", registeredPaths.Count);
             }
             catch (RpcException ex) when (ex.StatusCode == StatusCode.Unavailable)
             {
@@ -118,10 +118,8 @@ public class OssAuditWorker : BackgroundService
             bool mistakeServiceAvailable = true;
             try
             {
-                var mistakeResponse = await mistakeClient.GetAllReferencedImagePathsAsync(
-                    new MProto.Empty(), cancellationToken: cancellationToken);
-                mistakePaths = new HashSet<string>(mistakeResponse.ImagePaths, StringComparer.OrdinalIgnoreCase);
-                _logger.LogInformation("Got {Count} referenced paths from Mistake service", mistakePaths.Count);
+                mistakePaths = await GetMistakeImagePathsAsync(mistakeClient, cancellationToken);
+                _logger.LogInformation("Got {Count} referenced paths from Mistake service (aggregated from mistake items)", mistakePaths.Count);
             }
             catch (RpcException ex) when (ex.StatusCode == StatusCode.Unavailable)
             {
@@ -129,12 +127,12 @@ public class OssAuditWorker : BackgroundService
                 mistakeServiceAvailable = false;
             }
 
-            var buckets = new[] { SProto.OssBucket.Uploads, SProto.OssBucket.Mistakes, SProto.OssBucket.Questions };
-            var bucketNames = new Dictionary<SProto.OssBucket, string>
+            var buckets = new[] { OssBucket.Uploads, OssBucket.Mistakes, OssBucket.Questions };
+            var bucketNames = new Dictionary<OssBucket, string>
             {
-                { SProto.OssBucket.Uploads, "uploads" },
-                { SProto.OssBucket.Mistakes, "mistakes" },
-                { SProto.OssBucket.Questions, "questions" },
+                { OssBucket.Uploads, "uploads" },
+                { OssBucket.Mistakes, "mistakes" },
+                { OssBucket.Questions, "questions" },
             };
 
             int totalNewZombies = 0;
@@ -144,7 +142,9 @@ public class OssAuditWorker : BackgroundService
                 var bucketName = bucketNames[bucket];
                 _logger.LogInformation("Auditing bucket: {Bucket}", bucketName);
 
-                await foreach (var obj in ListOssObjectsPaged(studentClient, bucket, cancellationToken))
+                var objects = await ossService.ListObjectsWithBucketAsync(bucket);
+
+                foreach (var obj in objects)
                 {
                     var path = obj.ObjectPath;
                     var isInRegistered = registeredPaths.Contains(path);
@@ -162,7 +162,9 @@ public class OssAuditWorker : BackgroundService
                                 ObjectPath = path,
                                 Bucket = bucketName,
                                 Size = obj.Size,
-                                LastModified = obj.LastModified,
+                                LastModified = obj.LastModified.HasValue
+                                    ? obj.LastModified.Value.ToUnixTimeSeconds()
+                                    : 0,
                                 Status = 0,
                                 CreatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
                             });
@@ -191,16 +193,73 @@ public class OssAuditWorker : BackgroundService
         }
     }
 
-    private async IAsyncEnumerable<SProto.OssObjectInfo> ListOssObjectsPaged(
-        SProto.StudentManagementGrpcService.StudentManagementGrpcServiceClient client,
-        SProto.OssBucket bucket,
-        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
+    /// <summary>
+    /// 通过分页获取所有上传记录，本地聚合 image_paths，替代原 GetRegisteredOssPaths 专用接口。
+    /// </summary>
+    private static async Task<HashSet<string>> GetRegisteredOssPathsAsync(
+        SProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient client,
+        CancellationToken cancellationToken)
     {
-        var response = await client.ListOssObjectsAsync(
-            new SProto.ListOssObjectsRequest { Bucket = bucket },
-            cancellationToken: cancellationToken);
+        var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        int page = 1;
+        const int pageSize = 100;
 
-        foreach (var obj in response.Objects)
-            yield return obj;
+        while (true)
+        {
+            var response = await client.GetAllUploadRecordsAsync(
+                new SProto.GetAllUploadRecordsRequest { Page = page, PageSize = pageSize },
+                cancellationToken: cancellationToken);
+
+            foreach (var record in response.Items)
+            {
+                foreach (var imagePath in record.ImagePaths)
+                {
+                    paths.Add(imagePath);
+                }
+            }
+
+            if (page * pageSize >= response.TotalCount)
+                break;
+
+            page++;
+        }
+
+        return paths;
+    }
+
+    /// <summary>
+    /// 通过分页获取所有错题条目，本地聚合 source_regions.source_image_path，替代原 GetAllReferencedImagePaths 专用接口。
+    /// </summary>
+    private static async Task<HashSet<string>> GetMistakeImagePathsAsync(
+        MProto.MistakeGrpcService.MistakeGrpcServiceClient client,
+        CancellationToken cancellationToken)
+    {
+        var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        int page = 1;
+        const int pageSize = 100;
+
+        while (true)
+        {
+            var response = await client.GetMistakeItemListAsync(
+                new MProto.GetMistakeItemListRequest { Page = page, Size = pageSize },
+                cancellationToken: cancellationToken);
+
+            foreach (var item in response.Items)
+            {
+                foreach (var region in item.SourceRegions)
+                {
+                    if (!string.IsNullOrWhiteSpace(region.SourceImagePath))
+                        paths.Add(region.SourceImagePath);
+                }
+            }
+
+            var totalCount = response.PageMeta?.TotalCount ?? 0;
+            if (page * pageSize >= totalCount)
+                break;
+
+            page++;
+        }
+
+        return paths;
     }
 }

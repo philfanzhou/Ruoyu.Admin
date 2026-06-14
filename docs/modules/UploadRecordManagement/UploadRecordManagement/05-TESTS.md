@@ -45,6 +45,8 @@
 - **Given** 传入 status=-1，**When** 调用 GetAllUploadRecords，**Then** gRPC 请求的 Status 为 Unspecified
 - **Given** 传入 status=1，**When** 调用 GetAllUploadRecords，**Then** gRPC 请求的 Status 为 Uploaded
 
+> 注：GetAllUploadRecords 当前仍使用 `StudentManagementGrpcService`（Admin 专用接口），待 Task 4.6 迁移至通用接口后更新测试。
+
 ### ResetUploadRecordStatus
 
 - **Given** StudentLearning.ResetUploadRecordStatus 返回 Success=true，**When** 调用 ResetUploadRecordStatus，**Then** 返回 200 和 success=true
@@ -85,3 +87,5 @@
 
 - **Given** StudentManagement.AnalyzeUploadRecord 返回分析结果，**When** 调用 AnalyzeUploadRecord，**Then** 返回 200 和分组信息
 - **Given** StudentManagement.AnalyzeUploadRecord 抛出异常，**When** 调用 AnalyzeUploadRecord，**Then** 返回 500
+
+> 注：AnalyzeUploadRecord 当前仍使用 `StudentManagementGrpcService`（Admin 专用接口），待 Task 4.6 迁移至通用接口后更新测试。

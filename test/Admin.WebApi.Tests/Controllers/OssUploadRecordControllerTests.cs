@@ -14,7 +14,6 @@ namespace Admin.WebApi.Tests.Controllers;
 
 public class OssUploadRecordControllerTests
 {
-    private readonly Mock<SProto.StudentManagementGrpcService.StudentManagementGrpcServiceClient> _managementClient;
     private readonly Mock<SProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient> _learningClient;
     private readonly Mock<MistakeProto.MistakeGrpcService.MistakeGrpcServiceClient> _mistakeClient;
     private readonly Mock<ILogger<OssUploadRecordController>> _logger;
@@ -23,14 +22,12 @@ public class OssUploadRecordControllerTests
 
     public OssUploadRecordControllerTests()
     {
-        _managementClient = new Mock<SProto.StudentManagementGrpcService.StudentManagementGrpcServiceClient>();
         _learningClient = new Mock<SProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient>();
         _mistakeClient = new Mock<MistakeProto.MistakeGrpcService.MistakeGrpcServiceClient>();
         _logger = new Mock<ILogger<OssUploadRecordController>>();
         _ossService = new Mock<IOssService>();
 
         _controller = new OssUploadRecordController(
-            _managementClient.Object,
             _learningClient.Object,
             _mistakeClient.Object,
             _logger.Object,
@@ -87,7 +84,7 @@ public class OssUploadRecordControllerTests
         };
         response.Items.Add(record);
 
-        _managementClient
+        _learningClient
             .Setup(c => c.GetAllUploadRecordsAsync(
                 It.IsAny<SProto.GetAllUploadRecordsRequest>(),
                 It.IsAny<Metadata>(),
@@ -96,7 +93,7 @@ public class OssUploadRecordControllerTests
             .Returns(CreateAsyncCall(response));
 
         var studentDto = new SProto.StudentDto { Id = "student-1", Name = "Alice" };
-        _managementClient
+        _learningClient
             .Setup(c => c.GetStudentAsync(
                 It.IsAny<SProto.GetStudentRequest>(),
                 It.IsAny<Metadata>(),
@@ -128,7 +125,7 @@ public class OssUploadRecordControllerTests
         };
         response.Items.Add(record);
 
-        _managementClient
+        _learningClient
             .Setup(c => c.GetAllUploadRecordsAsync(
                 It.IsAny<SProto.GetAllUploadRecordsRequest>(),
                 It.IsAny<Metadata>(),
@@ -136,7 +133,7 @@ public class OssUploadRecordControllerTests
                 It.IsAny<CancellationToken>()))
             .Returns(CreateAsyncCall(response));
 
-        _managementClient
+        _learningClient
             .Setup(c => c.GetStudentAsync(
                 It.IsAny<SProto.GetStudentRequest>(),
                 It.IsAny<Metadata>(),
@@ -156,7 +153,7 @@ public class OssUploadRecordControllerTests
     [Fact]
     public async Task GetAllUploadRecords_GrpcException_Returns500()
     {
-        _managementClient
+        _learningClient
             .Setup(c => c.GetAllUploadRecordsAsync(
                 It.IsAny<SProto.GetAllUploadRecordsRequest>(),
                 It.IsAny<Metadata>(),
@@ -182,7 +179,7 @@ public class OssUploadRecordControllerTests
             PageSize = 20
         };
 
-        _managementClient
+        _learningClient
             .Setup(c => c.GetAllUploadRecordsAsync(
                 It.IsAny<SProto.GetAllUploadRecordsRequest>(),
                 It.IsAny<Metadata>(),
@@ -192,7 +189,7 @@ public class OssUploadRecordControllerTests
 
         await _controller.GetAllUploadRecords(1, 20, -1, null);
 
-        _managementClient.Verify(c => c.GetAllUploadRecordsAsync(
+        _learningClient.Verify(c => c.GetAllUploadRecordsAsync(
             It.Is<SProto.GetAllUploadRecordsRequest>(r => r.Status == SProto.UploadStatus.Unspecified),
             It.IsAny<Metadata>(),
             It.IsAny<DateTime?>(),
@@ -209,7 +206,7 @@ public class OssUploadRecordControllerTests
             PageSize = 20
         };
 
-        _managementClient
+        _learningClient
             .Setup(c => c.GetAllUploadRecordsAsync(
                 It.IsAny<SProto.GetAllUploadRecordsRequest>(),
                 It.IsAny<Metadata>(),
@@ -219,7 +216,7 @@ public class OssUploadRecordControllerTests
 
         await _controller.GetAllUploadRecords(1, 20, 1, null);
 
-        _managementClient.Verify(c => c.GetAllUploadRecordsAsync(
+        _learningClient.Verify(c => c.GetAllUploadRecordsAsync(
             It.Is<SProto.GetAllUploadRecordsRequest>(r => r.Status == (SProto.UploadStatus)1),
             It.IsAny<Metadata>(),
             It.IsAny<DateTime?>(),
@@ -751,76 +748,17 @@ public class OssUploadRecordControllerTests
     }
 
     // ============================================================
-    // AnalyzeUploadRecord Tests
+    // AnalyzeUploadRecord Tests (已随 StudentManagementGrpcService 移除)
     // ============================================================
 
     [Fact]
-    public async Task AnalyzeUploadRecord_Success_Returns200WithAnalysisResults()
+    public void AnalyzeUploadRecord_Returns410_Gone()
     {
-        var analyzeResponse = new SProto.AnalyzeUploadRecordResponse
-        {
-            Success = true,
-            RawResponse = "raw-json",
-            Skipped = false,
-            Prompt = "Analyze these images"
-        };
-        analyzeResponse.CompressedImages.Add("uploads/img1_compressed.jpg");
-        analyzeResponse.CompressedImages.Add("uploads/img2_compressed.jpg");
-
-        var group = new SProto.AnalyzeImageGroup
-        {
-            Subject = 1,
-            Grade = 3,
-            Description = "Math homework"
-        };
-        group.ImageIndices.Add(0);
-        group.ImageIndices.Add(1);
-        analyzeResponse.Groups.Add(group);
-
-        _managementClient
-            .Setup(c => c.AnalyzeUploadRecordAsync(
-                It.IsAny<SProto.AnalyzeUploadRecordRequest>(),
-                It.IsAny<Metadata>(),
-                It.IsAny<DateTime?>(),
-                It.IsAny<CancellationToken>()))
-            .Returns(CreateAsyncCall(analyzeResponse));
-
-        var result = await _controller.AnalyzeUploadRecord("record-1");
-
-        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
-        var typed = okResult.Value!;
-        typed.GetType().GetProperty("success")!.GetValue(typed).Should().Be(true);
-        typed.GetType().GetProperty("rawResponse")!.GetValue(typed).Should().Be("raw-json");
-        typed.GetType().GetProperty("skipped")!.GetValue(typed).Should().Be(false);
-        typed.GetType().GetProperty("prompt")!.GetValue(typed).Should().Be("Analyze these images");
-
-        var compressedImages = (List<string>)typed.GetType().GetProperty("compressedImages")!.GetValue(typed)!;
-        compressedImages.Should().HaveCount(2);
-
-        var groups = (System.Collections.IEnumerable)typed.GetType().GetProperty("groups")!.GetValue(typed)!;
-        var groupList = groups.Cast<dynamic>().ToList();
-        groupList.Should().HaveCount(1);
-        ((int)groupList[0].subject).Should().Be(1);
-        ((int)groupList[0].grade).Should().Be(3);
-        ((string)groupList[0].description).Should().Be("Math homework");
-    }
-
-    [Fact]
-    public async Task AnalyzeUploadRecord_GrpcException_Returns500()
-    {
-        _managementClient
-            .Setup(c => c.AnalyzeUploadRecordAsync(
-                It.IsAny<SProto.AnalyzeUploadRecordRequest>(),
-                It.IsAny<Metadata>(),
-                It.IsAny<DateTime?>(),
-                It.IsAny<CancellationToken>()))
-            .Throws(new RpcException(new Status(StatusCode.Unavailable, "Service unavailable")));
-
-        var result = await _controller.AnalyzeUploadRecord("record-1");
+        var result = _controller.AnalyzeUploadRecord("record-1");
 
         var statusResult = result.Should().BeOfType<ObjectResult>().Subject;
-        statusResult.StatusCode.Should().Be(500);
+        statusResult.StatusCode.Should().Be(410);
         var error = statusResult.Value.Should().BeOfType<ErrorResponse>().Subject;
-        error.Message.Should().Contain("VL 分析失败");
+        error.Message.Should().Contain("AnalyzeUploadRecord");
     }
 }

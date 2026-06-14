@@ -76,7 +76,7 @@ public class IdentityAccountsController : ControllerBase
     [HttpGet("accounts/{accountId:guid}/students")]
     public async Task<IActionResult> GetStudentsByIdentityAccountId(
         Guid accountId,
-        Ruoyu.Study.Student.Contract.Protos.StudentManagementGrpcService.StudentManagementGrpcServiceClient grpcClient)
+        Ruoyu.Study.Student.Contract.Protos.StudentLearningGrpcService.StudentLearningGrpcServiceClient grpcClient)
     {
         var request = new Ruoyu.Study.Student.Contract.Protos.GetStudentsByAccountIdRequest
         {
