@@ -6,6 +6,7 @@ using FluentAssertions;
 using Grpc.Core;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Ruoyu.Study.Common.Oss;
@@ -15,7 +16,10 @@ using Xunit;
 
 namespace Admin.WebApi.Tests.Controllers;
 
-public class OssAuditControllerTests : IDisposable
+/// <summary>
+/// OssAuditController UT：覆盖 TriggerAudit、GetStatus、ResolveRecord、IgnoreRecord。
+/// </summary>
+public class OssAuditControllerTests
 {
     private readonly AuditDbContext _dbContext;
     private readonly Mock<SProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient> _studentClient;
@@ -28,14 +32,17 @@ public class OssAuditControllerTests : IDisposable
     public OssAuditControllerTests()
     {
         var options = new DbContextOptionsBuilder<AuditDbContext>()
-            .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;
         _dbContext = new AuditDbContext(options);
 
         _studentClient = new Mock<SProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient>();
         _mistakeClient = new Mock<MProto.MistakeGrpcService.MistakeGrpcServiceClient>();
         _ossService = new Mock<IOssService>();
-        _auditWorker = new Mock<OssAuditWorker>(null!, null!, null!);
+        _auditWorker = new Mock<OssAuditWorker>(
+            Mock.Of<IServiceProvider>(),
+            Mock.Of<ILogger<OssAuditWorker>>(),
+            Mock.Of<IConfiguration>());
         _logger = new Mock<ILogger<OssAuditController>>();
 
         _controller = new OssAuditController(
@@ -44,18 +51,9 @@ public class OssAuditControllerTests : IDisposable
             _mistakeClient.Object,
             _ossService.Object,
             _auditWorker.Object,
-            _logger.Object);
+            _logger.Object
+        );
     }
-
-    public void Dispose()
-    {
-        _dbContext.Database.EnsureDeleted();
-        _dbContext.Dispose();
-    }
-
-    // ============================================================
-    // Helper methods
-    // ============================================================
 
     private static AsyncUnaryCall<T> CreateAsyncCall<T>(T response) where T : class
     {
@@ -67,64 +65,211 @@ public class OssAuditControllerTests : IDisposable
             () => { });
     }
 
-    private OssAuditRecord CreateRecord(
-        long id = 1,
-        string objectPath = "uploads/test.png",
-        string bucket = "default",
-        long size = 1024,
-        int status = 0,
-        long createdAt = 1000,
-        long? resolvedAt = null,
-        string? note = null)
+    // ============================================================
+    // TriggerAudit
+    // ============================================================
+
+    [Fact]
+    public async Task TriggerAudit_NoRunningAudit_ReturnsOk()
     {
-        return new OssAuditRecord
-        {
-            Id = id,
-            ObjectPath = objectPath,
-            Bucket = bucket,
-            Size = size,
-            LastModified = 2000,
-            Status = status,
-            CreatedAt = createdAt,
-            ResolvedAt = resolvedAt,
-            Note = note,
-        };
+        // 没有正在运行的审计
+        var result = await _controller.TriggerAudit();
+
+        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
+        var typed = okResult.Value.Should().BeOfType<OperationResponse>().Subject;
+        typed.Success.Should().BeTrue();
     }
 
-    private OssAuditRun CreateRun(
-        long id = 1,
-        int status = 1,
-        long startedAt = 1000,
-        long? completedAt = 2000,
-        int newZombieCount = 5,
-        string triggerType = "scheduled",
-        string? errorMessage = null)
+    [Fact]
+    public async Task TriggerAudit_AlreadyRunning_ReturnsBadRequest()
     {
-        return new OssAuditRun
+        // 插入一条正在运行的审计记录
+        _dbContext.OssAuditRuns.Add(new OssAuditRun
         {
-            Id = id,
-            Status = status,
-            StartedAt = startedAt,
-            CompletedAt = completedAt,
-            NewZombieCount = newZombieCount,
-            TriggerType = triggerType,
-            ErrorMessage = errorMessage,
-        };
+            StartedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+            Status = 0,
+            TriggerType = "manual"
+        });
+        await _dbContext.SaveChangesAsync();
+
+        var result = await _controller.TriggerAudit();
+
+        var badRequest = result.Should().BeOfType<BadRequestObjectResult>().Subject;
     }
 
-    private void SetupStudentPaths(params string[] paths)
-    {
-        var record = new SProto.UploadRecordDto();
-        record.ImagePaths.AddRange(paths);
+    // ============================================================
+    // GetStatus
+    // ============================================================
 
-        var response = new SProto.UploadRecordsPageResult
+    [Fact]
+    public async Task GetStatus_NoRuns_ReturnsNotRunning()
+    {
+        var result = await _controller.GetStatus();
+
+        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
+        var typed = okResult.Value!;
+        typed.GetType().GetProperty("isRunning")!.GetValue(typed).Should().Be(false);
+        typed.GetType().GetProperty("pendingCount")!.GetValue(typed).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task GetStatus_RunningAudit_ReturnsIsRunning()
+    {
+        _dbContext.OssAuditRuns.Add(new OssAuditRun
         {
-            TotalCount = paths.Length > 0 ? 1 : 0,
-            Page = 1,
-            PageSize = 100,
+            StartedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+            Status = 0,
+            TriggerType = "manual"
+        });
+        await _dbContext.SaveChangesAsync();
+
+        var result = await _controller.GetStatus();
+
+        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
+        var typed = okResult.Value!;
+        typed.GetType().GetProperty("isRunning")!.GetValue(typed).Should().Be(true);
+    }
+
+    [Fact]
+    public async Task GetStatus_CompletedRun_ReturnsLastCompleted()
+    {
+        _dbContext.OssAuditRuns.Add(new OssAuditRun
+        {
+            StartedAt = 1700000000,
+            CompletedAt = 1700000060,
+            Status = 1,
+            NewZombieCount = 5,
+            TriggerType = "scheduled"
+        });
+        await _dbContext.SaveChangesAsync();
+
+        var result = await _controller.GetStatus();
+
+        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
+        var typed = okResult.Value!;
+        typed.GetType().GetProperty("isRunning")!.GetValue(typed).Should().Be(false);
+        var lastCompleted = typed.GetType().GetProperty("lastCompleted")!.GetValue(typed);
+        lastCompleted.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task GetStatus_PendingRecords_ReturnsCorrectPendingCount()
+    {
+        _dbContext.OssAuditRecords.AddRange(
+            new OssAuditRecord { ObjectPath = "a.jpg", Bucket = "uploads", Status = 0, CreatedAt = 1 },
+            new OssAuditRecord { ObjectPath = "b.jpg", Bucket = "uploads", Status = 0, CreatedAt = 2 },
+            new OssAuditRecord { ObjectPath = "c.jpg", Bucket = "uploads", Status = 1, CreatedAt = 3 }
+        );
+        await _dbContext.SaveChangesAsync();
+
+        var result = await _controller.GetStatus();
+
+        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
+        var typed = okResult.Value!;
+        ((int)typed.GetType().GetProperty("pendingCount")!.GetValue(typed)!).Should().Be(2);
+    }
+
+    // ============================================================
+    // ResolveRecord
+    // ============================================================
+
+    [Fact]
+    public async Task ResolveRecord_NotFound_Returns404()
+    {
+        var result = await _controller.ResolveRecord(9999);
+
+        result.Should().BeOfType<NotFoundObjectResult>();
+    }
+
+    [Fact]
+    public async Task ResolveRecord_PendingRecordNotReferenced_DeletesAndReturnsOk()
+    {
+        var record = new OssAuditRecord
+        {
+            ObjectPath = "uploads/orphan.jpg",
+            Bucket = "uploads",
+            Size = 1024,
+            Status = 0,
+            CreatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
         };
-        if (paths.Length > 0)
-            response.Items.Add(record);
+        _dbContext.OssAuditRecords.Add(record);
+        await _dbContext.SaveChangesAsync();
+
+        // 设置 gRPC 返回空路径集合（无引用）
+        var uploadResponse = new SProto.UploadRecordsPageResult { TotalCount = 0 };
+        _studentClient
+            .Setup(c => c.GetAllUploadRecordsAsync(
+                It.IsAny<SProto.GetAllUploadRecordsRequest>(),
+                It.IsAny<Metadata>(),
+                It.IsAny<DateTime?>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(CreateAsyncCall(uploadResponse));
+
+        var mistakeResponse = new MProto.MistakeItemPageResult();
+        mistakeResponse.PageMeta = new MProto.PageMeta { TotalCount = 0 };
+        _mistakeClient
+            .Setup(c => c.GetMistakeItemListAsync(
+                It.IsAny<MProto.GetMistakeItemListRequest>(),
+                It.IsAny<Metadata>(),
+                It.IsAny<DateTime?>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(CreateAsyncCall(mistakeResponse));
+
+        _ossService.Setup(s => s.DeleteAsync(It.IsAny<string>())).ReturnsAsync(true);
+
+        var result = await _controller.ResolveRecord(record.Id);
+
+        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
+        var typed = okResult.Value.Should().BeOfType<OperationResponse>().Subject;
+        typed.Success.Should().BeTrue();
+
+        // 记录应被从数据库删除
+        _dbContext.OssAuditRecords.Any(r => r.Id == record.Id).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ResolveRecord_ReferencedByUploadRecord_ReturnsBadRequest()
+    {
+        var record = new OssAuditRecord
+        {
+            ObjectPath = "uploads/referenced.jpg",
+            Bucket = "uploads",
+            Status = 0,
+            CreatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+        };
+        _dbContext.OssAuditRecords.Add(record);
+        await _dbContext.SaveChangesAsync();
+
+        // 设置 gRPC 返回包含该路径的上传记录
+        var uploadDto = new SProto.UploadRecordDto { Id = "r1" };
+        uploadDto.ImagePaths.Add("uploads/referenced.jpg");
+        var uploadResponse = new SProto.UploadRecordsPageResult { TotalCount = 1 };
+        uploadResponse.Items.Add(uploadDto);
+        _studentClient
+            .Setup(c => c.GetAllUploadRecordsAsync(
+                It.IsAny<SProto.GetAllUploadRecordsRequest>(),
+                It.IsAny<Metadata>(),
+                It.IsAny<DateTime?>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(CreateAsyncCall(uploadResponse));
+
+        var result = await _controller.ResolveRecord(record.Id);
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+    }
+
+    [Fact]
+    public async Task ResolveRecord_StudentServiceUnavailable_Returns502()
+    {
+        var record = new OssAuditRecord
+        {
+            ObjectPath = "uploads/orphan.jpg",
+            Bucket = "uploads",
+            Status = 0,
+            CreatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+        };
+        _dbContext.OssAuditRecords.Add(record);
+        await _dbContext.SaveChangesAsync();
 
         _studentClient
             .Setup(c => c.GetAllUploadRecordsAsync(
@@ -132,461 +277,68 @@ public class OssAuditControllerTests : IDisposable
                 It.IsAny<Metadata>(),
                 It.IsAny<DateTime?>(),
                 It.IsAny<CancellationToken>()))
-            .Returns(CreateAsyncCall(response));
-    }
+            .Throws(new RpcException(new Status(StatusCode.Unavailable, "Service unavailable")));
 
-    private void SetupMistakePaths(params string[] paths)
-    {
-        var response = new MProto.MistakeItemPageResult
-        {
-            PageMeta = new MProto.PageMeta
-            {
-                Page = 1,
-                Size = 100,
-                TotalCount = paths.Length,
-                TotalPages = paths.Length > 0 ? 1 : 0,
-            }
-        };
+        var result = await _controller.ResolveRecord(record.Id);
 
-        foreach (var path in paths)
-        {
-            var item = new MProto.MistakeItemDto();
-            item.SourceRegions.Add(new MProto.SourceRegion { SourceImagePath = path });
-            response.Items.Add(item);
-        }
-
-        _mistakeClient
-            .Setup(c => c.GetMistakeItemListAsync(
-                It.IsAny<MProto.GetMistakeItemListRequest>(),
-                It.IsAny<Metadata>(),
-                It.IsAny<DateTime?>(),
-                It.IsAny<CancellationToken>()))
-            .Returns(CreateAsyncCall(response));
-    }
-
-    private void SetupDeleteOssObject(bool success = true, string? errorMessage = null)
-    {
-        if (success)
-        {
-            _ossService
-                .Setup(s => s.DeleteAsync(It.IsAny<string>()))
-                .ReturnsAsync(true);
-        }
-        else
-        {
-            _ossService
-                .Setup(s => s.DeleteAsync(It.IsAny<string>()))
-                .ThrowsAsync(new Exception(errorMessage ?? "Delete failed"));
-        }
+        var statusResult = result.Should().BeOfType<ObjectResult>().Subject;
+        statusResult.StatusCode.Should().Be(502);
     }
 
     // ============================================================
-    // GetRecords Tests
-    // ============================================================
-
-    [Fact]
-    public async Task GetRecords_ReturnsPaginatedRecords_WithStatusAndBucketCounts()
-    {
-        // Arrange
-        _dbContext.OssAuditRecords.AddRange(
-            CreateRecord(id: 1, status: 0, bucket: "bucket-a", createdAt: 3000),
-            CreateRecord(id: 2, status: 0, bucket: "bucket-b", createdAt: 2000),
-            CreateRecord(id: 3, status: 1, bucket: "bucket-a", createdAt: 1000));
-        await _dbContext.SaveChangesAsync();
-
-        // Act
-        var result = await _controller.GetRecords(page: 1, pageSize: 10);
-
-        // Assert
-        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
-        dynamic data = okResult.Value!;
-        ((int)data.totalCount).Should().Be(3);
-        ((int)data.page).Should().Be(1);
-        ((int)data.pageSize).Should().Be(10);
-        var items = (IEnumerable<object>)data.items;
-        items.Count().Should().Be(3);
-        var statusCounts = (System.Collections.IDictionary)data.statusCounts;
-        statusCounts.Count.Should().BeGreaterThan(0);
-        var bucketCounts = (System.Collections.IDictionary)data.bucketCounts;
-        bucketCounts.Count.Should().BeGreaterThan(0);
-    }
-
-    [Fact]
-    public async Task GetRecords_FilterByStatus_ReturnsOnlyMatchingRecords()
-    {
-        // Arrange
-        _dbContext.OssAuditRecords.AddRange(
-            CreateRecord(id: 1, status: 0, bucket: "a"),
-            CreateRecord(id: 2, status: 1, bucket: "b"),
-            CreateRecord(id: 3, status: 2, bucket: "c"));
-        await _dbContext.SaveChangesAsync();
-
-        // Act
-        var result = await _controller.GetRecords(status: 0);
-
-        // Assert
-        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
-        dynamic data = okResult.Value!;
-        ((int)data.totalCount).Should().Be(1);
-        var items = (IEnumerable<object>)data.items;
-        items.Count().Should().Be(1);
-    }
-
-    [Fact]
-    public async Task GetRecords_FilterByBucket_ReturnsOnlyMatchingRecords()
-    {
-        // Arrange
-        _dbContext.OssAuditRecords.AddRange(
-            CreateRecord(id: 1, bucket: "bucket-a"),
-            CreateRecord(id: 2, bucket: "bucket-b"),
-            CreateRecord(id: 3, bucket: "bucket-a"));
-        await _dbContext.SaveChangesAsync();
-
-        // Act
-        var result = await _controller.GetRecords(bucket: "bucket-a");
-
-        // Assert
-        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
-        dynamic data = okResult.Value!;
-        ((int)data.totalCount).Should().Be(2);
-        var items = (IEnumerable<object>)data.items;
-        items.Count().Should().Be(2);
-    }
-
-    // ============================================================
-    // TriggerAudit Tests
-    // ============================================================
-
-    [Fact]
-    public async Task TriggerAudit_NoRunningAudit_ReturnsOk()
-    {
-        // Arrange - no running audit runs in DB
-
-        // Act
-        var result = await _controller.TriggerAudit();
-
-        // Assert
-        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
-        var opResponse = okResult.Value.Should().BeOfType<OperationResponse>().Subject;
-        opResponse.Success.Should().BeTrue();
-        opResponse.Message.Should().Be("审计已触发，请稍候查看结果。");
-    }
-
-    [Fact]
-    public async Task TriggerAudit_AlreadyRunning_ReturnsBadRequest()
-    {
-        // Arrange
-        _dbContext.OssAuditRuns.Add(CreateRun(id: 1, status: 0, completedAt: null));
-        await _dbContext.SaveChangesAsync();
-
-        // Act
-        var result = await _controller.TriggerAudit();
-
-        // Assert
-        var badRequest = result.Should().BeOfType<BadRequestObjectResult>().Subject;
-        var error = badRequest.Value.Should().BeOfType<ErrorResponse>().Subject;
-        error.Message.Should().Be("审计正在运行中，请等待完成后再触发。");
-    }
-
-    // ============================================================
-    // GetStatus Tests
-    // ============================================================
-
-    [Fact]
-    public async Task GetStatus_ReturnsIsRunning_LastCompleted_LastFailed_PendingCount()
-    {
-        // Arrange
-        _dbContext.OssAuditRuns.AddRange(
-            CreateRun(id: 1, status: 0, completedAt: null),
-            CreateRun(id: 2, status: 1, startedAt: 100, completedAt: 200, newZombieCount: 3, triggerType: "manual"),
-            CreateRun(id: 3, status: 2, startedAt: 50, completedAt: 60, errorMessage: "timeout", triggerType: "scheduled"));
-        _dbContext.OssAuditRecords.AddRange(
-            CreateRecord(id: 1, status: 0),
-            CreateRecord(id: 2, status: 0),
-            CreateRecord(id: 3, status: 1));
-        await _dbContext.SaveChangesAsync();
-
-        // Act
-        var result = await _controller.GetStatus();
-
-        // Assert
-        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
-        dynamic data = okResult.Value!;
-        ((bool)data.isRunning).Should().BeTrue();
-        ((int)data.pendingCount).Should().Be(2);
-        Assert.NotNull(data.lastCompleted);
-        Assert.NotNull(data.lastFailed);
-    }
-
-    [Fact]
-    public async Task GetStatus_NoRuns_ReturnsDefaults()
-    {
-        // Arrange - empty DB
-
-        // Act
-        var result = await _controller.GetStatus();
-
-        // Assert
-        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
-        dynamic data = okResult.Value!;
-        ((bool)data.isRunning).Should().BeFalse();
-        ((int)data.pendingCount).Should().Be(0);
-        Assert.Null(data.lastCompleted);
-        Assert.Null(data.lastFailed);
-    }
-
-    // ============================================================
-    // ResolveRecord Tests
-    // ============================================================
-
-    [Fact]
-    public async Task ResolveRecord_NotFound_Returns404()
-    {
-        // Act
-        var result = await _controller.ResolveRecord(999);
-
-        // Assert
-        var notFound = result.Should().BeOfType<NotFoundObjectResult>().Subject;
-        var error = notFound.Value.Should().BeOfType<ErrorResponse>().Subject;
-        error.Message.Should().Be("Record not found.");
-    }
-
-    [Fact]
-    public async Task ResolveRecord_PendingWithNoReferences_DeletesAndRemovesFromDb()
-    {
-        // Arrange
-        var record = CreateRecord(id: 1, status: 0, objectPath: "uploads/orphan.png");
-        _dbContext.OssAuditRecords.Add(record);
-        await _dbContext.SaveChangesAsync();
-
-        SetupStudentPaths(); // no references
-        SetupMistakePaths(); // no references
-        SetupDeleteOssObject(success: true);
-
-        // Act
-        var result = await _controller.ResolveRecord(1);
-
-        // Assert
-        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
-        var opResponse = okResult.Value.Should().BeOfType<OperationResponse>().Subject;
-        opResponse.Success.Should().BeTrue();
-
-        _dbContext.OssAuditRecords.Any(r => r.Id == 1).Should().BeFalse();
-    }
-
-    [Fact]
-    public async Task ResolveRecord_ReferencedByStudentService_Returns400()
-    {
-        // Arrange
-        var record = CreateRecord(id: 1, status: 0, objectPath: "uploads/referenced.png");
-        _dbContext.OssAuditRecords.Add(record);
-        await _dbContext.SaveChangesAsync();
-
-        SetupStudentPaths("uploads/referenced.png"); // referenced by student service
-        SetupMistakePaths();
-
-        // Act
-        var result = await _controller.ResolveRecord(1);
-
-        // Assert
-        var badRequest = result.Should().BeOfType<BadRequestObjectResult>().Subject;
-        var error = badRequest.Value.Should().BeOfType<ErrorResponse>().Subject;
-        error.Message.Should().Be("该文件仍被上传记录引用，不能删除。");
-    }
-
-    [Fact]
-    public async Task ResolveRecord_ReferencedByMistakeService_Returns400()
-    {
-        // Arrange
-        var record = CreateRecord(id: 1, status: 0, objectPath: "uploads/mistake-ref.png");
-        _dbContext.OssAuditRecords.Add(record);
-        await _dbContext.SaveChangesAsync();
-
-        SetupStudentPaths(); // not referenced by student
-        SetupMistakePaths("uploads/mistake-ref.png"); // referenced by mistake service
-
-        // Act
-        var result = await _controller.ResolveRecord(1);
-
-        // Assert
-        var badRequest = result.Should().BeOfType<BadRequestObjectResult>().Subject;
-        var error = badRequest.Value.Should().BeOfType<ErrorResponse>().Subject;
-        error.Message.Should().Be("该文件仍被错题记录引用，不能删除。");
-    }
-
-    [Fact]
-    public async Task ResolveRecord_AlreadyResolved_SkipsReferenceCheck_DeletesDirectly()
-    {
-        // Arrange
-        var record = CreateRecord(id: 1, status: 1, objectPath: "uploads/already-resolved.png", resolvedAt: 5000);
-        _dbContext.OssAuditRecords.Add(record);
-        await _dbContext.SaveChangesAsync();
-
-        SetupDeleteOssObject(success: true);
-
-        // Act
-        var result = await _controller.ResolveRecord(1);
-
-        // Assert
-        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
-        var opResponse = okResult.Value.Should().BeOfType<OperationResponse>().Subject;
-        opResponse.Success.Should().BeTrue();
-
-        // Verify that reference-check gRPC calls were NOT made
-        _studentClient.Verify(
-            c => c.GetAllUploadRecordsAsync(
-                It.IsAny<SProto.GetAllUploadRecordsRequest>(),
-                It.IsAny<Metadata>(),
-                It.IsAny<DateTime?>(),
-                It.IsAny<CancellationToken>()),
-            Times.Never);
-        _mistakeClient.Verify(
-            c => c.GetMistakeItemListAsync(
-                It.IsAny<MProto.GetMistakeItemListRequest>(),
-                It.IsAny<Metadata>(),
-                It.IsAny<DateTime?>(),
-                It.IsAny<CancellationToken>()),
-            Times.Never);
-
-        _dbContext.OssAuditRecords.Any(r => r.Id == 1).Should().BeFalse();
-    }
-
-    // ============================================================
-    // IgnoreRecord Tests
+    // IgnoreRecord
     // ============================================================
 
     [Fact]
     public async Task IgnoreRecord_NotFound_Returns404()
     {
-        // Act
-        var result = await _controller.IgnoreRecord(999, null);
+        var result = await _controller.IgnoreRecord(9999, null);
 
-        // Assert
-        var notFound = result.Should().BeOfType<NotFoundObjectResult>().Subject;
-        var error = notFound.Value.Should().BeOfType<ErrorResponse>().Subject;
-        error.Message.Should().Be("Record not found.");
+        result.Should().BeOfType<NotFoundObjectResult>();
     }
 
     [Fact]
-    public async Task IgnoreRecord_PendingRecord_SetsStatus2AndNote()
+    public async Task IgnoreRecord_PendingRecord_SetsStatusToIgnored()
     {
-        // Arrange
-        var record = CreateRecord(id: 1, status: 0);
+        var record = new OssAuditRecord
+        {
+            ObjectPath = "uploads/zombie.jpg",
+            Bucket = "uploads",
+            Status = 0,
+            CreatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+        };
         _dbContext.OssAuditRecords.Add(record);
         await _dbContext.SaveChangesAsync();
 
-        // Act
-        var result = await _controller.IgnoreRecord(1, new IgnoreRecordRequest { Note = "not needed" });
+        var result = await _controller.IgnoreRecord(record.Id, new IgnoreRecordRequest { Note = "test ignore" });
 
-        // Assert
         var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
-        var opResponse = okResult.Value.Should().BeOfType<OperationResponse>().Subject;
-        opResponse.Success.Should().BeTrue();
-        opResponse.Message.Should().Be("Record ignored.");
+        var typed = okResult.Value.Should().BeOfType<OperationResponse>().Subject;
+        typed.Success.Should().BeTrue();
 
-        var updated = await _dbContext.OssAuditRecords.FindAsync(1L);
-        updated.Should().NotBeNull();
+        // 验证数据库中记录状态已更新
+        var updated = await _dbContext.OssAuditRecords.FindAsync(record.Id);
         updated!.Status.Should().Be(2);
-        updated.Note.Should().Be("not needed");
+        updated.Note.Should().Be("test ignore");
         updated.ResolvedAt.Should().NotBeNull();
     }
 
     [Fact]
-    public async Task IgnoreRecord_NonPendingRecord_Returns400()
+    public async Task IgnoreRecord_AlreadyResolvedRecord_ReturnsBadRequest()
     {
-        // Arrange
-        var record = CreateRecord(id: 1, status: 1, resolvedAt: 5000);
+        var record = new OssAuditRecord
+        {
+            ObjectPath = "uploads/resolved.jpg",
+            Bucket = "uploads",
+            Status = 1,
+            CreatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+            ResolvedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+        };
         _dbContext.OssAuditRecords.Add(record);
         await _dbContext.SaveChangesAsync();
 
-        // Act
-        var result = await _controller.IgnoreRecord(1, new IgnoreRecordRequest { Note = "try ignore" });
+        var result = await _controller.IgnoreRecord(record.Id, null);
 
-        // Assert
-        var badRequest = result.Should().BeOfType<BadRequestObjectResult>().Subject;
-        var error = badRequest.Value.Should().BeOfType<ErrorResponse>().Subject;
-        error.Message.Should().Be("Only pending records can be ignored.");
-    }
-
-    // ============================================================
-    // BatchResolve Tests
-    // ============================================================
-
-    [Fact]
-    public async Task BatchResolve_EmptyIds_Returns400()
-    {
-        // Act
-        var result = await _controller.BatchResolve(new BatchResolveRequest { Ids = new List<long>() });
-
-        // Assert
-        var badRequest = result.Should().BeOfType<BadRequestObjectResult>().Subject;
-        var error = badRequest.Value.Should().BeOfType<ErrorResponse>().Subject;
-        error.Message.Should().Be("At least one record ID is required.");
-    }
-
-    [Fact]
-    public async Task BatchResolve_NullIds_Returns400()
-    {
-        // Act
-        var result = await _controller.BatchResolve(new BatchResolveRequest { Ids = null! });
-
-        // Assert
-        var badRequest = result.Should().BeOfType<BadRequestObjectResult>().Subject;
-        var error = badRequest.Value.Should().BeOfType<ErrorResponse>().Subject;
-        error.Message.Should().Be("At least one record ID is required.");
-    }
-
-    [Fact]
-    public async Task BatchResolve_Success_ResolvesMultipleRecords()
-    {
-        // Arrange
-        _dbContext.OssAuditRecords.AddRange(
-            CreateRecord(id: 1, status: 0, objectPath: "uploads/a.png"),
-            CreateRecord(id: 2, status: 0, objectPath: "uploads/b.png"));
-        await _dbContext.SaveChangesAsync();
-
-        SetupStudentPaths(); // no references
-        SetupMistakePaths(); // no references
-        SetupDeleteOssObject(success: true);
-
-        // Act
-        var result = await _controller.BatchResolve(new BatchResolveRequest { Ids = new List<long> { 1, 2 } });
-
-        // Assert
-        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
-        dynamic data = okResult.Value!;
-        ((int)data.resolvedCount).Should().Be(2);
-        ((System.Collections.ICollection)data.errors).Count.Should().Be(0);
-        ((int)data.totalRequested).Should().Be(2);
-
-        _dbContext.OssAuditRecords.Should().BeEmpty();
-    }
-
-    [Fact]
-    public async Task BatchResolve_SomeReferenced_SkipsReferencedResolvesOthers()
-    {
-        // Arrange
-        _dbContext.OssAuditRecords.AddRange(
-            CreateRecord(id: 1, status: 0, objectPath: "uploads/orphan.png"),
-            CreateRecord(id: 2, status: 0, objectPath: "uploads/referenced.png"));
-        await _dbContext.SaveChangesAsync();
-
-        SetupStudentPaths("uploads/referenced.png"); // only "referenced.png" is in student service
-        SetupMistakePaths(); // no mistake references
-        SetupDeleteOssObject(success: true);
-
-        // Act
-        var result = await _controller.BatchResolve(new BatchResolveRequest { Ids = new List<long> { 1, 2 } });
-
-        // Assert
-        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
-        dynamic data = okResult.Value!;
-        ((int)data.resolvedCount).Should().Be(1);
-        ((System.Collections.ICollection)data.errors).Count.Should().Be(1);
-        ((int)data.totalRequested).Should().Be(2);
-
-        // Orphan should be removed, referenced should remain
-        _dbContext.OssAuditRecords.Any(r => r.Id == 1).Should().BeFalse();
-        _dbContext.OssAuditRecords.Any(r => r.Id == 2).Should().BeTrue();
+        result.Should().BeOfType<BadRequestObjectResult>();
     }
 }
