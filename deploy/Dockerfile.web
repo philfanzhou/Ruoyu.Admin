@@ -1,0 +1,15 @@
+FROM node:20-alpine AS frontend-build
+ARG NPM_REGISTRY=https://mirrors.huaweicloud.com/repository/npm/
+ENV npm_config_registry=${NPM_REGISTRY}
+ENV npm_config_replace_registry_host=always
+WORKDIR /app
+COPY src/admin_portal/frontend/package*json ./
+RUN npm ci --registry=${NPM_REGISTRY}
+COPY src/admin_portal/frontend/ ./
+RUN npm run build
+
+FROM nginx:1.30.0-alpine AS final
+COPY --from=frontend-build /app/dist /usr/share/nginx/html
+COPY src/admin_portal/deploy/nginx.conf /etc/nginx/nginx.conf
+
+EXPOSE 80

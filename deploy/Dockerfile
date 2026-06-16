@@ -1,0 +1,35 @@
+# ========== Stage 1: Build Frontend ==========
+FROM node:20-alpine AS frontend-build
+ARG NPM_REGISTRY=https://mirrors.huaweicloud.com/repository/npm/
+ENV npm_config_registry=${NPM_REGISTRY}
+ENV npm_config_replace_registry_host=always
+WORKDIR /frontend
+COPY src/admin_portal/frontend/package*json ./
+RUN npm ci --registry=${NPM_REGISTRY}
+COPY src/admin_portal/frontend/ ./
+RUN npm run build
+
+# ========== Stage 2: Build & Publish Backend ==========
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS backend-build
+WORKDIR /src
+
+COPY src/admin_portal/backend/Admin.WebApi.csproj ./src/admin_portal/backend/
+COPY src/services/ruoyu.common/src/Ruoyu.Study.Common/Ruoyu.Study.Common.csproj ./src/services/ruoyu.common/src/Ruoyu.Study.Common/
+RUN dotnet restore "src/admin_portal/backend/Admin.WebApi.csproj"
+
+COPY src/admin_portal/backend/ ./src/admin_portal/backend/
+COPY src/services/ruoyu.student/src/Contract/ ./src/services/ruoyu.student/src/Contract/
+COPY src/services/ruoyu.mistake/src/Contract/ ./src/services/ruoyu.mistake/src/Contract/
+COPY src/services/ruoyu.common/src/Ruoyu.Study.Common/ ./src/services/ruoyu.common/src/Ruoyu.Study.Common/
+COPY --from=frontend-build /frontend/dist ./src/admin_portal/backend/wwwroot
+RUN dotnet publish "src/admin_portal/backend/Admin.WebApi.csproj" -c Release -o /app/publish /p:UseAppHost=false --no-restore
+
+# ========== Stage 3: Runtime ==========
+FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final
+WORKDIR /app
+COPY --from=backend-build /app/publish .
+
+EXPOSE 5020
+ENV ASPNETCORE_URLS=http://+:5020
+
+ENTRYPOINT ["dotnet", "Admin.WebApi.dll"]

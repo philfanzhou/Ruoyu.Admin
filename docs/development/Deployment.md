@@ -2,7 +2,8 @@
 
 ## 构建与部署
 
-- Dockerfile：`scripts/9.admin-portal/1.build/Dockerfile`
+- Dockerfile：`deploy/Dockerfile`
+- 前端 Dockerfile：`deploy/Dockerfile.web`
 - 部署脚本：`scripts/9.admin-portal/2.deploy/start.sh`
 
 ## 部署模式
