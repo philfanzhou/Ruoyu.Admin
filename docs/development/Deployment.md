@@ -1,27 +1,27 @@
-# 部署与运维
+# 部署与运�?
 
-## 构建与部署
+## 构建与部�?
 
-- Dockerfile：`deploy/Dockerfile`
-- 前端 Dockerfile：`deploy/Dockerfile.web`
+- Dockerfile：`backend/Dockerfile`
+- 前端 Dockerfile：`frontend/Dockerfile`
 - 部署脚本：`scripts/9.admin-portal/2.deploy/start.sh`
 
 ## 部署模式
 
 ### 模式一：前后端集成部署（原有）
 
-前端构建产物部署到后端 `wwwroot` 目录，由 ASP.NET Core 提供静态文件服务。单一容器部署。
+前端构建产物部署到后�?`wwwroot` 目录，由 ASP.NET Core 提供静态文件服务。单一容器部署�?
 
-### 模式二：Nginx 容器前后端分离部署（oss-nginx-proxy 变更）
+### 模式二：Nginx 容器前后端分离部署（oss-nginx-proxy 变更�?
 
-新增 Nginx 容器，前端静态文件由 Nginx 提供，API 请求代理到后端，OSS 对象通过 `/oss/` 路径代理到 SeaweedFS。
+新增 Nginx 容器，前端静态文件由 Nginx 提供，API 请求代理到后端，OSS 对象通过 `/oss/` 路径代理�?SeaweedFS�?
 
-**Nginx 容器职责**：
-- 提供前端静态文件服务
-- `/api/` 请求代理到 Admin Portal 后端（`:5020`）
-- `/oss/` 请求代理到 SeaweedFS（`:8333`），strip `/oss/` 前缀
+**Nginx 容器职责**�?
+- 提供前端静态文件服�?
+- `/api/` 请求代理�?Admin Portal 后端（`:5020`�?
+- `/oss/` 请求代理�?SeaweedFS（`:8333`），strip `/oss/` 前缀
 
-**Nginx OSS 代理配置**：
+**Nginx OSS 代理配置**�?
 
 ```nginx
 location /oss/ {
@@ -34,14 +34,14 @@ location /oss/ {
 }
 ```
 
-关键配置说明：
-- `proxy_pass` 末尾 `/`：strip `/oss/` 前缀，如 `/oss/ruoyu-study/mistakes/xxx/image.jpg` → `/ruoyu-study/mistakes/xxx/image.jpg`
+关键配置说明�?
+- `proxy_pass` 末尾 `/`：strip `/oss/` 前缀，如 `/oss/ruoyu-study/mistakes/xxx/image.jpg` �?`/ruoyu-study/mistakes/xxx/image.jpg`
 - `proxy_set_header Host ruoyu-seaweedfs:8333`：S3 签名验证基于 Host 头，必须设为 SeaweedFS 内部地址
-- `Cache-Control: public, max-age=3600`：1 小时公共缓存，减少 SeaweedFS 请求压力
+- `Cache-Control: public, max-age=3600`�? 小时公共缓存，减�?SeaweedFS 请求压力
 
-## 配置项
+## 配置�?
 
-### 数据库连接
+### 数据库连�?
 
 ```json
 {
@@ -53,11 +53,11 @@ location /oss/ {
 
 ### 服务端口
 
-| 端口 | 协议 | 用途 |
+| 端口 | 协议 | 用�?|
 |------|------|------|
-| 5020 | HTTP | 管理门户后端 + 健康检查 |
+| 5020 | HTTP | 管理门户后端 + 健康检�?|
 | 5175 | HTTP | 管理门户前端 |
-| 80 | HTTP | Nginx 容器（前端静态文件 + API/OSS 反向代理） |
+| 80 | HTTP | Nginx 容器（前端静态文�?+ API/OSS 反向代理�?|
 
 ### 下游服务配置
 
@@ -71,7 +71,7 @@ location /oss/ {
 
 ### PublicEndpoint 配置
 
-使用 Nginx 容器部署时，需配置 `Oss:PublicEndpoint` 使预签名 URL 指向 Nginx 代理地址：
+使用 Nginx 容器部署时，需配置 `Oss:PublicEndpoint` 使预签名 URL 指向 Nginx 代理地址�?
 
 ```json
 {
@@ -85,11 +85,11 @@ location /oss/ {
 }
 ```
 
-`PublicEndpoint` 非空时，`GetPresignedUrlAsync` 生成的预签名 URL 会将 scheme+host 替换为 `{PublicEndpoint}/oss`，前端通过 Nginx `/oss/` 代理访问 OSS 对象。
+`PublicEndpoint` 非空时，`GetPresignedUrlAsync` 生成的预签名 URL 会将 scheme+host 替换�?`{PublicEndpoint}/oss`，前端通过 Nginx `/oss/` 代理访问 OSS 对象�?
 
-## 健康检查
+## 健康检�?
 
-- 端点：`/health`（端口 5020）
+- 端点：`/health`（端�?5020�?
 
 ## 数据库备份与恢复
 
