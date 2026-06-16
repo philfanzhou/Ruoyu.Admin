@@ -140,8 +140,8 @@ app.Logger.LogInformation("Downstream: Identity={Identity}, Teacher Portal={Teac
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AuditDbContext>();
-    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
-    await DatabaseInitializer.InitializeAsync(db, logger, tableName => tableName switch
+    var loggerFactory = scope.ServiceProvider.GetRequiredService<ILoggerFactory>();
+    await DatabaseInitializer.InitializeAsync(db, loggerFactory, tableName => tableName switch
     {
         "OssAuditRuns" => @"
             CREATE TABLE IF NOT EXISTS ""OssAuditRuns"" (
