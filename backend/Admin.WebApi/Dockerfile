@@ -13,16 +13,16 @@ RUN npm run build
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS backend-build
 WORKDIR /src
 
-COPY src/admin_portal/backend/Admin.WebApi.csproj ./src/admin_portal/backend/
+COPY src/admin_portal/backend/Admin.WebApi/Admin.WebApi.csproj ./src/admin_portal/backend/Admin.WebApi/
 COPY src/services/ruoyu.common/src/Ruoyu.Study.Common/Ruoyu.Study.Common.csproj ./src/services/ruoyu.common/src/Ruoyu.Study.Common/
-RUN dotnet restore "src/admin_portal/backend/Admin.WebApi.csproj"
+RUN dotnet restore "src/admin_portal/backend/Admin.WebApi/Admin.WebApi.csproj"
 
-COPY src/admin_portal/backend/ ./src/admin_portal/backend/
+COPY src/admin_portal/backend/Admin.WebApi/ ./src/admin_portal/backend/Admin.WebApi/
 COPY src/services/ruoyu.student/src/Contract/ ./src/services/ruoyu.student/src/Contract/
 COPY src/services/ruoyu.mistake/src/Contract/ ./src/services/ruoyu.mistake/src/Contract/
 COPY src/services/ruoyu.common/src/Ruoyu.Study.Common/ ./src/services/ruoyu.common/src/Ruoyu.Study.Common/
-COPY --from=frontend-build /frontend/dist ./src/admin_portal/backend/wwwroot
-RUN dotnet publish "src/admin_portal/backend/Admin.WebApi.csproj" -c Release -o /app/publish /p:UseAppHost=false --no-restore
+COPY --from=frontend-build /frontend/dist ./src/admin_portal/backend/Admin.WebApi/wwwroot
+RUN dotnet publish "src/admin_portal/backend/Admin.WebApi/Admin.WebApi.csproj" -c Release -o /app/publish /p:UseAppHost=false --no-restore
 
 # ========== Stage 3: Runtime ==========
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final
