@@ -1,6 +1,6 @@
 using System.Data.Common;
 using Admin.WebApi;
-using Admin.WebApi.Data;
+using Admin.WebApi.Persistence;
 using Admin.WebApi.Services;
 using Microsoft.EntityFrameworkCore;
 using Ruoyu.Study.Common.Database;

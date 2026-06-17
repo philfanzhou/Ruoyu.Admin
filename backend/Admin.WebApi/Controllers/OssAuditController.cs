@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Admin.WebApi.Data;
+using Admin.WebApi.Persistence;
 using Admin.WebApi.Models;
 using Admin.WebApi.Services;
 using Ruoyu.Study.Common.Oss;

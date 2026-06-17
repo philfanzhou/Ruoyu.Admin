@@ -1,5 +1,5 @@
 using Grpc.Core;
-using Admin.WebApi.Data;
+using Admin.WebApi.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Ruoyu.Study.Common.Oss;
 using SProto = Ruoyu.Study.Student.Contract.Protos;

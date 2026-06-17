@@ -1,6 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 
-namespace Admin.WebApi.Data;
+namespace Admin.WebApi.Persistence;
 
 public class AuditDbContext : DbContext
 {
