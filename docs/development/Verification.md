@@ -22,8 +22,21 @@ test/Admin.WebApi.Tests/
 ├── Admin.WebApi.Tests.csproj
 ├── Models/
 │   └── ModelTests.cs              # DTO 构造函数测试
-└── Controllers/
-    └── OssUploadRecordControllerLegacyTests.cs  # LegacyCheck/LegacyClean 测试
+├── Controllers/
+│   ├── AssignmentControllerTests.cs
+│   ├── EnumOptionsControllerTests.cs          # 枚举选项聚合测试
+│   ├── IdentityAccountsControllerTests.cs
+│   ├── ImageControllerTests.cs                # 图片代理路径校验与 gRPC 异常测试
+│   ├── MistakeControllerTests.cs
+│   ├── OssAuditControllerTests.cs
+│   ├── OssUploadRecordControllerLegacyTests.cs
+│   ├── OssUploadRecordControllerTests.cs
+│   └── StudentsControllerTests.cs
+├── Middleware/
+│   ├── IdentityProxyMiddlewareTests.cs
+│   └── TeacherPortalProxyMiddlewareTests.cs
+└── Services/
+    └── OssAuditWorkerTests.cs
 ```
 
 ## 覆盖率
@@ -62,18 +75,34 @@ curl http://localhost:5020/api/admin/oss-audit/status
 
 ## 测试覆盖现状
 
-| 模块 | 有测试 | 无测试 |
-|------|--------|--------|
-| Models (DTO) | ModelTests.cs | - |
-| OssUploadRecordController (Legacy) | LegacyTests.cs | 其他端点 |
-| StudentsController | - | 全部 |
-| MistakeController | - | 全部 |
-| OssAuditController | - | 全部 |
-| OssAuditWorker | - | 全部 |
-| IdentityProxyMiddleware | - | 全部 |
-| TeacherPortalProxyMiddleware | - | 全部 |
-| ImageController | - | 全部 |
-| EnumOptionsController | - | 全部 |
-| IdentityAccountsController | - | 全部 |
+| 模块 | 测试文件 | 覆盖说明 |
+|------|----------|----------|
+| Models (DTO) | ModelTests.cs | DTO 构造函数 |
+| OssUploadRecordController (Legacy) | OssUploadRecordControllerLegacyTests.cs | LegacyCheck/LegacyClean |
+| OssUploadRecordController | OssUploadRecordControllerTests.cs, AssignmentControllerTests.cs | 分配/旋转/重置/列表/详情 |
+| StudentsController | StudentsControllerTests.cs | ListStudents/CreateStudent/GetStudent |
+| MistakeController | MistakeControllerTests.cs | GetMistakeItems/UpdateMistakeItem |
+| OssAuditController | OssAuditControllerTests.cs | 审计记录管理 |
+| OssAuditWorker | OssAuditWorkerTests.cs | 后台审计任务 |
+| IdentityProxyMiddleware | IdentityProxyMiddlewareTests.cs | 代理转发 |
+| TeacherPortalProxyMiddleware | TeacherPortalProxyMiddlewareTests.cs | 代理转发 |
+| IdentityAccountsController | IdentityAccountsControllerTests.cs | 账户批量查询/关联学生 |
+| EnumOptionsController | EnumOptionsControllerTests.cs | GetAll 聚合返回 6 类枚举 |
+| ImageController | ImageControllerTests.cs | 路径校验（空/非法/正常）、mistakes 路径走 Mistake gRPC、其它走 Student gRPC、NotFound/其它 gRPC 异常 |
+
+### EnumOptionsController 测试要点
+
+- `GetAll` 返回 `EnumOptionsResponse`，包含 6 个列表：UploadStatuses、Grades、Subjects、Classifications、ReviewStatuses、MistakeTypes
+- 每个列表的元素数量应与对应 `*Constants.EnglishNames` 一致
+- 每个元素的 `Value`/`Name`/`DisplayName` 字段应正确映射
+
+### ImageController 测试要点
+
+- 路径校验：空路径 → 400；含 `..` 或以 `/`、`\` 开头 → 400
+- 路径以 `mistakes/` 开头（不区分大小写）→ 调用 `MistakeGrpcService.GetPresignedUrlAsync`
+- 其它路径 → 调用 `StudentLearningGrpcService.GetPresignedUrlAsync`，并传递 `size` 参数
+- gRPC 返回正常 → 302 Redirect 到预签名 URL
+- gRPC 抛 `NotFound` → 404
+- gRPC 抛其它异常 → 502
 
 > 详细测试计划见各模块的 05-TESTS.md
