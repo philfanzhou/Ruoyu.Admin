@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Grpc.Core;
 using SProto = Ruoyu.Study.Student.Contract.Protos;
 using MistakeProto = Ruoyu.Study.Mistake.Contract.Protos;
 using Admin.WebApi.Models;
@@ -504,11 +505,47 @@ public class OssUploadRecordController : ControllerBase
         }
     }
 
-    [Obsolete("AnalyzeUploadRecord 是管理员调试接口，StudentManagementGrpcService 已移除，此端点暂不可用")]
     [HttpPost("{id}/analyze")]
-    public IActionResult AnalyzeUploadRecord(string id)
+    public async Task<IActionResult> AnalyzeUploadRecord(string id)
     {
-        return StatusCode(410, new ErrorResponse("AnalyzeUploadRecord 接口已随 StudentManagementGrpcService 移除，请联系后端恢复"));
+        try
+        {
+            if (string.IsNullOrWhiteSpace(id) || !Guid.TryParse(id, out _))
+            {
+                return BadRequest(new ErrorResponse("Invalid record ID format"));
+            }
+
+            var request = new SProto.AnalyzeUploadRecordRequest { RecordId = id };
+            var response = await _learningClient.AnalyzeUploadRecordAsync(request);
+
+            return Ok(new
+            {
+                success = response.Success,
+                errorMessage = response.ErrorMessage,
+                rawResponse = response.RawResponse,
+                skipped = response.Skipped,
+                groups = response.Groups.Select(g => new
+                {
+                    imageIndices = g.ImageIndices,
+                    subject = g.Subject,
+                    grade = g.Grade,
+                    description = g.Description
+                }).ToList()
+            });
+        }
+        catch (Grpc.Core.RpcException ex) when (ex.StatusCode == Grpc.Core.StatusCode.NotFound)
+        {
+            return NotFound(new ErrorResponse("Upload record not found"));
+        }
+        catch (Grpc.Core.RpcException ex) when (ex.StatusCode == Grpc.Core.StatusCode.InvalidArgument)
+        {
+            return BadRequest(new ErrorResponse(ex.Status.Detail ?? "Invalid request"));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to analyze upload record: {RecordId}", id);
+            return StatusCode(500, new ErrorResponse("Failed to analyze upload record"));
+        }
     }
 
     private string GetContentType(string path)
