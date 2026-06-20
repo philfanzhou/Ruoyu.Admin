@@ -162,7 +162,7 @@ public class OssUploadRecordController : ControllerBase
                     Subject = assignment.Subject,
                     Grade = assignment.Grade,
                     ImagePaths = { selectedImagePaths },
-                    Comments = assignment.Comments ?? record.Comments ?? string.Empty,
+                    RootCause = assignment.Comments ?? record.Comments ?? string.Empty,
                     SourceUploadId = id
                 };
 
