@@ -12,14 +12,6 @@
 - **C**：暂不处理，依赖内网隔离
 - **批复**：
 
-### HR-02: appsettings.Testing.json 泄露真实 AppId/AppSecret
-
-- **问题**：appsettings.Testing.json 包含真实 Identity 服务 AppId/AppSecret，已提交到 Git
-- **A** (推荐)：删除该文件，测试配置改用环境变量或 user secrets
-- **B**：保留但加入 .gitignore，仅本地使用
-- **C**：暂不处理，标记为测试专用
-- **批复**：
-
 ### HR-03: OssAuditController、MistakeController N+1 查询
 
 - **问题**：多个 Controller 存在循环内逐条查询关联数据的 N+1 模式
