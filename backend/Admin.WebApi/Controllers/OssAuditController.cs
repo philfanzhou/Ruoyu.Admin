@@ -324,9 +324,9 @@ public partial class OssAuditController
 
             foreach (var record in response.Items)
             {
-                foreach (var imagePath in record.ImagePaths)
+                foreach (var entry in record.ImageEntries)
                 {
-                    paths.Add(imagePath);
+                    paths.Add(entry.Path);
                 }
             }
 

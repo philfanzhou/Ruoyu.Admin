@@ -72,7 +72,7 @@ public class OssUploadRecordController : ControllerBase
                     studentId = r.StudentId,
                     studentName = studentNameMap.GetValueOrDefault(r.StudentId, r.StudentId),
                     status = (int)r.Status,
-                    imagePaths = r.ImagePaths,
+                    imagePaths = r.ImageEntries.Select(e => e.Path).ToList(),
                     comments = r.Comments,
                     createdAt = ParseTimestampToUnixSeconds(r.CreatedAt),
                     updatedAt = ParseTimestampToUnixSeconds(r.UpdatedAt)
@@ -145,8 +145,8 @@ public class OssUploadRecordController : ControllerBase
             {
                 // 获取指定索引的图片路径
                 var selectedImagePaths = assignment.ImageIndices
-                    .Where(idx => idx >= 0 && idx < record.ImagePaths.Count)
-                    .Select(idx => record.ImagePaths[idx])
+                    .Where(idx => idx >= 0 && idx < record.ImageEntries.Count)
+                    .Select(idx => record.ImageEntries[idx].Path)
                     .ToList();
 
                 if (selectedImagePaths.Count == 0)
@@ -195,15 +195,8 @@ public class OssUploadRecordController : ControllerBase
                 }
             }
 
-            // 标记上传记录为完成
-            await _learningClient.MarkUploadRecordUnderReviewAsync(new SProto.MarkUploadRecordUnderReviewRequest
-            {
-                RecordId = id,
-                StudentId = request.StudentId
-            });
-
-            var remainingImageCount = record.ImagePaths.Count(p => !assignedImagePaths.Contains(p));
-            var totalImageCount = record.ImagePaths.Count;
+            var remainingImageCount = record.ImageEntries.Count(p => !assignedImagePaths.Contains(p.Path));
+            var totalImageCount = record.ImageEntries.Count;
 
             object payload;
             if (warnings.Count > 0)
@@ -515,23 +508,8 @@ public class OssUploadRecordController : ControllerBase
                 return BadRequest(new ErrorResponse("Invalid record ID format"));
             }
 
-            var request = new SProto.AnalyzeUploadRecordRequest { RecordId = id };
-            var response = await _learningClient.AnalyzeUploadRecordAsync(request);
-
-            return Ok(new
-            {
-                success = response.Success,
-                errorMessage = response.ErrorMessage,
-                rawResponse = response.RawResponse,
-                skipped = response.Skipped,
-                groups = response.Groups.Select(g => new
-                {
-                    imageIndices = g.ImageIndices,
-                    subject = g.Subject,
-                    grade = g.Grade,
-                    description = g.Description
-                }).ToList()
-            });
+            // TODO: VL analysis has moved to Mistake service. Redirect this call or implement via Mistake gRPC.
+            return StatusCode(501, new ErrorResponse("VL analysis has been moved to Mistake service. Use the Mistake polling mechanism instead."));
         }
         catch (Grpc.Core.RpcException ex) when (ex.StatusCode == Grpc.Core.StatusCode.NotFound)
         {

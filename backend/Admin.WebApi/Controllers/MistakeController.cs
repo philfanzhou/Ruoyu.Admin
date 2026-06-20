@@ -264,81 +264,11 @@ public class MistakeController : ControllerBase
     }
 
     [HttpPost("migrate-images/{id}")]
-    public async Task<IActionResult> MigrateImages(string id)
+    public IActionResult MigrateImages(string id)
     {
-        try
-        {
-            var item = await _mistakeClient.GetMistakeItemAsync(new MistakeProto.IdRequest { Id = id });
-
-            var regionsToMigrate = item.SourceRegions
-                .Where(r => !string.IsNullOrWhiteSpace(r.SourceImagePath)
-                            && r.SourceImagePath.StartsWith("uploads/", StringComparison.OrdinalIgnoreCase))
-                .ToList();
-
-            if (regionsToMigrate.Count == 0)
-            {
-                return Ok(new { success = true, message = "所有图片路径已在 mistakes 下，无需迁移", migratedCount = 0 });
-            }
-
-            var sourcePaths = regionsToMigrate.Select(r => r.SourceImagePath).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-
-            var migrateRequest = new SProto.MigrateImagesToMistakeRequest();
-            migrateRequest.SourcePaths.AddRange(sourcePaths);
-
-            var migrateResponse = await _studentLearningClient.MigrateImagesToMistakeAsync(migrateRequest);
-
-            var pathMapping = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            var migratedCount = 0;
-
-            foreach (var result in migrateResponse.Results)
-            {
-                if (result.Success)
-                {
-                    pathMapping[result.SourcePath] = result.NewPath;
-                    migratedCount++;
-                    _logger.LogInformation("Migrated image from {OldPath} to {NewPath}", result.SourcePath, result.NewPath);
-                }
-                else
-                {
-                    _logger.LogError("Failed to migrate image {Path}", result.SourcePath);
-                }
-            }
-
-            // Build updated sourceRegions list
-            var updatedRegions = item.SourceRegions.Select(r =>
-            {
-                var region = new MistakeProto.SourceRegion
-                {
-                    SourceImagePath = pathMapping.TryGetValue(r.SourceImagePath, out var newPath) ? newPath : r.SourceImagePath
-                };
-                if (r.BoundingBox != null)
-                {
-                    region.BoundingBox = new MistakeProto.BoundingBox
-                    {
-                        X1 = r.BoundingBox.X1,
-                        Y1 = r.BoundingBox.Y1,
-                        X2 = r.BoundingBox.X2,
-                        Y2 = r.BoundingBox.Y2
-                    };
-                }
-                return region;
-            }).ToList();
-
-            var updateRequest = new MistakeProto.UpdateMistakeItemRequest
-            {
-                Id = id
-            };
-            updateRequest.SourceRegions.AddRange(updatedRegions);
-
-            await _mistakeClient.UpdateMistakeItemAsync(updateRequest);
-
-            return Ok(new { success = true, message = $"已迁移 {migratedCount} 张图片", migratedCount });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to migrate images for mistake item: {Id}", id);
-            return StatusCode(500, new ErrorResponse("Failed to migrate images"));
-        }
+        // Image migration is now handled automatically by the Mistake service's polling worker.
+        // Images are migrated from uploads/ to mistakes/ during the polling cycle.
+        return Ok(new { success = true, message = "Image migration is now handled automatically by the Mistake service polling worker", migratedCount = 0 });
     }
 }
 
