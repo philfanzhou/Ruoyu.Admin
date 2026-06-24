@@ -92,7 +92,6 @@ export interface EnumOptionsResponse {
   subjects: EnumOption[]
   classifications: EnumOption[]
   reviewStatuses: EnumOption[]
-  mistakeTypes: EnumOption[]
 }
 
 // Upload Record Types

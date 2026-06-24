@@ -87,12 +87,12 @@ curl http://localhost:5020/api/admin/oss-audit/status
 | IdentityProxyMiddleware | IdentityProxyMiddlewareTests.cs | 代理转发 |
 | TeacherPortalProxyMiddleware | TeacherPortalProxyMiddlewareTests.cs | 代理转发 |
 | IdentityAccountsController | IdentityAccountsControllerTests.cs | 账户批量查询/关联学生 |
-| EnumOptionsController | EnumOptionsControllerTests.cs | GetAll 聚合返回 6 类枚举 |
+| EnumOptionsController | EnumOptionsControllerTests.cs | GetAll 聚合返回 5 类枚举 |
 | ImageController | ImageControllerTests.cs | 路径校验（空/非法/正常）、mistakes 路径走 Mistake gRPC、其它走 Student gRPC、NotFound/其它 gRPC 异常 |
 
 ### EnumOptionsController 测试要点
 
-- `GetAll` 返回 `EnumOptionsResponse`，包含 6 个列表：UploadStatuses、Grades、Subjects、Classifications、ReviewStatuses、MistakeTypes
+- `GetAll` 返回 `EnumOptionsResponse`，包含 5 个列表：UploadStatuses、Grades、Subjects、Classifications、ReviewStatuses
 - 每个列表的元素数量应与对应 `*Constants.EnglishNames` 一致
 - 每个元素的 `Value`/`Name`/`DisplayName` 字段应正确映射
 

@@ -28,7 +28,7 @@ Admin Portal 提供 REST API 接口，用于管理学生、错题记录、OSS �
 
 ### 获取所有枚举选项
 
-获取系统中所有可用的枚举选项，包括上传状态、年级、科目、分类、审核状态和错题类型。
+获取系统中所有可用的枚举选项，包括上传状态、年级、科目、分类、审核状态。
 
 **接口:** `GET /api/admin/enum-options`
 
@@ -43,10 +43,11 @@ Admin Portal 提供 REST API 接口，用于管理学生、错题记录、OSS �
   "grades": [...],
   "subjects": [...],
   "classifications": [...],
-  "reviewStatuses": [...],
-  "mistakeTypes": [...]
+  "reviewStatuses": [...]
 }
 ```
+
+> **变更**：2026 年 6 月起不再返回 `mistakeTypes` 字段，错题错误类型已下线（参见 [ruoyu.common/constants.md](../services/ruoyu.common/docs/constants.md) 历史记录）。
 
 ---
 

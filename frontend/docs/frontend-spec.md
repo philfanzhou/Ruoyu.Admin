@@ -412,7 +412,7 @@ interface OssAuditRecordDto {
 interface EnumOptionsResponse {
   uploadStatuses: EnumOption[]; grades: EnumOption[];
   subjects: EnumOption[]; classifications: EnumOption[];
-  reviewStatuses: EnumOption[]; mistakeTypes: EnumOption[];
+  reviewStatuses: EnumOption[];
 }
 ```
 

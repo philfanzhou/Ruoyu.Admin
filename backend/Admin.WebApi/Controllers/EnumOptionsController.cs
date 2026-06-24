@@ -28,10 +28,6 @@ public class EnumOptionsController : ControllerBase
         .Select(kvp => new EnumOption(kvp.Key, kvp.Value, ReviewStatusConstants.DisplayNames[kvp.Key]))
         .ToList();
 
-    private static readonly List<EnumOption> MistakeTypes = ErrorTypeConstants.EnglishNames
-        .Select(kvp => new EnumOption(kvp.Key, kvp.Value, ErrorTypeConstants.DisplayNames[kvp.Key]))
-        .ToList();
-
     [HttpGet]
     public IActionResult GetAll()
     {
@@ -40,8 +36,7 @@ public class EnumOptionsController : ControllerBase
             Grades,
             Subjects,
             Classifications,
-            ReviewStatuses,
-            MistakeTypes
+            ReviewStatuses
         ));
     }
 }

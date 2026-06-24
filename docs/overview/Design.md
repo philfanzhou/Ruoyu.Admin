@@ -111,8 +111,7 @@
             │            │                   ├─ SubjectConstants
             │            │                   ├─ UploadStatusConstants
             │            │                   ├─ ClassificationConstants
-            │            │                   ├─ ReviewStatusConstants
-            │            │                   └─ ErrorTypeConstants
+            │            │                   └─ ReviewStatusConstants
             │            │
             ▼            ▼
      Student gRPC    Mistake gRPC

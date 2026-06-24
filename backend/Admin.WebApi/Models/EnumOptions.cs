@@ -7,6 +7,5 @@ public sealed record EnumOptionsResponse(
     List<EnumOption> Grades,
     List<EnumOption> Subjects,
     List<EnumOption> Classifications,
-    List<EnumOption> ReviewStatuses,
-    List<EnumOption> MistakeTypes
+    List<EnumOption> ReviewStatuses
 );

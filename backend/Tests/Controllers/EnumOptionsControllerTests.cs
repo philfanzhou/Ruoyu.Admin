@@ -105,22 +105,6 @@ public class EnumOptionsControllerTests
     }
 
     [Fact]
-    public void GetAll_MistakeTypes_HasExpectedCountAndMapping()
-    {
-        var result = _controller.GetAll();
-        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
-        var response = (EnumOptionsResponse)okResult.Value!;
-
-        response.MistakeTypes.Should().HaveCount(ErrorTypeConstants.EnglishNames.Count);
-
-        foreach (var option in response.MistakeTypes)
-        {
-            option.Name.Should().Be(ErrorTypeConstants.EnglishNames[option.Value]);
-            option.DisplayName.Should().Be(ErrorTypeConstants.DisplayNames[option.Value]);
-        }
-    }
-
-    [Fact]
     public void GetAll_AllListsAreNonEmpty()
     {
         var result = _controller.GetAll();
@@ -132,7 +116,6 @@ public class EnumOptionsControllerTests
         response.Subjects.Should().NotBeEmpty();
         response.Classifications.Should().NotBeEmpty();
         response.ReviewStatuses.Should().NotBeEmpty();
-        response.MistakeTypes.Should().NotBeEmpty();
     }
 
     [Fact]

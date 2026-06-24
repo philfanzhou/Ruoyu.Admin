@@ -58,7 +58,6 @@ public class MistakeControllerTests
             Grade = 3,
             SourceUploadId = "u1",
             ReviewStatus = MistakeProto.ReviewStatus.PendingReview,
-            Type = 1,
             CreatedAt = "1700000000",
             UpdatedAt = "1700000001"
         };
