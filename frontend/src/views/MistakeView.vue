@@ -294,7 +294,7 @@ const gradeOptions = ref<{ value: number; label: string }[]>([])
 const reviewStatusOptions = ref<{ value: number; label: string }[]>([
   { value: 1, label: '待审核' },
   { value: 2, label: '已确认' },
-  { value: 3, label: '已驳回' }
+  { value: 3, label: '已退回' }
 ])
 
 const showDetailDialogVisible = ref(false)
