@@ -1,0 +1,121 @@
+using System.Net.Http.Headers;
+using System.Text;
+using Microsoft.Extensions.Options;
+
+namespace Admin.WebApi;
+
+internal sealed class AssistantPortalProxyMiddleware
+{
+    private static readonly HashSet<string> ExcludedResponseHeaders = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Transfer-Encoding", "Content-Length", "Content-Type", "Connection", "Keep-Alive"
+    };
+
+    private readonly RequestDelegate _next;
+    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly AssistantPortalOptions _options;
+
+    public AssistantPortalProxyMiddleware(
+        RequestDelegate next,
+        IHttpClientFactory httpClientFactory,
+        IOptions<AssistantPortalOptions> options)
+    {
+        _next = next;
+        _httpClientFactory = httpClientFactory;
+        _options = options.Value;
+    }
+
+    public async Task InvokeAsync(HttpContext context)
+    {
+        if (!context.Request.Path.StartsWithSegments("/api/assistant-portal"))
+        {
+            await _next(context);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_options.Address) || string.IsNullOrWhiteSpace(_options.AdminApiKey))
+        {
+            context.Response.StatusCode = 503;
+            context.Response.ContentType = "application/json; charset=utf-8";
+            await context.Response.WriteAsync("{\"message\":\"Assistant portal not configured\"}").ConfigureAwait(false);
+            return;
+        }
+
+        var client = _httpClientFactory.CreateClient("AssistantPortal");
+
+        var pathValue = context.Request.Path.Value!;
+        string targetPath;
+        if (pathValue.StartsWith("/api/assistant-portal/admin", StringComparison.OrdinalIgnoreCase))
+        {
+            targetPath = pathValue.Replace("/api/assistant-portal/admin", "/api/admin");
+        }
+        else if (pathValue.StartsWith("/api/assistant-portal/auth", StringComparison.OrdinalIgnoreCase))
+        {
+            targetPath = pathValue.Replace("/api/assistant-portal/auth", "/api/auth");
+        }
+        else
+        {
+            targetPath = pathValue.Replace("/api/assistant-portal", "/api/admin");
+        }
+
+        var targetUri = $"{_options.Address.TrimEnd('/')}{targetPath}{context.Request.QueryString}";
+
+        var requestMessage = new HttpRequestMessage(new HttpMethod(context.Request.Method), targetUri);
+
+        if (context.Request.Body != null && !HttpMethods.IsGet(context.Request.Method))
+        {
+            using var reader = new StreamReader(context.Request.Body, Encoding.UTF8, leaveOpen: true);
+            var body = await reader.ReadToEndAsync().ConfigureAwait(false);
+            if (!string.IsNullOrEmpty(body))
+            {
+                var content = new StringContent(body, Encoding.UTF8);
+                content.Headers.ContentType = new MediaTypeHeaderValue(context.Request.ContentType ?? "application/json");
+                requestMessage.Content = content;
+            }
+        }
+
+        foreach (var header in context.Request.Headers)
+        {
+            if (header.Key.StartsWith("Content-", StringComparison.OrdinalIgnoreCase))
+                continue;
+        }
+
+        requestMessage.Headers.Add("X-Admin-Key", _options.AdminApiKey);
+
+        HttpResponseMessage response;
+        try
+        {
+            response = await client.SendAsync(requestMessage, HttpCompletionOption.ResponseHeadersRead).ConfigureAwait(false);
+        }
+        catch
+        {
+            context.Response.StatusCode = 502;
+            context.Response.ContentType = "application/json; charset=utf-8";
+            await context.Response.WriteAsync("{\"message\":\"Assistant portal service unreachable\"}").ConfigureAwait(false);
+            return;
+        }
+
+        context.Response.StatusCode = (int)response.StatusCode;
+
+        foreach (var header in response.Headers)
+        {
+            if (ExcludedResponseHeaders.Contains(header.Key)) continue;
+            context.Response.Headers[header.Key] = header.Value.ToArray();
+        }
+        foreach (var header in response.Content.Headers)
+        {
+            if (ExcludedResponseHeaders.Contains(header.Key)) continue;
+            context.Response.Headers[header.Key] = header.Value.ToArray();
+        }
+
+        await response.Content.CopyToAsync(context.Response.Body).ConfigureAwait(false);
+    }
+}
+
+public sealed class AssistantPortalOptions
+{
+    public const string SectionName = "AssistantPortal";
+
+    public string Address { get; set; } = "";
+    public string AdminApiKey { get; set; } = "";
+}

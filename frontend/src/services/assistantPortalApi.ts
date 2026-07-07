@@ -1,0 +1,131 @@
+import axios, { type AxiosInstance } from 'axios'
+
+export interface AssistantAccountDto {
+  id: number
+  userId: string | null
+  phone: string | null
+  username: string | null
+  subjects: number[]
+  createdAt: string
+  updatedAt: string
+}
+
+export interface GrantAssistantRequest {
+  subjects: number[]
+}
+
+export interface AssistantOperationResponse {
+  success: boolean
+  message?: string
+  data?: AssistantAccountDto
+}
+
+export interface SetSubjectsRequest {
+  subjects: number[]
+}
+
+export interface SetAssistantStudentsRequest {
+  studentIds: string[]
+}
+
+export interface SubjectOption {
+  value: number
+  name: string
+}
+
+class AssistantPortalApiClient {
+  private client: AxiosInstance
+
+  constructor() {
+    this.client = axios.create({
+      timeout: 10000,
+    })
+  }
+
+  async getAssistants() {
+    const response = await this.client.get<{ success: boolean; data: AssistantAccountDto[] }>('/api/assistant-portal/admin/assistants')
+    return response.data
+  }
+
+  async grantAssistant(userId: string, payload: GrantAssistantRequest) {
+    const response = await this.client.post<AssistantOperationResponse>(`/api/assistant-portal/admin/identity-users/${encodeURIComponent(userId)}/grant-assistant`, payload)
+    return response.data
+  }
+
+  async revokeAssistant(userId: string) {
+    const response = await this.client.post<AssistantOperationResponse>(`/api/assistant-portal/admin/identity-users/${encodeURIComponent(userId)}/revoke-assistant`)
+    return response.data
+  }
+
+  async getAssistantSubjects(userId: string) {
+    const response = await this.client.get<{ success: boolean; data: number[] }>(`/api/assistant-portal/admin/assistants/${encodeURIComponent(userId)}/subjects`)
+    return response.data
+  }
+
+  async setAssistantSubjects(userId: string, subjects: number[]) {
+    const response = await this.client.put<AssistantOperationResponse>(
+      `/api/assistant-portal/admin/assistants/${encodeURIComponent(userId)}/subjects`,
+      { subjects } as SetSubjectsRequest
+    )
+    return response.data
+  }
+
+  async addAssistantSubject(userId: string, subject: number) {
+    const response = await this.client.post<AssistantOperationResponse>(
+      `/api/assistant-portal/admin/assistants/${encodeURIComponent(userId)}/subjects/${subject}`
+    )
+    return response.data
+  }
+
+  async removeAssistantSubject(userId: string, subject: number) {
+    const response = await this.client.delete<AssistantOperationResponse>(
+      `/api/assistant-portal/admin/assistants/${encodeURIComponent(userId)}/subjects/${subject}`
+    )
+    return response.data
+  }
+
+  async getAvailableSubjects() {
+    const response = await this.client.get<{ success: boolean; data: SubjectOption[] }>('/api/assistant-portal/admin/available-subjects')
+    return response.data
+  }
+
+  // Student associations
+  async getAssistantStudents(userId: string) {
+    const response = await this.client.get<{ success: boolean; data: string[] }>(`/api/assistant-portal/admin/assistants/${encodeURIComponent(userId)}/students`)
+    return response.data
+  }
+
+  async setAssistantStudents(userId: string, studentIds: string[]) {
+    const response = await this.client.post<AssistantOperationResponse>(
+      `/api/assistant-portal/admin/assistants/${encodeURIComponent(userId)}/students`,
+      { studentIds } as SetAssistantStudentsRequest
+    )
+    return response.data
+  }
+
+  async addAssistantStudent(userId: string, studentId: string) {
+    const response = await this.client.post<AssistantOperationResponse>(
+      `/api/assistant-portal/admin/assistants/${encodeURIComponent(userId)}/students/${encodeURIComponent(studentId)}`
+    )
+    return response.data
+  }
+
+  async removeAssistantStudent(userId: string, studentId: string) {
+    const response = await this.client.delete<AssistantOperationResponse>(
+      `/api/assistant-portal/admin/assistants/${encodeURIComponent(userId)}/students/${encodeURIComponent(studentId)}`
+    )
+    return response.data
+  }
+}
+
+export const assistantPortalClient = new AssistantPortalApiClient()
+
+export default assistantPortalClient
+
+export function getAssistantPortalErrorMessage(error: unknown) {
+  if (axios.isAxiosError(error)) {
+    return (error.response?.data as { message?: string } | undefined)?.message ?? error.message
+  }
+  if (error instanceof Error) return error.message
+  return 'Unknown error occurred.'
+}

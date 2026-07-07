@@ -38,12 +38,20 @@ builder.Services.Configure<IdentityServiceOptions>(
 builder.Services.Configure<TeacherPortalOptions>(
     builder.Configuration.GetSection(TeacherPortalOptions.SectionName));
 
+builder.Services.Configure<AssistantPortalOptions>(
+    builder.Configuration.GetSection(AssistantPortalOptions.SectionName));
+
 builder.Services.AddHttpClient("IdentityService", client =>
 {
     client.Timeout = TimeSpan.FromSeconds(30);
 });
 
 builder.Services.AddHttpClient("TeacherPortal", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(10);
+});
+
+builder.Services.AddHttpClient("AssistantPortal", client =>
 {
     client.Timeout = TimeSpan.FromSeconds(10);
 });
@@ -133,9 +141,10 @@ else
 }
 app.Logger.LogInformation("OSS: {OssType}", useLocalOss ? "local" : "S3");
 app.Logger.LogInformation("Downstream: Student gRPC={StudentGrpc}, Mistake gRPC={MistakeGrpc}", grpcServiceAddress, mistakeGrpcAddress);
-app.Logger.LogInformation("Downstream: Identity={Identity}, Teacher Portal={TeacherPortal}",
+app.Logger.LogInformation("Downstream: Identity={Identity}, Teacher Portal={TeacherPortal}, Assistant Portal={AssistantPortal}",
     builder.Configuration["IdentityService:Address"] ?? "(not configured)",
-    builder.Configuration["TeacherPortal:Address"] ?? "(not configured)");
+    builder.Configuration["TeacherPortal:Address"] ?? "(not configured)",
+    builder.Configuration["AssistantPortal:Address"] ?? "(not configured)");
 
 using (var scope = app.Services.CreateScope())
 {
@@ -166,6 +175,7 @@ if (app.Environment.IsDevelopment())
 }
 app.UseMiddleware<IdentityProxyMiddleware>();
 app.UseMiddleware<TeacherPortalProxyMiddleware>();
+app.UseMiddleware<AssistantPortalProxyMiddleware>();
 app.MapControllers();
 
 // ========== Static files & SPA ==========

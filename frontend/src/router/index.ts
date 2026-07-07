@@ -20,6 +20,12 @@ const router = createRouter({
       meta: { title: '教师管理' }
     },
     {
+      path: '/assistants',
+      name: 'assistants',
+      component: () => import('../views/AssistantView.vue'),
+      meta: { title: '助教管理' }
+    },
+    {
       path: '/upload-records',
       name: 'upload-records',
       component: () => import('../views/UploadRecordView.vue'),

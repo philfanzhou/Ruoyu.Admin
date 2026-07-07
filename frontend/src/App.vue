@@ -19,6 +19,10 @@
             <el-icon><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M5 13.18v4L12 21l7-3.82v-4L12 17l-7-3.82zM12 3L1 9l11 6 9-4.91V17h2V9L12 3z"/></svg></el-icon>
             <span>教师管理</span>
           </el-menu-item>
+          <el-menu-item index="/assistants">
+            <el-icon><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg></el-icon>
+            <span>助教管理</span>
+          </el-menu-item>
           <el-sub-menu index="data-management">
             <template #title>
               <el-icon><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 3L2 9l10 6 10-6-10-6zm0 8L2 9l10 6 10-6M12 19l-10-6v6l10 6 10-6v-6"/></svg></el-icon>
