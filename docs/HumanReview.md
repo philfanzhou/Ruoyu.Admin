@@ -38,13 +38,10 @@
 - **C**：暂不处理，当前仅内网使用
 - **批复**：
 
-### HR-07: TeacherPortalProxyMiddleware 丢弃所有请求头
+### HR-07: TeacherPortalProxyMiddleware 丢弃所有请求头 — 已修复
 
 - **问题**：TeacherPortalProxyMiddleware.cs:77-81 的 foreach 循环未将请求头赋值到 requestMessage，导致代理请求丢失所有原始头
-- **A** (推荐)：修复循环逻辑，将非 Content- 头转发到代理请求
-- **B**：使用 HeaderUtilities 过滤已知跳过头，其余全部转发
-- **C**：暂不处理，当前功能可用（AdminApiKey 另行添加）
-- **批复**：
+- **修复**：两个代理中间件（Teacher/Assistant）的 header 转发循环已修复，跳过 Content-* 和 Host 头，其余头用 TryAddWithoutValidation 转发
 
 ### HR-08: 多个 Controller 未捕获 RpcException
 

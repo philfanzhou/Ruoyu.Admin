@@ -16,8 +16,16 @@
         size="small"
       >
         <el-table-column prop="userId" label="User ID" width="220" show-overflow-tooltip />
-        <el-table-column prop="phone" label="手机号" width="120" />
-        <el-table-column prop="username" label="用户名" width="120" />
+        <el-table-column label="手机号" width="120">
+          <template #default="{ row }">
+            {{ row.phone || identityUserMap[row.userId]?.phone || '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column label="用户名" width="120">
+          <template #default="{ row }">
+            {{ row.username || identityUserMap[row.userId]?.displayName || identityUserMap[row.userId]?.username || '-' }}
+          </template>
+        </el-table-column>
         <el-table-column label="备注" min-width="150">
           <template #default="{ row }">
             {{ getUserRemark(row.userId) }}

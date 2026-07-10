@@ -45,6 +45,13 @@ class TeacherPortalApiClient {
     })
   }
 
+  private checkSuccess<T extends { success: boolean; message?: string }>(result: T): T {
+    if (!result.success) {
+      throw new Error(result.message || 'Operation failed')
+    }
+    return result
+  }
+
   async getTeachers() {
     const response = await this.client.get<{ success: boolean; data: TeacherAccountDto[] }>('/api/teacher-portal/admin/teachers')
     return response.data
@@ -52,17 +59,17 @@ class TeacherPortalApiClient {
 
   async addTeacherByUserId(payload: AddTeacherByUserIdRequest) {
     const response = await this.client.post<TeacherOperationResponse>('/api/teacher-portal/admin/teachers/by-user', payload)
-    return response.data
+    return this.checkSuccess(response.data)
   }
 
   async grantTeacher(userId: string, payload: GrantTeacherRequest) {
     const response = await this.client.post<TeacherOperationResponse>(`/api/teacher-portal/admin/identity-users/${encodeURIComponent(userId)}/grant-teacher`, payload)
-    return response.data
+    return this.checkSuccess(response.data)
   }
 
   async removeTeacherByUserId(userId: string) {
     const response = await this.client.delete<TeacherOperationResponse>(`/api/teacher-portal/admin/teachers/by-user/${encodeURIComponent(userId)}`)
-    return response.data
+    return this.checkSuccess(response.data)
   }
 
   async checkTeacher(userId: string, phone?: string) {
@@ -83,21 +90,21 @@ class TeacherPortalApiClient {
       `/api/teacher-portal/admin/teachers/${encodeURIComponent(userId)}/subjects`,
       { subjects } as SetSubjectsRequest
     )
-    return response.data
+    return this.checkSuccess(response.data)
   }
 
   async addTeacherSubject(userId: string, subject: number) {
     const response = await this.client.post<TeacherOperationResponse>(
       `/api/teacher-portal/admin/teachers/${encodeURIComponent(userId)}/subjects/${subject}`
     )
-    return response.data
+    return this.checkSuccess(response.data)
   }
 
   async removeTeacherSubject(userId: string, subject: number) {
     const response = await this.client.delete<TeacherOperationResponse>(
       `/api/teacher-portal/admin/teachers/${encodeURIComponent(userId)}/subjects/${subject}`
     )
-    return response.data
+    return this.checkSuccess(response.data)
   }
 
   async getAvailableSubjects() {

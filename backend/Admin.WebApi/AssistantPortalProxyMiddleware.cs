@@ -78,6 +78,9 @@ internal sealed class AssistantPortalProxyMiddleware
         {
             if (header.Key.StartsWith("Content-", StringComparison.OrdinalIgnoreCase))
                 continue;
+            if (string.Equals(header.Key, "Host", StringComparison.OrdinalIgnoreCase))
+                continue;
+            requestMessage.Headers.TryAddWithoutValidation(header.Key, header.Value.ToArray());
         }
 
         requestMessage.Headers.Add("X-Admin-Key", _options.AdminApiKey);
