@@ -16,7 +16,6 @@
 | 4 | 出站 | HTTP Proxy | Identity Service | HTTP/JSON | `IdentityService:Address` (默认 `:5002`) | 身份认证代理 | `IdentityProxyMiddleware`: `/api/identity/*` → `{Address}/api/*` |
 | 5 | 出站 | HTTP Client | Identity Service | HTTP/JSON | `IdentityService:Address` | 批量查询账户 | `POST {Address}/api/gateway/users/batch` (带 `X-Admin-AppId` + `X-Admin-AppSecret`) |
 | 6 | 出站 | HTTP Proxy | Teacher Portal | HTTP/JSON | `TeacherPortal:Address` (默认 `:5004`) | 教师端代理 | `TeacherPortalProxyMiddleware`: `/api/teacher-portal/*` → `{Address}/api/*` (带 `X-Admin-Key`) |
-| 6a | 出站 | HTTP Proxy | Assistant Portal | HTTP/JSON | `AssistantPortal:Address` (默认 `:5021`) | 助教端代理 | `AssistantPortalProxyMiddleware`: `/api/assistant-portal/*` → `{Address}/api/*` (带 `X-Admin-Key`) |
 | 7 | 出站 | gRPC Client | Student Service | gRPC (h2c) | `StudentGrpcService:Address` (默认 `:5005`) | 图片预签名 URL | `StudentLearningGrpcService`: GetPresignedUrl |
 | 8 | 出站 | gRPC Client | Mistake Service | gRPC (h2c) | `MistakeGrpcService:Address` (默认 `:5006`) | 图片预签名 URL | `MistakeGrpcService`: GetPresignedUrl |
 | 9 | 出站 | gRPC Client | Student Service | gRPC (h2c) | `StudentGrpcService:Address` (默认 `:5005`) | 图片迁移 | `StudentLearningGrpcService`: MigrateImagesToMistake |
@@ -43,8 +42,6 @@
 | Identity Service 不可达 | Identity | 返回 502 | `{"message":"Identity service unreachable"}` |
 | Teacher Portal 不可达 | Teacher Portal | 返回 502 | `{"message":"Teacher portal service unreachable"}` |
 | Teacher Portal 未配置 | Teacher Portal | 返回 503 | `{"message":"Teacher portal not configured"}` |
-| Assistant Portal 不可达 | Assistant Portal | 返回 502 | `{"message":"Assistant portal service unreachable"}` |
-| Assistant Portal 未配置 | Assistant Portal | 返回 503 | `{"message":"Assistant portal not configured"}` |
 | Identity 批量查询失败 | Identity | 记录警告，返回空列表 | 200 OK + `[]` |
 
 ### OSS 操作失败
@@ -80,6 +77,5 @@
 |------|------|----------|
 | Identity HTTP Client | 30 秒 | `HttpClient.Timeout` |
 | Teacher Portal HTTP Client | 10 秒 | `HttpClient.Timeout` |
-| Assistant Portal HTTP Client | 10 秒 | `HttpClient.Timeout` |
 | gRPC Client | 默认 [待确认] | `AddGrpcClient` 默认配置 |
 | OSS 操作 | 默认 [待确认] | `IOssService` 实现决定 |
