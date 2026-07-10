@@ -206,7 +206,7 @@
           <el-checkbox
             v-for="subject in subjectOptions"
             :key="subject.value"
-            :label="subject.value"
+            :value="subject.value"
             style="width: 120px; margin: 8px 0"
           >
             {{ subject.label }}
