@@ -270,7 +270,7 @@ async function loadGradeOptions() {
 async function loadSubjectOptions() {
   try {
     const subjects = await studentAdminApi.getSubjectOptions()
-    subjectOptions.value = subjects.map((s: any) => ({ value: s.value, label: s.displayName || s.name }))
+    subjectOptions.value = subjects.map((s: any) => ({ value: s.value, label: s.label }))
   } catch (error) {
     console.error('Failed to load subjects:', error)
   }
