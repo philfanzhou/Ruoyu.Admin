@@ -26,6 +26,10 @@ export default defineConfig({
         target: 'http://localhost:5020',
         changeOrigin: true,
       },
+      '/api/assistant-portal': {
+        target: 'http://localhost:5020',
+        changeOrigin: true,
+      },
     },
   },
   build: {

@@ -317,6 +317,7 @@ async function loadAvailableSubjects() {
     availableSubjects.value = result.data
   } catch (error) {
     console.error('Failed to load subjects:', error)
+    ElMessage.error('加载助教学科列表失败，请检查助教服务配置')
   }
 }
 
