@@ -1,10 +1,11 @@
+using System.Net;
 using Admin.WebApi.Controllers;
 using FluentAssertions;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Ruoyu.Study.Common.Oss;
-using SProto = Ruoyu.Study.Student.Contract.Protos;
+using Ruoyu.Study.MistakeBff.GrpcClients;
 using MistakeProto = Ruoyu.Study.Mistake.Contract.Protos;
 using Grpc.Core;
 using Xunit;
@@ -13,7 +14,7 @@ namespace Admin.WebApi.Tests.Controllers;
 
 public class OssUploadRecordControllerLegacyTests
 {
-    private readonly Mock<SProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient> _learningClient;
+    private readonly Mock<IStudentHttpClient> _studentClient;
     private readonly Mock<MistakeProto.MistakeGrpcService.MistakeGrpcServiceClient> _mistakeClient;
     private readonly Mock<ILogger<OssUploadRecordController>> _logger;
     private readonly Mock<IOssService> _ossService;
@@ -21,13 +22,13 @@ public class OssUploadRecordControllerLegacyTests
 
     public OssUploadRecordControllerLegacyTests()
     {
-        _learningClient = new Mock<SProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient>();
+        _studentClient = new Mock<IStudentHttpClient>();
         _mistakeClient = new Mock<MistakeProto.MistakeGrpcService.MistakeGrpcServiceClient>();
         _logger = new Mock<ILogger<OssUploadRecordController>>();
         _ossService = new Mock<IOssService>();
 
         _controller = new OssUploadRecordController(
-            _learningClient.Object,
+            _studentClient.Object,
             _mistakeClient.Object,
             _logger.Object,
             _ossService.Object
@@ -276,17 +277,10 @@ public class OssUploadRecordControllerLegacyTests
                 It.IsAny<CancellationToken>()))
             .Returns(CreateAsyncCall(completeResponse));
 
-        var deleteResponse = new SProto.BoolResponse
-        {
-            Success = true
-        };
-        _learningClient
-            .Setup(c => c.DeleteUploadRecordAfterReviewAsync(
-                It.IsAny<SProto.DeleteUploadRecordAfterReviewRequest>(),
-                It.IsAny<Metadata>(),
-                It.IsAny<DateTime?>(),
-                It.IsAny<CancellationToken>()))
-            .Returns(CreateAsyncCall(deleteResponse));
+        // DeleteUploadRecordAfterReviewAsync returns Task; default Moq behavior returns completed task (success)
+        _studentClient
+            .Setup(c => c.DeleteUploadRecordAfterReviewAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
 
         var result = await _controller.LegacyClean("test-record-id");
 
@@ -328,18 +322,10 @@ public class OssUploadRecordControllerLegacyTests
                 It.IsAny<CancellationToken>()))
             .Returns(CreateAsyncCall(completeResponse));
 
-        var deleteResponse = new SProto.BoolResponse
-        {
-            Success = false,
-            ErrorMessage = "Delete failed"
-        };
-        _learningClient
-            .Setup(c => c.DeleteUploadRecordAfterReviewAsync(
-                It.IsAny<SProto.DeleteUploadRecordAfterReviewRequest>(),
-                It.IsAny<Metadata>(),
-                It.IsAny<DateTime?>(),
-                It.IsAny<CancellationToken>()))
-            .Returns(CreateAsyncCall(deleteResponse));
+        // DeleteUploadRecordAfterReviewAsync throws HttpRequestException on failure; controller maps to BadRequest
+        _studentClient
+            .Setup(c => c.DeleteUploadRecordAfterReviewAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("Delete failed"));
 
         var result = await _controller.LegacyClean("test-record-id");
 
@@ -411,23 +397,17 @@ public class OssUploadRecordControllerLegacyTests
                 It.IsAny<CancellationToken>()))
             .Returns(CreateAsyncCall(completeResponse));
 
-        var removeResponse = new SProto.RemoveImagesFromRecordResponse { Success = true };
-        _learningClient
+        _studentClient
             .Setup(c => c.RemoveImagesFromRecordAsync(
-                It.IsAny<SProto.RemoveImagesFromRecordRequest>(),
-                It.IsAny<Metadata>(),
-                It.IsAny<DateTime?>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<string>>(),
                 It.IsAny<CancellationToken>()))
-            .Returns(CreateAsyncCall(removeResponse));
+            .ReturnsAsync(new RemoveImagesResult { Success = true });
 
-        var deleteResponse = new SProto.BoolResponse { Success = true };
-        _learningClient
-            .Setup(c => c.DeleteUploadRecordAfterReviewAsync(
-                It.IsAny<SProto.DeleteUploadRecordAfterReviewRequest>(),
-                It.IsAny<Metadata>(),
-                It.IsAny<DateTime?>(),
-                It.IsAny<CancellationToken>()))
-            .Returns(CreateAsyncCall(deleteResponse));
+        _studentClient
+            .Setup(c => c.DeleteUploadRecordAfterReviewAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
 
         // Act
         var result = await _controller.LegacyClean("test-record-id");
@@ -437,10 +417,10 @@ public class OssUploadRecordControllerLegacyTests
         var typed = okResult.Value!;
         typed.GetType().GetProperty("success")!.GetValue(typed).Should().Be(true);
 
-        _learningClient.Verify(c => c.RemoveImagesFromRecordAsync(
-            It.IsAny<SProto.RemoveImagesFromRecordRequest>(),
-            It.IsAny<Metadata>(),
-            It.IsAny<DateTime?>(),
+        _studentClient.Verify(c => c.RemoveImagesFromRecordAsync(
+            It.IsAny<string>(),
+            It.IsAny<string>(),
+            It.IsAny<List<string>>(),
             It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -474,14 +454,9 @@ public class OssUploadRecordControllerLegacyTests
                 It.IsAny<CancellationToken>()))
             .Returns(CreateAsyncCall(completeResponse));
 
-        var deleteResponse = new SProto.BoolResponse { Success = true };
-        _learningClient
-            .Setup(c => c.DeleteUploadRecordAfterReviewAsync(
-                It.IsAny<SProto.DeleteUploadRecordAfterReviewRequest>(),
-                It.IsAny<Metadata>(),
-                It.IsAny<DateTime?>(),
-                It.IsAny<CancellationToken>()))
-            .Returns(CreateAsyncCall(deleteResponse));
+        _studentClient
+            .Setup(c => c.DeleteUploadRecordAfterReviewAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
 
         // Act
         var result = await _controller.LegacyClean("test-record-id");
@@ -489,10 +464,10 @@ public class OssUploadRecordControllerLegacyTests
         // Assert
         result.Should().BeOfType<OkObjectResult>();
 
-        _learningClient.Verify(c => c.RemoveImagesFromRecordAsync(
-            It.IsAny<SProto.RemoveImagesFromRecordRequest>(),
-            It.IsAny<Metadata>(),
-            It.IsAny<DateTime?>(),
+        _studentClient.Verify(c => c.RemoveImagesFromRecordAsync(
+            It.IsAny<string>(),
+            It.IsAny<string>(),
+            It.IsAny<List<string>>(),
             It.IsAny<CancellationToken>()), Times.Never);
     }
 
@@ -553,13 +528,13 @@ public class OssUploadRecordControllerLegacyTests
                 It.IsAny<CancellationToken>()))
             .Returns(CreateAsyncCall(completeResponse));
 
-        _learningClient
+        _studentClient
             .Setup(c => c.RemoveImagesFromRecordAsync(
-                It.IsAny<SProto.RemoveImagesFromRecordRequest>(),
-                It.IsAny<Metadata>(),
-                It.IsAny<DateTime?>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<List<string>>(),
                 It.IsAny<CancellationToken>()))
-            .Throws(new RpcException(new Status(StatusCode.Unavailable, "Service unavailable")));
+            .ThrowsAsync(new HttpRequestException("Service unavailable"));
 
         // Act
         var result = await _controller.LegacyClean("test-record-id");

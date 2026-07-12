@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using MistakeProto = Ruoyu.Study.Mistake.Contract.Protos;
 using Admin.WebApi.Models;
-using SProto = Ruoyu.Study.Student.Contract.Protos;
+using Ruoyu.Study.MistakeBff.GrpcClients;
 
 namespace Admin.WebApi.Controllers;
 
@@ -10,16 +10,16 @@ namespace Admin.WebApi.Controllers;
 public class MistakeController : ControllerBase
 {
     private readonly MistakeProto.MistakeGrpcService.MistakeGrpcServiceClient _mistakeClient;
-    private readonly SProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient _studentLearningClient;
+    private readonly IStudentHttpClient _studentClient;
     private readonly ILogger<MistakeController> _logger;
 
     public MistakeController(
         MistakeProto.MistakeGrpcService.MistakeGrpcServiceClient mistakeClient,
-        SProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient studentLearningClient,
+        IStudentHttpClient studentClient,
         ILogger<MistakeController> logger)
     {
         _mistakeClient = mistakeClient;
-        _studentLearningClient = studentLearningClient;
+        _studentClient = studentClient;
         _logger = logger;
     }
 
@@ -62,7 +62,7 @@ public class MistakeController : ControllerBase
                 if (string.IsNullOrWhiteSpace(sid)) continue;
                 try
                 {
-                    var student = await _studentLearningClient.GetStudentAsync(new SProto.GetStudentRequest { StudentId = sid });
+                    var student = await _studentClient.GetStudentAsync(sid);
                     studentNameMap[sid] = student.Name;
                 }
                 catch
@@ -117,7 +117,7 @@ public class MistakeController : ControllerBase
             string studentName = item.StudentId;
             try
             {
-                var student = await _studentLearningClient.GetStudentAsync(new SProto.GetStudentRequest { StudentId = item.StudentId });
+                var student = await _studentClient.GetStudentAsync(item.StudentId);
                 studentName = student.Name;
             }
             catch { }
@@ -178,7 +178,7 @@ public class MistakeController : ControllerBase
                 if (string.IsNullOrWhiteSpace(sid)) continue;
                 try
                 {
-                    var student = await _studentLearningClient.GetStudentAsync(new SProto.GetStudentRequest { StudentId = sid });
+                    var student = await _studentClient.GetStudentAsync(sid);
                     studentNameMap[sid] = student.Name;
                 }
                 catch
@@ -237,7 +237,7 @@ public class MistakeController : ControllerBase
             string studentName = item.StudentId;
             try
             {
-                var student = await _studentLearningClient.GetStudentAsync(new SProto.GetStudentRequest { StudentId = item.StudentId });
+                var student = await _studentClient.GetStudentAsync(item.StudentId);
                 studentName = student.Name;
             }
             catch { }

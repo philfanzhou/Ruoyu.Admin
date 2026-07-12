@@ -2,7 +2,7 @@ using Grpc.Core;
 using Admin.WebApi.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Ruoyu.Study.Common.Oss;
-using SProto = Ruoyu.Study.Student.Contract.Protos;
+using Ruoyu.Study.MistakeBff.GrpcClients;
 using MProto = Ruoyu.Study.Mistake.Contract.Protos;
 
 namespace Admin.WebApi.Services;
@@ -94,7 +94,7 @@ public class OssAuditWorker : BackgroundService
         {
             var ossService = scope.ServiceProvider.GetRequiredService<IOssService>();
             var studentClient = scope.ServiceProvider
-                .GetRequiredService<SProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient>();
+                .GetRequiredService<IStudentHttpClient>();
             var mistakeClient = scope.ServiceProvider
                 .GetRequiredService<MProto.MistakeGrpcService.MistakeGrpcServiceClient>();
 
@@ -104,7 +104,7 @@ public class OssAuditWorker : BackgroundService
                 registeredPaths = await GetRegisteredOssPathsAsync(studentClient, cancellationToken);
                 _logger.LogInformation("Got {Count} registered paths from Student service (aggregated from upload records)", registeredPaths.Count);
             }
-            catch (RpcException ex) when (ex.StatusCode == StatusCode.Unavailable)
+            catch (HttpRequestException ex)
             {
                 _logger.LogError("Student service unavailable, aborting audit: {Message}", ex.Message);
                 auditRun.Status = 2;
@@ -202,7 +202,7 @@ public class OssAuditWorker : BackgroundService
     /// 通过分页获取所有上传记录，本地聚合 image_paths，替代原 GetRegisteredOssPaths 专用接口。
     /// </summary>
     private static async Task<HashSet<string>> GetRegisteredOssPathsAsync(
-        SProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient client,
+        IStudentHttpClient client,
         CancellationToken cancellationToken)
     {
         var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -211,9 +211,7 @@ public class OssAuditWorker : BackgroundService
 
         while (true)
         {
-            var response = await client.GetAllUploadRecordsAsync(
-                new SProto.GetAllUploadRecordsRequest { Page = page, PageSize = pageSize },
-                cancellationToken: cancellationToken);
+            var response = await client.GetAllUploadRecordsAsync(null, page, pageSize, null, cancellationToken);
 
             foreach (var record in response.Items)
             {

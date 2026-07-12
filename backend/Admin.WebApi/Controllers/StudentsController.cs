@@ -1,9 +1,9 @@
+using System.Net;
 using Microsoft.AspNetCore.Mvc;
-using Grpc.Core;
 using Ruoyu.Study.Common.Constants;
+using Ruoyu.Study.MistakeBff.GrpcClients;
 using Admin.WebApi.Models;
-using GrpcStatusCode = Grpc.Core.StatusCode;
-using SProto = Ruoyu.Study.Student.Contract.Protos;
+using StudentHttpDto = Ruoyu.Study.MistakeBff.GrpcClients.StudentDto;
 
 namespace Admin.WebApi.Controllers;
 
@@ -27,14 +27,14 @@ public class StudentsController : ControllerBase
         [12] = "高中三年级",
     };
 
-    private readonly SProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient _grpcClient;
+    private readonly IStudentHttpClient _studentClient;
     private readonly ILogger<StudentsController> _logger;
 
     public StudentsController(
-        SProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient grpcClient,
+        IStudentHttpClient studentClient,
         ILogger<StudentsController> logger)
     {
-        _grpcClient = grpcClient;
+        _studentClient = studentClient;
         _logger = logger;
     }
 
@@ -50,21 +50,13 @@ public class StudentsController : ControllerBase
             var normalizedPage = page.GetValueOrDefault(1) < 1 ? 1 : page.GetValueOrDefault(1);
             var normalizedPageSize = Math.Clamp(pageSize.GetValueOrDefault(20), 1, 100);
 
-            var request = new SProto.ListStudentsRequest
-            {
-                Name = name ?? "",
-                Grade = grade.HasValue && grade.Value > 0 ? (SProto.Grade)grade.Value : SProto.Grade.Unspecified,
-                Page = normalizedPage,
-                PageSize = normalizedPageSize
-            };
-
-            var response = await _grpcClient.ListStudentsAsync(request);
+            var response = await _studentClient.ListStudentsAsync(grade, normalizedPage, normalizedPageSize, name);
             var dtos = response.Items.Select(ToDto).ToList();
-            return Ok(new PagedResponse<StudentDto>(dtos, response.TotalCount, response.Page, response.PageSize));
+            return Ok(new PagedResponse<Models.StudentDto>(dtos, response.TotalCount, response.Page, response.PageSize));
         }
-        catch (RpcException ex) when (ex.StatusCode == GrpcStatusCode.InvalidArgument)
+        catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.BadRequest)
         {
-            return BadRequest(new ErrorResponse(ex.Status.Detail));
+            return BadRequest(new ErrorResponse(ex.Message));
         }
     }
 
@@ -83,17 +75,16 @@ public class StudentsController : ControllerBase
     {
         try
         {
-            var request = new SProto.GetStudentRequest { StudentId = studentId.ToString() };
-            var response = await _grpcClient.GetStudentAsync(request);
+            var response = await _studentClient.GetStudentAsync(studentId.ToString());
             return Ok(ToDto(response));
         }
-        catch (RpcException ex) when (ex.StatusCode == GrpcStatusCode.NotFound)
+        catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
         {
-            return NotFound(new ErrorResponse(ex.Status.Detail));
+            return NotFound(new ErrorResponse(ex.Message));
         }
-        catch (RpcException ex) when (ex.StatusCode == GrpcStatusCode.InvalidArgument)
+        catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.BadRequest)
         {
-            return BadRequest(new ErrorResponse(ex.Status.Detail));
+            return BadRequest(new ErrorResponse(ex.Message));
         }
     }
 
@@ -115,19 +106,12 @@ public class StudentsController : ControllerBase
             if (invalidIds.Count > 0)
                 return BadRequest(new ErrorResponse($"Invalid Identity Account ID format: {string.Join(", ", invalidIds)}"));
 
-            var grpcRequest = new SProto.CreateStudentRequest
-            {
-                Name = request.Name.Trim(),
-                Grade = (SProto.Grade)request.Grade,
-                IdentityAccountIds = { request.IdentityAccountIds }
-            };
-
-            var response = await _grpcClient.CreateStudentAsync(grpcRequest);
+            var response = await _studentClient.CreateStudentAsync(request.Name.Trim(), request.Grade, request.IdentityAccountIds);
             return Ok(ToDto(response));
         }
-        catch (RpcException ex) when (ex.StatusCode == GrpcStatusCode.InvalidArgument)
+        catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.BadRequest)
         {
-            return BadRequest(new ErrorResponse(ex.Status.Detail));
+            return BadRequest(new ErrorResponse(ex.Message));
         }
     }
 
@@ -142,31 +126,24 @@ public class StudentsController : ControllerBase
             if (!IsValidGrade(request.Grade))
                 return BadRequest(new ErrorResponse("Invalid grade value."));
 
-            var grpcRequest = new SProto.UpdateStudentRequest
-            {
-                StudentId = studentId.ToString(),
-                Name = request.Name.Trim(),
-                Grade = (SProto.Grade)request.Grade
-            };
-
             if (request.IdentityAccountIds != null)
             {
                 var invalidIds = request.IdentityAccountIds.Where(id => !IsValidGuid(id)).ToList();
                 if (invalidIds.Count > 0)
                     return BadRequest(new ErrorResponse($"Invalid Identity Account ID format: {string.Join(", ", invalidIds)}"));
-                grpcRequest.IdentityAccountIds.AddRange(request.IdentityAccountIds);
             }
 
-            var response = await _grpcClient.UpdateStudentAsync(grpcRequest);
-
-            if (!response.Success)
-                return NotFound(new ErrorResponse(response.ErrorMessage));
+            await _studentClient.UpdateStudentAsync(studentId.ToString(), request.Name.Trim(), request.Grade, request.IdentityAccountIds);
 
             return Ok(new OperationResponse(true, "Student updated successfully."));
         }
-        catch (RpcException ex) when (ex.StatusCode == GrpcStatusCode.InvalidArgument)
+        catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
         {
-            return BadRequest(new ErrorResponse(ex.Status.Detail));
+            return NotFound(new ErrorResponse(ex.Message));
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.BadRequest)
+        {
+            return BadRequest(new ErrorResponse(ex.Message));
         }
     }
 
@@ -175,26 +152,24 @@ public class StudentsController : ControllerBase
     {
         try
         {
-            var request = new SProto.DeleteStudentRequest { StudentId = studentId.ToString() };
-            var response = await _grpcClient.DeleteStudentAsync(request);
-
-            if (!response.Success)
-                return NotFound(new ErrorResponse(response.ErrorMessage));
-
+            await _studentClient.DeleteStudentAsync(studentId.ToString());
             return Ok(new OperationResponse(true, "Student deleted."));
         }
-        catch (RpcException ex) when (ex.StatusCode == GrpcStatusCode.InvalidArgument)
+        catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
         {
-            return BadRequest(new ErrorResponse(ex.Status.Detail));
+            return NotFound(new ErrorResponse(ex.Message));
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.BadRequest)
+        {
+            return BadRequest(new ErrorResponse(ex.Message));
         }
     }
 
     [HttpGet("{studentId:guid}/accounts")]
     public async Task<IActionResult> GetIdentityAccountsByStudentId(Guid studentId)
     {
-        var request = new SProto.GetAccountsByStudentIdRequest { StudentId = studentId.ToString() };
-        var response = await _grpcClient.GetIdentityAccountsByStudentIdAsync(request);
-        return Ok((IReadOnlyList<string>)response.AccountIds.ToList());
+        var accountIds = await _studentClient.GetIdentityAccountsByStudentIdAsync(studentId.ToString());
+        return Ok((IReadOnlyList<string>)accountIds);
     }
 
     [HttpPost("{studentId:guid}/accounts")]
@@ -208,22 +183,17 @@ public class StudentsController : ControllerBase
             if (!IsValidGuid(request.IdentityAccountId))
                 return BadRequest(new ErrorResponse("Invalid Identity Account ID format. Must be a valid GUID."));
 
-            var grpcRequest = new SProto.LinkAccountRequest
-            {
-                StudentId = studentId.ToString(),
-                IdentityAccountId = request.IdentityAccountId
-            };
-
-            var response = await _grpcClient.LinkIdentityAccountToStudentAsync(grpcRequest);
-
-            if (!response.Success)
-                return NotFound(new ErrorResponse(response.ErrorMessage));
+            await _studentClient.LinkIdentityAccountToStudentAsync(studentId.ToString(), request.IdentityAccountId);
 
             return Ok(new OperationResponse(true, "Identity account linked to student successfully."));
         }
-        catch (RpcException ex) when (ex.StatusCode == GrpcStatusCode.InvalidArgument)
+        catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
         {
-            return BadRequest(new ErrorResponse(ex.Status.Detail));
+            return NotFound(new ErrorResponse(ex.Message));
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.BadRequest)
+        {
+            return BadRequest(new ErrorResponse(ex.Message));
         }
     }
 
@@ -232,34 +202,24 @@ public class StudentsController : ControllerBase
     {
         try
         {
-            var request = new SProto.UnlinkAccountRequest
-            {
-                StudentId = studentId.ToString(),
-                AccountId = accountId.ToString()
-            };
-
-            var response = await _grpcClient.UnlinkIdentityAccountFromStudentAsync(request);
-
-            if (!response.Success)
-                return NotFound(new ErrorResponse(response.ErrorMessage));
+            await _studentClient.UnlinkIdentityAccountFromStudentAsync(studentId.ToString(), accountId.ToString());
 
             return Ok(new OperationResponse(true, "Identity account unlinked from student."));
         }
-        catch (RpcException ex) when (ex.StatusCode == GrpcStatusCode.InvalidArgument)
+        catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
         {
-            return BadRequest(new ErrorResponse(ex.Status.Detail));
+            return NotFound(new ErrorResponse(ex.Message));
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.BadRequest)
+        {
+            return BadRequest(new ErrorResponse(ex.Message));
         }
     }
 
     [HttpGet("{studentId:guid}/open-subjects")]
     public async Task<IActionResult> GetStudentOpenSubjects(Guid studentId, [FromQuery] bool? activeOnly)
     {
-        var request = new SProto.GetStudentOpenSubjectsRequest
-        {
-            StudentId = studentId.ToString(),
-            ActiveOnly = activeOnly ?? false
-        };
-        var response = await _grpcClient.GetStudentOpenSubjectsAsync(request);
+        var response = await _studentClient.GetStudentOpenSubjectsAsync(studentId.ToString(), activeOnly ?? false);
 
         var dtos = response.Subjects.Select(s => new OpenSubjectDto(
             s.Id,
@@ -276,10 +236,7 @@ public class StudentsController : ControllerBase
     {
         try
         {
-            var grpcRequest = new SProto.SetOpenSubjectsRequest
-            {
-                StudentId = studentId.ToString()
-            };
+            var items = new List<SetOpenSubjectItem>();
 
             if (request.Subjects != null && request.Subjects.Count > 0)
             {
@@ -302,42 +259,38 @@ public class StudentsController : ControllerBase
                         endDate = parsed;
                     }
 
-                    grpcRequest.Subjects.Add(new SProto.OpenSubjectItem
+                    items.Add(new SetOpenSubjectItem
                     {
                         Subject = subject.Subject,
                         OpenStartDate = subject.OpenStartDate,
-                        OpenEndDate = endDate?.ToString(SubjectConstants.DateFormat) ?? ""
+                        OpenEndDate = endDate?.ToString(SubjectConstants.DateFormat)
                     });
                 }
             }
 
-            var response = await _grpcClient.SetStudentOpenSubjectsAsync(grpcRequest);
-
-            if (!response.Success)
-                return BadRequest(new ErrorResponse(response.ErrorMessage));
+            await _studentClient.SetStudentOpenSubjectsAsync(studentId.ToString(), items);
 
             return Ok(new OperationResponse(true, "Open subjects updated successfully."));
         }
-        catch (RpcException ex) when (ex.StatusCode == GrpcStatusCode.InvalidArgument)
+        catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.BadRequest)
         {
-            return BadRequest(new ErrorResponse(ex.Status.Detail));
+            return BadRequest(new ErrorResponse(ex.Message));
         }
     }
 
     [HttpGet("subject-options")]
     public async Task<IActionResult> GetSubjectOptions()
     {
-        var request = new SProto.Empty();
-        var response = await _grpcClient.GetAvailableSubjectsAsync(request);
+        var response = await _studentClient.GetAvailableSubjectsAsync();
 
         var options = response.Subjects.Select(s => new SubjectOption(s.Value, s.Name, s.DisplayName)).ToList();
         return Ok(options);
     }
 
-    private static StudentDto ToDto(SProto.StudentDto model) => new(
+    private static Models.StudentDto ToDto(StudentHttpDto model) => new(
         model.Id,
         model.Name,
-        (int)model.Grade,
+        model.Grade,
         model.IdentityAccountIds.ToList(),
         model.CreatedAt,
         model.UpdatedAt);

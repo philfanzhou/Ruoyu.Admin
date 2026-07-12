@@ -1,6 +1,6 @@
+using System.Net;
 using Microsoft.AspNetCore.Mvc;
-using Grpc.Core;
-using SProto = Ruoyu.Study.Student.Contract.Protos;
+using Ruoyu.Study.MistakeBff.GrpcClients;
 using MistakeProto = Ruoyu.Study.Mistake.Contract.Protos;
 using Admin.WebApi.Models;
 using Ruoyu.Study.Common.Oss;
@@ -11,18 +11,18 @@ namespace Admin.WebApi.Controllers;
 [ApiController]
 public class OssUploadRecordController : ControllerBase
 {
-    private readonly SProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient _learningClient;
+    private readonly IStudentHttpClient _studentClient;
     private readonly MistakeProto.MistakeGrpcService.MistakeGrpcServiceClient _mistakeClient;
     private readonly ILogger<OssUploadRecordController> _logger;
     private readonly IOssService _ossService;
 
     public OssUploadRecordController(
-        SProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient learningClient,
+        IStudentHttpClient studentClient,
         MistakeProto.MistakeGrpcService.MistakeGrpcServiceClient mistakeClient,
         ILogger<OssUploadRecordController> logger,
         IOssService ossService)
     {
-        _learningClient = learningClient;
+        _studentClient = studentClient;
         _mistakeClient = mistakeClient;
         _logger = logger;
         _ossService = ossService;
@@ -33,19 +33,7 @@ public class OssUploadRecordController : ControllerBase
     {
         try
         {
-            var request = new SProto.GetAllUploadRecordsRequest
-            {
-                Page = page,
-                PageSize = pageSize,
-                Status = status >= 0 ? (SProto.UploadStatus)status : SProto.UploadStatus.Unspecified
-            };
-
-            if (!string.IsNullOrWhiteSpace(studentId))
-            {
-                request.StudentId = studentId;
-            }
-
-            var response = await _learningClient.GetAllUploadRecordsAsync(request);
+            var response = await _studentClient.GetAllUploadRecordsAsync(status >= 0 ? status : (int?)null, page, pageSize, studentId);
 
             // 收集所有唯一的 studentId，批量查询学生姓名
             var studentIds = response.Items.Select(r => r.StudentId).Distinct().ToList();
@@ -55,7 +43,7 @@ public class OssUploadRecordController : ControllerBase
             {
                 try
                 {
-                    var student = await _learningClient.GetStudentAsync(new SProto.GetStudentRequest { StudentId = sid });
+                    var student = await _studentClient.GetStudentAsync(sid);
                     studentNameMap[sid] = student.Name;
                 }
                 catch
@@ -71,7 +59,7 @@ public class OssUploadRecordController : ControllerBase
                     id = r.Id,
                     studentId = r.StudentId,
                     studentName = studentNameMap.GetValueOrDefault(r.StudentId, r.StudentId),
-                    status = (int)r.Status,
+                    status = r.Status,
                     imagePaths = r.ImageEntries.Select(e => e.Path).ToList(),
                     comments = r.Comments,
                     createdAt = ParseTimestampToUnixSeconds(r.CreatedAt),
@@ -94,18 +82,11 @@ public class OssUploadRecordController : ControllerBase
     {
         try
         {
-            var resetRequest = new SProto.ResetUploadRecordStatusRequest
-            {
-                RecordId = id,
-                StudentId = request.StudentId,
-                TargetStatus = (SProto.UploadStatus)request.TargetStatus
-            };
+            var response = await _studentClient.ResetUploadRecordStatusAsync(request.StudentId, id, request.TargetStatus);
 
-            var response = await _learningClient.ResetUploadRecordStatusAsync(resetRequest);
-            
             if (!response.Success)
             {
-                return BadRequest(new ErrorResponse(response.ErrorMessage ?? "Failed to reset status"));
+                return BadRequest(new ErrorResponse("Failed to reset status"));
             }
 
             return Ok(new { success = true, message = "Status reset successfully" });
@@ -123,14 +104,9 @@ public class OssUploadRecordController : ControllerBase
         try
         {
             // 获取上传记录
-            var getRecordRequest = new SProto.GetUploadRecordRequest
-            {
-                RecordId = id,
-                StudentId = request.StudentId
-            };
-            var record = await _learningClient.GetUploadRecordAsync(getRecordRequest);
+            var record = await _studentClient.GetUploadRecordAsync(request.StudentId, id);
 
-            if (record == null)
+            if (string.IsNullOrEmpty(record.Id))
             {
                 return BadRequest(new ErrorResponse("Upload record not found"));
             }
@@ -282,22 +258,14 @@ public class OssUploadRecordController : ControllerBase
                 return BadRequest(new ErrorResponse("StudentId is required"));
             }
 
-            var grpcRequest = new SProto.RotateUploadImageRequest
-            {
-                RecordId = id,
-                StudentId = request.StudentId,
-                ImageIndex = request.ImageIndex,
-                Rotation = request.Rotation
-            };
-
-            var result = await _learningClient.RotateUploadImageAsync(grpcRequest);
-
-            if (!result.Success)
-            {
-                return BadRequest(new ErrorResponse(result.ErrorMessage ?? "Failed to rotate image"));
-            }
+            await _studentClient.RotateUploadImageAsync(request.StudentId, id, request.ImageIndex, request.Rotation);
 
             return Ok(new { success = true });
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogWarning(ex, "Failed to rotate image: RecordId={RecordId}", id);
+            return BadRequest(new ErrorResponse(ex.Message ?? "Failed to rotate image"));
         }
         catch (Exception ex)
         {
@@ -316,14 +284,7 @@ public class OssUploadRecordController : ControllerBase
                 return BadRequest(new ErrorResponse("studentId is required"));
             }
 
-            var request = new SProto.RemoveImageFromRecordRequest
-            {
-                RecordId = id,
-                StudentId = studentId,
-                ImageIndex = imageIndex
-            };
-
-            var response = await _learningClient.RemoveImageFromRecordAsync(request);
+            var response = await _studentClient.RemoveImageFromRecordAsync(studentId, id, imageIndex);
 
             if (!response.Success)
             {
@@ -457,29 +418,19 @@ public class OssUploadRecordController : ControllerBase
             {
                 _logger.LogInformation("Step 2: Removing {Count} image paths from upload record {RecordId}",
                     completeReviewResult.RemovedImagePaths.Count, id);
-                var removeReq = new SProto.RemoveImagesFromRecordRequest
-                {
-                    RecordId = id,
-                    StudentId = studentId
-                };
-                removeReq.ImagePaths.AddRange(completeReviewResult.RemovedImagePaths);
-                await _learningClient.RemoveImagesFromRecordAsync(removeReq);
+                await _studentClient.RemoveImagesFromRecordAsync(studentId, id, completeReviewResult.RemovedImagePaths.ToList());
             }
 
             _logger.LogInformation("Step 3: Calling DeleteUploadRecordAfterReview for {RecordId}", id);
-            var deleteResult = await _learningClient.DeleteUploadRecordAfterReviewAsync(
-                new SProto.DeleteUploadRecordAfterReviewRequest
-                {
-                    RecordId = id,
-                    StudentId = studentId
-                });
-
-            if (!deleteResult.Success)
+            try
+            {
+                await _studentClient.DeleteUploadRecordAfterReviewAsync(studentId, id);
+            }
+            catch (HttpRequestException ex)
             {
                 _logger.LogWarning("DeleteUploadRecordAfterReview failed for {RecordId}: {Message}",
-                    id, deleteResult.ErrorMessage);
-                return BadRequest(new ErrorResponse(
-                    deleteResult.ErrorMessage ?? "Failed to delete upload record"));
+                    id, ex.Message);
+                return BadRequest(new ErrorResponse(ex.Message ?? "Failed to delete upload record"));
             }
 
             _logger.LogInformation("Legacy data cleanup completed successfully for {RecordId}", id);
@@ -510,14 +461,6 @@ public class OssUploadRecordController : ControllerBase
 
             // TODO: VL analysis has moved to Mistake service. Redirect this call or implement via Mistake gRPC.
             return StatusCode(501, new ErrorResponse("VL analysis has been moved to Mistake service. Use the Mistake polling mechanism instead."));
-        }
-        catch (Grpc.Core.RpcException ex) when (ex.StatusCode == Grpc.Core.StatusCode.NotFound)
-        {
-            return NotFound(new ErrorResponse("Upload record not found"));
-        }
-        catch (Grpc.Core.RpcException ex) when (ex.StatusCode == Grpc.Core.StatusCode.InvalidArgument)
-        {
-            return BadRequest(new ErrorResponse(ex.Status.Detail ?? "Invalid request"));
         }
         catch (Exception ex)
         {

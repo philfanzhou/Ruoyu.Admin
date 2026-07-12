@@ -1,5 +1,7 @@
+using System.Net;
 using Microsoft.AspNetCore.Mvc;
-using Ruoyu.Study.Student.Contract.Protos;
+using Grpc.Core;
+using Ruoyu.Study.MistakeBff.GrpcClients;
 using MistakeProto = Ruoyu.Study.Mistake.Contract.Protos;
 
 namespace Admin.WebApi.Controllers;
@@ -8,12 +10,12 @@ namespace Admin.WebApi.Controllers;
 [ApiController]
 public class ImageController : ControllerBase
 {
-    private readonly StudentLearningGrpcService.StudentLearningGrpcServiceClient _studentClient;
+    private readonly IStudentHttpClient _studentClient;
     private readonly MistakeProto.MistakeGrpcService.MistakeGrpcServiceClient _mistakeClient;
     private readonly ILogger<ImageController> _logger;
 
     public ImageController(
-        StudentLearningGrpcService.StudentLearningGrpcServiceClient studentClient,
+        IStudentHttpClient studentClient,
         MistakeProto.MistakeGrpcService.MistakeGrpcServiceClient mistakeClient,
         ILogger<ImageController> logger)
     {
@@ -51,21 +53,33 @@ public class ImageController : ControllerBase
             }
             else
             {
-                var grpcResponse = await _studentClient.GetPresignedUrlAsync(
-                    new GetPresignedUrlRequest
-                    { ObjectPath = objectPath, ExpirySeconds = 3600, Size = sizeStr }, cancellationToken: cancellationToken);
-                presignedUrl = grpcResponse.Url;
+                var httpResult = await _studentClient.GetPresignedUrlAsync(objectPath, 3600, sizeStr, cancellationToken);
+                presignedUrl = httpResult.Url;
+            }
+
+            if (string.IsNullOrEmpty(presignedUrl))
+            {
+                return NotFound();
             }
 
             return Redirect(presignedUrl);
         }
-        catch (Grpc.Core.RpcException ex) when (ex.StatusCode == Grpc.Core.StatusCode.NotFound)
+        catch (RpcException ex) when (ex.StatusCode == Grpc.Core.StatusCode.NotFound)
         {
             return NotFound();
         }
-        catch (Grpc.Core.RpcException ex)
+        catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+        {
+            return NotFound();
+        }
+        catch (RpcException ex)
         {
             _logger.LogError(ex, "GetPresignedUrl 失败, Path: {Path}, StatusCode: {StatusCode}", objectPath, ex.StatusCode);
+            return StatusCode(502, new { message = "图片服务暂不可用" });
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError(ex, "GetPresignedUrl 失败, Path: {Path}", objectPath);
             return StatusCode(502, new { message = "图片服务暂不可用" });
         }
     }

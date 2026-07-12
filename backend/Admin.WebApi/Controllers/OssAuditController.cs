@@ -4,7 +4,7 @@ using Admin.WebApi.Persistence;
 using Admin.WebApi.Models;
 using Admin.WebApi.Services;
 using Ruoyu.Study.Common.Oss;
-using SProto = Ruoyu.Study.Student.Contract.Protos;
+using Ruoyu.Study.MistakeBff.GrpcClients;
 using MProto = Ruoyu.Study.Mistake.Contract.Protos;
 
 namespace Admin.WebApi.Controllers;
@@ -14,7 +14,7 @@ namespace Admin.WebApi.Controllers;
 public partial class OssAuditController : ControllerBase
 {
     private readonly AuditDbContext _dbContext;
-    private readonly SProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient _studentClient;
+    private readonly IStudentHttpClient _studentClient;
     private readonly MProto.MistakeGrpcService.MistakeGrpcServiceClient _mistakeClient;
     private readonly IOssService _ossService;
     private readonly OssAuditWorker _auditWorker;
@@ -22,7 +22,7 @@ public partial class OssAuditController : ControllerBase
 
     public OssAuditController(
         AuditDbContext dbContext,
-        SProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient studentClient,
+        IStudentHttpClient studentClient,
         MProto.MistakeGrpcService.MistakeGrpcServiceClient mistakeClient,
         IOssService ossService,
         OssAuditWorker auditWorker,
@@ -319,8 +319,7 @@ public partial class OssAuditController
 
         while (true)
         {
-            var response = await _studentClient.GetAllUploadRecordsAsync(
-                new SProto.GetAllUploadRecordsRequest { Page = page, PageSize = pageSize });
+            var response = await _studentClient.GetAllUploadRecordsAsync(null, page, pageSize, null);
 
             foreach (var record in response.Items)
             {

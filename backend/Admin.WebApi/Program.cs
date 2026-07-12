@@ -5,13 +5,13 @@ using Admin.WebApi.Services;
 using Microsoft.EntityFrameworkCore;
 using Ruoyu.Study.Common.Database;
 using Ruoyu.Study.Common.Oss;
-using Ruoyu.Study.Student.Contract.Protos;
+using Ruoyu.Study.MistakeBff.GrpcClients;
 using MistakeProto = Ruoyu.Study.Mistake.Contract.Protos;
 
 var builder = WebApplication.CreateBuilder(args);
 
 var adminApiPort = builder.Configuration.GetValue<int>("AdminApi:Port");
-var grpcServiceAddress = builder.Configuration["StudentGrpcService:Address"] ?? "http://localhost:5005";
+var studentServiceUrl = builder.Configuration["StudentService:Url"] ?? "http://localhost:5005";
 var mistakeGrpcAddress = builder.Configuration["MistakeGrpcService:Address"] ?? "http://localhost:5006";
 
 builder.WebHost.ConfigureKestrel(options =>
@@ -19,14 +19,12 @@ builder.WebHost.ConfigureKestrel(options =>
     options.ListenAnyIP(adminApiPort);
 });
 
-// Configure gRPC clients
-// Uses IHttpClientFactory internally to handle HTTP/2 over cleartext (h2c)
-// for internal Docker network communication.
-builder.Services.AddGrpcClient<StudentLearningGrpcService.StudentLearningGrpcServiceClient>(options =>
-{
-    options.Address = new Uri(grpcServiceAddress);
-});
+// Configure downstream clients
+// Student service: HTTP (migrated from gRPC)
+builder.Services.AddStudentHttpClient(studentServiceUrl);
 
+// Mistake service: gRPC (uses IHttpClientFactory internally to handle HTTP/2 over cleartext (h2c)
+// for internal Docker network communication)
 builder.Services.AddGrpcClient<MistakeProto.MistakeGrpcService.MistakeGrpcServiceClient>(options =>
 {
     options.Address = new Uri(mistakeGrpcAddress);
@@ -140,7 +138,7 @@ else
     app.Logger.LogInformation("Database: SQLite");
 }
 app.Logger.LogInformation("OSS: {OssType}", useLocalOss ? "local" : "S3");
-app.Logger.LogInformation("Downstream: Student gRPC={StudentGrpc}, Mistake gRPC={MistakeGrpc}", grpcServiceAddress, mistakeGrpcAddress);
+app.Logger.LogInformation("Downstream: Student HTTP={StudentHttp}, Mistake gRPC={MistakeGrpc}", studentServiceUrl, mistakeGrpcAddress);
 app.Logger.LogInformation("Downstream: Identity={Identity}, Teacher Portal={TeacherPortal}, Assistant Portal={AssistantPortal}",
     builder.Configuration["IdentityService:Address"] ?? "(not configured)",
     builder.Configuration["TeacherPortal:Address"] ?? "(not configured)",

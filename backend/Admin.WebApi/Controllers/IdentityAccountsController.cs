@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using Admin.WebApi.Models;
+using Ruoyu.Study.MistakeBff.GrpcClients;
 
 namespace Admin.WebApi.Controllers;
 
@@ -10,15 +11,18 @@ public class IdentityAccountsController : ControllerBase
 {
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IdentityServiceOptions _options;
+    private readonly IStudentHttpClient _studentClient;
     private readonly ILogger<IdentityAccountsController> _logger;
 
     public IdentityAccountsController(
         IHttpClientFactory httpClientFactory,
         IOptions<IdentityServiceOptions> options,
+        IStudentHttpClient studentClient,
         ILogger<IdentityAccountsController> logger)
     {
         _httpClientFactory = httpClientFactory;
         _options = options.Value;
+        _studentClient = studentClient;
         _logger = logger;
     }
 
@@ -74,22 +78,16 @@ public class IdentityAccountsController : ControllerBase
     }
 
     [HttpGet("accounts/{accountId:guid}/students")]
-    public async Task<IActionResult> GetStudentsByIdentityAccountId(
-        Guid accountId,
-        Ruoyu.Study.Student.Contract.Protos.StudentLearningGrpcService.StudentLearningGrpcServiceClient grpcClient)
+    public async Task<IActionResult> GetStudentsByIdentityAccountId(Guid accountId)
     {
-        var request = new Ruoyu.Study.Student.Contract.Protos.GetStudentsByAccountIdRequest
-        {
-            AccountId = accountId.ToString()
-        };
-        var response = await grpcClient.GetStudentsByIdentityAccountIdAsync(request);
-        var dtos = response.Students.Select(s => new StudentDto(
+        var response = await _studentClient.GetStudentsByIdentityAccountIdAsync(accountId.ToString());
+        var dtos = response.Students.Select(s => new Models.StudentDto(
             s.Id,
             s.Name,
-            (int)s.Grade,
+            s.Grade,
             s.IdentityAccountIds.ToList(),
             s.CreatedAt,
             s.UpdatedAt)).ToList();
-        return Ok((IReadOnlyList<StudentDto>)dtos);
+        return Ok((IReadOnlyList<Models.StudentDto>)dtos);
     }
 }

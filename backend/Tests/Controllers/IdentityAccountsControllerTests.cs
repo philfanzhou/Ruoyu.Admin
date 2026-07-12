@@ -3,13 +3,12 @@ using System.Text;
 using Admin.WebApi.Controllers;
 using Admin.WebApi.Models;
 using FluentAssertions;
-using Grpc.Core;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
 using Moq.Protected;
-using SProto = Ruoyu.Study.Student.Contract.Protos;
+using Ruoyu.Study.MistakeBff.GrpcClients;
 using Xunit;
 
 namespace Admin.WebApi.Tests.Controllers;
@@ -19,6 +18,7 @@ public class IdentityAccountsControllerTests
     private readonly Mock<IHttpClientFactory> _httpClientFactory;
     private readonly Mock<HttpMessageHandler> _handlerMock;
     private readonly Mock<IOptions<IdentityServiceOptions>> _optionsMock;
+    private readonly Mock<IStudentHttpClient> _studentClient;
     private readonly Mock<ILogger<IdentityAccountsController>> _logger;
     private readonly IdentityServiceOptions _options;
     private readonly IdentityAccountsController _controller;
@@ -34,6 +34,7 @@ public class IdentityAccountsControllerTests
         };
         _optionsMock = new Mock<IOptions<IdentityServiceOptions>>();
         _optionsMock.Setup(o => o.Value).Returns(_options);
+        _studentClient = new Mock<IStudentHttpClient>();
         _logger = new Mock<ILogger<IdentityAccountsController>>();
 
         var client = new HttpClient(_handlerMock.Object);
@@ -43,6 +44,7 @@ public class IdentityAccountsControllerTests
         _controller = new IdentityAccountsController(
             _httpClientFactory.Object,
             _optionsMock.Object,
+            _studentClient.Object,
             _logger.Object);
     }
 
@@ -69,16 +71,6 @@ public class IdentityAccountsControllerTests
                 ItExpr.IsAny<HttpRequestMessage>(),
                 ItExpr.IsAny<CancellationToken>())
             .ThrowsAsync(exception);
-    }
-
-    private static AsyncUnaryCall<T> CreateAsyncCall<T>(T response) where T : class
-    {
-        return new AsyncUnaryCall<T>(
-            Task.FromResult(response),
-            Task.FromResult(new Metadata()),
-            () => Status.DefaultSuccess,
-            () => new Metadata(),
-            () => { });
     }
 
     private static string BuildBatchResponseJson(params (string userId, string username, string phone, string remark, string displayName)[] users)
@@ -300,35 +292,30 @@ public class IdentityAccountsControllerTests
     {
         // Arrange
         var accountId = Guid.NewGuid();
-        var grpcClient = new Mock<SProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient>();
 
-        var protoStudent = new SProto.StudentDto
+        var protoStudent = new StudentInfoDto
         {
             Id = "student-1",
             Name = "Alice",
-            Grade = SProto.Grade.Primary3,
+            Grade = 3,
             CreatedAt = 1000,
             UpdatedAt = 2000
         };
         protoStudent.IdentityAccountIds.AddRange(new[] { accountId.ToString() });
 
-        var response = new SProto.StudentListResponse();
+        var response = new StudentsByAccountResult();
         response.Students.Add(protoStudent);
 
-        grpcClient
-            .Setup(c => c.GetStudentsByIdentityAccountIdAsync(
-                It.IsAny<SProto.GetStudentsByAccountIdRequest>(),
-                It.IsAny<Metadata>(),
-                It.IsAny<DateTime?>(),
-                It.IsAny<CancellationToken>()))
-            .Returns(CreateAsyncCall(response));
+        _studentClient
+            .Setup(c => c.GetStudentsByIdentityAccountIdAsync(accountId.ToString(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(response);
 
         // Act
-        var result = await _controller.GetStudentsByIdentityAccountId(accountId, grpcClient.Object);
+        var result = await _controller.GetStudentsByIdentityAccountId(accountId);
 
         // Assert
         var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
-        var dtos = okResult.Value.Should().BeAssignableTo<IReadOnlyList<StudentDto>>().Subject;
+        var dtos = okResult.Value.Should().BeAssignableTo<IReadOnlyList<Admin.WebApi.Models.StudentDto>>().Subject;
         dtos.Should().HaveCount(1);
         dtos[0].Id.Should().Be("student-1");
         dtos[0].Name.Should().Be("Alice");
@@ -339,25 +326,21 @@ public class IdentityAccountsControllerTests
     }
 
     [Fact]
-    public async Task GetStudentsByIdentityAccountId_GrpcException_Propagates()
+    public async Task GetStudentsByIdentityAccountId_Failure_ReturnsEmptyList()
     {
-        // Arrange
+        // Arrange - HTTP client catches exceptions and returns empty result on failure
         var accountId = Guid.NewGuid();
-        var grpcClient = new Mock<SProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient>();
 
-        grpcClient
-            .Setup(c => c.GetStudentsByIdentityAccountIdAsync(
-                It.IsAny<SProto.GetStudentsByAccountIdRequest>(),
-                It.IsAny<Metadata>(),
-                It.IsAny<DateTime?>(),
-                It.IsAny<CancellationToken>()))
-            .Throws(new RpcException(new Status(StatusCode.NotFound, "Account not found")));
+        _studentClient
+            .Setup(c => c.GetStudentsByIdentityAccountIdAsync(accountId.ToString(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new StudentsByAccountResult());
 
         // Act
-        var act = () => _controller.GetStudentsByIdentityAccountId(accountId, grpcClient.Object);
+        var result = await _controller.GetStudentsByIdentityAccountId(accountId);
 
         // Assert
-        await act.Should().ThrowAsync<RpcException>()
-            .Where(ex => ex.StatusCode == StatusCode.NotFound && ex.Status.Detail == "Account not found");
+        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
+        var dtos = okResult.Value.Should().BeAssignableTo<IReadOnlyList<Admin.WebApi.Models.StudentDto>>().Subject;
+        dtos.Should().BeEmpty();
     }
 }

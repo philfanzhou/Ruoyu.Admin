@@ -1,10 +1,11 @@
+using System.Net;
 using Admin.WebApi.Controllers;
 using FluentAssertions;
 using Grpc.Core;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Moq;
-using SProto = Ruoyu.Study.Student.Contract.Protos;
+using Ruoyu.Study.MistakeBff.GrpcClients;
 using MistakeProto = Ruoyu.Study.Mistake.Contract.Protos;
 using Xunit;
 
@@ -16,19 +17,19 @@ namespace Admin.WebApi.Tests.Controllers;
 public class MistakeControllerTests
 {
     private readonly Mock<MistakeProto.MistakeGrpcService.MistakeGrpcServiceClient> _mistakeClient;
-    private readonly Mock<SProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient> _studentLearningClient;
+    private readonly Mock<IStudentHttpClient> _studentClient;
     private readonly Mock<ILogger<MistakeController>> _logger;
     private readonly MistakeController _controller;
 
     public MistakeControllerTests()
     {
         _mistakeClient = new Mock<MistakeProto.MistakeGrpcService.MistakeGrpcServiceClient>();
-        _studentLearningClient = new Mock<SProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient>();
+        _studentClient = new Mock<IStudentHttpClient>();
         _logger = new Mock<ILogger<MistakeController>>();
 
         _controller = new MistakeController(
             _mistakeClient.Object,
-            _studentLearningClient.Object,
+            _studentClient.Object,
             _logger.Object
         );
     }
@@ -77,14 +78,10 @@ public class MistakeControllerTests
                 It.IsAny<CancellationToken>()))
             .Returns(CreateAsyncCall(response));
 
-        var studentDto = new SProto.StudentDto { Id = "s1", Name = "张三" };
-        _studentLearningClient
-            .Setup(c => c.GetStudentAsync(
-                It.IsAny<SProto.GetStudentRequest>(),
-                It.IsAny<Metadata>(),
-                It.IsAny<DateTime?>(),
-                It.IsAny<CancellationToken>()))
-            .Returns(CreateAsyncCall(studentDto));
+        var studentDto = new StudentDto { Id = "s1", Name = "张三" };
+        _studentClient
+            .Setup(c => c.GetStudentAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(studentDto);
 
         var result = await _controller.GetMistakeItems();
 
@@ -139,13 +136,9 @@ public class MistakeControllerTests
                 It.IsAny<CancellationToken>()))
             .Returns(CreateAsyncCall(response));
 
-        _studentLearningClient
-            .Setup(c => c.GetStudentAsync(
-                It.IsAny<SProto.GetStudentRequest>(),
-                It.IsAny<Metadata>(),
-                It.IsAny<DateTime?>(),
-                It.IsAny<CancellationToken>()))
-            .Throws(new RpcException(new Status(StatusCode.NotFound, "Not found")));
+        _studentClient
+            .Setup(c => c.GetStudentAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("Not found", null, HttpStatusCode.NotFound));
 
         var result = await _controller.GetMistakeItems();
 
@@ -181,14 +174,10 @@ public class MistakeControllerTests
                 It.IsAny<CancellationToken>()))
             .Returns(CreateAsyncCall(updatedItem));
 
-        var studentDto = new SProto.StudentDto { Id = "s1", Name = "张三" };
-        _studentLearningClient
-            .Setup(c => c.GetStudentAsync(
-                It.IsAny<SProto.GetStudentRequest>(),
-                It.IsAny<Metadata>(),
-                It.IsAny<DateTime?>(),
-                It.IsAny<CancellationToken>()))
-            .Returns(CreateAsyncCall(studentDto));
+        var studentDto = new StudentDto { Id = "s1", Name = "张三" };
+        _studentClient
+            .Setup(c => c.GetStudentAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(studentDto);
 
         var request = new UpdateMistakeRequest
         {

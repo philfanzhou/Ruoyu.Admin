@@ -1,3 +1,4 @@
+using System.Net;
 using Admin.WebApi.Controllers;
 using FluentAssertions;
 using Grpc.Core;
@@ -5,25 +6,25 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Moq;
-using SProto = Ruoyu.Study.Student.Contract.Protos;
+using Ruoyu.Study.MistakeBff.GrpcClients;
 using MistakeProto = Ruoyu.Study.Mistake.Contract.Protos;
 using Xunit;
 
 namespace Admin.WebApi.Tests.Controllers;
 
 /// <summary>
-/// ImageController UT：覆盖路径校验、mistakes/ 路径分流、Student 路径分流、gRPC 异常处理。
+/// ImageController UT：覆盖路径校验、mistakes/ 路径分流、Student 路径分流、异常处理。
 /// </summary>
 public class ImageControllerTests
 {
-    private readonly Mock<SProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient> _studentClient;
+    private readonly Mock<IStudentHttpClient> _studentClient;
     private readonly Mock<MistakeProto.MistakeGrpcService.MistakeGrpcServiceClient> _mistakeClient;
     private readonly Mock<ILogger<ImageController>> _logger;
     private readonly ImageController _controller;
 
     public ImageControllerTests()
     {
-        _studentClient = new Mock<SProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient>();
+        _studentClient = new Mock<IStudentHttpClient>();
         _mistakeClient = new Mock<MistakeProto.MistakeGrpcService.MistakeGrpcServiceClient>();
         _logger = new Mock<ILogger<ImageController>>();
 
@@ -173,9 +174,9 @@ public class ImageControllerTests
         // 不应调用 Student 服务
         _studentClient.Verify(
             c => c.GetPresignedUrlAsync(
-                It.IsAny<SProto.GetPresignedUrlRequest>(),
-                It.IsAny<Metadata>(),
-                It.IsAny<DateTime?>(),
+                It.IsAny<string>(),
+                It.IsAny<int>(),
+                It.IsAny<string?>(),
                 It.IsAny<CancellationToken>()),
             Times.Never);
     }
@@ -212,18 +213,18 @@ public class ImageControllerTests
     // ============================================================
 
     [Fact]
-    public async Task GetImage_UploadsPath_CallsStudentGrpcService()
+    public async Task GetImage_UploadsPath_CallsStudentHttpService()
     {
         SetupQuery("uploads/2025/06/14/abc/image.jpg", "thumbnail");
 
-        var grpcResponse = new SProto.PresignedUrlResponse { Url = "https://example.com/student-presigned" };
+        var httpResult = new PresignedUrlResult { Url = "https://example.com/student-presigned" };
         _studentClient
             .Setup(c => c.GetPresignedUrlAsync(
-                It.IsAny<SProto.GetPresignedUrlRequest>(),
-                It.IsAny<Metadata>(),
-                It.IsAny<DateTime?>(),
+                It.IsAny<string>(),
+                It.IsAny<int>(),
+                It.IsAny<string?>(),
                 It.IsAny<CancellationToken>()))
-            .Returns(CreateAsyncCall(grpcResponse));
+            .ReturnsAsync(httpResult);
 
         var result = await _controller.GetImage(CancellationToken.None);
 
@@ -232,12 +233,9 @@ public class ImageControllerTests
 
         _studentClient.Verify(
             c => c.GetPresignedUrlAsync(
-                It.Is<SProto.GetPresignedUrlRequest>(r =>
-                    r.ObjectPath == "uploads/2025/06/14/abc/image.jpg" &&
-                    r.ExpirySeconds == 3600 &&
-                    r.Size == "thumbnail"),
-                It.IsAny<Metadata>(),
-                It.IsAny<DateTime?>(),
+                It.Is<string>(p => p == "uploads/2025/06/14/abc/image.jpg"),
+                It.Is<int>(s => s == 3600),
+                It.Is<string?>(s => s == "thumbnail"),
                 It.IsAny<CancellationToken>()),
             Times.Once);
 
@@ -252,34 +250,34 @@ public class ImageControllerTests
     }
 
     [Fact]
-    public async Task GetImage_QuestionsPath_CallsStudentGrpcService()
+    public async Task GetImage_QuestionsPath_CallsStudentHttpService()
     {
         // questions/ 路径不以 mistakes/ 开头，应走 Student 服务
         SetupQuery("questions/2025/01/01/xyz/q1.png");
 
-        var grpcResponse = new SProto.PresignedUrlResponse { Url = "https://example.com/q-presigned" };
+        var httpResult = new PresignedUrlResult { Url = "https://example.com/q-presigned" };
         _studentClient
             .Setup(c => c.GetPresignedUrlAsync(
-                It.IsAny<SProto.GetPresignedUrlRequest>(),
-                It.IsAny<Metadata>(),
-                It.IsAny<DateTime?>(),
+                It.IsAny<string>(),
+                It.IsAny<int>(),
+                It.IsAny<string?>(),
                 It.IsAny<CancellationToken>()))
-            .Returns(CreateAsyncCall(grpcResponse));
+            .ReturnsAsync(httpResult);
 
         var result = await _controller.GetImage(CancellationToken.None);
 
         result.Should().BeOfType<RedirectResult>();
         _studentClient.Verify(
             c => c.GetPresignedUrlAsync(
-                It.IsAny<SProto.GetPresignedUrlRequest>(),
-                It.IsAny<Metadata>(),
-                It.IsAny<DateTime?>(),
+                It.IsAny<string>(),
+                It.IsAny<int>(),
+                It.IsAny<string?>(),
                 It.IsAny<CancellationToken>()),
             Times.Once);
     }
 
     // ============================================================
-    // gRPC 异常处理
+    // 异常处理
     // ============================================================
 
     [Fact]
@@ -326,11 +324,11 @@ public class ImageControllerTests
 
         _studentClient
             .Setup(c => c.GetPresignedUrlAsync(
-                It.IsAny<SProto.GetPresignedUrlRequest>(),
-                It.IsAny<Metadata>(),
-                It.IsAny<DateTime?>(),
+                It.IsAny<string>(),
+                It.IsAny<int>(),
+                It.IsAny<string?>(),
                 It.IsAny<CancellationToken>()))
-            .Throws(new RpcException(new Status(StatusCode.NotFound, "Not found")));
+            .ThrowsAsync(new HttpRequestException("Not found", null, HttpStatusCode.NotFound));
 
         var result = await _controller.GetImage(CancellationToken.None);
 
@@ -344,11 +342,11 @@ public class ImageControllerTests
 
         _studentClient
             .Setup(c => c.GetPresignedUrlAsync(
-                It.IsAny<SProto.GetPresignedUrlRequest>(),
-                It.IsAny<Metadata>(),
-                It.IsAny<DateTime?>(),
+                It.IsAny<string>(),
+                It.IsAny<int>(),
+                It.IsAny<string?>(),
                 It.IsAny<CancellationToken>()))
-            .Throws(new RpcException(new Status(StatusCode.PermissionDenied, "Denied")));
+            .ThrowsAsync(new HttpRequestException("Service unavailable", null, HttpStatusCode.ServiceUnavailable));
 
         var result = await _controller.GetImage(CancellationToken.None);
 
@@ -363,11 +361,11 @@ public class ImageControllerTests
 
         _studentClient
             .Setup(c => c.GetPresignedUrlAsync(
-                It.IsAny<SProto.GetPresignedUrlRequest>(),
-                It.IsAny<Metadata>(),
-                It.IsAny<DateTime?>(),
+                It.IsAny<string>(),
+                It.IsAny<int>(),
+                It.IsAny<string?>(),
                 It.IsAny<CancellationToken>()))
-            .Throws(new RpcException(new Status(StatusCode.Unavailable, "Service unavailable")));
+            .ThrowsAsync(new HttpRequestException("Service unavailable", null, HttpStatusCode.ServiceUnavailable));
 
         await _controller.GetImage(CancellationToken.None);
 
@@ -376,7 +374,7 @@ public class ImageControllerTests
                 LogLevel.Error,
                 It.IsAny<EventId>(),
                 It.Is<It.IsAnyType>((v, t) => true),
-                It.IsAny<RpcException>(),
+                It.IsAny<HttpRequestException>(),
                 It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
             Times.AtLeastOnce);
     }
