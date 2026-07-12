@@ -1,7 +1,6 @@
 using System.Net;
 using Microsoft.AspNetCore.Mvc;
 using Ruoyu.Study.MistakeBff.GrpcClients;
-using MistakeProto = Ruoyu.Study.Mistake.Contract.Protos;
 using Admin.WebApi.Models;
 using Ruoyu.Study.Common.Oss;
 
@@ -12,13 +11,13 @@ namespace Admin.WebApi.Controllers;
 public class OssUploadRecordController : ControllerBase
 {
     private readonly IStudentHttpClient _studentClient;
-    private readonly MistakeProto.MistakeGrpcService.MistakeGrpcServiceClient _mistakeClient;
+    private readonly IMistakeHttpClient _mistakeClient;
     private readonly ILogger<OssUploadRecordController> _logger;
     private readonly IOssService _ossService;
 
     public OssUploadRecordController(
         IStudentHttpClient studentClient,
-        MistakeProto.MistakeGrpcService.MistakeGrpcServiceClient mistakeClient,
+        IMistakeHttpClient mistakeClient,
         ILogger<OssUploadRecordController> logger,
         IOssService ossService)
     {
@@ -132,17 +131,13 @@ public class OssUploadRecordController : ControllerBase
                 }
 
                 // 调用 Mistake 服务创建错题
-                var submitRequest = new MistakeProto.SubmitMistakeUploadRequest
-                {
-                    StudentId = request.StudentId,
-                    Subject = assignment.Subject,
-                    Grade = assignment.Grade,
-                    ImagePaths = { selectedImagePaths },
-                    RootCause = assignment.Comments ?? record.Comments ?? string.Empty,
-                    SourceUploadId = id
-                };
-
-                var submitResponse = await _mistakeClient.SubmitMistakeUploadAsync(submitRequest);
+                var submitResponse = await _mistakeClient.SubmitMistakeUploadAsync(
+                    request.StudentId,
+                    assignment.Subject,
+                    assignment.Grade,
+                    selectedImagePaths,
+                    assignment.Comments ?? record.Comments ?? string.Empty,
+                    id);
 
                 if (!submitResponse.Success)
                 {
@@ -315,20 +310,16 @@ public class OssUploadRecordController : ControllerBase
     {
         try
         {
-            var mistakeList = await _mistakeClient.GetMistakeItemsByUploadAsync(
-                new MistakeProto.GetMistakeItemsByUploadRequest
-                {
-                    SourceUploadId = id
-                });
+            var mistakeList = await _mistakeClient.GetMistakeItemsByUploadAsync(id);
 
             if (mistakeList.Items.Count == 0)
             {
                 return Ok(new { isLegacy = false, message = "该记录没有关联错题" });
             }
 
-            var allReviewed = mistakeList.Items.All(i => i.ReviewStatus == MistakeProto.ReviewStatus.Confirmed ||
-                                                          i.ReviewStatus == MistakeProto.ReviewStatus.Rejected);
-            var pendingCount = mistakeList.Items.Count(i => i.ReviewStatus == MistakeProto.ReviewStatus.PendingReview);
+            var allReviewed = mistakeList.Items.All(i => i.ReviewStatus == MistakeReviewStatus.Confirmed ||
+                                                          i.ReviewStatus == MistakeReviewStatus.Rejected);
+            var pendingCount = mistakeList.Items.Count(i => i.ReviewStatus == MistakeReviewStatus.PendingReview);
 
             if (allReviewed && pendingCount == 0)
             {
@@ -371,24 +362,20 @@ public class OssUploadRecordController : ControllerBase
         {
             _logger.LogInformation("Starting legacy data cleanup for upload record: {RecordId}", id);
 
-            var mistakeList = await _mistakeClient.GetMistakeItemsByUploadAsync(
-                new MistakeProto.GetMistakeItemsByUploadRequest
-                {
-                    SourceUploadId = id
-                });
+            var mistakeList = await _mistakeClient.GetMistakeItemsByUploadAsync(id);
 
             if (mistakeList.Items.Count == 0)
             {
                 return BadRequest(new ErrorResponse("该记录没有关联错题，无法清理"));
             }
 
-            var allReviewed = mistakeList.Items.All(i => i.ReviewStatus == MistakeProto.ReviewStatus.Confirmed ||
-                                                          i.ReviewStatus == MistakeProto.ReviewStatus.Rejected);
-            var hasPending = mistakeList.Items.Any(i => i.ReviewStatus == MistakeProto.ReviewStatus.PendingReview);
+            var allReviewed = mistakeList.Items.All(i => i.ReviewStatus == MistakeReviewStatus.Confirmed ||
+                                                          i.ReviewStatus == MistakeReviewStatus.Rejected);
+            var hasPending = mistakeList.Items.Any(i => i.ReviewStatus == MistakeReviewStatus.PendingReview);
 
             if (!allReviewed || hasPending)
             {
-                var pendingCount = mistakeList.Items.Count(i => i.ReviewStatus == MistakeProto.ReviewStatus.PendingReview);
+                var pendingCount = mistakeList.Items.Count(i => i.ReviewStatus == MistakeReviewStatus.PendingReview);
                 return BadRequest(new ErrorResponse($"该记录还有{pendingCount}条错题待审核，无法清理"));
             }
 
@@ -400,11 +387,8 @@ public class OssUploadRecordController : ControllerBase
 
             _logger.LogInformation("Step 1: Calling CompleteUploadReview for {RecordId}", id);
             var completeReviewResult = await _mistakeClient.CompleteUploadReviewAsync(
-                new MistakeProto.CompleteUploadReviewRequest
-                {
-                    SourceUploadId = id,
-                    ReviewerId = "admin-legacy-cleanup"
-                });
+                id,
+                "admin-legacy-cleanup");
 
             if (!completeReviewResult.Success)
             {

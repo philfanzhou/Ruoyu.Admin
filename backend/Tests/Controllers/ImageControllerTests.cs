@@ -1,13 +1,11 @@
 using System.Net;
 using Admin.WebApi.Controllers;
 using FluentAssertions;
-using Grpc.Core;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Ruoyu.Study.MistakeBff.GrpcClients;
-using MistakeProto = Ruoyu.Study.Mistake.Contract.Protos;
 using Xunit;
 
 namespace Admin.WebApi.Tests.Controllers;
@@ -18,14 +16,14 @@ namespace Admin.WebApi.Tests.Controllers;
 public class ImageControllerTests
 {
     private readonly Mock<IStudentHttpClient> _studentClient;
-    private readonly Mock<MistakeProto.MistakeGrpcService.MistakeGrpcServiceClient> _mistakeClient;
+    private readonly Mock<IMistakeHttpClient> _mistakeClient;
     private readonly Mock<ILogger<ImageController>> _logger;
     private readonly ImageController _controller;
 
     public ImageControllerTests()
     {
         _studentClient = new Mock<IStudentHttpClient>();
-        _mistakeClient = new Mock<MistakeProto.MistakeGrpcService.MistakeGrpcServiceClient>();
+        _mistakeClient = new Mock<IMistakeHttpClient>();
         _logger = new Mock<ILogger<ImageController>>();
 
         _controller = new ImageController(
@@ -33,16 +31,6 @@ public class ImageControllerTests
             _mistakeClient.Object,
             _logger.Object
         );
-    }
-
-    private static AsyncUnaryCall<T> CreateAsyncCall<T>(T response) where T : class
-    {
-        return new AsyncUnaryCall<T>(
-            Task.FromResult(response),
-            Task.FromResult(new Metadata()),
-            () => Status.DefaultSuccess,
-            () => new Metadata(),
-            () => { });
     }
 
     private void SetupQuery(string? path, string? size = null)
@@ -149,14 +137,14 @@ public class ImageControllerTests
     {
         SetupQuery("mistakes/2025/06/14/abc/image.jpg");
 
-        var grpcResponse = new MistakeProto.PresignedUrlResponse { Url = "https://example.com/presigned" };
+        var httpResult = new MistakePresignedUrlResult { Url = "https://example.com/presigned" };
         _mistakeClient
             .Setup(c => c.GetPresignedUrlAsync(
-                It.IsAny<MistakeProto.GetPresignedUrlRequest>(),
-                It.IsAny<Metadata>(),
-                It.IsAny<DateTime?>(),
+                It.IsAny<string>(),
+                It.IsAny<int>(),
+                It.IsAny<string?>(),
                 It.IsAny<CancellationToken>()))
-            .Returns(CreateAsyncCall(grpcResponse));
+            .ReturnsAsync(httpResult);
 
         var result = await _controller.GetImage(CancellationToken.None);
 
@@ -165,9 +153,9 @@ public class ImageControllerTests
 
         _mistakeClient.Verify(
             c => c.GetPresignedUrlAsync(
-                It.Is<MistakeProto.GetPresignedUrlRequest>(r => r.ObjectPath == "mistakes/2025/06/14/abc/image.jpg" && r.ExpirySeconds == 3600),
-                It.IsAny<Metadata>(),
-                It.IsAny<DateTime?>(),
+                It.Is<string>(p => p == "mistakes/2025/06/14/abc/image.jpg"),
+                It.Is<int>(s => s == 3600),
+                It.IsAny<string?>(),
                 It.IsAny<CancellationToken>()),
             Times.Once);
 
@@ -187,23 +175,23 @@ public class ImageControllerTests
         // 路径以 MISTAKES/ 开头（大写），应仍走 Mistake 服务
         SetupQuery("MISTAKES/2025/06/14/abc/image.jpg");
 
-        var grpcResponse = new MistakeProto.PresignedUrlResponse { Url = "https://example.com/presigned" };
+        var httpResult = new MistakePresignedUrlResult { Url = "https://example.com/presigned" };
         _mistakeClient
             .Setup(c => c.GetPresignedUrlAsync(
-                It.IsAny<MistakeProto.GetPresignedUrlRequest>(),
-                It.IsAny<Metadata>(),
-                It.IsAny<DateTime?>(),
+                It.IsAny<string>(),
+                It.IsAny<int>(),
+                It.IsAny<string?>(),
                 It.IsAny<CancellationToken>()))
-            .Returns(CreateAsyncCall(grpcResponse));
+            .ReturnsAsync(httpResult);
 
         var result = await _controller.GetImage(CancellationToken.None);
 
         result.Should().BeOfType<RedirectResult>();
         _mistakeClient.Verify(
             c => c.GetPresignedUrlAsync(
-                It.IsAny<MistakeProto.GetPresignedUrlRequest>(),
-                It.IsAny<Metadata>(),
-                It.IsAny<DateTime?>(),
+                It.IsAny<string>(),
+                It.IsAny<int>(),
+                It.IsAny<string?>(),
                 It.IsAny<CancellationToken>()),
             Times.Once);
     }
@@ -242,9 +230,9 @@ public class ImageControllerTests
         // 不应调用 Mistake 服务
         _mistakeClient.Verify(
             c => c.GetPresignedUrlAsync(
-                It.IsAny<MistakeProto.GetPresignedUrlRequest>(),
-                It.IsAny<Metadata>(),
-                It.IsAny<DateTime?>(),
+                It.IsAny<string>(),
+                It.IsAny<int>(),
+                It.IsAny<string?>(),
                 It.IsAny<CancellationToken>()),
             Times.Never);
     }
@@ -287,11 +275,11 @@ public class ImageControllerTests
 
         _mistakeClient
             .Setup(c => c.GetPresignedUrlAsync(
-                It.IsAny<MistakeProto.GetPresignedUrlRequest>(),
-                It.IsAny<Metadata>(),
-                It.IsAny<DateTime?>(),
+                It.IsAny<string>(),
+                It.IsAny<int>(),
+                It.IsAny<string?>(),
                 It.IsAny<CancellationToken>()))
-            .Throws(new RpcException(new Status(StatusCode.NotFound, "Not found")));
+            .ThrowsAsync(new HttpRequestException("Not found", null, HttpStatusCode.NotFound));
 
         var result = await _controller.GetImage(CancellationToken.None);
 
@@ -305,11 +293,11 @@ public class ImageControllerTests
 
         _mistakeClient
             .Setup(c => c.GetPresignedUrlAsync(
-                It.IsAny<MistakeProto.GetPresignedUrlRequest>(),
-                It.IsAny<Metadata>(),
-                It.IsAny<DateTime?>(),
+                It.IsAny<string>(),
+                It.IsAny<int>(),
+                It.IsAny<string?>(),
                 It.IsAny<CancellationToken>()))
-            .Throws(new RpcException(new Status(StatusCode.Unavailable, "Service unavailable")));
+            .ThrowsAsync(new HttpRequestException("Service unavailable", null, HttpStatusCode.ServiceUnavailable));
 
         var result = await _controller.GetImage(CancellationToken.None);
 

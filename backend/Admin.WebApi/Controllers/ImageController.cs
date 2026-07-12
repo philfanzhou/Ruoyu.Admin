@@ -1,8 +1,6 @@
 using System.Net;
 using Microsoft.AspNetCore.Mvc;
-using Grpc.Core;
 using Ruoyu.Study.MistakeBff.GrpcClients;
-using MistakeProto = Ruoyu.Study.Mistake.Contract.Protos;
 
 namespace Admin.WebApi.Controllers;
 
@@ -11,12 +9,12 @@ namespace Admin.WebApi.Controllers;
 public class ImageController : ControllerBase
 {
     private readonly IStudentHttpClient _studentClient;
-    private readonly MistakeProto.MistakeGrpcService.MistakeGrpcServiceClient _mistakeClient;
+    private readonly IMistakeHttpClient _mistakeClient;
     private readonly ILogger<ImageController> _logger;
 
     public ImageController(
         IStudentHttpClient studentClient,
-        MistakeProto.MistakeGrpcService.MistakeGrpcServiceClient mistakeClient,
+        IMistakeHttpClient mistakeClient,
         ILogger<ImageController> logger)
     {
         _studentClient = studentClient;
@@ -46,10 +44,8 @@ public class ImageController : ControllerBase
 
             if (objectPath.StartsWith("mistakes/", StringComparison.OrdinalIgnoreCase))
             {
-                var grpcResponse = await _mistakeClient.GetPresignedUrlAsync(
-                    new MistakeProto.GetPresignedUrlRequest
-                    { ObjectPath = objectPath, ExpirySeconds = 3600 }, cancellationToken: cancellationToken);
-                presignedUrl = grpcResponse.Url;
+                var result = await _mistakeClient.GetPresignedUrlAsync(objectPath, 3600, null, cancellationToken);
+                presignedUrl = result.Url;
             }
             else
             {
@@ -64,18 +60,9 @@ public class ImageController : ControllerBase
 
             return Redirect(presignedUrl);
         }
-        catch (RpcException ex) when (ex.StatusCode == Grpc.Core.StatusCode.NotFound)
-        {
-            return NotFound();
-        }
         catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
         {
             return NotFound();
-        }
-        catch (RpcException ex)
-        {
-            _logger.LogError(ex, "GetPresignedUrl 失败, Path: {Path}, StatusCode: {StatusCode}", objectPath, ex.StatusCode);
-            return StatusCode(502, new { message = "图片服务暂不可用" });
         }
         catch (HttpRequestException ex)
         {

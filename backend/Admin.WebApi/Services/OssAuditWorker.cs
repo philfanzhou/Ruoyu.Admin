@@ -1,9 +1,7 @@
-using Grpc.Core;
 using Admin.WebApi.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Ruoyu.Study.Common.Oss;
 using Ruoyu.Study.MistakeBff.GrpcClients;
-using MProto = Ruoyu.Study.Mistake.Contract.Protos;
 
 namespace Admin.WebApi.Services;
 
@@ -96,7 +94,7 @@ public class OssAuditWorker : BackgroundService
             var studentClient = scope.ServiceProvider
                 .GetRequiredService<IStudentHttpClient>();
             var mistakeClient = scope.ServiceProvider
-                .GetRequiredService<MProto.MistakeGrpcService.MistakeGrpcServiceClient>();
+                .GetRequiredService<IMistakeHttpClient>();
 
             HashSet<string> registeredPaths;
             try
@@ -121,7 +119,7 @@ public class OssAuditWorker : BackgroundService
                 mistakePaths = await GetMistakeImagePathsAsync(mistakeClient, cancellationToken);
                 _logger.LogInformation("Got {Count} referenced paths from Mistake service (aggregated from mistake items)", mistakePaths.Count);
             }
-            catch (RpcException ex) when (ex.StatusCode == StatusCode.Unavailable)
+            catch (Exception ex)
             {
                 _logger.LogWarning("Mistake service unavailable, audit results may have false positives: {Message}", ex.Message);
                 mistakeServiceAvailable = false;
@@ -234,7 +232,7 @@ public class OssAuditWorker : BackgroundService
     /// 通过分页获取所有错题条目，本地聚合 source_regions.source_image_path，替代原 GetAllReferencedImagePaths 专用接口。
     /// </summary>
     private static async Task<HashSet<string>> GetMistakeImagePathsAsync(
-        MProto.MistakeGrpcService.MistakeGrpcServiceClient client,
+        IMistakeHttpClient client,
         CancellationToken cancellationToken)
     {
         var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -244,8 +242,7 @@ public class OssAuditWorker : BackgroundService
         while (true)
         {
             var response = await client.GetMistakeItemListAsync(
-                new MProto.GetMistakeItemListRequest { Page = page, Size = pageSize },
-                cancellationToken: cancellationToken);
+                string.Empty, 0, 0, MistakeReviewStatus.Unspecified, page, pageSize, cancellationToken);
 
             foreach (var item in response.Items)
             {

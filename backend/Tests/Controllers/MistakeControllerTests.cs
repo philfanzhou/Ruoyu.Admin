@@ -1,12 +1,10 @@
 using System.Net;
 using Admin.WebApi.Controllers;
 using FluentAssertions;
-using Grpc.Core;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Ruoyu.Study.MistakeBff.GrpcClients;
-using MistakeProto = Ruoyu.Study.Mistake.Contract.Protos;
 using Xunit;
 
 namespace Admin.WebApi.Tests.Controllers;
@@ -16,14 +14,14 @@ namespace Admin.WebApi.Tests.Controllers;
 /// </summary>
 public class MistakeControllerTests
 {
-    private readonly Mock<MistakeProto.MistakeGrpcService.MistakeGrpcServiceClient> _mistakeClient;
+    private readonly Mock<IMistakeHttpClient> _mistakeClient;
     private readonly Mock<IStudentHttpClient> _studentClient;
     private readonly Mock<ILogger<MistakeController>> _logger;
     private readonly MistakeController _controller;
 
     public MistakeControllerTests()
     {
-        _mistakeClient = new Mock<MistakeProto.MistakeGrpcService.MistakeGrpcServiceClient>();
+        _mistakeClient = new Mock<IMistakeHttpClient>();
         _studentClient = new Mock<IStudentHttpClient>();
         _logger = new Mock<ILogger<MistakeController>>();
 
@@ -34,16 +32,6 @@ public class MistakeControllerTests
         );
     }
 
-    private static AsyncUnaryCall<T> CreateAsyncCall<T>(T response) where T : class
-    {
-        return new AsyncUnaryCall<T>(
-            Task.FromResult(response),
-            Task.FromResult(new Metadata()),
-            () => Status.DefaultSuccess,
-            () => new Metadata(),
-            () => { });
-    }
-
     // ============================================================
     // GetMistakeItems
     // ============================================================
@@ -51,32 +39,34 @@ public class MistakeControllerTests
     [Fact]
     public async Task GetMistakeItems_ReturnsItems()
     {
-        var item1 = new MistakeProto.MistakeItemDto
+        var item1 = new MistakeItemDto
         {
             Id = "m1",
             StudentId = "s1",
             Subject = 1,
             Grade = 3,
             SourceUploadId = "u1",
-            ReviewStatus = MistakeProto.ReviewStatus.PendingReview,
+            ReviewStatus = MistakeReviewStatus.PendingReview,
             CreatedAt = "1700000000",
             UpdatedAt = "1700000001"
         };
-        var region = new MistakeProto.SourceRegion { SourceImagePath = "uploads/img1.jpg" };
-        item1.SourceRegions.Add(region);
+        item1.SourceRegions.Add(new MistakeSourceRegionDto { SourceImagePath = "uploads/img1.jpg" });
 
-        var pageMeta = new MistakeProto.PageMeta { TotalCount = 1, Page = 1, Size = 20, TotalPages = 1 };
-        var response = new MistakeProto.MistakeItemPageResult();
+        var pageMeta = new MistakePageMetaDto { TotalCount = 1, Page = 1, Size = 20, TotalPages = 1 };
+        var response = new MistakeItemPageResult();
         response.Items.Add(item1);
         response.PageMeta = pageMeta;
 
         _mistakeClient
             .Setup(c => c.GetMistakeItemListAsync(
-                It.IsAny<MistakeProto.GetMistakeItemListRequest>(),
-                It.IsAny<Metadata>(),
-                It.IsAny<DateTime?>(),
+                It.IsAny<string>(),
+                It.IsAny<int>(),
+                It.IsAny<int>(),
+                It.IsAny<MistakeReviewStatus>(),
+                It.IsAny<int>(),
+                It.IsAny<int>(),
                 It.IsAny<CancellationToken>()))
-            .Returns(CreateAsyncCall(response));
+            .ReturnsAsync(response);
 
         var studentDto = new StudentDto { Id = "s1", Name = "张三" };
         _studentClient
@@ -91,15 +81,18 @@ public class MistakeControllerTests
     }
 
     [Fact]
-    public async Task GetMistakeItems_GrpcError_Returns500()
+    public async Task GetMistakeItems_HttpError_Returns500()
     {
         _mistakeClient
             .Setup(c => c.GetMistakeItemListAsync(
-                It.IsAny<MistakeProto.GetMistakeItemListRequest>(),
-                It.IsAny<Metadata>(),
-                It.IsAny<DateTime?>(),
+                It.IsAny<string>(),
+                It.IsAny<int>(),
+                It.IsAny<int>(),
+                It.IsAny<MistakeReviewStatus>(),
+                It.IsAny<int>(),
+                It.IsAny<int>(),
                 It.IsAny<CancellationToken>()))
-            .Throws(new RpcException(new Status(StatusCode.Unavailable, "Service unavailable")));
+            .ThrowsAsync(new HttpRequestException("Service unavailable"));
 
         var result = await _controller.GetMistakeItems();
 
@@ -110,31 +103,33 @@ public class MistakeControllerTests
     [Fact]
     public async Task GetMistakeItems_StudentLookupFallsBackToStudentId()
     {
-        var item = new MistakeProto.MistakeItemDto
+        var item = new MistakeItemDto
         {
             Id = "m1",
             StudentId = "s1",
             Subject = 1,
             Grade = 3,
-            ReviewStatus = MistakeProto.ReviewStatus.PendingReview,
+            ReviewStatus = MistakeReviewStatus.PendingReview,
             CreatedAt = "1700000000",
             UpdatedAt = "1700000001"
         };
-        var region = new MistakeProto.SourceRegion { SourceImagePath = "uploads/img1.jpg" };
-        item.SourceRegions.Add(region);
+        item.SourceRegions.Add(new MistakeSourceRegionDto { SourceImagePath = "uploads/img1.jpg" });
 
-        var pageMeta = new MistakeProto.PageMeta { TotalCount = 1, Page = 1, Size = 20, TotalPages = 1 };
-        var response = new MistakeProto.MistakeItemPageResult();
+        var pageMeta = new MistakePageMetaDto { TotalCount = 1, Page = 1, Size = 20, TotalPages = 1 };
+        var response = new MistakeItemPageResult();
         response.Items.Add(item);
         response.PageMeta = pageMeta;
 
         _mistakeClient
             .Setup(c => c.GetMistakeItemListAsync(
-                It.IsAny<MistakeProto.GetMistakeItemListRequest>(),
-                It.IsAny<Metadata>(),
-                It.IsAny<DateTime?>(),
+                It.IsAny<string>(),
+                It.IsAny<int>(),
+                It.IsAny<int>(),
+                It.IsAny<MistakeReviewStatus>(),
+                It.IsAny<int>(),
+                It.IsAny<int>(),
                 It.IsAny<CancellationToken>()))
-            .Returns(CreateAsyncCall(response));
+            .ReturnsAsync(response);
 
         _studentClient
             .Setup(c => c.GetStudentAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
@@ -156,23 +151,25 @@ public class MistakeControllerTests
     [Fact]
     public async Task UpdateMistakeItem_Success_ReturnsUpdatedItem()
     {
-        var updatedItem = new MistakeProto.MistakeItemDto
+        var updatedItem = new UpdateMistakeItemResult
         {
             Id = "m1",
             StudentId = "s1",
             Subject = 2,
             Grade = 4,
             SourceUploadId = "u1",
-            ReviewStatus = MistakeProto.ReviewStatus.PendingReview
+            ReviewStatus = MistakeReviewStatus.PendingReview
         };
 
         _mistakeClient
             .Setup(c => c.UpdateMistakeItemAsync(
-                It.IsAny<MistakeProto.UpdateMistakeItemRequest>(),
-                It.IsAny<Metadata>(),
-                It.IsAny<DateTime?>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<int>(),
+                It.IsAny<int>(),
+                It.IsAny<IReadOnlyList<MistakeSourceRegionDto>?>(),
                 It.IsAny<CancellationToken>()))
-            .Returns(CreateAsyncCall(updatedItem));
+            .ReturnsAsync(updatedItem);
 
         var studentDto = new StudentDto { Id = "s1", Name = "张三" };
         _studentClient
@@ -196,15 +193,17 @@ public class MistakeControllerTests
     }
 
     [Fact]
-    public async Task UpdateMistakeItem_GrpcError_Returns500()
+    public async Task UpdateMistakeItem_HttpError_Returns500()
     {
         _mistakeClient
             .Setup(c => c.UpdateMistakeItemAsync(
-                It.IsAny<MistakeProto.UpdateMistakeItemRequest>(),
-                It.IsAny<Metadata>(),
-                It.IsAny<DateTime?>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<int>(),
+                It.IsAny<int>(),
+                It.IsAny<IReadOnlyList<MistakeSourceRegionDto>?>(),
                 It.IsAny<CancellationToken>()))
-            .Throws(new RpcException(new Status(StatusCode.Unavailable, "Service unavailable")));
+            .ThrowsAsync(new HttpRequestException("Service unavailable"));
 
         var request = new UpdateMistakeRequest
         {

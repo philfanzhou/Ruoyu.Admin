@@ -6,8 +6,6 @@ using Microsoft.Extensions.Logging;
 using Moq;
 using Ruoyu.Study.Common.Oss;
 using Ruoyu.Study.MistakeBff.GrpcClients;
-using MistakeProto = Ruoyu.Study.Mistake.Contract.Protos;
-using Grpc.Core;
 using Xunit;
 
 namespace Admin.WebApi.Tests.Controllers;
@@ -15,7 +13,7 @@ namespace Admin.WebApi.Tests.Controllers;
 public class OssUploadRecordControllerLegacyTests
 {
     private readonly Mock<IStudentHttpClient> _studentClient;
-    private readonly Mock<MistakeProto.MistakeGrpcService.MistakeGrpcServiceClient> _mistakeClient;
+    private readonly Mock<IMistakeHttpClient> _mistakeClient;
     private readonly Mock<ILogger<OssUploadRecordController>> _logger;
     private readonly Mock<IOssService> _ossService;
     private readonly OssUploadRecordController _controller;
@@ -23,7 +21,7 @@ public class OssUploadRecordControllerLegacyTests
     public OssUploadRecordControllerLegacyTests()
     {
         _studentClient = new Mock<IStudentHttpClient>();
-        _mistakeClient = new Mock<MistakeProto.MistakeGrpcService.MistakeGrpcServiceClient>();
+        _mistakeClient = new Mock<IMistakeHttpClient>();
         _logger = new Mock<ILogger<OssUploadRecordController>>();
         _ossService = new Mock<IOssService>();
 
@@ -35,27 +33,15 @@ public class OssUploadRecordControllerLegacyTests
         );
     }
 
-    private static AsyncUnaryCall<T> CreateAsyncCall<T>(T response) where T : class
-    {
-        return new AsyncUnaryCall<T>(
-            Task.FromResult(response),
-            Task.FromResult(new Metadata()),
-            () => Status.DefaultSuccess,
-            () => new Metadata(),
-            () => { });
-    }
-
     [Fact]
     public async Task LegacyCheck_NoMistakes_ReturnsNotLegacy()
     {
-        var emptyResponse = new MistakeProto.MistakeItemListResponse();
+        var emptyResponse = new MistakeItemsByUploadResult();
         _mistakeClient
             .Setup(c => c.GetMistakeItemsByUploadAsync(
-                It.IsAny<MistakeProto.GetMistakeItemsByUploadRequest>(),
-                It.IsAny<Metadata>(),
-                It.IsAny<DateTime?>(),
+                It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
-            .Returns(CreateAsyncCall(emptyResponse));
+            .ReturnsAsync(emptyResponse);
 
         var result = await _controller.LegacyCheck("test-record-id");
 
@@ -68,30 +54,28 @@ public class OssUploadRecordControllerLegacyTests
     [Fact]
     public async Task LegacyCheck_AllReviewed_ReturnsLegacy()
     {
-        var mistake1 = new MistakeProto.MistakeItemDto
+        var mistake1 = new MistakeItemDto
         {
-            ReviewStatus = MistakeProto.ReviewStatus.Confirmed,
+            ReviewStatus = MistakeReviewStatus.Confirmed,
             StudentId = "student-1"
         };
-        mistake1.SourceRegions.Add(new MistakeProto.SourceRegion { SourceImagePath = "uploads/test.jpg" });
+        mistake1.SourceRegions.Add(new MistakeSourceRegionDto { SourceImagePath = "uploads/test.jpg" });
 
-        var mistake2 = new MistakeProto.MistakeItemDto
+        var mistake2 = new MistakeItemDto
         {
-            ReviewStatus = MistakeProto.ReviewStatus.Rejected,
+            ReviewStatus = MistakeReviewStatus.Rejected,
             StudentId = "student-1"
         };
 
-        var response = new MistakeProto.MistakeItemListResponse();
+        var response = new MistakeItemsByUploadResult();
         response.Items.Add(mistake1);
         response.Items.Add(mistake2);
 
         _mistakeClient
             .Setup(c => c.GetMistakeItemsByUploadAsync(
-                It.IsAny<MistakeProto.GetMistakeItemsByUploadRequest>(),
-                It.IsAny<Metadata>(),
-                It.IsAny<DateTime?>(),
+                It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
-            .Returns(CreateAsyncCall(response));
+            .ReturnsAsync(response);
 
         var result = await _controller.LegacyCheck("test-record-id");
 
@@ -105,23 +89,21 @@ public class OssUploadRecordControllerLegacyTests
     [Fact]
     public async Task LegacyCheck_AllReviewed_NoUploadPath_ReturnsLegacyWithNoUploadPath()
     {
-        var mistake1 = new MistakeProto.MistakeItemDto
+        var mistake1 = new MistakeItemDto
         {
-            ReviewStatus = MistakeProto.ReviewStatus.Confirmed,
+            ReviewStatus = MistakeReviewStatus.Confirmed,
             StudentId = "student-1"
         };
-        mistake1.SourceRegions.Add(new MistakeProto.SourceRegion { SourceImagePath = "mistakes/test.jpg" });
+        mistake1.SourceRegions.Add(new MistakeSourceRegionDto { SourceImagePath = "mistakes/test.jpg" });
 
-        var response = new MistakeProto.MistakeItemListResponse();
+        var response = new MistakeItemsByUploadResult();
         response.Items.Add(mistake1);
 
         _mistakeClient
             .Setup(c => c.GetMistakeItemsByUploadAsync(
-                It.IsAny<MistakeProto.GetMistakeItemsByUploadRequest>(),
-                It.IsAny<Metadata>(),
-                It.IsAny<DateTime?>(),
+                It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
-            .Returns(CreateAsyncCall(response));
+            .ReturnsAsync(response);
 
         var result = await _controller.LegacyCheck("test-record-id");
 
@@ -134,28 +116,26 @@ public class OssUploadRecordControllerLegacyTests
     [Fact]
     public async Task LegacyCheck_HasPendingReview_ReturnsNotLegacy()
     {
-        var mistake1 = new MistakeProto.MistakeItemDto
+        var mistake1 = new MistakeItemDto
         {
-            ReviewStatus = MistakeProto.ReviewStatus.Confirmed,
+            ReviewStatus = MistakeReviewStatus.Confirmed,
             StudentId = "student-1"
         };
-        var mistake2 = new MistakeProto.MistakeItemDto
+        var mistake2 = new MistakeItemDto
         {
-            ReviewStatus = MistakeProto.ReviewStatus.PendingReview,
+            ReviewStatus = MistakeReviewStatus.PendingReview,
             StudentId = "student-1"
         };
 
-        var response = new MistakeProto.MistakeItemListResponse();
+        var response = new MistakeItemsByUploadResult();
         response.Items.Add(mistake1);
         response.Items.Add(mistake2);
 
         _mistakeClient
             .Setup(c => c.GetMistakeItemsByUploadAsync(
-                It.IsAny<MistakeProto.GetMistakeItemsByUploadRequest>(),
-                It.IsAny<Metadata>(),
-                It.IsAny<DateTime?>(),
+                It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
-            .Returns(CreateAsyncCall(response));
+            .ReturnsAsync(response);
 
         var result = await _controller.LegacyCheck("test-record-id");
 
@@ -168,14 +148,12 @@ public class OssUploadRecordControllerLegacyTests
     [Fact]
     public async Task LegacyClean_NoMistakes_ReturnsBadRequest()
     {
-        var emptyResponse = new MistakeProto.MistakeItemListResponse();
+        var emptyResponse = new MistakeItemsByUploadResult();
         _mistakeClient
             .Setup(c => c.GetMistakeItemsByUploadAsync(
-                It.IsAny<MistakeProto.GetMistakeItemsByUploadRequest>(),
-                It.IsAny<Metadata>(),
-                It.IsAny<DateTime?>(),
+                It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
-            .Returns(CreateAsyncCall(emptyResponse));
+            .ReturnsAsync(emptyResponse);
 
         var result = await _controller.LegacyClean("test-record-id");
 
@@ -185,22 +163,20 @@ public class OssUploadRecordControllerLegacyTests
     [Fact]
     public async Task LegacyClean_HasPendingReview_ReturnsBadRequest()
     {
-        var mistake1 = new MistakeProto.MistakeItemDto
+        var mistake1 = new MistakeItemDto
         {
-            ReviewStatus = MistakeProto.ReviewStatus.PendingReview,
+            ReviewStatus = MistakeReviewStatus.PendingReview,
             StudentId = "student-1"
         };
 
-        var response = new MistakeProto.MistakeItemListResponse();
+        var response = new MistakeItemsByUploadResult();
         response.Items.Add(mistake1);
 
         _mistakeClient
             .Setup(c => c.GetMistakeItemsByUploadAsync(
-                It.IsAny<MistakeProto.GetMistakeItemsByUploadRequest>(),
-                It.IsAny<Metadata>(),
-                It.IsAny<DateTime?>(),
+                It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
-            .Returns(CreateAsyncCall(response));
+            .ReturnsAsync(response);
 
         var result = await _controller.LegacyClean("test-record-id");
 
@@ -210,35 +186,32 @@ public class OssUploadRecordControllerLegacyTests
     [Fact]
     public async Task LegacyClean_AllReviewed_CompleteReviewFails_ReturnsBadRequest()
     {
-        var mistake1 = new MistakeProto.MistakeItemDto
+        var mistake1 = new MistakeItemDto
         {
-            ReviewStatus = MistakeProto.ReviewStatus.Confirmed,
+            ReviewStatus = MistakeReviewStatus.Confirmed,
             StudentId = "student-1"
         };
 
-        var listResponse = new MistakeProto.MistakeItemListResponse();
+        var listResponse = new MistakeItemsByUploadResult();
         listResponse.Items.Add(mistake1);
 
         _mistakeClient
             .Setup(c => c.GetMistakeItemsByUploadAsync(
-                It.IsAny<MistakeProto.GetMistakeItemsByUploadRequest>(),
-                It.IsAny<Metadata>(),
-                It.IsAny<DateTime?>(),
+                It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
-            .Returns(CreateAsyncCall(listResponse));
+            .ReturnsAsync(listResponse);
 
-        var completeResponse = new MistakeProto.CompleteUploadReviewResponse
+        var completeResponse = new CompleteUploadReviewResult
         {
             Success = false,
             ErrorMessage = "Migration failed"
         };
         _mistakeClient
             .Setup(c => c.CompleteUploadReviewAsync(
-                It.IsAny<MistakeProto.CompleteUploadReviewRequest>(),
-                It.IsAny<Metadata>(),
-                It.IsAny<DateTime?>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
-            .Returns(CreateAsyncCall(completeResponse));
+            .ReturnsAsync(completeResponse);
 
         var result = await _controller.LegacyClean("test-record-id");
 
@@ -248,34 +221,31 @@ public class OssUploadRecordControllerLegacyTests
     [Fact]
     public async Task LegacyClean_AllReviewed_Success()
     {
-        var mistake1 = new MistakeProto.MistakeItemDto
+        var mistake1 = new MistakeItemDto
         {
-            ReviewStatus = MistakeProto.ReviewStatus.Confirmed,
+            ReviewStatus = MistakeReviewStatus.Confirmed,
             StudentId = "student-1"
         };
 
-        var listResponse = new MistakeProto.MistakeItemListResponse();
+        var listResponse = new MistakeItemsByUploadResult();
         listResponse.Items.Add(mistake1);
 
         _mistakeClient
             .Setup(c => c.GetMistakeItemsByUploadAsync(
-                It.IsAny<MistakeProto.GetMistakeItemsByUploadRequest>(),
-                It.IsAny<Metadata>(),
-                It.IsAny<DateTime?>(),
+                It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
-            .Returns(CreateAsyncCall(listResponse));
+            .ReturnsAsync(listResponse);
 
-        var completeResponse = new MistakeProto.CompleteUploadReviewResponse
+        var completeResponse = new CompleteUploadReviewResult
         {
             Success = true
         };
         _mistakeClient
             .Setup(c => c.CompleteUploadReviewAsync(
-                It.IsAny<MistakeProto.CompleteUploadReviewRequest>(),
-                It.IsAny<Metadata>(),
-                It.IsAny<DateTime?>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
-            .Returns(CreateAsyncCall(completeResponse));
+            .ReturnsAsync(completeResponse);
 
         // DeleteUploadRecordAfterReviewAsync returns Task; default Moq behavior returns completed task (success)
         _studentClient
@@ -293,34 +263,31 @@ public class OssUploadRecordControllerLegacyTests
     [Fact]
     public async Task LegacyClean_CompleteReviewSuccess_DeleteFails_ReturnsBadRequest()
     {
-        var mistake1 = new MistakeProto.MistakeItemDto
+        var mistake1 = new MistakeItemDto
         {
-            ReviewStatus = MistakeProto.ReviewStatus.Confirmed,
+            ReviewStatus = MistakeReviewStatus.Confirmed,
             StudentId = "student-1"
         };
 
-        var listResponse = new MistakeProto.MistakeItemListResponse();
+        var listResponse = new MistakeItemsByUploadResult();
         listResponse.Items.Add(mistake1);
 
         _mistakeClient
             .Setup(c => c.GetMistakeItemsByUploadAsync(
-                It.IsAny<MistakeProto.GetMistakeItemsByUploadRequest>(),
-                It.IsAny<Metadata>(),
-                It.IsAny<DateTime?>(),
+                It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
-            .Returns(CreateAsyncCall(listResponse));
+            .ReturnsAsync(listResponse);
 
-        var completeResponse = new MistakeProto.CompleteUploadReviewResponse
+        var completeResponse = new CompleteUploadReviewResult
         {
             Success = true
         };
         _mistakeClient
             .Setup(c => c.CompleteUploadReviewAsync(
-                It.IsAny<MistakeProto.CompleteUploadReviewRequest>(),
-                It.IsAny<Metadata>(),
-                It.IsAny<DateTime?>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
-            .Returns(CreateAsyncCall(completeResponse));
+            .ReturnsAsync(completeResponse);
 
         // DeleteUploadRecordAfterReviewAsync throws HttpRequestException on failure; controller maps to BadRequest
         _studentClient
@@ -333,15 +300,13 @@ public class OssUploadRecordControllerLegacyTests
     }
 
     [Fact]
-    public async Task LegacyCheck_GrpcException_Returns500()
+    public async Task LegacyCheck_HttpException_Returns500()
     {
         _mistakeClient
             .Setup(c => c.GetMistakeItemsByUploadAsync(
-                It.IsAny<MistakeProto.GetMistakeItemsByUploadRequest>(),
-                It.IsAny<Metadata>(),
-                It.IsAny<DateTime?>(),
+                It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
-            .Throws(new RpcException(new Status(StatusCode.Unavailable, "Service unavailable")));
+            .ThrowsAsync(new HttpRequestException("Service unavailable"));
 
         var result = await _controller.LegacyCheck("test-record-id");
 
@@ -350,15 +315,13 @@ public class OssUploadRecordControllerLegacyTests
     }
 
     [Fact]
-    public async Task LegacyClean_GrpcException_Returns500()
+    public async Task LegacyClean_HttpException_Returns500()
     {
         _mistakeClient
             .Setup(c => c.GetMistakeItemsByUploadAsync(
-                It.IsAny<MistakeProto.GetMistakeItemsByUploadRequest>(),
-                It.IsAny<Metadata>(),
-                It.IsAny<DateTime?>(),
+                It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
-            .Throws(new RpcException(new Status(StatusCode.Unavailable, "Service unavailable")));
+            .ThrowsAsync(new HttpRequestException("Service unavailable"));
 
         var result = await _controller.LegacyClean("test-record-id");
 
@@ -370,32 +333,29 @@ public class OssUploadRecordControllerLegacyTests
     public async Task LegacyClean_WithRemovedImagePaths_CallsRemoveImagesFromRecord()
     {
         // Arrange
-        var mistake1 = new MistakeProto.MistakeItemDto
+        var mistake1 = new MistakeItemDto
         {
-            ReviewStatus = MistakeProto.ReviewStatus.Confirmed,
+            ReviewStatus = MistakeReviewStatus.Confirmed,
             StudentId = "student-1"
         };
-        var listResponse = new MistakeProto.MistakeItemListResponse();
+        var listResponse = new MistakeItemsByUploadResult();
         listResponse.Items.Add(mistake1);
 
         _mistakeClient
             .Setup(c => c.GetMistakeItemsByUploadAsync(
-                It.IsAny<MistakeProto.GetMistakeItemsByUploadRequest>(),
-                It.IsAny<Metadata>(),
-                It.IsAny<DateTime?>(),
+                It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
-            .Returns(CreateAsyncCall(listResponse));
+            .ReturnsAsync(listResponse);
 
-        var completeResponse = new MistakeProto.CompleteUploadReviewResponse { Success = true };
+        var completeResponse = new CompleteUploadReviewResult { Success = true };
         completeResponse.RemovedImagePaths.Add("uploads/img1.jpg");
         completeResponse.RemovedImagePaths.Add("uploads/img2.jpg");
         _mistakeClient
             .Setup(c => c.CompleteUploadReviewAsync(
-                It.IsAny<MistakeProto.CompleteUploadReviewRequest>(),
-                It.IsAny<Metadata>(),
-                It.IsAny<DateTime?>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
-            .Returns(CreateAsyncCall(completeResponse));
+            .ReturnsAsync(completeResponse);
 
         _studentClient
             .Setup(c => c.RemoveImagesFromRecordAsync(
@@ -428,31 +388,28 @@ public class OssUploadRecordControllerLegacyTests
     public async Task LegacyClean_EmptyRemovedImagePaths_SkipsRemoveImagesFromRecord()
     {
         // Arrange
-        var mistake1 = new MistakeProto.MistakeItemDto
+        var mistake1 = new MistakeItemDto
         {
-            ReviewStatus = MistakeProto.ReviewStatus.Confirmed,
+            ReviewStatus = MistakeReviewStatus.Confirmed,
             StudentId = "student-1"
         };
-        var listResponse = new MistakeProto.MistakeItemListResponse();
+        var listResponse = new MistakeItemsByUploadResult();
         listResponse.Items.Add(mistake1);
 
         _mistakeClient
             .Setup(c => c.GetMistakeItemsByUploadAsync(
-                It.IsAny<MistakeProto.GetMistakeItemsByUploadRequest>(),
-                It.IsAny<Metadata>(),
-                It.IsAny<DateTime?>(),
+                It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
-            .Returns(CreateAsyncCall(listResponse));
+            .ReturnsAsync(listResponse);
 
-        var completeResponse = new MistakeProto.CompleteUploadReviewResponse { Success = true };
+        var completeResponse = new CompleteUploadReviewResult { Success = true };
         // RemovedImagePaths is empty by default
         _mistakeClient
             .Setup(c => c.CompleteUploadReviewAsync(
-                It.IsAny<MistakeProto.CompleteUploadReviewRequest>(),
-                It.IsAny<Metadata>(),
-                It.IsAny<DateTime?>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
-            .Returns(CreateAsyncCall(completeResponse));
+            .ReturnsAsync(completeResponse);
 
         _studentClient
             .Setup(c => c.DeleteUploadRecordAfterReviewAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
@@ -475,21 +432,19 @@ public class OssUploadRecordControllerLegacyTests
     public async Task LegacyClean_EmptyStudentId_ReturnsBadRequest()
     {
         // Arrange - mistake item with empty StudentId
-        var mistake1 = new MistakeProto.MistakeItemDto
+        var mistake1 = new MistakeItemDto
         {
-            ReviewStatus = MistakeProto.ReviewStatus.Confirmed,
+            ReviewStatus = MistakeReviewStatus.Confirmed,
             StudentId = ""
         };
-        var listResponse = new MistakeProto.MistakeItemListResponse();
+        var listResponse = new MistakeItemsByUploadResult();
         listResponse.Items.Add(mistake1);
 
         _mistakeClient
             .Setup(c => c.GetMistakeItemsByUploadAsync(
-                It.IsAny<MistakeProto.GetMistakeItemsByUploadRequest>(),
-                It.IsAny<Metadata>(),
-                It.IsAny<DateTime?>(),
+                It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
-            .Returns(CreateAsyncCall(listResponse));
+            .ReturnsAsync(listResponse);
 
         // Act
         var result = await _controller.LegacyClean("test-record-id");
@@ -502,31 +457,28 @@ public class OssUploadRecordControllerLegacyTests
     public async Task LegacyClean_RemoveImagesThrowsException_Returns500()
     {
         // Arrange
-        var mistake1 = new MistakeProto.MistakeItemDto
+        var mistake1 = new MistakeItemDto
         {
-            ReviewStatus = MistakeProto.ReviewStatus.Confirmed,
+            ReviewStatus = MistakeReviewStatus.Confirmed,
             StudentId = "student-1"
         };
-        var listResponse = new MistakeProto.MistakeItemListResponse();
+        var listResponse = new MistakeItemsByUploadResult();
         listResponse.Items.Add(mistake1);
 
         _mistakeClient
             .Setup(c => c.GetMistakeItemsByUploadAsync(
-                It.IsAny<MistakeProto.GetMistakeItemsByUploadRequest>(),
-                It.IsAny<Metadata>(),
-                It.IsAny<DateTime?>(),
+                It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
-            .Returns(CreateAsyncCall(listResponse));
+            .ReturnsAsync(listResponse);
 
-        var completeResponse = new MistakeProto.CompleteUploadReviewResponse { Success = true };
+        var completeResponse = new CompleteUploadReviewResult { Success = true };
         completeResponse.RemovedImagePaths.Add("uploads/img1.jpg");
         _mistakeClient
             .Setup(c => c.CompleteUploadReviewAsync(
-                It.IsAny<MistakeProto.CompleteUploadReviewRequest>(),
-                It.IsAny<Metadata>(),
-                It.IsAny<DateTime?>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
-            .Returns(CreateAsyncCall(completeResponse));
+            .ReturnsAsync(completeResponse);
 
         _studentClient
             .Setup(c => c.RemoveImagesFromRecordAsync(

@@ -1,5 +1,4 @@
 using Microsoft.AspNetCore.Mvc;
-using MistakeProto = Ruoyu.Study.Mistake.Contract.Protos;
 using Admin.WebApi.Models;
 using Ruoyu.Study.MistakeBff.GrpcClients;
 
@@ -9,12 +8,12 @@ namespace Admin.WebApi.Controllers;
 [ApiController]
 public class MistakeController : ControllerBase
 {
-    private readonly MistakeProto.MistakeGrpcService.MistakeGrpcServiceClient _mistakeClient;
+    private readonly IMistakeHttpClient _mistakeClient;
     private readonly IStudentHttpClient _studentClient;
     private readonly ILogger<MistakeController> _logger;
 
     public MistakeController(
-        MistakeProto.MistakeGrpcService.MistakeGrpcServiceClient mistakeClient,
+        IMistakeHttpClient mistakeClient,
         IStudentHttpClient studentClient,
         ILogger<MistakeController> logger)
     {
@@ -38,21 +37,13 @@ public class MistakeController : ControllerBase
             if (size <= 0) size = 10;
             if (size > 100) size = 100;
 
-            var request = new MistakeProto.GetMistakeItemListRequest
-            {
-                StudentId = studentId ?? string.Empty,
-                Subject = subject ?? 0,
-                Grade = grade ?? 0,
-                Page = page,
-                Size = size
-            };
-
-            if (reviewStatus.HasValue)
-            {
-                request.ReviewStatus = (MistakeProto.ReviewStatus)reviewStatus.Value;
-            }
-
-            var response = await _mistakeClient.GetMistakeItemListAsync(request);
+            var response = await _mistakeClient.GetMistakeItemListAsync(
+                studentId ?? string.Empty,
+                subject ?? 0,
+                grade ?? 0,
+                reviewStatus.HasValue ? (MistakeReviewStatus)reviewStatus.Value : MistakeReviewStatus.Unspecified,
+                page,
+                size);
 
             var studentIds = response.Items.Select(i => i.StudentId).Distinct().ToList();
             var studentNameMap = new Dictionary<string, string>();
@@ -111,8 +102,12 @@ public class MistakeController : ControllerBase
     {
         try
         {
-            var request = new MistakeProto.IdRequest { Id = id };
-            var item = await _mistakeClient.GetMistakeItemAsync(request);
+            var item = await _mistakeClient.GetMistakeItemAsync(id);
+
+            if (item is null)
+            {
+                return NotFound(new ErrorResponse("Mistake item not found"));
+            }
 
             string studentName = item.StudentId;
             try
@@ -164,11 +159,7 @@ public class MistakeController : ControllerBase
     {
         try
         {
-            var request = new MistakeProto.GetMistakeItemsByUploadRequest
-            {
-                SourceUploadId = uploadId
-            };
-            var response = await _mistakeClient.GetMistakeItemsByUploadAsync(request);
+            var response = await _mistakeClient.GetMistakeItemsByUploadAsync(uploadId);
 
             var studentIds = response.Items.Select(i => i.StudentId).Distinct().ToList();
             var studentNameMap = new Dictionary<string, string>();
@@ -224,15 +215,12 @@ public class MistakeController : ControllerBase
     {
         try
         {
-            var updateRequest = new MistakeProto.UpdateMistakeItemRequest
-            {
-                Id = id,
-                StudentId = request.StudentId ?? "",
-                Subject = request.Subject ?? 0,
-                Grade = request.Grade ?? 0
-            };
-
-            var item = await _mistakeClient.UpdateMistakeItemAsync(updateRequest);
+            var item = await _mistakeClient.UpdateMistakeItemAsync(
+                id,
+                request.StudentId ?? "",
+                request.Subject ?? 0,
+                request.Grade ?? 0,
+                null);
 
             string studentName = item.StudentId;
             try

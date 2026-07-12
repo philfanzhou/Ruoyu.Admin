@@ -5,7 +5,6 @@ using Admin.WebApi.Models;
 using Admin.WebApi.Services;
 using Ruoyu.Study.Common.Oss;
 using Ruoyu.Study.MistakeBff.GrpcClients;
-using MProto = Ruoyu.Study.Mistake.Contract.Protos;
 
 namespace Admin.WebApi.Controllers;
 
@@ -15,7 +14,7 @@ public partial class OssAuditController : ControllerBase
 {
     private readonly AuditDbContext _dbContext;
     private readonly IStudentHttpClient _studentClient;
-    private readonly MProto.MistakeGrpcService.MistakeGrpcServiceClient _mistakeClient;
+    private readonly IMistakeHttpClient _mistakeClient;
     private readonly IOssService _ossService;
     private readonly OssAuditWorker _auditWorker;
     private readonly ILogger<OssAuditController> _logger;
@@ -23,7 +22,7 @@ public partial class OssAuditController : ControllerBase
     public OssAuditController(
         AuditDbContext dbContext,
         IStudentHttpClient studentClient,
-        MProto.MistakeGrpcService.MistakeGrpcServiceClient mistakeClient,
+        IMistakeHttpClient mistakeClient,
         IOssService ossService,
         OssAuditWorker auditWorker,
         ILogger<OssAuditController> logger)
@@ -350,7 +349,7 @@ public partial class OssAuditController
         while (true)
         {
             var response = await _mistakeClient.GetMistakeItemListAsync(
-                new MProto.GetMistakeItemListRequest { Page = page, Size = pageSize });
+                string.Empty, 0, 0, MistakeReviewStatus.Unspecified, page, pageSize);
 
             foreach (var item in response.Items)
             {
