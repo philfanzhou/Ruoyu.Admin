@@ -156,6 +156,22 @@ using (var scope = app.Services.CreateScope())
                 ""ErrorMessage"" text NULL
             );
             CREATE INDEX IF NOT EXISTS ""IX_OssAuditRuns_StartedAt"" ON ""OssAuditRuns"" (""StartedAt"");",
+        "OssAuditRecords" => @"
+            CREATE TABLE IF NOT EXISTS ""OssAuditRecords"" (
+                ""Id"" bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                ""ObjectPath"" text NOT NULL,
+                ""Bucket"" text NOT NULL,
+                ""Size"" bigint NOT NULL DEFAULT 0,
+                ""LastModified"" bigint NOT NULL DEFAULT 0,
+                ""Status"" integer NOT NULL DEFAULT 0,
+                ""CreatedAt"" bigint NOT NULL DEFAULT 0,
+                ""ResolvedAt"" bigint NULL,
+                ""Note"" text NULL
+            );
+            CREATE UNIQUE INDEX IF NOT EXISTS ""IX_OssAuditRecords_ObjectPath"" ON ""OssAuditRecords"" (""ObjectPath"");
+            CREATE INDEX IF NOT EXISTS ""IX_OssAuditRecords_Status"" ON ""OssAuditRecords"" (""Status"");
+            CREATE INDEX IF NOT EXISTS ""IX_OssAuditRecords_Bucket"" ON ""OssAuditRecords"" (""Bucket"");
+            CREATE INDEX IF NOT EXISTS ""IX_OssAuditRecords_CreatedAt"" ON ""OssAuditRecords"" (""CreatedAt"");",
         _ => null
     });
 }
