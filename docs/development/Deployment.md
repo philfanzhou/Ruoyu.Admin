@@ -64,11 +64,13 @@ location /oss/ {
 
 | 依赖服务 | 地址 | 协议 |
 |----------|------|------|
-| Student 服务 | `http://ruoyu-student:5005` | gRPC |
-| Mistake 服务 | `http://ruoyu-mistake:5006` | gRPC |
+| Student 服务 | `http://ruoyu-student:5005` | HTTP |
+| Mistake 服务 | `http://ruoyu-mistake:5007` | HTTP |
 | Identity 服务 | `http://ruoyu-identity:5002` | HTTP |
 | Teacher Portal | `http://ruoyu-teacher-portal-api:5004` | HTTP |
 | SeaweedFS (OSS) | `http://ruoyu-seaweedfs:8333` | S3 API |
+
+> **变更说明**：Student/Mistake 服务已从 gRPC 迁移至 HTTP（详见各服务 Program.cs）。Admin Portal 通过 `Ruoyu.Study.MistakeBff.GrpcClients` 项目中的 `StudentHttpClient`/`MistakeHttpClient` 发起 HTTP 调用，不再依赖 Contract proto 项目。
 
 ### PublicEndpoint 配置
 
