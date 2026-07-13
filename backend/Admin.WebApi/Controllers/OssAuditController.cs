@@ -4,7 +4,7 @@ using Admin.WebApi.Persistence;
 using Admin.WebApi.Models;
 using Admin.WebApi.Services;
 using Ruoyu.Study.Common.Oss;
-using Ruoyu.Study.MistakeBff.GrpcClients;
+using Ruoyu.Study.MistakeBff.HttpClients;
 
 namespace Admin.WebApi.Controllers;
 

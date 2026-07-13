@@ -1,9 +1,9 @@
 using System.Net;
 using Microsoft.AspNetCore.Mvc;
 using Ruoyu.Study.Common.Constants;
-using Ruoyu.Study.MistakeBff.GrpcClients;
+using Ruoyu.Study.MistakeBff.HttpClients;
 using Admin.WebApi.Models;
-using StudentHttpDto = Ruoyu.Study.MistakeBff.GrpcClients.StudentDto;
+using StudentHttpDto = Ruoyu.Study.MistakeBff.HttpClients.StudentDto;
 
 namespace Admin.WebApi.Controllers;
 

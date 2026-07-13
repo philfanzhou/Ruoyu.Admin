@@ -20,7 +20,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\..\services\ruoyu.common\src\Ruoyu.Study.Common\Ruoyu.Study.Common.csproj" />
-    <ProjectReference Include="..\..\..\services\ruoyu.common\src\Ruoyu.Study.MistakeBff.GrpcClients\Ruoyu.Study.MistakeBff.GrpcClients.csproj" />
+    <ProjectReference Include="..\..\..\services\ruoyu.common\src\Ruoyu.Study.MistakeBff.HttpClients\Ruoyu.Study.MistakeBff.HttpClients.csproj" />
   </ItemGroup>
 
 </Project>

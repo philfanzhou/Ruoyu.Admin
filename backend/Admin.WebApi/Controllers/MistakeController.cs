@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Admin.WebApi.Models;
-using Ruoyu.Study.MistakeBff.GrpcClients;
+using Ruoyu.Study.MistakeBff.HttpClients;
 
 namespace Admin.WebApi.Controllers;
 

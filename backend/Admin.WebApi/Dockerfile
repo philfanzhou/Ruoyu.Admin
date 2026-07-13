@@ -15,12 +15,12 @@ WORKDIR /src
 
 COPY src/admin_portal/backend/Admin.WebApi/Admin.WebApi.csproj ./src/admin_portal/backend/Admin.WebApi/
 COPY src/services/ruoyu.common/src/Ruoyu.Study.Common/Ruoyu.Study.Common.csproj ./src/services/ruoyu.common/src/Ruoyu.Study.Common/
-COPY src/services/ruoyu.common/src/Ruoyu.Study.MistakeBff.GrpcClients/Ruoyu.Study.MistakeBff.GrpcClients.csproj ./src/services/ruoyu.common/src/Ruoyu.Study.MistakeBff.GrpcClients/
+COPY src/services/ruoyu.common/src/Ruoyu.Study.MistakeBff.HttpClients/Ruoyu.Study.MistakeBff.HttpClients.csproj ./src/services/ruoyu.common/src/Ruoyu.Study.MistakeBff.HttpClients/
 RUN dotnet restore "src/admin_portal/backend/Admin.WebApi/Admin.WebApi.csproj"
 
 COPY src/admin_portal/backend/Admin.WebApi/ ./src/admin_portal/backend/Admin.WebApi/
 COPY src/services/ruoyu.common/src/Ruoyu.Study.Common/ ./src/services/ruoyu.common/src/Ruoyu.Study.Common/
-COPY src/services/ruoyu.common/src/Ruoyu.Study.MistakeBff.GrpcClients/ ./src/services/ruoyu.common/src/Ruoyu.Study.MistakeBff.GrpcClients/
+COPY src/services/ruoyu.common/src/Ruoyu.Study.MistakeBff.HttpClients/ ./src/services/ruoyu.common/src/Ruoyu.Study.MistakeBff.HttpClients/
 COPY --from=frontend-build /frontend/dist ./src/admin_portal/backend/Admin.WebApi/wwwroot
 RUN dotnet publish "src/admin_portal/backend/Admin.WebApi/Admin.WebApi.csproj" -c Release -o /app/publish /p:UseAppHost=false --no-restore
 

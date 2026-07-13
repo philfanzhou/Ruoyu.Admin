@@ -5,8 +5,8 @@ using FluentAssertions;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Moq;
-using Ruoyu.Study.MistakeBff.GrpcClients;
-using StudentHttpDto = Ruoyu.Study.MistakeBff.GrpcClients.StudentDto;
+using Ruoyu.Study.MistakeBff.HttpClients;
+using StudentHttpDto = Ruoyu.Study.MistakeBff.HttpClients.StudentDto;
 using Xunit;
 
 namespace Admin.WebApi.Tests.Controllers;

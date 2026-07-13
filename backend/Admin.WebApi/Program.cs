@@ -5,7 +5,7 @@ using Admin.WebApi.Services;
 using Microsoft.EntityFrameworkCore;
 using Ruoyu.Study.Common.Database;
 using Ruoyu.Study.Common.Oss;
-using Ruoyu.Study.MistakeBff.GrpcClients;
+using Ruoyu.Study.MistakeBff.HttpClients;
 
 var builder = WebApplication.CreateBuilder(args);
 
