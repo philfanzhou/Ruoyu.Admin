@@ -47,7 +47,7 @@ Admin Portal 提供 REST API 接口，用于管理学生、错题记录、OSS �
 }
 ```
 
-> **变更**：2026 年 6 月起不再返回 `mistakeTypes` 字段，错题错误类型已下线（参见 [ruoyu.common/constants.md](../services/ruoyu.common/docs/constants.md) 历史记录）。
+> **变更**：2026 年 6 月起不再返回 `mistakeTypes` 字段，错题错误类型已下线（参见 [ruoyu.common/constants.md](../ruoyu.common/docs/constants.md) 历史记录）。
 
 ---
 
