@@ -19,8 +19,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\..\ruoyu.common\src\Ruoyu.Study.Common\Ruoyu.Study.Common.csproj" />
-    <ProjectReference Include="..\..\..\ruoyu.common\src\Ruoyu.Study.MistakeBff.HttpClients\Ruoyu.Study.MistakeBff.HttpClients.csproj" />
+    <ProjectReference Include="..\..\..\ruoyu.common\backend\Ruoyu.Study.Common\Ruoyu.Study.Common.csproj" />
+    <ProjectReference Include="..\..\..\ruoyu.common\backend\Ruoyu.Study.MistakeBff.HttpClients\Ruoyu.Study.MistakeBff.HttpClients.csproj" />
   </ItemGroup>
 
 </Project>
