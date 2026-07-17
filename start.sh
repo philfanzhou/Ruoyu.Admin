@@ -14,15 +14,9 @@ CONSUL_TOKEN="${CONSUL_TOKEN:-}"
 
 DB_NAME="ruoyu_study_admin"
 
-STUDENT_HTTP_ADDR="ruoyu-student:5005"
-MISTAKE_HTTP_ADDR="ruoyu-mistake:5007"
-TEACHER_API_ADDR="ruoyu-teacher-api:5004"
-TEACHER_ADMIN_API_KEY=""
-ASSISTANT_API_ADDR="ruoyu-assistant-api:5021"
-ASSISTANT_ADMIN_API_KEY=""
-IDENTITY_HTTP_ADDR="ruoyu-identity:5002"
-IDENTITY_APP_ID=""
-IDENTITY_APP_SECRET=""
+# All service endpoints (IdentityService, StudentService, MistakeService, TeacherPortal,
+# AssistantPortal) are now sourced from Consul config/ruoyu/service-endpoints.json.
+# Only Consul connection, database name, and port remain in start.sh.
 
 docker network inspect "$NETWORK_NAME" >/dev/null 2>&1 || docker network create "$NETWORK_NAME"
 
@@ -47,15 +41,6 @@ docker run -d \
   -e Database__Name="${DB_NAME}" \
   -e APP_TITLE="${CONTAINER_NAME}" \
   -e AdminApi__Port="${ADMIN_API_PORT}" \
-  -e StudentService__Url="http://${STUDENT_HTTP_ADDR}" \
-  -e MistakeService__BaseUrl="http://${MISTAKE_HTTP_ADDR}" \
-  -e IdentityService__Address="http://${IDENTITY_HTTP_ADDR}" \
-  -e IdentityService__AppId="${IDENTITY_APP_ID}" \
-  -e IdentityService__AppSecret="${IDENTITY_APP_SECRET}" \
-  -e TeacherPortal__Address="http://${TEACHER_API_ADDR}" \
-  -e TeacherPortal__AdminApiKey="${TEACHER_ADMIN_API_KEY}" \
-  -e AssistantPortal__Address="http://${ASSISTANT_API_ADDR}" \
-  -e AssistantPortal__AdminApiKey="${ASSISTANT_ADMIN_API_KEY}" \
   "$IMAGE_NAME"
 
 echo "${CONTAINER_NAME} started"
