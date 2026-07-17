@@ -96,10 +96,12 @@ builder.Services.AddSingleton<IOssService>(sp =>
     // 不配置 allowedPrefixes：Admin Portal 需要访问所有路径前缀（审计+运维）
 });
 
-var connectionString = builder.Configuration.GetConnectionString("AuditDb")
-    ?? "Host=localhost;Port=5432;Database=ruoyu_admin;Username=postgres;Password=postgres";
-var isPostgreSql = connectionString.Contains("Host=", StringComparison.OrdinalIgnoreCase)
-                || connectionString.Contains("Server=", StringComparison.OrdinalIgnoreCase);
+var connectionString = SharedPostgreSqlConnectionStringFactory.BuildOrFallback(
+    builder.Configuration,
+    builder.Configuration.GetConnectionString("AuditDb"));
+var isPostgreSql = !string.IsNullOrWhiteSpace(connectionString)
+    && (connectionString.Contains("Host=", StringComparison.OrdinalIgnoreCase)
+        || connectionString.Contains("Server=", StringComparison.OrdinalIgnoreCase));
 
 builder.Services.AddDbContext<AuditDbContext>(options =>
 {
@@ -109,7 +111,7 @@ builder.Services.AddDbContext<AuditDbContext>(options =>
         options.UseSqlite(connectionString);
 });
 
-if (!isPostgreSql)
+if (!isPostgreSql && !string.IsNullOrEmpty(connectionString))
 {
     var dir = Path.GetDirectoryName(connectionString.Replace("Data Source=", ""));
     if (!string.IsNullOrEmpty(dir))
@@ -141,7 +143,7 @@ app.Logger.LogInformation(
     StartupDiagnosticsFormatter.SummarizePrefixes(consulRuntimeState.LoadedPrefixes),
     StartupDiagnosticsFormatter.SummarizeError(consulRuntimeState.LastError));
 app.Logger.LogInformation("Listening: port {Port}", adminApiPort);
-if (isPostgreSql)
+if (isPostgreSql && !string.IsNullOrEmpty(connectionString))
 {
     var csb = new DbConnectionStringBuilder { ConnectionString = connectionString };
     app.Logger.LogInformation("Database: PostgreSQL {Host}:{Port}/{Database}", csb["Host"], csb.TryGetValue("Port", out var dbPort) ? dbPort : "5432", csb["Database"]);
@@ -150,6 +152,13 @@ else
 {
     app.Logger.LogInformation("Database: SQLite");
 }
+app.Logger.LogInformation(
+    "Effective configuration diagnostics: PostgreSqlHost={PostgreSqlHost}, PostgreSqlPort={PostgreSqlPort}, PostgreSqlUsername={PostgreSqlUsername}, PostgreSqlPassword={PostgreSqlPassword}, DatabaseName={DatabaseName}",
+    StartupDiagnosticsFormatter.SummarizeValue(builder.Configuration["PostgreSql:Host"]),
+    StartupDiagnosticsFormatter.SummarizeValue(builder.Configuration["PostgreSql:Port"]),
+    StartupDiagnosticsFormatter.SummarizeValue(builder.Configuration["PostgreSql:Username"]),
+    StartupDiagnosticsFormatter.SummarizePassword(builder.Configuration["PostgreSql:Password"]),
+    StartupDiagnosticsFormatter.SummarizeValue(builder.Configuration["Database:Name"]));
 app.Logger.LogInformation("OSS: {OssType}", useLocalOss ? "local" : "S3");
 app.Logger.LogInformation("Downstream: Student HTTP={StudentHttp}, Mistake HTTP={MistakeHttp}", studentServiceUrl, mistakeServiceUrl);
 app.Logger.LogInformation("Downstream: Identity={Identity}, Teacher Portal={TeacherPortal}, Assistant Portal={AssistantPortal}",

@@ -10,9 +10,13 @@ Admin Portal 服务的本地数据库文档。本文档是数据库结构的**�
 |------|------|
 | 数据库类型 | PostgreSQL（生产）/ SQLite（测试） |
 | 数据库名 | `ruoyu_study_admin`（PostgreSQL）/ `admin.db`（SQLite） |
-| 连接字符串配置键 | `ConnectionStrings:AuditDb` |
+| 连接字符串配置键 | `ConnectionStrings:AuditDb`（dev 兜底）/ Consul `PostgreSql:*` + `Database:Name`（生产合成） |
 | ORM | Entity Framework Core 8.0 |
 | DbContext | `AuditDbContext` |
+
+## 数据库连接策略
+
+通过 `SharedPostgreSqlConnectionStringFactory.BuildOrFallback` 组装连接串：Consul 的 `PostgreSql:Host/Port/Username/Password` 与本地 `Database:Name=ruoyu_study_admin` 合成 PostgreSQL 连接串；未配置 Consul 时回退到本地 `ConnectionStrings:AuditDb`。连接串包含 `Host=` / `Server=` → PostgreSQL，否则 SQLite。详见 [development/LocalSetup.md](../development/LocalSetup.md#数据库连接策略)。
 
 ## 表清单
 

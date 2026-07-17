@@ -23,17 +23,33 @@
 | 配置键 | 默认值 | 说明 |
 |--------|--------|------|
 | `AdminApi:Port` | 5020 | API 监听端口 |
-| `ConnectionStrings:AuditDb` | PostgreSQL 连接串 | 审计数据库；改为 `Data Source=admin.db` 使用 SQLite |
+| `ConnectionStrings:AuditDb` | `Host=localhost;Port=5432;Database=ruoyu_study_admin;Username=phil` | 审计数据库连接串（dev 兜底，生产由 Consul 覆盖） |
+| `Database:Name` | `ruoyu_study_admin` | 数据库名（与 Consul `PostgreSql:*` 合成连接串时使用） |
 | `StudentGrpcService:Address` | `http://localhost:5005` | Student gRPC 服务 |
 | `MistakeGrpcService:Address` | `http://localhost:5006` | Mistake gRPC 服务 |
 | `IdentityService:Address` | `http://localhost:5002` | Identity HTTP 服务 |
 | `TeacherPortal:Address` | `http://localhost:5004` | Teacher Portal HTTP 服务 |
 
+### 数据库连接策略
+
+Admin Portal 通过 `SharedPostgreSqlConnectionStringFactory.BuildOrFallback` 组装连接串，与 mistake / student 等服务保持一致：
+
+1. 启动时先从 `appsettings.json` 读取 Consul 连接参数，调用 `AddRuoyuConsulConfiguration` 加载共享配置
+2. 从 Consul KV `config/ruoyu/shared.json` 获取 `PostgreSql:Host/Port/Username/Password`
+3. 当 `PostgreSql:Host`、`PostgreSql:Username`、`Database:Name` 均非空时，与本地 `Database:Name` 合成 PostgreSQL 连接串
+4. 否则回退到本地 `ConnectionStrings:AuditDb`
+
+数据库类型判定：连接串包含 `Host=` 或 `Server=`（不区分大小写）→ PostgreSQL（Npgsql），否则 SQLite。
+
+- 本地开发：`ConnectionStrings:AuditDb` 指向本地 PostgreSQL（`Host=localhost;Username=phil`，无密码），无需 Consul 即可运行
+- 生产环境：由 Consul 的 `PostgreSql:*` 覆盖，`ConnectionStrings:AuditDb` 仅作兜底
+- SQLite 模式：将 `ConnectionStrings:AuditDb` 改为 `Data Source=admin.db` 即可
+
 3. 环境变量覆盖（可选）：
    ```bash
    export USE_LOCAL_OSS=1           # 使用本地文件系统替代 S3
    export OSS_LOCAL_PATH=data/oss   # 本地 OSS 存储路径
-   export ConnectionStrings__AuditDb="Data Source=admin.db"  # 使用 SQLite
+   export ConnectionStrings__AuditDb="Data Source=admin.db"  # 使用 SQLite（覆盖兜底连接串）
    ```
 
 4. IOssService 凭证权限说明（Phase 4 变更）：
