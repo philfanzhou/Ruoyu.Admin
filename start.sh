@@ -22,7 +22,7 @@ IDENTITY_APP_SECRET="${IDENTITY_APP_SECRET:-}"
 TEACHER_ADMIN_API_KEY="${TEACHER_ADMIN_API_KEY:-}"
 ASSISTANT_ADMIN_API_KEY="${ASSISTANT_ADMIN_API_KEY:-}"
 
-# Non-sensitive endpoints (IdentityService.Authority, StudentService.Url, MistakeService.BaseUrl,
+# Non-sensitive endpoints (IdentityService.Authority, StudentService.Url, MistakeService.Url,
 # TeacherPortal.InternalUrl, AssistantPortal.InternalUrl) are sourced from Consul
 # config/ruoyu/service-endpoints.json.
 

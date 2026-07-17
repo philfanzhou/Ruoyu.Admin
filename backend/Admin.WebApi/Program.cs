@@ -21,7 +21,7 @@ builder.Host.UseRuoyuSerilog("Ruoyu.Study.AdminPortal");
 
 var adminApiPort = builder.Configuration.GetValue<int>("AdminApi:Port");
 var studentServiceUrl = builder.Configuration["StudentService:Url"] ?? "http://localhost:5005";
-var mistakeServiceUrl = builder.Configuration["MistakeService:BaseUrl"] ?? "http://localhost:5007";
+var mistakeServiceUrl = builder.Configuration["MistakeService:Url"] ?? "http://localhost:5007";
 
 builder.WebHost.ConfigureKestrel(options =>
 {
