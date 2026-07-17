@@ -18,7 +18,7 @@ pipeline {
     }
 
     environment {
-        REPO_DIR         = '/mnt/data1/Ruoyu.Study'
+        REPO_DIR         = "${env.REPO_DIR ?: '/srv/repo'}"
         SERVICE_DIR      = "${env.REPO_DIR}/src/admin_portal"
         BUILD_SCRIPT     = "${env.REPO_DIR}/script/build-script/10-admin-portal.build.sh"
         TEST_PROJ        = "${env.SERVICE_DIR}/backend/Tests/Admin.WebApi.Tests.csproj"
