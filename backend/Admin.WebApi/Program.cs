@@ -5,9 +5,19 @@ using Admin.WebApi.Services;
 using Microsoft.EntityFrameworkCore;
 using Ruoyu.Study.Common.Database;
 using Ruoyu.Study.Common.Oss;
+using Ruoyu.Study.Consul.Shared;
 using Ruoyu.Study.MistakeBff.HttpClients;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// ========== Consul Configuration Source ==========
+builder.Configuration.AddRuoyuConsulConfiguration(builder.Configuration);
+var consulOptions = RuoyuConsulOptions.Bind(builder.Configuration);
+var consulRuntimeState = RuoyuConsulRuntimeState.Instance;
+
+// ========== Serilog (Console + Grafana Loki) ==========
+builder.Configuration.AddRuoyuLokiSink();
+builder.Host.UseRuoyuSerilog("Ruoyu.Study.AdminPortal");
 
 var adminApiPort = builder.Configuration.GetValue<int>("AdminApi:Port");
 var studentServiceUrl = builder.Configuration["StudentService:Url"] ?? "http://localhost:5005";
@@ -122,6 +132,14 @@ builder.Services.AddSwaggerGen(c =>
 var app = builder.Build();
 
 app.Logger.LogInformation("Admin Portal starting");
+app.Logger.LogInformation(
+    "Consul startup diagnostics: Address={Address}, Token={Token}, Source={Source}, KeyCount={KeyCount}, Prefixes={Prefixes}, LastError={LastError}",
+    $"{consulOptions.Host}:{consulOptions.Port}",
+    StartupDiagnosticsFormatter.MaskSecret(consulOptions.Token),
+    consulRuntimeState.Source,
+    consulRuntimeState.KeyCount,
+    StartupDiagnosticsFormatter.SummarizePrefixes(consulRuntimeState.LoadedPrefixes),
+    StartupDiagnosticsFormatter.SummarizeError(consulRuntimeState.LastError));
 app.Logger.LogInformation("Listening: port {Port}", adminApiPort);
 if (isPostgreSql)
 {
