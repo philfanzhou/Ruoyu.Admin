@@ -42,7 +42,7 @@ public class IdentityAccountsController : ControllerBase
                 return Ok(new { accounts = (IReadOnlyList<IdentityAccountDto>)result, partialFailure, warning = (string?)null });
 
             var client = _httpClientFactory.CreateClient("IdentityService");
-            var request = new HttpRequestMessage(HttpMethod.Post, $"{_options.Address.TrimEnd('/')}/api/gateway/users/batch");
+            var request = new HttpRequestMessage(HttpMethod.Post, $"{_options.Authority.TrimEnd('/')}/api/gateway/users/batch");
             request.Headers.Add("X-Admin-AppId", _options.AppId);
             request.Headers.Add("X-Admin-AppSecret", _options.AppSecret);
             request.Content = JsonContent.Create(accountIds);

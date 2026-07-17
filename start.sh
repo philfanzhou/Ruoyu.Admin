@@ -14,9 +14,17 @@ CONSUL_TOKEN="${CONSUL_TOKEN:-}"
 
 DB_NAME="ruoyu_study_admin"
 
-# All service endpoints (IdentityService, StudentService, MistakeService, TeacherPortal,
-# AssistantPortal) are now sourced from Consul config/ruoyu/service-endpoints.json.
-# Only Consul connection, database name, and port remain in start.sh.
+# Sensitive credentials stay in start.sh (not in Consul):
+# - IdentityService AppId/AppSecret (admin portal acts as Identity gateway client)
+# - TeacherPortal/AssistantPortal AdminApiKey (per-portal admin access key)
+IDENTITY_APP_ID="${IDENTITY_APP_ID:-}"
+IDENTITY_APP_SECRET="${IDENTITY_APP_SECRET:-}"
+TEACHER_ADMIN_API_KEY="${TEACHER_ADMIN_API_KEY:-}"
+ASSISTANT_ADMIN_API_KEY="${ASSISTANT_ADMIN_API_KEY:-}"
+
+# Non-sensitive endpoints (IdentityService.Authority, StudentService.Url, MistakeService.BaseUrl,
+# TeacherPortal.InternalUrl, AssistantPortal.InternalUrl) are sourced from Consul
+# config/ruoyu/service-endpoints.json.
 
 docker network inspect "$NETWORK_NAME" >/dev/null 2>&1 || docker network create "$NETWORK_NAME"
 
@@ -41,6 +49,10 @@ docker run -d \
   -e Database__Name="${DB_NAME}" \
   -e APP_TITLE="${CONTAINER_NAME}" \
   -e AdminApi__Port="${ADMIN_API_PORT}" \
+  -e IdentityService__AppId="${IDENTITY_APP_ID}" \
+  -e IdentityService__AppSecret="${IDENTITY_APP_SECRET}" \
+  -e TeacherPortal__AdminApiKey="${TEACHER_ADMIN_API_KEY}" \
+  -e AssistantPortal__AdminApiKey="${ASSISTANT_ADMIN_API_KEY}" \
   "$IMAGE_NAME"
 
 echo "${CONTAINER_NAME} started"

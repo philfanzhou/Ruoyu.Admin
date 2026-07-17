@@ -28,7 +28,7 @@ public class IdentityAccountsControllerTests
         _handlerMock = new Mock<HttpMessageHandler>();
         _options = new IdentityServiceOptions
         {
-            Address = "http://localhost:5002",
+            Authority = "http://localhost:5002",
             AppId = "test-app",
             AppSecret = "test-secret"
         };

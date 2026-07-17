@@ -36,7 +36,7 @@ internal sealed class IdentityProxyMiddleware
         var client = _httpClientFactory.CreateClient("IdentityService");
 
         var targetPath = context.Request.Path.Value!.Replace("/api/identity", "/api");
-        var targetUri = $"{_options.Address.TrimEnd('/')}{targetPath}{context.Request.QueryString}";
+        var targetUri = $"{_options.Authority.TrimEnd('/')}{targetPath}{context.Request.QueryString}";
 
         var requestMessage = new HttpRequestMessage(new HttpMethod(context.Request.Method), targetUri);
 
@@ -102,7 +102,7 @@ public sealed class IdentityServiceOptions
 {
     public const string SectionName = "IdentityService";
 
-    public string Address { get; set; } = "http://localhost:5002";
+    public string Authority { get; set; } = "http://localhost:5002";
     public string AppId { get; set; } = "";
     public string AppSecret { get; set; } = "";
 }

@@ -162,9 +162,9 @@ app.Logger.LogInformation(
 app.Logger.LogInformation("OSS: {OssType}", useLocalOss ? "local" : "S3");
 app.Logger.LogInformation("Downstream: Student HTTP={StudentHttp}, Mistake HTTP={MistakeHttp}", studentServiceUrl, mistakeServiceUrl);
 app.Logger.LogInformation("Downstream: Identity={Identity}, Teacher Portal={TeacherPortal}, Assistant Portal={AssistantPortal}",
-    builder.Configuration["IdentityService:Address"] ?? "(not configured)",
-    builder.Configuration["TeacherPortal:Address"] ?? "(not configured)",
-    builder.Configuration["AssistantPortal:Address"] ?? "(not configured)");
+    builder.Configuration["IdentityService:Authority"] ?? "(not configured)",
+    builder.Configuration["TeacherPortal:InternalUrl"] ?? "(not configured)",
+    builder.Configuration["AssistantPortal:InternalUrl"] ?? "(not configured)");
 
 using (var scope = app.Services.CreateScope())
 {

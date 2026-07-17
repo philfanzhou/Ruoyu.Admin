@@ -77,7 +77,7 @@ public class IdentityProxyMiddlewareTests
 
         var options = new IdentityServiceOptions
         {
-            Address = "http://localhost:5002",
+            Authority = "http://localhost:5002",
             AppId = "test-app",
             AppSecret = "test-secret"
         };
@@ -117,7 +117,7 @@ public class IdentityProxyMiddlewareTests
 
         var options = new IdentityServiceOptions
         {
-            Address = "http://localhost:5002",
+            Authority = "http://localhost:5002",
             AppId = "test-app",
             AppSecret = "test-secret"
         };
@@ -166,7 +166,7 @@ public class IdentityProxyMiddlewareTests
         var factoryMock = new Mock<IHttpClientFactory>();
         factoryMock.Setup(f => f.CreateClient("IdentityService")).Returns(client);
 
-        var options = new IdentityServiceOptions { Address = "http://localhost:5002" };
+        var options = new IdentityServiceOptions { Authority = "http://localhost:5002" };
         var optionsMock = new Mock<IOptions<IdentityServiceOptions>>();
         optionsMock.Setup(o => o.Value).Returns(options);
 
@@ -199,7 +199,7 @@ public class IdentityProxyMiddlewareTests
 
         var options = new IdentityServiceOptions
         {
-            Address = "http://localhost:5002",
+            Authority = "http://localhost:5002",
             AppId = "test-app",
             AppSecret = "test-secret"
         };
