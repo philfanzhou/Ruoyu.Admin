@@ -23,7 +23,7 @@ TEACHER_ADMIN_API_KEY="${TEACHER_ADMIN_API_KEY:-}"
 ASSISTANT_ADMIN_API_KEY="${ASSISTANT_ADMIN_API_KEY:-}"
 
 # Non-sensitive endpoints (IdentityService.Authority, StudentService.Url, MistakeService.Url,
-# TeacherPortal.InternalUrl, AssistantPortal.InternalUrl) are sourced from Consul
+# TeacherPortal.Url, AssistantPortal.Url) are sourced from Consul
 # config/ruoyu/service-endpoints.json.
 
 docker network inspect "$NETWORK_NAME" >/dev/null 2>&1 || docker network create "$NETWORK_NAME"

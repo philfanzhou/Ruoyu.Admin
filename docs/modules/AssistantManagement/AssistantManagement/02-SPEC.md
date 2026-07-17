@@ -87,5 +87,5 @@
 
 ### 3.3 环境变量
 
-- `AssistantPortal__Address`
+- `AssistantPortal__Url`
 - `AssistantPortal__AdminApiKey`

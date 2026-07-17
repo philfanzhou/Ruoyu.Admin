@@ -28,7 +28,7 @@
 | `StudentGrpcService:Address` | `http://localhost:5005` | Student gRPC 服务 |
 | `MistakeGrpcService:Address` | `http://localhost:5006` | Mistake gRPC 服务 |
 | `IdentityService:Address` | `http://localhost:5002` | Identity HTTP 服务 |
-| `TeacherPortal:Address` | `http://localhost:5004` | Teacher Portal HTTP 服务 |
+| `TeacherPortal:Url` | `http://localhost:5004` | Teacher Portal HTTP 服务 |
 
 ### 数据库连接策略
 

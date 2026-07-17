@@ -45,7 +45,7 @@ public class AssistantPortalProxyMiddlewareTests
         var factoryMock = new Mock<IHttpClientFactory>();
         factoryMock.Setup(f => f.CreateClient("AssistantPortal")).Returns(client);
         var middleware = CreateMiddleware(nextMock.Object, factoryMock.Object,
-            new AssistantPortalOptions { InternalUrl = "http://localhost:5021", AdminApiKey = "key" });
+            new AssistantPortalOptions { Url = "http://localhost:5021", AdminApiKey = "key" });
 
         var context = new DefaultHttpContext();
         context.Request.Path = "/api/other";
@@ -67,7 +67,7 @@ public class AssistantPortalProxyMiddlewareTests
         var factoryMock = new Mock<IHttpClientFactory>();
         factoryMock.Setup(f => f.CreateClient("AssistantPortal")).Returns(client);
 
-        var options = new AssistantPortalOptions { InternalUrl = "http://localhost:5021", AdminApiKey = "my-api-key" };
+        var options = new AssistantPortalOptions { Url = "http://localhost:5021", AdminApiKey = "my-api-key" };
         var optionsMock = new Mock<IOptions<AssistantPortalOptions>>();
         optionsMock.Setup(o => o.Value).Returns(options);
 
@@ -101,7 +101,7 @@ public class AssistantPortalProxyMiddlewareTests
         var factoryMock = new Mock<IHttpClientFactory>();
         factoryMock.Setup(f => f.CreateClient("AssistantPortal")).Returns(client);
 
-        var options = new AssistantPortalOptions { InternalUrl = "http://localhost:5021", AdminApiKey = "my-api-key" };
+        var options = new AssistantPortalOptions { Url = "http://localhost:5021", AdminApiKey = "my-api-key" };
         var optionsMock = new Mock<IOptions<AssistantPortalOptions>>();
         optionsMock.Setup(o => o.Value).Returns(options);
 
@@ -134,7 +134,7 @@ public class AssistantPortalProxyMiddlewareTests
         var factoryMock = new Mock<IHttpClientFactory>();
         factoryMock.Setup(f => f.CreateClient("AssistantPortal")).Returns(client);
 
-        var options = new AssistantPortalOptions { InternalUrl = "http://localhost:5021", AdminApiKey = "my-api-key" };
+        var options = new AssistantPortalOptions { Url = "http://localhost:5021", AdminApiKey = "my-api-key" };
         var optionsMock = new Mock<IOptions<AssistantPortalOptions>>();
         optionsMock.Setup(o => o.Value).Returns(options);
 
@@ -170,7 +170,7 @@ public class AssistantPortalProxyMiddlewareTests
         var factoryMock = new Mock<IHttpClientFactory>();
         factoryMock.Setup(f => f.CreateClient("AssistantPortal")).Returns(client);
 
-        var options = new AssistantPortalOptions { InternalUrl = "http://localhost:5021", AdminApiKey = "my-api-key" };
+        var options = new AssistantPortalOptions { Url = "http://localhost:5021", AdminApiKey = "my-api-key" };
         var optionsMock = new Mock<IOptions<AssistantPortalOptions>>();
         optionsMock.Setup(o => o.Value).Returns(options);
 
@@ -193,7 +193,7 @@ public class AssistantPortalProxyMiddlewareTests
     }
 
     [Fact]
-    public async Task NotConfigured_EmptyInternalUrl_Returns503()
+    public async Task NotConfigured_EmptyUrl_Returns503()
     {
         // Arrange
         var nextMock = new Mock<RequestDelegate>();
@@ -201,7 +201,7 @@ public class AssistantPortalProxyMiddlewareTests
         var factoryMock = new Mock<IHttpClientFactory>();
         factoryMock.Setup(f => f.CreateClient("AssistantPortal")).Returns(client);
 
-        var options = new AssistantPortalOptions { InternalUrl = "", AdminApiKey = "some-key" };
+        var options = new AssistantPortalOptions { Url = "", AdminApiKey = "some-key" };
         var optionsMock = new Mock<IOptions<AssistantPortalOptions>>();
         optionsMock.Setup(o => o.Value).Returns(options);
 
@@ -232,7 +232,7 @@ public class AssistantPortalProxyMiddlewareTests
         var factoryMock = new Mock<IHttpClientFactory>();
         factoryMock.Setup(f => f.CreateClient("AssistantPortal")).Returns(client);
 
-        var options = new AssistantPortalOptions { InternalUrl = "http://localhost:5021", AdminApiKey = "" };
+        var options = new AssistantPortalOptions { Url = "http://localhost:5021", AdminApiKey = "" };
         var optionsMock = new Mock<IOptions<AssistantPortalOptions>>();
         optionsMock.Setup(o => o.Value).Returns(options);
 
@@ -263,7 +263,7 @@ public class AssistantPortalProxyMiddlewareTests
         var factoryMock = new Mock<IHttpClientFactory>();
         factoryMock.Setup(f => f.CreateClient("AssistantPortal")).Returns(client);
 
-        var options = new AssistantPortalOptions { InternalUrl = "http://localhost:5021", AdminApiKey = "my-api-key" };
+        var options = new AssistantPortalOptions { Url = "http://localhost:5021", AdminApiKey = "my-api-key" };
         var optionsMock = new Mock<IOptions<AssistantPortalOptions>>();
         optionsMock.Setup(o => o.Value).Returns(options);
 

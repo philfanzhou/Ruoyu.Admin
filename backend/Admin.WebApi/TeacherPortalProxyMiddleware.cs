@@ -33,7 +33,7 @@ internal sealed class TeacherPortalProxyMiddleware
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(_options.InternalUrl) || string.IsNullOrWhiteSpace(_options.AdminApiKey))
+        if (string.IsNullOrWhiteSpace(_options.Url) || string.IsNullOrWhiteSpace(_options.AdminApiKey))
         {
             context.Response.StatusCode = 503;
             context.Response.ContentType = "application/json; charset=utf-8";
@@ -58,7 +58,7 @@ internal sealed class TeacherPortalProxyMiddleware
             targetPath = pathValue.Replace("/api/teacher-portal", "/api/admin");
         }
 
-        var targetUri = $"{_options.InternalUrl.TrimEnd('/')}{targetPath}{context.Request.QueryString}";
+        var targetUri = $"{_options.Url.TrimEnd('/')}{targetPath}{context.Request.QueryString}";
 
         var requestMessage = new HttpRequestMessage(new HttpMethod(context.Request.Method), targetUri);
 
@@ -119,6 +119,6 @@ public sealed class TeacherPortalOptions
 {
     public const string SectionName = "TeacherPortal";
 
-    public string InternalUrl { get; set; } = "";
+    public string Url { get; set; } = "";
     public string AdminApiKey { get; set; } = "";
 }
