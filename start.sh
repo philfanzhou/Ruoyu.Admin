@@ -9,6 +9,11 @@ NETWORK_NAME="ruoyu-net"
 ADMIN_HTTP_PORT="10901"
 ADMIN_API_PORT="5020"
 
+CONSUL_HTTP_ADDR="${CONSUL_HTTP_ADDR:-host.docker.internal:8500}"
+CONSUL_TOKEN="${CONSUL_TOKEN:-}"
+
+DB_NAME="ruoyu_study_admin"
+
 STUDENT_HTTP_ADDR="ruoyu-student:5005"
 MISTAKE_HTTP_ADDR="ruoyu-mistake:5007"
 TEACHER_API_ADDR="ruoyu-teacher-api:5004"
@@ -18,18 +23,6 @@ ASSISTANT_ADMIN_API_KEY=""
 IDENTITY_HTTP_ADDR="ruoyu-identity:5002"
 IDENTITY_APP_ID=""
 IDENTITY_APP_SECRET=""
-
-# OSS 凭证（审计+运维所需，权限应限制为只读+有限写）
-OSS_ENDPOINT="ruoyu-seaweedfs:8333"
-OSS_ACCESS_KEY="seaweedfs_admin"
-OSS_SECRET_KEY="seaweedfs_admin"
-OSS_BUCKET="ruoyu-study"
-
-POSTGRES_HOST="ruoyu-postgres"
-POSTGRES_PORT="5432"
-POSTGRES_DB="ruoyu_admin"
-POSTGRES_USER="postgres"
-POSTGRES_PASSWORD="postgres"
 
 docker network inspect "$NETWORK_NAME" >/dev/null 2>&1 || docker network create "$NETWORK_NAME"
 
@@ -46,8 +39,12 @@ docker run -d \
   --name "$CONTAINER_NAME" \
   --restart unless-stopped \
   --network "$NETWORK_NAME" \
+  --add-host=host.docker.internal:host-gateway \
   -p "${ADMIN_HTTP_PORT}:${ADMIN_API_PORT}" \
   -e TZ=Asia/Shanghai \
+  -e CONSUL_HTTP_ADDR="${CONSUL_HTTP_ADDR}" \
+  -e CONSUL_TOKEN="${CONSUL_TOKEN}" \
+  -e Database__Name="${DB_NAME}" \
   -e APP_TITLE="${CONTAINER_NAME}" \
   -e AdminApi__Port="${ADMIN_API_PORT}" \
   -e StudentService__Url="http://${STUDENT_HTTP_ADDR}" \
@@ -59,11 +56,6 @@ docker run -d \
   -e TeacherPortal__AdminApiKey="${TEACHER_ADMIN_API_KEY}" \
   -e AssistantPortal__Address="http://${ASSISTANT_API_ADDR}" \
   -e AssistantPortal__AdminApiKey="${ASSISTANT_ADMIN_API_KEY}" \
-  -e Oss__Endpoint="${OSS_ENDPOINT}" \
-  -e Oss__AccessKey="${OSS_ACCESS_KEY}" \
-  -e Oss__SecretKey="${OSS_SECRET_KEY}" \
-  -e Oss__BucketName="${OSS_BUCKET}" \
-  -e ConnectionStrings__AuditDb="Host=${POSTGRES_HOST};Port=${POSTGRES_PORT};Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}" \
   "$IMAGE_NAME"
 
 echo "${CONTAINER_NAME} started"
