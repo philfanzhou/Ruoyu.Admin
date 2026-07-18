@@ -13,8 +13,8 @@
 | 2 | 出站 | gRPC Client | Student Service | gRPC (h2c) | `StudentGrpcService:Address` (默认 `:5005`) | 学习/上传记录 | `StudentLearningGrpcService`: GetUploadRecord, MarkUploadRecordUnderReview, RotateUploadImage, RemoveImageFromRecord, RemoveImagesFromRecord, DeleteUploadRecordAfterReview, ResetUploadRecordStatus |
 | 2a | 出站 | gRPC Client | Student Service | gRPC (h2c) | `StudentGrpcService:Address` (默认 `:5005`) | 管理端上传记录（待迁移） | `StudentManagementGrpcService`: GetAllUploadRecords, GetStudent, AnalyzeUploadRecord（待 Task 4.6 迁移至通用接口） |
 | 3 | 出站 | gRPC Client | Mistake Service | gRPC (h2c) | `MistakeGrpcService:Address` (默认 `:5006`) | 错题管理 | `MistakeGrpcService`: GetMistakeItemList, GetMistakeItem, GetMistakeItemsByUpload, UpdateMistakeItem, SubmitMistakeUpload, CompleteUploadReview |
-| 4 | 出站 | HTTP Proxy | Identity Service | HTTP/JSON | `IdentityService:Address` (默认 `:5002`) | 身份认证代理 | `IdentityProxyMiddleware`: `/api/identity/*` → `{Address}/api/*` |
-| 5 | 出站 | HTTP Client | Identity Service | HTTP/JSON | `IdentityService:Address` | 批量查询账户 | `POST {Address}/api/gateway/users/batch` (带 `X-Admin-AppId` + `X-Admin-AppSecret`) |
+| 4 | 出站 | HTTP Proxy | Identity Service | HTTP/JSON | `IdentityService:Authority` (默认 `:5002`) | 身份认证代理 | `IdentityProxyMiddleware`: `/api/identity/*` → `{Authority}/api/*` |
+| 5 | 出站 | HTTP Client | Identity Service | HTTP/JSON | `IdentityService:Authority` | 批量查询账户 | `POST {Authority}/api/gateway/users/batch` (带 `X-Admin-AppId` + `X-Admin-AppSecret`) |
 | 6 | 出站 | HTTP Proxy | Teacher Portal | HTTP/JSON | `TeacherPortal:Url` (默认 `:5004`) | 教师端代理 | `TeacherPortalProxyMiddleware`: `/api/teacher-portal/*` → `{Url}/api/*`（透传调用方 `Authorization: Bearer`，下游 `[Authorize(Roles="admin")]` 校验） |
 | 6a | 出站 | HTTP Proxy | Assistant Portal | HTTP/JSON | `AssistantPortal:Url` (默认 `:5021`) | 助教端代理 | `AssistantPortalProxyMiddleware`: `/api/assistant-portal/*` → `{Url}/api/*`（透传调用方 `Authorization: Bearer`，下游 `[Authorize(Roles="admin")]` 校验） |
 | 7 | 出站 | gRPC Client | Student Service | gRPC (h2c) | `StudentGrpcService:Address` (默认 `:5005`) | 图片预签名 URL | `StudentLearningGrpcService`: GetPresignedUrl |

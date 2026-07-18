@@ -117,9 +117,9 @@ Admin Portal 是 Ruoyu.Study 平台的**管理后台服务**，为管理员提�
 |------|------|
 | 协议 | HTTP/JSON（反向代理） |
 | 默认地址 | `http://localhost:5002` |
-| 配置键 | `IdentityService:Address`, `IdentityService:AppId`, `IdentityService:AppSecret` |
+| 配置键 | `IdentityService:Authority`, `IdentityService:AppId`, `IdentityService:AppSecret` |
 | 代理中间件 | `IdentityProxyMiddleware` |
-| 路由映射 | `/api/identity/*` → `{Address}/api/*` |
+| 路由映射 | `/api/identity/*` → `{Authority}/api/*` |
 | 认证方式 | 请求头 `X-Admin-AppId` + `X-Admin-AppSecret` |
 | 超时 | 30 秒 |
 | 不可用时行为 | 返回 502 + `{"message":"Identity service unreachable"}` |

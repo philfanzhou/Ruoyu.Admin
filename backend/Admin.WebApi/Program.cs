@@ -47,7 +47,7 @@ builder.Services.AddMistakeHttpClient(mistakeServiceUrl);
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
-        options.Authority = builder.Configuration["IdentityService:Address"];
+        options.Authority = builder.Configuration["IdentityService:Authority"];
         options.Audience = "PlatformAudience";
         options.RequireHttpsMetadata = false;
         options.TokenValidationParameters = new TokenValidationParameters

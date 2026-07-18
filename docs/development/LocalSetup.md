@@ -27,7 +27,7 @@
 | `Database:Name` | `ruoyu_study_admin` | 数据库名（与 Consul `PostgreSql:*` 合成连接串时使用） |
 | `StudentGrpcService:Address` | `http://localhost:5005` | Student gRPC 服务 |
 | `MistakeGrpcService:Address` | `http://localhost:5006` | Mistake gRPC 服务 |
-| `IdentityService:Address` | `http://localhost:5002` | Identity HTTP 服务 |
+| `IdentityService:Authority` | `http://localhost:5002` | Identity HTTP 服务（JWT OIDC discovery + HTTP 代理） |
 | `TeacherPortal:Url` | `http://localhost:5004` | Teacher Portal HTTP 服务 |
 
 ### 数据库连接策略
