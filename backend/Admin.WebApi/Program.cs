@@ -240,20 +240,12 @@ using (var scope = app.Services.CreateScope())
 
 app.UseCors("AdminWeb");
 
-app.UseAuthentication();
-app.UseAuthorization();
-
-if (app.Environment.IsDevelopment())
-{
-    app.UseSwagger();
-    app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "Admin Portal API v1"));
-}
-app.UseMiddleware<IdentityProxyMiddleware>();
-app.UseMiddleware<TeacherPortalProxyMiddleware>();
-app.UseMiddleware<AssistantPortalProxyMiddleware>();
-app.MapControllers();
-
-// ========== Static files & SPA ==========
+// ========== Static files & SPA (before authentication) ==========
+// In mode-1 integrated deployment the same container (port 5020) serves both the backend API
+// and the frontend SPA (from wwwroot). The SPA entry point ("/" and all non-/api routes) MUST
+// be reachable without a JWT, otherwise the browser can never load the login page (deadlock:
+// not logged in -> can't load login page -> can't log in). Authorization middleware and the
+// FallbackPolicy only apply to endpoints mapped later via MapControllers().
 var wwwrootPath = Path.Combine(builder.Environment.ContentRootPath, "wwwroot");
 if (Directory.Exists(wwwrootPath))
 {
@@ -298,7 +290,23 @@ if (Directory.Exists(wwwrootPath))
 }
 else
 {
-    app.MapGet("/", () => "Student Admin WebAPI is running.");
+    // Dev fallback when wwwroot has not been built yet: anonymous health probe text.
+    app.MapGet("/", () => "Student Admin WebAPI is running.").AllowAnonymous();
 }
+
+app.UseAuthentication();
+app.UseAuthorization();
+
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "Admin Portal API v1"));
+}
+app.UseMiddleware<IdentityProxyMiddleware>();
+app.UseMiddleware<TeacherPortalProxyMiddleware>();
+app.UseMiddleware<AssistantPortalProxyMiddleware>();
+// All /api/* endpoints are protected by the FallbackPolicy = RequireAuthenticatedUser()
+// configured above. No per-controller [Authorize] attribute is required.
+app.MapControllers();
 
 app.Run();

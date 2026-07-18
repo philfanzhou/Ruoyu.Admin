@@ -3,8 +3,7 @@
 ## 构建与部�?
 
 - Dockerfile：`backend/Dockerfile`
-- 前端 Dockerfile：`frontend/Dockerfile`
-- 部署脚本：`scripts/9.admin-portal/2.deploy/start.sh`
+- 部署脚本：`start.sh`（仓库根 `src/admin_portal/start.sh`）
 - 注意：`Admin.WebApi.Persistence` 命名空间包含 `AuditDbContext` 和实体类，必须在构建前存在
 
 ## 部署模式

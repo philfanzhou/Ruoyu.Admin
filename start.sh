@@ -30,7 +30,7 @@ docker run -d \
   --restart unless-stopped \
   --network "$NETWORK_NAME" \
   --add-host=host.docker.internal:host-gateway \
-  -p "${PORT}:80" \
+  -p "${PORT}:5020" \
   -e TZ=Asia/Shanghai \
   -e CONSUL_HTTP_ADDR="${CONSUL_HTTP_ADDR}" \
   -e CONSUL_TOKEN="${CONSUL_TOKEN}" \

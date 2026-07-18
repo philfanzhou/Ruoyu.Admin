@@ -8,7 +8,41 @@ Admin Portal 提供 REST API 接口，用于管理学生、错题记录、OSS �
 
 - 基础路径: `/api/admin`
 - 数据格式: JSON
-- 认证: 由 Identity 代理中间件处理
+- 认证: JWT Bearer（`Authorization: Bearer <token>`）。Program.cs 设置 `FallbackPolicy = RequireAuthenticatedUser()`，所有 `/api/*` 端点默认需要认证
+- 匿名入口：SPA 静态文件、`/` 首页回退、`/api/auth/login`、`/api/auth/callback` 标记 `[AllowAnonymous]`，无需 JWT（见下方"认证流程"）
+
+---
+
+## 认证流程
+
+Admin Portal 采用 **mode-1 集成部署**：同一容器（端口 5020）既提供后端 REST API，又通过 `wwwroot` 提供前端静态文件与 SPA 路由回退。因此认证按请求路径区分：
+
+- **前端入口（匿名）**：`/` 及所有非 `/api/*` 路径由 SPA fallback 处理，无需登录即可加载登录页
+- **API（需认证）**：`/api/*` 受 `FallbackPolicy = RequireAuthenticatedUser()` 保护，必须携带有效 JWT
+
+### 登录（获取 JWT）
+
+`POST /api/auth/login` — `[AllowAnonymous]`
+
+请求体：`{ "username": "...", "password": "..." }`
+
+后端向 Identity 服务发起 password grant 取 JWT。Identity 回调 `POST /api/auth/callback`（`[AllowAnonymous]`），对白名单 `AdminPortal:AdminUserIds` 中的用户注入 `role:admin`。
+
+成功返回：
+
+```json
+{
+  "success": true,
+  "accessToken": "...",
+  "refreshToken": "...",
+  "expiresIn": 3600,
+  "expiresAt": 1710000000
+}
+```
+
+前端将 `accessToken` 存入 `localStorage`，后续请求通过 `Authorization: Bearer` 头发送。未携带或 token 无效的 `/api/*` 请求返回 **401 Unauthorized**。
+
+> **集成部署下首次访问**：浏览器直接访问后端端口时，`/` 必须匿名返回 `index.html` 才能加载出登录页（否则陷入「未登录→无法加载登录页→无法登录」的死锁）。API 端点的 401 由前端 axios 拦截器捕获后跳转 `/login`。
 
 ---
 
