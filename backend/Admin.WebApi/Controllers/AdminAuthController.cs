@@ -58,9 +58,14 @@ public class AdminAuthController : ControllerBase
 
             // Present admin_portal's AppId/AppSecret so Identity triggers the admin callback
             // (injects role:admin into the issued JWT).
+            // NOTE: Identity's TokenRequest contract uses camelCase field names (grantType, username,
+            // password). The legacy snake_case "grant_type" does NOT bind — ASP.NET Core's
+            // PropertyNameCaseInsensitive can't match across the added underscore, leaving GrantType
+            // empty and Identity returning "unsupported_grant_type". See Identity docs:
+            // docs/deploy-test/02-test-cases.md.
             var tokenRequest = new
             {
-                grant_type = "password",
+                grantType = "password",
                 username = request.Username,
                 password = request.Password
             };
