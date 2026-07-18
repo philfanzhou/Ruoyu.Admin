@@ -22,13 +22,16 @@ var consulRuntimeState = RuoyuConsulRuntimeState.Instance;
 builder.Configuration.AddRuoyuLokiSink();
 builder.Host.UseRuoyuSerilog("Ruoyu.Study.AdminPortal");
 
-var adminApiPort = builder.Configuration.GetValue<int>("AdminApi:Port");
+// HTTP listen port is hardcoded to 5020 (not configurable).
+// nginx in the same container proxies /api/ to this port.
+const int httpPort = 5020;
+
 var studentServiceUrl = builder.Configuration["StudentService:Url"] ?? "http://localhost:5005";
 var mistakeServiceUrl = builder.Configuration["MistakeService:Url"] ?? "http://localhost:5007";
 
 builder.WebHost.ConfigureKestrel(options =>
 {
-    options.ListenAnyIP(adminApiPort);
+    options.ListenAnyIP(httpPort);
 });
 
 // Configure downstream clients
@@ -174,7 +177,7 @@ app.Logger.LogInformation(
     consulRuntimeState.KeyCount,
     StartupDiagnosticsFormatter.SummarizePrefixes(consulRuntimeState.LoadedPrefixes),
     StartupDiagnosticsFormatter.SummarizeError(consulRuntimeState.LastError));
-app.Logger.LogInformation("Listening: port {Port}", adminApiPort);
+app.Logger.LogInformation("Listening: http://+:{Port}", httpPort);
 if (isPostgreSql && !string.IsNullOrEmpty(connectionString))
 {
     var csb = new DbConnectionStringBuilder { ConnectionString = connectionString };
