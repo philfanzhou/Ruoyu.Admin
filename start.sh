@@ -2,8 +2,7 @@
 set -e
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-IMAGE_TAG="20260502"
-IMAGE_NAME="ruoyu.admin:${IMAGE_TAG}"
+IMAGE_NAME="ruoyu.admin:20260502"
 CONTAINER_NAME="ruoyu-admin"
 NETWORK_NAME="ruoyu-net"
 PORT="10901"
@@ -11,7 +10,7 @@ PORT="10901"
 CONSUL_HTTP_ADDR="${CONSUL_HTTP_ADDR:-host.docker.internal:8500}"
 CONSUL_TOKEN="${CONSUL_TOKEN:-}"
 
-DB_NAME="ruoyu_study_admin"
+DB_NAME="ruoyu_admin"
 
 IDENTITY_APP_ID="${IDENTITY_APP_ID:-}"
 IDENTITY_APP_SECRET="${IDENTITY_APP_SECRET:-}"
