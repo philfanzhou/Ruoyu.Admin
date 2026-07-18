@@ -1,8 +1,11 @@
 using System.Data.Common;
 using Admin.WebApi;
+using Admin.WebApi.Models;
 using Admin.WebApi.Persistence;
 using Admin.WebApi.Services;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
 using Ruoyu.Study.Common.Database;
 using Ruoyu.Study.Common.Oss;
 using Ruoyu.Study.Consul.Shared;
@@ -35,6 +38,32 @@ builder.Services.AddStudentHttpClient(studentServiceUrl);
 // Mistake service: HTTP (migrated from gRPC)
 builder.Services.AddMistakeHttpClient(mistakeServiceUrl);
 
+// ========== Authentication (JWT Bearer via Identity OIDC) ==========
+// Admin portal authenticates via Identity-issued JWT. The admin role is injected by Identity
+// through admin_portal's callback (/api/auth/callback) for whitelisted AdminUserIds.
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.Authority = builder.Configuration["IdentityService:Address"];
+        options.Audience = "PlatformAudience";
+        options.RequireHttpsMetadata = false;
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidIssuer = "IdentityIssuer",
+            ValidateAudience = true,
+            ValidAudience = "PlatformAudience",
+            ValidateLifetime = true,
+            ClockSkew = TimeSpan.FromSeconds(30),
+        };
+    });
+builder.Services.AddAuthorization(options =>
+{
+    options.FallbackPolicy = new Microsoft.AspNetCore.Authorization.AuthorizationPolicyBuilder()
+        .RequireAuthenticatedUser()
+        .Build();
+});
+
 builder.Services.Configure<IdentityServiceOptions>(
     builder.Configuration.GetSection(IdentityServiceOptions.SectionName));
 
@@ -43,6 +72,9 @@ builder.Services.Configure<TeacherPortalOptions>(
 
 builder.Services.Configure<AssistantPortalOptions>(
     builder.Configuration.GetSection(AssistantPortalOptions.SectionName));
+
+builder.Services.Configure<AdminPortalOptions>(
+    builder.Configuration.GetSection(AdminPortalOptions.SectionName));
 
 builder.Services.AddHttpClient("IdentityService", client =>
 {
@@ -204,6 +236,10 @@ using (var scope = app.Services.CreateScope())
 }
 
 app.UseCors("AdminWeb");
+
+app.UseAuthentication();
+app.UseAuthorization();
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();

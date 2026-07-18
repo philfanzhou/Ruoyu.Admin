@@ -1,8 +1,15 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { isAuthenticated } from '../services/auth'
 
 const router = createRouter({
   history: createWebHistory(),
   routes: [
+    {
+      path: '/login',
+      name: 'login',
+      component: () => import('../views/LoginView.vue'),
+      meta: { title: '登录' }
+    },
     {
       path: '/',
       redirect: '/students'
@@ -48,6 +55,19 @@ const router = createRouter({
 
 router.beforeEach((to, _from, next) => {
   document.title = `${to.meta.title || '管理后台'} - Admin Portal`
+
+  // Redirect unauthenticated users to the login page.
+  if (to.name !== 'login' && !isAuthenticated()) {
+    next({ name: 'login' })
+    return
+  }
+
+  // Authenticated users should not stay on the login page.
+  if (to.name === 'login' && isAuthenticated()) {
+    next('/students')
+    return
+  }
+
   next()
 })
 

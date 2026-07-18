@@ -7,7 +7,8 @@
 - 位置: `src/admin_portal/backend/Admin.WebApi/AssistantPortalProxyMiddleware.cs`
 - 模式: 与 TeacherPortalProxyMiddleware 完全对称
 - 注册: Program.cs 中 `app.UseMiddleware<AssistantPortalProxyMiddleware>()`
-- 配置: `AssistantPortalOptions`（Address, AdminApiKey）
+- 配置: `AssistantPortalOptions`（Url）
+- 认证: 透传调用方 `Authorization: Bearer`，下游 `[Authorize(Roles="admin")]` 校验；不再注入静态 `X-Admin-Key`
 - HttpClient: 复用或新建 `IHttpClientFactory("AssistantPortal")`
 
 ### 1.2 配置变更

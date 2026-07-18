@@ -33,7 +33,7 @@ internal sealed class TeacherPortalProxyMiddleware
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(_options.Url) || string.IsNullOrWhiteSpace(_options.AdminApiKey))
+        if (string.IsNullOrWhiteSpace(_options.Url))
         {
             context.Response.StatusCode = 503;
             context.Response.ContentType = "application/json; charset=utf-8";
@@ -83,7 +83,9 @@ internal sealed class TeacherPortalProxyMiddleware
             requestMessage.Headers.TryAddWithoutValidation(header.Key, header.Value.ToArray());
         }
 
-        requestMessage.Headers.Add("X-Admin-Key", _options.AdminApiKey);
+        // Authorization header is already forwarded by the passthrough loop above
+        // (except Content-* and Host), so Teacher/Assistant portal can authenticate
+        // the proxied request via the caller's JWT (role:admin).
 
         HttpResponseMessage response;
         try
@@ -120,5 +122,4 @@ public sealed class TeacherPortalOptions
     public const string SectionName = "TeacherPortal";
 
     public string Url { get; set; } = "";
-    public string AdminApiKey { get; set; } = "";
 }

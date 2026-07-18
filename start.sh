@@ -15,12 +15,10 @@ CONSUL_TOKEN="${CONSUL_TOKEN:-}"
 DB_NAME="ruoyu_study_admin"
 
 # Sensitive credentials stay in start.sh (not in Consul):
-# - IdentityService AppId/AppSecret (admin portal acts as Identity gateway client)
-# - TeacherPortal/AssistantPortal AdminApiKey (per-portal admin access key)
+# - IdentityService AppId/AppSecret (admin portal acts as Identity gateway client;
+#   also used for the admin callback that injects role:admin into the JWT)
 IDENTITY_APP_ID="${IDENTITY_APP_ID:-}"
 IDENTITY_APP_SECRET="${IDENTITY_APP_SECRET:-}"
-TEACHER_ADMIN_API_KEY="${TEACHER_ADMIN_API_KEY:-}"
-ASSISTANT_ADMIN_API_KEY="${ASSISTANT_ADMIN_API_KEY:-}"
 
 # Non-sensitive endpoints (IdentityService.Authority, StudentService.Url, MistakeService.Url,
 # TeacherPortal.Url, AssistantPortal.Url) are sourced from Consul
@@ -51,8 +49,6 @@ docker run -d \
   -e AdminApi__Port="${ADMIN_API_PORT}" \
   -e IdentityService__AppId="${IDENTITY_APP_ID}" \
   -e IdentityService__AppSecret="${IDENTITY_APP_SECRET}" \
-  -e TeacherPortal__AdminApiKey="${TEACHER_ADMIN_API_KEY}" \
-  -e AssistantPortal__AdminApiKey="${ASSISTANT_ADMIN_API_KEY}" \
   "$IMAGE_NAME"
 
 echo "${CONTAINER_NAME} started"

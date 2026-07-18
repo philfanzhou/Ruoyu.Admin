@@ -130,12 +130,12 @@ Admin Portal 是 Ruoyu.Study 平台的**管理后台服务**，为管理员提�
 |------|------|
 | 协议 | HTTP/JSON（反向代理） |
 | 默认地址 | `http://localhost:5004` |
-| 配置键 | `TeacherPortal:Url`, `TeacherPortal:AdminApiKey` |
+| 配置键 | `TeacherPortal:Url` |
 | 代理中间件 | `TeacherPortalProxyMiddleware` |
 | 路由映射 | `/api/teacher-portal/admin/*` → `{Url}/api/admin/*` |
 |  | `/api/teacher-portal/auth/*` → `{Url}/api/auth/*` |
 |  | `/api/teacher-portal/*` → `{Url}/api/admin/*` |
-| 认证方式 | 请求头 `X-Admin-Key` |
+| 认证方式 | 透传调用方 `Authorization: Bearer`（下游 `[Authorize(Roles="admin")]` 校验） |
 | 超时 | 10 秒 |
 | 未配置时行为 | 返回 503 + `{"message":"Teacher portal not configured"}` |
 | 不可用时行为 | 返回 502 + `{"message":"Teacher portal service unreachable"}` |

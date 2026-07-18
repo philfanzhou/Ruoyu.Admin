@@ -45,7 +45,7 @@ public class TeacherPortalProxyMiddlewareTests
         var factoryMock = new Mock<IHttpClientFactory>();
         factoryMock.Setup(f => f.CreateClient("TeacherPortal")).Returns(client);
         var middleware = CreateMiddleware(nextMock.Object, factoryMock.Object,
-            new TeacherPortalOptions { Url = "http://localhost:6000", AdminApiKey = "key" });
+            new TeacherPortalOptions { Url = "http://localhost:6000" });
 
         var context = new DefaultHttpContext();
         context.Request.Path = "/api/other";
@@ -59,15 +59,17 @@ public class TeacherPortalProxyMiddlewareTests
     }
 
     [Fact]
-    public async Task AdminPath_RewritesToApiAdminAndAddsHeader()
+    public async Task AdminPath_RewritesToApiAdmin()
     {
-        // Arrange
+        // Arrange — the proxy no longer injects X-Admin-Key; the caller's Authorization
+        // header is forwarded automatically by the passthrough loop so the downstream
+        // portal can authenticate via JWT (role:admin).
         var nextMock = new Mock<RequestDelegate>();
         var (handlerMock, client) = CreateHttpClient();
         var factoryMock = new Mock<IHttpClientFactory>();
         factoryMock.Setup(f => f.CreateClient("TeacherPortal")).Returns(client);
 
-        var options = new TeacherPortalOptions { Url = "http://localhost:6000", AdminApiKey = "my-api-key" };
+        var options = new TeacherPortalOptions { Url = "http://localhost:6000" };
         var optionsMock = new Mock<IOptions<TeacherPortalOptions>>();
         optionsMock.Setup(o => o.Value).Returns(options);
 
@@ -86,9 +88,7 @@ public class TeacherPortalProxyMiddlewareTests
 
         handlerMock.Protected().Verify("SendAsync", Times.Once(),
             ItExpr.Is<HttpRequestMessage>(req =>
-                req.RequestUri!.ToString() == "http://localhost:6000/api/admin/teachers" &&
-                req.Headers.Contains("X-Admin-Key") &&
-                req.Headers.GetValues("X-Admin-Key").First() == "my-api-key"),
+                req.RequestUri!.ToString() == "http://localhost:6000/api/admin/teachers"),
             ItExpr.IsAny<CancellationToken>());
     }
 
@@ -101,7 +101,7 @@ public class TeacherPortalProxyMiddlewareTests
         var factoryMock = new Mock<IHttpClientFactory>();
         factoryMock.Setup(f => f.CreateClient("TeacherPortal")).Returns(client);
 
-        var options = new TeacherPortalOptions { Url = "http://localhost:6000", AdminApiKey = "my-api-key" };
+        var options = new TeacherPortalOptions { Url = "http://localhost:6000" };
         var optionsMock = new Mock<IOptions<TeacherPortalOptions>>();
         optionsMock.Setup(o => o.Value).Returns(options);
 
@@ -134,7 +134,7 @@ public class TeacherPortalProxyMiddlewareTests
         var factoryMock = new Mock<IHttpClientFactory>();
         factoryMock.Setup(f => f.CreateClient("TeacherPortal")).Returns(client);
 
-        var options = new TeacherPortalOptions { Url = "http://localhost:6000", AdminApiKey = "my-api-key" };
+        var options = new TeacherPortalOptions { Url = "http://localhost:6000" };
         var optionsMock = new Mock<IOptions<TeacherPortalOptions>>();
         optionsMock.Setup(o => o.Value).Returns(options);
 
@@ -170,7 +170,7 @@ public class TeacherPortalProxyMiddlewareTests
         var factoryMock = new Mock<IHttpClientFactory>();
         factoryMock.Setup(f => f.CreateClient("TeacherPortal")).Returns(client);
 
-        var options = new TeacherPortalOptions { Url = "http://localhost:6000", AdminApiKey = "my-api-key" };
+        var options = new TeacherPortalOptions { Url = "http://localhost:6000" };
         var optionsMock = new Mock<IOptions<TeacherPortalOptions>>();
         optionsMock.Setup(o => o.Value).Returns(options);
 
@@ -201,38 +201,7 @@ public class TeacherPortalProxyMiddlewareTests
         var factoryMock = new Mock<IHttpClientFactory>();
         factoryMock.Setup(f => f.CreateClient("TeacherPortal")).Returns(client);
 
-        var options = new TeacherPortalOptions { Url = "", AdminApiKey = "some-key" };
-        var optionsMock = new Mock<IOptions<TeacherPortalOptions>>();
-        optionsMock.Setup(o => o.Value).Returns(options);
-
-        var middleware = new TeacherPortalProxyMiddleware(nextMock.Object, factoryMock.Object, optionsMock.Object);
-
-        var context = new DefaultHttpContext();
-        context.Request.Path = "/api/teacher-portal/admin/teachers";
-        context.Request.Method = "GET";
-        var responseBody = new MemoryStream();
-        context.Response.Body = responseBody;
-
-        // Act
-        await middleware.InvokeAsync(context);
-
-        // Assert
-        context.Response.StatusCode.Should().Be(503);
-        responseBody.Position = 0;
-        var responseText = await new StreamReader(responseBody).ReadToEndAsync();
-        responseText.Should().Contain("Teacher portal not configured");
-    }
-
-    [Fact]
-    public async Task NotConfigured_EmptyAdminApiKey_Returns503()
-    {
-        // Arrange
-        var nextMock = new Mock<RequestDelegate>();
-        var (handlerMock, client) = CreateHttpClient();
-        var factoryMock = new Mock<IHttpClientFactory>();
-        factoryMock.Setup(f => f.CreateClient("TeacherPortal")).Returns(client);
-
-        var options = new TeacherPortalOptions { Url = "http://localhost:6000", AdminApiKey = "" };
+        var options = new TeacherPortalOptions { Url = "" };
         var optionsMock = new Mock<IOptions<TeacherPortalOptions>>();
         optionsMock.Setup(o => o.Value).Returns(options);
 
@@ -263,7 +232,7 @@ public class TeacherPortalProxyMiddlewareTests
         var factoryMock = new Mock<IHttpClientFactory>();
         factoryMock.Setup(f => f.CreateClient("TeacherPortal")).Returns(client);
 
-        var options = new TeacherPortalOptions { Url = "http://localhost:6000", AdminApiKey = "my-api-key" };
+        var options = new TeacherPortalOptions { Url = "http://localhost:6000" };
         var optionsMock = new Mock<IOptions<TeacherPortalOptions>>();
         optionsMock.Setup(o => o.Value).Returns(options);
 

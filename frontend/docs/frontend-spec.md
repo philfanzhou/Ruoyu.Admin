@@ -427,4 +427,4 @@ interface EnumOptionsResponse {
 - **按需调用 API**：每个页面只调用自己需要的接口
 - **错误处理**：Axios 错误统一提取 `response.data.message`，使用 `ElMessage.error` 提示
 - **确认操作**：删除等危险操作使用 `ElMessageBox.confirm` 二次确认
-- **认证**：依赖后端 Cookie/Session，前端 Axios 实例未设置全局 Authorization Header
+- **认证**：JWT Bearer。登录后前端将 access token 存入 localStorage，通过 axios 请求拦截器附加 `Authorization: Bearer` 头；后端使用 `[Authorize]` / `[Authorize(Roles="admin")]` 校验 Identity 签发的 JWT

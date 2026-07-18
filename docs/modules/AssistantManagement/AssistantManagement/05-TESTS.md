@@ -11,7 +11,7 @@
 | /api/assistant-portal/auth/check-assistant | 转发到 {Address}/api/auth/check-assistant |
 | Assistant Portal 未配置 | 返回 503 |
 | Assistant Portal 不可达 | 返回 502 |
-| X-Admin-Key 头注入 | 请求头包含配置的 AdminApiKey |
+| Authorization Bearer 透传 | 透传调用方的 Authorization 头，下游校验 role:admin |
 | POST 请求体转发 | 请求体正确转发 |
 
 ## 2. AssistantDbService 学生关联测试

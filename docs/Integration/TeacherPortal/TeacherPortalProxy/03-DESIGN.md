@@ -8,16 +8,11 @@
 
 | 属性 | 类型 | 说明 |
 |------|------|------|
-| Address | string | TeacherPortal 的基础地址（如 `http://teacher-portal:8080`） |
-| AdminApiKey | string | 管理后台的API密钥，用于教师门户认证 |
+| Url | string | TeacherPortal 的基础地址（如 `http://teacher-portal:8080`） |
 
 ## 请求头
 
-中间件在转发请求时注入以下请求头：
-
-| 请求头 | 来源 | 说明 |
-|--------|------|------|
-| X-Admin-Key | TeacherPortalOptions.AdminApiKey | 管理后台API密钥，用于教师门户认证 |
+中间件在转发请求时透传调用方的所有请求头（排除 `Content-*` 和 `Host`）。其中 `Authorization: Bearer` 头会被自动透传给 Teacher Portal，Teacher Portal 通过 `[Authorize(Roles="admin")]` 校验 JWT。不再注入静态的 `X-Admin-Key`。
 
 ## 响应状态码
 

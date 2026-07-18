@@ -72,15 +72,14 @@
 | `/api/assistant-portal/admin/*` | `/api/admin/*` |
 | `/api/assistant-portal/auth/*` | `/api/auth/*` |
 
-认证: 请求头 `X-Admin-Key: {AssistantPortal:AdminApiKey}`
+认证: 透传调用方 `Authorization: Bearer`，下游 `[Authorize(Roles="admin")]` 校验；不再使用静态 `X-Admin-Key`
 
 ### 3.2 配置
 
 ```json
 {
   "AssistantPortal": {
-    "Address": "http://ruoyu-assistant-api:5021",
-    "AdminApiKey": "{key}"
+    "Address": "http://ruoyu-assistant-api:5021"
   }
 }
 ```
@@ -88,4 +87,3 @@
 ### 3.3 环境变量
 
 - `AssistantPortal__Url`
-- `AssistantPortal__AdminApiKey`

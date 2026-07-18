@@ -42,6 +42,9 @@
             <span>错题管理</span>
           </el-menu-item>
         </el-menu>
+        <div class="sidebar-footer">
+          <el-button type="danger" size="small" plain @click="handleLogout">退出登录</el-button>
+        </div>
       </el-aside>
       <el-container>
         <el-main>
@@ -54,10 +57,17 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
+import { clearAuth } from './services/auth'
 
 const route = useRoute()
+const router = useRouter()
 const currentRoute = computed(() => route.path)
+
+const handleLogout = () => {
+  clearAuth()
+  router.push('/login')
+}
 </script>
 
 <style scoped>
@@ -132,6 +142,12 @@ const currentRoute = computed(() => route.path)
 .sidebar-menu :deep(.el-sub-menu .el-menu-item:hover) {
   background-color: #263445;
   color: #409eff;
+}
+
+.sidebar-footer {
+  padding: 16px;
+  text-align: center;
+  border-top: 1px solid #4a5568;
 }
 
 .el-main {
