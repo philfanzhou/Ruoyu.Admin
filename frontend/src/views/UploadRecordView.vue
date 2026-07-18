@@ -57,7 +57,7 @@
           <template #default="{ row }">
             <el-image
               v-if="row.imagePaths && row.imagePaths.length > 0"
-              :src="getImageUrl(row.imagePaths[0])"
+              :src="getImageUrl(row.imagePaths[0], 'small')"
               :preview-src-list="getPreviewList(row.imagePaths)"
               preview-teleported
               fit="cover"
@@ -141,7 +141,7 @@
               class="image-item"
             >
               <el-image
-                :src="getImageUrl(img)"
+                :src="getImageUrl(img, 'medium')"
                 :style="{ transform: `rotate(${currentRecord.imageRotations?.[index] || 0}deg)` }"
                 fit="cover"
                 :preview-src-list="getPreviewList(currentRecord.imagePaths)"
@@ -414,7 +414,7 @@
               <div v-for="imgIdx in group.imageIndices" :key="imgIdx" class="vl-preview-item">
                 <el-image
                   v-if="vlTargetRecord.imagePaths?.[imgIdx]"
-                  :src="getImageUrl(vlTargetRecord.imagePaths[imgIdx])"
+                  :src="getImageUrl(vlTargetRecord.imagePaths[imgIdx], 'medium')"
                   :preview-src-list="getPreviewList(vlTargetRecord.imagePaths || [])"
                   :initial-index="imgIdx"
                   preview-teleported
@@ -588,12 +588,18 @@ function formatDate(date: number | string | undefined) {
   return new Date(date * 1000).toLocaleString('zh-CN')
 }
 
-function getImageUrl(path: string) {
+function getImageUrl(path: string, size?: 'small' | 'medium') {
   if (!path) return ''
   if (path.startsWith('http://') || path.startsWith('https://')) {
     return path
   }
-  return `/api/admin/oss-upload-records/image?path=${encodeURIComponent(path)}`
+  // Use /api/admin/image (returns 302 to OSS presigned URL). This endpoint is
+  // [AllowAnonymous] on the backend so <img>/<el-image> tags can load it
+  // without an Authorization header. The old /api/admin/oss-upload-records/image
+  // endpoint required JWT and was rejected with 401 for <img> requests.
+  const params = new URLSearchParams({ path })
+  if (size) params.set('size', size)
+  return `/api/admin/image?${params.toString()}`
 }
 
 function getPreviewList(imagePaths: string[]) {

@@ -434,3 +434,8 @@ interface EnumOptionsResponse {
   - 请求拦截器：从 localStorage 读取 token，附加 `Authorization: Bearer <token>` 头
   - 响应拦截器：收到 401 时清除 token 并重定向到 `/login`
 - **登录流程例外**：`services/auth.ts` 的 `login()` 使用原生 `fetch`（不经 axios），登录成功后写入 localStorage，后续 axios 请求才能读到 token
+- **图片加载（不走 axios）**：所有图片通过 `<el-image :src="...">` / `<img>` 标签加载，浏览器发起的图片请求**不会带 Authorization 头**。因此后端的图片端点 `GET /api/admin/image?path=<ossPath>&size=<small|medium|空>` 必须显式标注 `[AllowAnonymous]`（与 user_portal / teacher_portal 共享库 `ImageUploadController` 一致），通过路径不可枚举 + presigned URL 短时效 + 内网隔离保证安全。该端点返回 302 重定向到 OSS presigned URL，浏览器跟随重定向后从 nginx `/oss/` 代理拉取图片。
+  - 列表缩略图：`size=small`
+  - 详情页中等图：`size=medium`
+  - 详情页点击放大预览：不传 `size`（返回原图）
+  - 路径分流：`mistakes/` 前缀走 Mistake 服务，其他路径走 Student 服务

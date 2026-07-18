@@ -81,7 +81,7 @@
           <template #default="{ row }">
             <el-image
               v-if="row.firstImagePath"
-              :src="getMistakeImageUrl(row.firstImagePath)"
+              :src="getMistakeImageUrl(row.firstImagePath, 'small')"
               :preview-src-list="[getMistakeImageUrl(row.firstImagePath)]"
               preview-teleported
               fit="cover"
@@ -192,7 +192,7 @@
               class="mistake-image-item"
             >
               <el-image
-                :src="getMistakeImageUrl(region.sourceImagePath)"
+                :src="getMistakeImageUrl(region.sourceImagePath, 'medium')"
                 :preview-src-list="currentMistake.sourceRegions!.map(r => getMistakeImageUrl(r.sourceImagePath))"
                 :initial-index="index"
                 preview-teleported
@@ -422,10 +422,16 @@ function formatDate(dateStr: string | number | undefined) {
   return new Date(dateStr * 1000).toLocaleString('zh-CN')
 }
 
-function getMistakeImageUrl(path: string) {
+function getMistakeImageUrl(path: string, size?: 'small' | 'medium') {
   if (!path) return ''
   if (path.startsWith('http://') || path.startsWith('https://')) return path
-  return `/api/admin/oss-upload-records/image?path=${encodeURIComponent(path)}`
+  // Use /api/admin/image (returns 302 to OSS presigned URL). This endpoint is
+  // [AllowAnonymous] on the backend so <img>/<el-image> tags can load it
+  // without an Authorization header. The old /api/admin/oss-upload-records/image
+  // endpoint required JWT and was rejected with 401 for <img> requests.
+  const params = new URLSearchParams({ path })
+  if (size) params.set('size', size)
+  return `/api/admin/image?${params.toString()}`
 }
 
 function copyPath(path: string) {

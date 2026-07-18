@@ -1,4 +1,5 @@
 using System.Net;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Ruoyu.Study.MistakeBff.HttpClients;
 
@@ -22,7 +23,14 @@ public class ImageController : ControllerBase
         _logger = logger;
     }
 
+    // [AllowAnonymous] is mandatory: images are loaded via <img>/<el-image> tags
+    // whose browser-initiated requests cannot carry the Authorization header.
+    // The FallbackPolicy in Program.cs would otherwise reject them with 401.
+    // Mirrors ruoyu.common's ImageUploadController.GetImage behavior.
+    // Security relies on: OSS paths are not enumerable + presigned URLs are
+    // short-lived (1h) + admin_portal is intranet-only.
     [HttpGet]
+    [AllowAnonymous]
     public async Task<IActionResult> GetImage(CancellationToken cancellationToken)
     {
         var objectPath = Request.Query["path"].ToString();
@@ -44,7 +52,10 @@ public class ImageController : ControllerBase
 
             if (objectPath.StartsWith("mistakes/", StringComparison.OrdinalIgnoreCase))
             {
-                var result = await _mistakeClient.GetPresignedUrlAsync(objectPath, 3600, null, cancellationToken);
+                // Pass sizeStr so mistakes/ thumbnails (small/medium) work;
+                // previously this was hard-coded to null, forcing the original
+                // image to be downloaded for every thumbnail render.
+                var result = await _mistakeClient.GetPresignedUrlAsync(objectPath, 3600, sizeStr, cancellationToken);
                 presignedUrl = result.Url;
             }
             else

@@ -196,6 +196,35 @@ public class ImageControllerTests
             Times.Once);
     }
 
+    [Fact]
+    public async Task GetImage_MistakesPath_WithSize_PassesSizeToMistakeService()
+    {
+        // Regression: mistakes/ branch previously hard-coded size=null, so
+        // thumbnail requests (size=small) were silently ignored and the
+        // original image was returned. Verify size is now forwarded.
+        SetupQuery("mistakes/2025/06/14/abc/image.jpg", "small");
+
+        var httpResult = new MistakePresignedUrlResult { Url = "https://example.com/presigned" };
+        _mistakeClient
+            .Setup(c => c.GetPresignedUrlAsync(
+                It.IsAny<string>(),
+                It.IsAny<int>(),
+                It.IsAny<string?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(httpResult);
+
+        var result = await _controller.GetImage(CancellationToken.None);
+
+        result.Should().BeOfType<RedirectResult>();
+        _mistakeClient.Verify(
+            c => c.GetPresignedUrlAsync(
+                It.Is<string>(p => p == "mistakes/2025/06/14/abc/image.jpg"),
+                It.Is<int>(s => s == 3600),
+                It.Is<string?>(s => s == "small"),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
     // ============================================================
     // Student 路径分流
     // ============================================================
