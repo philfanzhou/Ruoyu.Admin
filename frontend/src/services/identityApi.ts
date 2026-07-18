@@ -1,4 +1,5 @@
-import axios, { type AxiosInstance } from 'axios'
+import axios from 'axios'
+import httpClient from './httpClient'
 
 export interface IdentityPagedResponse<T> {
   items: T[]
@@ -18,13 +19,7 @@ export interface IdentityUser {
 }
 
 class IdentityAdminApiClient {
-  private client: AxiosInstance
-
-  constructor() {
-    this.client = axios.create({
-      timeout: 15000,
-    })
-  }
+  private client = httpClient
 
   async testConnection(): Promise<void> {
     await this.client.get('/api/identity/gateway/users/search', {

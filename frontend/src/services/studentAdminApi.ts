@@ -1,14 +1,5 @@
-import axios, { type AxiosInstance } from 'axios'
-import { getAuthToken } from './auth'
-
-// Attach the admin JWT (stored in localStorage) to every admin API request.
-axios.interceptors.request.use((config) => {
-  const token = getAuthToken()
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`
-  }
-  return config
-})
+import axios from 'axios'
+import httpClient from './httpClient'
 
 export interface StudentPagedResponse<T> {
   items: T[]
@@ -200,13 +191,7 @@ export interface MistakeListResponse {
 }
 
 class StudentAdminApiClient {
-  private client: AxiosInstance
-
-  constructor() {
-    this.client = axios.create({
-      timeout: 15000,
-    })
-  }
+  private client = httpClient
 
   async getGrades() {
     const response = await this.client.get<GradeOption[]>('/api/admin/students/grades')

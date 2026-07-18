@@ -1,4 +1,5 @@
-import axios, { type AxiosInstance } from 'axios'
+import axios from 'axios'
+import httpClient from './httpClient'
 
 export interface OssAuditRecordDto {
   id: number
@@ -58,13 +59,7 @@ export interface AuditStatusResponse {
 }
 
 class OssAuditApiClient {
-  private client: AxiosInstance
-
-  constructor() {
-    this.client = axios.create({
-      timeout: 30000,
-    })
-  }
+  private client = httpClient
 
   async getRecords(page: number = 1, pageSize: number = 20, status?: number, bucket?: string) {
     const params: any = { page, pageSize }

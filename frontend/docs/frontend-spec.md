@@ -28,9 +28,11 @@ src/admin_portal/frontend/src/
 │   ├── MistakeView.vue           # 错题管理页面
 │   └── OssAuditView.vue          # OSS 审计页面
 ├── services/
+│   ├── httpClient.ts            # 共享 axios 实例（含 JWT 注入 + 401 重定向拦截器）
 │   ├── identityApi.ts           # Identity 用户管理 API
 │   ├── studentAdminApi.ts       # 学生管理 + 上传记录 + 错题查询 API
 │   ├── teacherPortalApi.ts      # 教师权限管理 API
+│   ├── assistantPortalApi.ts    # 助教权限管理 API
 │   └── ossAuditApi.ts           # OSS 审计 API
 └── components/
     ├── ImagePreview.vue          # 图片预览组件
@@ -427,4 +429,8 @@ interface EnumOptionsResponse {
 - **按需调用 API**：每个页面只调用自己需要的接口
 - **错误处理**：Axios 错误统一提取 `response.data.message`，使用 `ElMessage.error` 提示
 - **确认操作**：删除等危险操作使用 `ElMessageBox.confirm` 二次确认
-- **认证**：JWT Bearer。登录后前端将 access token 存入 localStorage，通过 axios 请求拦截器附加 `Authorization: Bearer` 头；后端使用 `[Authorize]` / `[Authorize(Roles="admin")]` 校验 Identity 签发的 JWT
+- **认证**：JWT Bearer。登录后前端将 access token 存入 localStorage，通过共享 axios 实例（`services/httpClient.ts`）的请求拦截器统一附加 `Authorization: Bearer` 头；后端使用 `[Authorize]` / `[Authorize(Roles="admin")]` 校验 Identity 签发的 JWT
+- **共享 HTTP 客户端**：所有 API 服务（`studentAdminApi` / `teacherPortalApi` / `assistantPortalApi` / `identityApi` / `ossAuditApi`）必须复用 `services/httpClient.ts` 导出的共享 axios 实例，不得各自 `axios.create()` 单独建实例。原因：axios 实例间不共享拦截器，单独建实例会导致 JWT 未注入 → 后端返回 401。共享实例同时配置：
+  - 请求拦截器：从 localStorage 读取 token，附加 `Authorization: Bearer <token>` 头
+  - 响应拦截器：收到 401 时清除 token 并重定向到 `/login`
+- **登录流程例外**：`services/auth.ts` 的 `login()` 使用原生 `fetch`（不经 axios），登录成功后写入 localStorage，后续 axios 请求才能读到 token

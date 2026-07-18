@@ -1,4 +1,5 @@
-import axios, { type AxiosInstance } from 'axios'
+import axios from 'axios'
+import httpClient from './httpClient'
 
 export interface TeacherAccountDto {
   id: number
@@ -37,13 +38,7 @@ export interface SubjectOption {
 }
 
 class TeacherPortalApiClient {
-  private client: AxiosInstance
-
-  constructor() {
-    this.client = axios.create({
-      timeout: 10000,
-    })
-  }
+  private client = httpClient
 
   private checkSuccess<T extends { success: boolean; message?: string }>(result: T): T {
     if (!result.success) {
