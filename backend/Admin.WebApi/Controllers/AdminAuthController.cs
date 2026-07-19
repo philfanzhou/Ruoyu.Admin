@@ -86,6 +86,23 @@ public class AdminAuthController : ControllerBase
                 return BadRequest(new { success = false, message = content?.Message ?? "Login failed." });
             }
 
+            // Set the JWT as an HttpOnly cookie in addition to returning it in the JSON body.
+            // The body token is used by axios (Authorization: Bearer header, injected by
+            // services/httpClient.ts). The cookie is used by browser-native <img>/<el-image>
+            // requests that cannot carry custom headers (W3C standard limitation) — e.g.
+            // thumbnail loading in MistakeView/UploadRecordView. Both channels carry the
+            // same JWT; AddJwtBearer.OnMessageReceived reads header first, cookie as fallback.
+            // SameSite=Strict mitigates CSRF; admin_portal is intranet HTTP so Secure=false.
+            var cookieOptions = new CookieOptions
+            {
+                HttpOnly = true,
+                SameSite = SameSiteMode.Strict,
+                Secure = false,
+                Path = "/",
+                Expires = DateTimeOffset.FromUnixTimeSeconds(content.ExpiresAt),
+            };
+            Response.Cookies.Append("adminAuthToken", content.AccessToken, cookieOptions);
+
             return Ok(content);
         }
         catch (Exception ex)
@@ -116,6 +133,24 @@ public class AdminAuthController : ControllerBase
         }
 
         return Ok(new CallbackResponse());
+    }
+
+    /// <summary>
+    /// Clears the adminAuthToken cookie set by <see cref="Login"/>. Frontend calls
+    /// this on logout so subsequent browser-native &lt;img&gt; requests stop carrying
+    /// the JWT. localStorage tokens are cleared client-side by services/auth.ts.
+    /// </summary>
+    [HttpPost("logout")]
+    [Authorize]
+    public IActionResult Logout()
+    {
+        Response.Cookies.Delete("adminAuthToken", new CookieOptions
+        {
+            HttpOnly = true,
+            SameSite = SameSiteMode.Strict,
+            Path = "/",
+        });
+        return Ok(new { success = true });
     }
 }
 

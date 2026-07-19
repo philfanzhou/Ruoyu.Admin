@@ -1,4 +1,5 @@
 using System.Net;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Ruoyu.Study.MistakeBff.HttpClients;
 using Admin.WebApi.Models;
@@ -8,6 +9,7 @@ namespace Admin.WebApi.Controllers;
 
 [Route("api/admin/oss-upload-records")]
 [ApiController]
+[Authorize]
 public class OssUploadRecordController : ControllerBase
 {
     private readonly IStudentHttpClient _studentClient;

@@ -46,6 +46,14 @@
 | `AnalyzeUploadRecord_Success_Returns200WithAnalysisResults` | 分析上传记录成功返回 200 和分析结果 |
 | `AnalyzeUploadRecord_GrpcException_Returns500` | gRPC 异常返回 500 |
 
+### 鉴权回归测试（已实现）
+
+测试代码位于 `Tests/Controllers/ControllerAuthorizationTests.cs`，通过反射验证 controller 级 `[Authorize]` 属性存在，防止重构时误删导致鉴权失效。FallbackPolicy 兜底不足以替代显式标注（项目约定：所有 `/api/admin/*` controller 必须显式 `[Authorize]`，作为后续 `[Authorize(Roles = "admin")]` 收紧的扩展点）。
+
+| 测试方法 | 验证内容 |
+| --- | --- |
+| `OssUploadRecordController_HasAuthorizeAttribute` | OssUploadRecordController 必须携带 `[Authorize]` 属性（图片下载、状态重置、分配、旋转、遗留清理均为管理员操作） |
+
 ## 单元测试 — Given-When-Then 格式
 
 ### GetAllUploadRecords

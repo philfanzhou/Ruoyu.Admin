@@ -434,7 +434,11 @@ interface EnumOptionsResponse {
   - 请求拦截器：从 localStorage 读取 token，附加 `Authorization: Bearer <token>` 头
   - 响应拦截器：收到 401 时清除 token 并重定向到 `/login`
 - **登录流程例外**：`services/auth.ts` 的 `login()` 使用原生 `fetch`（不经 axios），登录成功后写入 localStorage，后续 axios 请求才能读到 token
-- **图片加载（不走 axios）**：所有图片通过 `<el-image :src="...">` / `<img>` 标签加载，浏览器发起的图片请求**不会带 Authorization 头**。因此后端的图片端点 `GET /api/admin/image?path=<ossPath>&size=<small|medium|空>` 必须显式标注 `[AllowAnonymous]`（与 user_portal / teacher_portal 共享库 `ImageUploadController` 一致），通过路径不可枚举 + presigned URL 短时效 + 内网隔离保证安全。该端点返回 302 重定向到 OSS presigned URL，浏览器跟随重定向后从 nginx `/oss/` 代理拉取图片。
+- **图片加载（Cookie + JWT 双通道）**：浏览器 `<img>` / `<el-image>` 标签发起的图片请求**无法携带自定义 Authorization 头**（W3C 标准限制），但会自动携带同源 cookie。为此 admin_portal 采用双通道：
+  - **Bearer 通道**：axios 请求（API 调用）走 `Authorization: Bearer <jwt>`，token 从 localStorage 读取（由 `services/httpClient.ts` 拦截器注入）
+  - **Cookie 通道**：登录成功时后端 `AdminAuthController.Login` 把同一份 JWT 写入 HttpOnly cookie（`adminAuthToken`，SameSite=Strict，Path=/）。`<img>` 标签的图片请求自动携带该 cookie。后端 `AddJwtBearer` 的 `OnMessageReceived` 事件优先读 Authorization 头，缺失时回退读 cookie，保证 `[Authorize]` 端点对两种通道都生效
+  - **退出登录时**：后端 `AdminAuthController.Logout` 清除 cookie；前端 `clearAuth()` 清除 localStorage
+- **图片端点 URL 约定**：`GET /api/admin/image?path=<ossPath>&size=<small|medium|空>`，保留 `[Authorize]`（由 cookie 通道鉴权），返回 302 重定向到 OSS presigned URL，浏览器跟随重定向后从 nginx `/oss/` 代理拉取图片。
   - 列表缩略图：`size=small`
   - 详情页中等图：`size=medium`
   - 详情页点击放大预览：不传 `size`（返回原图）

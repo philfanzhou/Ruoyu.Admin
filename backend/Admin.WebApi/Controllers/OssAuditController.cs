@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Admin.WebApi.Persistence;
@@ -10,6 +11,7 @@ namespace Admin.WebApi.Controllers;
 
 [Route("api/admin/oss-audit")]
 [ApiController]
+[Authorize]
 public partial class OssAuditController : ControllerBase
 {
     private readonly AuditDbContext _dbContext;

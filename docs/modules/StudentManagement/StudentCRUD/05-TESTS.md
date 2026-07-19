@@ -195,3 +195,11 @@
 | `DeleteStudent_NotFound_Returns404` | FR-13 |
 | `GetGrades_Returns12Options` | FR-06 |
 | `GetSubjectOptions_Success` | FR-07 |
+
+## 鉴权回归测试（已实现）
+
+测试代码位于 `Tests/Controllers/ControllerAuthorizationTests.cs`，通过反射验证 controller 级 `[Authorize]` 属性存在，防止重构时误删导致鉴权失效。FallbackPolicy 兜底不足以替代显式标注（项目约定：所有 `/api/admin/*` controller 必须显式 `[Authorize]`，作为后续 `[Authorize(Roles = "admin")]` 收紧的扩展点）。
+
+| 测试方法 | 验证内容 |
+| --- | --- |
+| `StudentsController_HasAuthorizeAttribute` | StudentsController 必须携带 `[Authorize]` 属性（学生 CRUD 为管理员操作） |

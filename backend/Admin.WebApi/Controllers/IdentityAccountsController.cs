@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using Admin.WebApi.Models;
@@ -7,6 +8,7 @@ namespace Admin.WebApi.Controllers;
 
 [Route("api/admin")]
 [ApiController]
+[Authorize]
 public class IdentityAccountsController : ControllerBase
 {
     private readonly IHttpClientFactory _httpClientFactory;

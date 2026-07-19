@@ -4,14 +4,6 @@
 
 ## P0 — 必须修复
 
-### HR-01: 所有 API 端点无认证/授权
-
-- **问题**：所有 Controller 均无 [Authorize] 属性，任何请求均可访问管理端 API
-- **A** (推荐)：添加 JWT 认证中间件 + [Authorize] 属性，对接 Identity 服务
-- **B**：使用 API Key 认证，在中间件层统一校验
-- **C**：暂不处理，依赖内网隔离
-- **批复**：
-
 ### HR-03: OssAuditController、MistakeController N+1 查询
 
 - **问题**：多个 Controller 存在循环内逐条查询关联数据的 N+1 模式
@@ -91,12 +83,4 @@
 - **A** (推荐)：在 Student/Mistake gRPC 新增专用批量路径查询接口，服务端聚合
 - **B**：增加分页并行请求 + 超时控制 + 缓存
 - **C**：暂不处理，当前数据量可接受
-- **批复**：
-
-### HR-16: Admin 专用接口权限校验逻辑缺失
-
-- **问题**：OssUploadRecordController 改用通用 gRPC 后，原 Admin 专用接口的权限校验逻辑如何替代？
-- **A** (推荐)：在 gRPC 层添加调用方身份校验（Admin 角色检查）
-- **B**：在 Admin Portal Controller 层添加权限校验中间件
-- **C**：暂不处理，当前仅内网访问
 - **批复**：

@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Admin.WebApi.Models;
 using Ruoyu.Study.Common.Constants;
@@ -6,6 +7,7 @@ namespace Admin.WebApi.Controllers;
 
 [Route("api/admin/enum-options")]
 [ApiController]
+[Authorize]
 public class EnumOptionsController : ControllerBase
 {
     private static readonly List<EnumOption> UploadStatuses = UploadStatusConstants.EnglishNames

@@ -1,4 +1,5 @@
 using System.Net;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Ruoyu.Study.Common.Constants;
 using Ruoyu.Study.MistakeBff.HttpClients;
@@ -9,6 +10,7 @@ namespace Admin.WebApi.Controllers;
 
 [Route("api/admin/students")]
 [ApiController]
+[Authorize]
 public class StudentsController : ControllerBase
 {
     private static readonly Dictionary<int, string> GradeLabels = new()

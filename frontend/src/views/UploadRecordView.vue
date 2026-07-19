@@ -593,10 +593,10 @@ function getImageUrl(path: string, size?: 'small' | 'medium') {
   if (path.startsWith('http://') || path.startsWith('https://')) {
     return path
   }
-  // Use /api/admin/image (returns 302 to OSS presigned URL). This endpoint is
-  // [AllowAnonymous] on the backend so <img>/<el-image> tags can load it
-  // without an Authorization header. The old /api/admin/oss-upload-records/image
-  // endpoint required JWT and was rejected with 401 for <img> requests.
+  // /api/admin/image is [Authorize] but the JWT is carried via the adminAuthToken
+  // HttpOnly cookie set on login (cookie+JWT dual-channel — see frontend-spec.md).
+  // <img>/<el-image> cannot send Authorization headers, but the browser attaches
+  // same-origin cookies automatically.
   const params = new URLSearchParams({ path })
   if (size) params.set('size', size)
   return `/api/admin/image?${params.toString()}`

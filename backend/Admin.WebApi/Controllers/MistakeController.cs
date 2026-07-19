@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Admin.WebApi.Models;
 using Ruoyu.Study.MistakeBff.HttpClients;
@@ -6,6 +7,7 @@ namespace Admin.WebApi.Controllers;
 
 [Route("api/admin/mistakes")]
 [ApiController]
+[Authorize]
 public class MistakeController : ControllerBase
 {
     private readonly IMistakeHttpClient _mistakeClient;

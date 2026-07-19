@@ -26,6 +26,14 @@
 | `BatchResolve_Success_ResolvesMultipleRecords` | 批量清理多条记录成功 |
 | `BatchResolve_SomeReferenced_SkipsReferencedResolvesOthers` | 部分被引用时跳过引用的，清理其余的 |
 
+### 鉴权回归测试（已实现）
+
+测试代码位于 `Tests/Controllers/ControllerAuthorizationTests.cs`，通过反射验证 controller 级 `[Authorize]` 属性存在，防止重构时误删导致鉴权失效。FallbackPolicy 兜底不足以替代显式标注（项目约定：所有 `/api/admin/*` controller 必须显式 `[Authorize]`，作为后续 `[Authorize(Roles = "admin")]` 收紧的扩展点）。
+
+| 测试方法 | 验证内容 |
+| --- | --- |
+| `OssAuditController_HasAuthorizeAttribute` | OssAuditController 必须携带 `[Authorize]` 属性（清理接口可删除 OSS 对象，鉴权强制） |
+
 ### OssAuditWorker 测试（待实现）
 
 OssAuditWorker 目前没有测试覆盖。

@@ -59,6 +59,24 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateLifetime = true,
             ClockSkew = TimeSpan.FromSeconds(30),
         };
+        // Dual-channel JWT extraction:
+        // - Authorization: Bearer <token> header (axios API requests via httpClient.ts)
+        // - adminAuthToken HttpOnly cookie (browser-native <img>/<el-image> requests
+        //   that cannot carry custom headers; W3C standard limitation)
+        // Login endpoint (AdminAuthController.Login) sets the cookie alongside the
+        // JSON response so both channels share the same JWT. This keeps [Authorize]
+        // on image endpoints working without [AllowAnonymous].
+        options.Events = new JwtBearerEvents
+        {
+            OnMessageReceived = ctx =>
+            {
+                if (string.IsNullOrEmpty(ctx.Token))
+                {
+                    ctx.Token = ctx.Request.Cookies["adminAuthToken"];
+                }
+                return Task.CompletedTask;
+            }
+        };
     });
 builder.Services.AddAuthorization(options =>
 {

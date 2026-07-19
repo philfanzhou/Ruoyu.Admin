@@ -7,6 +7,7 @@ namespace Admin.WebApi.Controllers;
 
 [Route("api/admin/image")]
 [ApiController]
+[Authorize]
 public class ImageController : ControllerBase
 {
     private readonly IStudentHttpClient _studentClient;
@@ -23,14 +24,7 @@ public class ImageController : ControllerBase
         _logger = logger;
     }
 
-    // [AllowAnonymous] is mandatory: images are loaded via <img>/<el-image> tags
-    // whose browser-initiated requests cannot carry the Authorization header.
-    // The FallbackPolicy in Program.cs would otherwise reject them with 401.
-    // Mirrors ruoyu.common's ImageUploadController.GetImage behavior.
-    // Security relies on: OSS paths are not enumerable + presigned URLs are
-    // short-lived (1h) + admin_portal is intranet-only.
     [HttpGet]
-    [AllowAnonymous]
     public async Task<IActionResult> GetImage(CancellationToken cancellationToken)
     {
         var objectPath = Request.Query["path"].ToString();

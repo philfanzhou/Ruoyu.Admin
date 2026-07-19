@@ -58,13 +58,26 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { clearAuth } from './services/auth'
+import { clearAuth, getAuthToken } from './services/auth'
+import httpClient from './services/httpClient'
 
 const route = useRoute()
 const router = useRouter()
 const currentRoute = computed(() => route.path)
 
-const handleLogout = () => {
+const handleLogout = async () => {
+  // Notify backend to clear the adminAuthToken cookie (set by Login) so that
+  // subsequent browser-native <img> requests stop carrying the JWT. localStorage
+  // tokens are cleared client-side by clearAuth(). Best-effort: ignore errors
+  // (e.g. backend unreachable) — the cookie has its own Expires and localStorage
+  // is always cleared below regardless.
+  if (getAuthToken()) {
+    try {
+      await httpClient.post('/api/auth/logout')
+    } catch {
+      // ignore — frontend state is the source of truth for UI navigation
+    }
+  }
   clearAuth()
   router.push('/login')
 }
