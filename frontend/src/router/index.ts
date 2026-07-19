@@ -12,7 +12,13 @@ const router = createRouter({
     },
     {
       path: '/',
-      redirect: '/students'
+      redirect: '/dashboard'
+    },
+    {
+      path: '/dashboard',
+      name: 'dashboard',
+      component: () => import('../views/DashboardView.vue'),
+      meta: { title: '数据仪表盘' }
     },
     {
       path: '/students',
@@ -64,7 +70,7 @@ router.beforeEach((to, _from, next) => {
 
   // Authenticated users should not stay on the login page.
   if (to.name === 'login' && isAuthenticated()) {
-    next('/students')
+    next('/dashboard')
     return
   }
 

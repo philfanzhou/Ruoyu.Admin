@@ -10,6 +10,7 @@
 | 构建工具 | Vite |
 | 路由 | Vue Router 4 |
 | 入口 | `src/main.ts` |
+| 设计规范 | `ruoyu-prototype/assets/design-system.css` 中的 `--adm-*` 令牌 |
 
 ---
 
@@ -18,15 +19,18 @@
 ```
 src/admin_portal/frontend/src/
 ├── main.ts                      # 入口，注册 ElementPlus + VueRouter
-├── App.vue                      # 根组件，布局容器（含二级菜单）
+├── App.vue                      # 根组件，主布局（240px 侧边栏 + 56px 顶部栏 + 面包屑）
 ├── router/
 │   └── index.ts                 # 路由配置
 ├── views/
+│   ├── LoginView.vue            # 登录页（双栏：品牌渐变 + 表单）
+│   ├── DashboardView.vue        # 数据仪表盘（KPI + 趋势 + 待办）
 │   ├── StudentView.vue          # 学生管理页面
 │   ├── TeacherView.vue          # 教师管理页面
-│   ├── UploadRecordView.vue      # 上传记录管理页面（含遗留数据检查清理）
-│   ├── MistakeView.vue           # 错题管理页面
-│   └── OssAuditView.vue          # OSS 审计页面
+│   ├── AssistantView.vue        # 助教管理页面（含 Drawer 学生关联面板）
+│   ├── UploadRecordView.vue      # 上传记录管理页面（状态统计条 + 侧滑详情面板）
+│   ├── MistakeView.vue           # 错题管理页面（统计卡 + 详情 Modal）
+│   └── OssAuditView.vue          # OSS 审计页面（状态面板 + 浮动批量操作栏）
 ├── services/
 │   ├── httpClient.ts            # 共享 axios 实例（含 JWT 注入 + 401 重定向拦截器）
 │   ├── identityApi.ts           # Identity 用户管理 API
@@ -41,25 +45,117 @@ src/admin_portal/frontend/src/
 
 ---
 
+## 设计规范（Professional Blue-Gray）
+
+参考原型：`ruoyu-prototype/pages/admin-*.html` + `ruoyu-prototype/assets/design-system.css`。
+
+### Design Tokens（CSS 变量）
+
+所有 `--adm-*` 变量统一定义在 `src/style.css` 的 `:root` 中，供全局使用：
+
+| 类别 | 变量 | 值 |
+|------|------|----|
+| 主色 | `--adm-primary` | `#3b82f6` (Blue 500) |
+| 主色深 | `--adm-primary-dark` | `#2563eb` |
+| 主色浅 | `--adm-primary-bg` | `#eff6ff` |
+| 侧边栏 | `--adm-sidebar` | `#1e293b` |
+| 侧边栏悬停 | `--adm-sidebar-hover` | `#334155` |
+| 内容区背景 | `--adm-surface` | `#f1f5f9` |
+| 卡片背景 | `--adm-surface-elevated` | `#ffffff` |
+| 次级背景 | `--adm-surface-subtle` | `#f8fafc` |
+| 边框 | `--adm-border` | `#e2e8f0` |
+| 边框浅 | `--adm-border-light` | `#f1f5f9` |
+| 主文本 | `--adm-text-primary` | `#0f172a` |
+| 次文本 | `--adm-text-secondary` | `#475569` |
+| 三级文本 | `--adm-text-tertiary` | `#64748b` |
+| 静音文本 | `--adm-text-muted` | `#94a3b8` |
+| 暗背景文本 | `--adm-text-on-dark` | `#e2e8f0` |
+| 暗背景静音 | `--adm-text-on-dark-muted` | `#94a3b8` |
+| 成功 | `--adm-success` / `*-bg` / `*-border` | `#10b981` / `#ecfdf5` / `#a7f3d0` |
+| 警告 | `--adm-warning` / `*-bg` / `*-border` | `#f59e0b` / `#fffbeb` / `#fde68a` |
+| 错误 | `--adm-error` / `*-bg` / `*-border` | `#ef4444` / `#fef2f2` / `#fecaca` |
+| 圆角 | `--adm-radius-sm/md/lg` | `6px` / `8px` / `12px` |
+| 阴影 | `--adm-shadow-sm/md/lg` | `0 1px 2px` / `0 4px 12px` / `0 8px 24px` |
+
+### 整体布局
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│ 240px Sidebar │ 56px Header (面包屑 + 通知 + 用户)              │
+│               ├──────────────────────────────────────────────┤
+│  - 仪表盘     │                                              │
+│  - 学生管理   │                                              │
+│  - 教师管理   │       Main Content Area                      │
+│  - 助教管理   │       (max-width: 1400px, padding: 24px)     │
+│  - 数据管理   │                                              │
+│    ├─上传记录 │                                              │
+│    ├─错题管理 │                                              │
+│    └─OSS审计 │                                              │
+│               │                                              │
+│  Footer:      │                                              │
+│  用户+退出    │                                              │
+└───────────────┴──────────────────────────────────────────────┘
+```
+
+- **侧边栏**：固定 240px，深色 `#1e293b`，分组标签 + 菜单项；激活项用主色背景 + 阴影
+- **顶部栏**：56px 高，sticky，左侧面包屑（首页 / 分组 / 当前页），右侧通知铃铛 + 用户头像
+- **内容区**：`max-width: 1400px`，居中，24px 内边距
+
+### 组件规范
+
+| 组件 | 规范 |
+|------|------|
+| 按钮 | `primary`（蓝底白字）/ `secondary`（白底边框）/ `ghost`（透明）/ `danger` / `warning` / `link` 文字按钮 |
+| 卡片 | `background: #fff` + `border: 1px solid #e2e8f0` + `border-radius: 12px` |
+| 表格 | 表头背景 `#f8fafc`，单元格 padding `14px 16px`，行悬停背景 `#f8fafc` |
+| 状态徽章 | 双编码：颜色 + 圆点（`dot::before`），色盲友好 |
+| 学科标签 | 统一色彩（数学蓝/语文橙/英语绿/物理紫/化学粉紫/生物绿/历史红/地理蓝/政治紫），跨门户一致 |
+| Modal | 居中弹窗，用于详情/编辑表单 |
+| Drawer | 右侧滑出面板，宽度 400-480px，用于详情/批量操作 |
+| 浮动批量操作栏 | 底部 fixed，显示"已选择 N 项 + 批量操作按钮" |
+| 空状态 | 居中图标 + 文案 + 引导按钮 |
+| 骨架屏 | shimmer 动画（`linear-gradient` + `background-position` 动画） |
+
+### 状态徽章双编码
+
+所有状态徽章同时使用颜色 + 圆点：
+
+| 状态 | 颜色 | 圆点 |
+|------|------|------|
+| pending（待处理/待审核） | `--adm-warning` | 圆点 |
+| processing（处理中） | `--adm-info` | 旋转 spinner |
+| completed/confirmed（已完成/已确认） | `--adm-success` | 圆点 |
+| failed/returned/rejected（失败/已退回/已退回） | `--adm-error` | 圆点 |
+| ignored（已忽略） | `#a16207` | 圆点 |
+
+---
+
 ## 页面架构
 
 ### 整体布局
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│  Header: 应用标题 + 导航菜单                              │
+│  Header: 面包屑 + 通知铃铛 + 用户头像                       │
 ├────────────┬─────────────────────────────────────────────┤
 │            │                                             │
 │  Sidebar   │         Main Content Area                  │
-│  导航菜单   │         (根据路由显示对应页面)               │
+│  240px     │         (max-width: 1400px, padding: 24px)  │
+│  深色       │                                             │
 │            │                                             │
-│  - 学生管理 │                                             │
-│  - 教师管理 │                                             │
-│  - 数据管理 │ (可展开)                                    │
-│    ├─上传记录 │                                           │
-│    └─OSS审计 │                                             │
-│  - 错题管理 │                                             │
+│  概览       │                                             │
+│  - 仪表盘   │                                             │
+│  用户管理   │                                             │
+│  - 学生     │                                             │
+│  - 教师     │                                             │
+│  - 助教     │                                             │
+│  数据管理   │                                             │
+│  - 上传记录 │                                             │
+│  - 错题     │                                             │
+│  - OSS审计  │                                             │
 │            │                                             │
+│  ──────    │                                             │
+│  用户+退出  │                                             │
 └────────────┴─────────────────────────────────────────────┘
 ```
 
@@ -67,17 +163,58 @@ src/admin_portal/frontend/src/
 
 | 路由 | 页面 | 所属分组 | 说明 |
 |------|------|----------|------|
-| `/students` | StudentView.vue | - | 学生管理 |
-| `/teachers` | TeacherView.vue | - | 教师管理 |
-| `/upload-records` | UploadRecordView.vue | 数据管理 | 上传记录管理（含遗留数据检查清理） |
-| `/mistakes` | MistakeView.vue | - | 错题查询与管理 |
-| `/oss-audit` | OssAuditView.vue | 数据管理 | OSS 僵尸文件审计 |
+| `/login` | LoginView.vue | 认证 | 双栏品牌+表单登录页 |
+| `/dashboard` | DashboardView.vue | 概览 | 数据仪表盘（KPI + 趋势 + 待办） |
+| `/students` | StudentView.vue | 用户管理 | 学生管理 |
+| `/teachers` | TeacherView.vue | 用户管理 | 教师管理 |
+| `/assistants` | AssistantView.vue | 用户管理 | 助教管理（含学生关联 Drawer） |
+| `/upload-records` | UploadRecordView.vue | 数据管理 | 上传记录管理（含状态统计条 + 侧滑详情面板） |
+| `/mistakes` | MistakeView.vue | 数据管理 | 错题查询与管理（统计卡 + 详情 Modal） |
+| `/oss-audit` | OssAuditView.vue | 数据管理 | OSS 僵尸文件审计（状态面板 + 浮动批量栏） |
+
+默认重定向：`/` → `/dashboard`（已登录）/ `/login`（未登录）。
 
 ---
 
 ## 页面详细说明
 
+### 0. 登录页 (`/login`)
+
+**布局**：双栏式（左侧品牌渐变面板 + 右侧表单）。
+
+- **左侧品牌面板**：深色渐变背景（`#0f172a → #1e3a5f → #1e40af`），展示 logo、品牌标语、特性列表、版本徽章
+- **右侧表单**：登录图标 + 标题、用户名输入（带头像图标）、密码输入（带锁图标 + 显示/隐藏切换）、记住我复选框、登录按钮（渐变背景 + 阴影）
+- **错误提示**：内联错误提示框（红色背景 + 警告图标）
+- **加载状态**：登录中显示 spinner
+
+**API 调用**：
+- `login(username, password)` - 提交登录表单，成功后写入 token 到 localStorage
+
+---
+
+### 0.5 数据仪表盘 (`/dashboard`)
+
+**功能列表**：
+- 4 个 KPI 卡片（学生总数 / 教师总数 / 待处理上传 / 待审核错题），带 sparkline 趋势线
+- 上传趋势柱状图（学生/教师双柱对比，最近 7 天）
+- 待处理事项列表（点击跳转对应管理页）
+- 学科分布条形图
+- 活动时间线（最近 5 条系统活动）
+- 快捷操作卡片（跳转到常用页面）
+
+**API 调用**（全部复用现有 API，不新增后端接口）：
+- `studentAdminApi.getStudents({ pageSize: 1 })` - 获取学生总数
+- `teacherPortalApi.getTeachers()` - 获取教师列表
+- `assistantPortalApi.getAssistants()` - 获取助教列表
+- `studentAdminApi.getUploadRecords({ status: 1, pageSize: 1 })` - 待处理上传数
+- `studentAdminApi.getMistakeItems({ reviewStatus: 1, size: 1 })` - 待审核错题数
+- `ossAuditApi.getRecords(1, 1, 0)` - 待处理 OSS 审计数
+
+---
+
 ### 1. 学生管理页面 (`/students`)
+
+**布局**：统计概览条 + 筛选栏 + 数据表格 + 弹窗（创建/编辑/关联/学科）。
 
 **功能列表**：
 - 创建学生（姓名、年级、关联账户）
@@ -101,10 +238,13 @@ src/admin_portal/frontend/src/
 
 ### 2. 教师管理页面 (`/teachers`)
 
+**布局**：统计概览条 + 筛选栏 + 数据表格 + 授权弹窗 + 学科管理弹窗。
+
 **功能列表**：
 - 授予教师权限（搜索 Identity 用户 → 选择科目 → 授予）
 - 教师列表（查看科目、撤销权限）
-- 科目管理（增删教师负责科目）
+- 科目管理（增删教师负责科目，可关闭标签 X 按钮）
+- 未分配科目警告徽章
 - 显示账号备注（从 Identity 服务批量获取用户备注信息，方便管理员识别教师身份）
 
 **表格列**：
@@ -136,7 +276,29 @@ src/admin_portal/frontend/src/
 
 ---
 
-### 3. 上传记录管理页面 (`/upload-records`)
+### 3. 助教管理页面 (`/assistants`)
+
+**布局**：统计概览条 + 数据表格 + 授权弹窗 + 学科管理弹窗 + 学生关联 Drawer（右侧滑出）。
+
+**功能列表**：
+- 授予助教权限（搜索 Identity 用户 → 选择科目 → 授予）
+- 助教列表（查看科目、关联学生数、撤销权限）
+- 科目管理（增删助教负责科目）
+- 学生关联管理（右侧 Drawer：已关联学生 + 添加学生两个 section）
+
+**API 调用**：
+- `assistantPortalApi.getAssistants()` - 助教列表
+- `assistantPortalApi.grantAssistant(userId, payload)` - 授予
+- `assistantPortalApi.revokeAssistant(userId)` - 撤销
+- `assistantPortalApi.getAssistantStudents(userId)` - 关联学生列表
+- `assistantPortalApi.addAssistantStudent(userId, studentId)` - 添加学生
+- `assistantPortalApi.removeAssistantStudent(userId, studentId)` - 移除学生
+- `assistantPortalApi.setAssistantSubjects(userId, subjects)` - 设置科目
+- `studentAdminClient.getStudents(params)` - 搜索学生
+
+---
+
+### 4. 上传记录管理页面 (`/upload-records`)
 
 **所属分组**：数据管理
 
@@ -226,7 +388,7 @@ src/admin_portal/frontend/src/
 
 ---
 
-### 4. 错题管理页面 (`/mistakes`)
+### 5. 错题管理页面 (`/mistakes`)
 
 **功能列表**：
 - 错题列表（学生搜索、学科/年级/审核状态筛选、分页）
@@ -245,7 +407,7 @@ src/admin_portal/frontend/src/
 
 ---
 
-### 5. OSS 审计页面 (`/oss-audit`)
+### 6. OSS 审计页面 (`/oss-audit`)
 
 **所属分组**：数据管理
 

@@ -1,57 +1,99 @@
 <template>
-  <div class="app-container">
-    <el-container>
-      <el-aside width="200px">
-        <div class="logo">
-          <h3>管理后台</h3>
-          <p>Admin Portal</p>
+  <div v-if="isLoginPage">
+    <router-view />
+  </div>
+  <div v-else class="adm-layout">
+    <!-- Sidebar -->
+    <aside class="adm-sidebar">
+      <div class="adm-sidebar-logo">
+        <div class="logo-title">若愚智库</div>
+        <div class="logo-sub">ADMIN CONSOLE</div>
+      </div>
+
+      <nav class="adm-sidebar-nav">
+        <!-- 概览 -->
+        <div class="nav-group">
+          <div class="nav-group-label">概览</div>
+          <router-link to="/dashboard" class="nav-item" :class="{ active: currentPath === '/dashboard' }">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+            <span>数据仪表盘</span>
+          </router-link>
         </div>
-        <el-menu
-          :default-active="currentRoute"
-          router
-          class="sidebar-menu"
-        >
-          <el-menu-item index="/students">
-            <el-icon><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg></el-icon>
+
+        <!-- 用户管理 -->
+        <div class="nav-group">
+          <div class="nav-group-label">用户管理</div>
+          <router-link to="/students" class="nav-item" :class="{ active: currentPath === '/students' }">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
             <span>学生管理</span>
-          </el-menu-item>
-          <el-menu-item index="/teachers">
-            <el-icon><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M5 13.18v4L12 21l7-3.82v-4L12 17l-7-3.82zM12 3L1 9l11 6 9-4.91V17h2V9L12 3z"/></svg></el-icon>
+          </router-link>
+          <router-link to="/teachers" class="nav-item" :class="{ active: currentPath === '/teachers' }">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>
             <span>教师管理</span>
-          </el-menu-item>
-          <el-menu-item index="/assistants">
-            <el-icon><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg></el-icon>
+          </router-link>
+          <router-link to="/assistants" class="nav-item" :class="{ active: currentPath === '/assistants' }">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 11l-3-3m0 6l3-3"/></svg>
             <span>助教管理</span>
-          </el-menu-item>
-          <el-sub-menu index="data-management">
-            <template #title>
-              <el-icon><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 3L2 9l10 6 10-6-10-6zm0 8L2 9l10 6 10-6M12 19l-10-6v6l10 6 10-6v-6"/></svg></el-icon>
-              <span>数据管理</span>
-            </template>
-            <el-menu-item index="/upload-records">
-              <el-icon><svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M9 16h6v-6h4l-7-7-7 7h4zm-4 2h14v2H5z"/></svg></el-icon>
-              <span>上传记录</span>
-            </el-menu-item>
-            <el-menu-item index="/oss-audit">
-              <el-icon><svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg></el-icon>
-              <span>OSS 审计</span>
-            </el-menu-item>
-          </el-sub-menu>
-          <el-menu-item index="/mistakes">
-            <el-icon><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg></el-icon>
-            <span>错题管理</span>
-          </el-menu-item>
-        </el-menu>
-        <div class="sidebar-footer">
-          <el-button type="danger" size="small" plain @click="handleLogout">退出登录</el-button>
+          </router-link>
         </div>
-      </el-aside>
-      <el-container>
-        <el-main>
-          <router-view />
-        </el-main>
-      </el-container>
-    </el-container>
+
+        <!-- 数据管理 -->
+        <div class="nav-group">
+          <div class="nav-group-label">数据管理</div>
+          <router-link to="/upload-records" class="nav-item" :class="{ active: currentPath === '/upload-records' }">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            <span>上传记录</span>
+          </router-link>
+          <router-link to="/mistakes" class="nav-item" :class="{ active: currentPath === '/mistakes' }">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <span>错题管理</span>
+          </router-link>
+          <router-link to="/oss-audit" class="nav-item" :class="{ active: currentPath === '/oss-audit' }">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7l-8-4-8 4 8 4 8-4z"/><path d="M4 7v10l8 4 8-4V7"/><path d="M12 11v10"/></svg>
+            <span>OSS 审计</span>
+          </router-link>
+        </div>
+      </nav>
+
+      <div class="adm-sidebar-footer">
+        <div class="adm-avatar">{{ userInitial }}</div>
+        <div class="adm-user-info">
+          <div class="adm-user-name">{{ username || 'Admin' }}</div>
+          <div class="adm-user-role">管理员</div>
+        </div>
+        <button class="adm-logout-btn" title="退出登录" @click="handleLogout">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        </button>
+      </div>
+    </aside>
+
+    <!-- Main -->
+    <div class="adm-main">
+      <header class="adm-header">
+        <nav class="adm-breadcrumb">
+          <router-link to="/dashboard">首页</router-link>
+          <span class="sep">/</span>
+          <span v-if="currentGroup" class="group">{{ currentGroup }}</span>
+          <span v-if="currentGroup" class="sep">/</span>
+          <span class="current">{{ currentTitle }}</span>
+        </nav>
+        <div class="adm-header-actions">
+          <button class="adm-icon-btn" title="通知">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+            <span class="adm-notif-badge">0</span>
+          </button>
+          <div class="adm-header-divider"></div>
+          <div class="adm-header-user">
+            <div class="adm-avatar" style="width: 28px; height: 28px; font-size: 12px;">{{ userInitial }}</div>
+            <span class="name">{{ username || 'Admin' }}</span>
+          </div>
+        </div>
+      </header>
+
+      <main class="adm-content">
+        <router-view />
+      </main>
+    </div>
   </div>
 </template>
 
@@ -63,14 +105,37 @@ import httpClient from './services/httpClient'
 
 const route = useRoute()
 const router = useRouter()
-const currentRoute = computed(() => route.path)
+
+const currentPath = computed(() => route.path)
+const isLoginPage = computed(() => route.path === '/login')
+
+// Read username from localStorage (set alongside token on login if available)
+const username = computed(() => {
+  try {
+    return localStorage.getItem('adminUsername') || ''
+  } catch {
+    return ''
+  }
+})
+const userInitial = computed(() => {
+  const name = username.value || 'A'
+  return name.charAt(0).toUpperCase()
+})
+
+const currentTitle = computed(() => (route.meta.title as string) || '管理后台')
+
+const currentGroup = computed(() => {
+  const path = route.path
+  if (path === '/dashboard') return '概览'
+  if (['/students', '/teachers', '/assistants'].includes(path)) return '用户管理'
+  if (['/upload-records', '/mistakes', '/oss-audit'].includes(path)) return '数据管理'
+  return ''
+})
 
 const handleLogout = async () => {
-  // Notify backend to clear the adminAuthToken cookie (set by Login) so that
-  // subsequent browser-native <img> requests stop carrying the JWT. localStorage
-  // tokens are cleared client-side by clearAuth(). Best-effort: ignore errors
-  // (e.g. backend unreachable) — the cookie has its own Expires and localStorage
-  // is always cleared below regardless.
+  // Notify backend to clear the adminAuthToken cookie (set by Login on success)
+  // so subsequent browser-native <img> requests stop carrying the JWT.
+  // localStorage tokens are cleared client-side by clearAuth(). Best-effort.
   if (getAuthToken()) {
     try {
       await httpClient.post('/api/auth/logout')
@@ -84,87 +149,241 @@ const handleLogout = async () => {
 </script>
 
 <style scoped>
-.app-container {
-  height: 100vh;
-  background: #f5f5f5;
+.adm-layout {
+  display: flex;
+  min-height: 100vh;
+  background: var(--adm-surface);
 }
 
-.el-aside {
-  background-color: #304156;
-  color: #fff;
+/* Sidebar */
+.adm-sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 240px;
   height: 100vh;
+  background: var(--adm-sidebar);
+  color: var(--adm-text-on-dark);
+  display: flex;
+  flex-direction: column;
+  z-index: 100;
+}
+.adm-sidebar-logo {
+  padding: 20px 20px 18px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.adm-sidebar-logo .logo-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 0.5px;
+}
+.adm-sidebar-logo .logo-sub {
+  font-size: 11px;
+  color: var(--adm-text-on-dark-muted);
+  margin-top: 2px;
+  letter-spacing: 2px;
+  font-weight: 500;
+}
+.adm-sidebar-nav {
+  flex: 1;
+  padding: 12px 10px;
   overflow-y: auto;
 }
-
-.logo {
-  padding: 20px 16px;
-  text-align: center;
-  border-bottom: 1px solid #4a5568;
+.nav-group {
+  margin-bottom: 16px;
 }
-
-.logo h3 {
-  margin: 0;
-  color: #fff;
-  font-size: 18px;
+.nav-group-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  color: var(--adm-text-on-dark-muted);
+  padding: 8px 12px 6px;
+  letter-spacing: 1.2px;
   font-weight: 600;
 }
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  margin-bottom: 2px;
+  border-radius: var(--adm-radius-md);
+  color: var(--adm-text-on-dark);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.15s var(--adm-ease);
+  text-decoration: none;
+  position: relative;
+}
+.nav-item:hover {
+  background: var(--adm-sidebar-hover);
+  color: #fff;
+}
+.nav-item.active {
+  background: var(--adm-primary);
+  color: #fff;
+  font-weight: 500;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.35);
+}
+.nav-item svg {
+  flex-shrink: 0;
+}
+.adm-sidebar-footer {
+  padding: 14px 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.adm-user-info {
+  flex: 1;
+  min-width: 0;
+}
+.adm-user-name {
+  font-size: 13px;
+  color: #fff;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.adm-user-role {
+  font-size: 11px;
+  color: var(--adm-text-on-dark-muted);
+}
+.adm-logout-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--adm-text-on-dark-muted);
+  transition: all 0.15s;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+}
+.adm-logout-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
 
-.logo p {
-  margin: 4px 0 0;
-  color: #a0aec0;
+/* Main */
+.adm-main {
+  margin-left: 240px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+/* Header */
+.adm-header {
+  height: 56px;
+  background: var(--adm-surface-elevated);
+  border-bottom: 1px solid var(--adm-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+.adm-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--adm-text-tertiary);
+}
+.adm-breadcrumb a {
+  color: var(--adm-text-tertiary);
+  transition: color 0.15s;
+  text-decoration: none;
+}
+.adm-breadcrumb a:hover {
+  color: var(--adm-primary);
+}
+.adm-breadcrumb .sep {
+  color: var(--adm-text-muted);
   font-size: 12px;
 }
-
-.sidebar-menu {
-  border-right: none;
-  background-color: transparent;
+.adm-breadcrumb .current {
+  color: var(--adm-text-primary);
+  font-weight: 500;
+}
+.adm-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.adm-icon-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--adm-radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--adm-text-secondary);
+  transition: all 0.15s;
+  cursor: pointer;
+  position: relative;
+  background: transparent;
+  border: none;
+}
+.adm-icon-btn:hover {
+  background: var(--adm-surface-subtle);
+  color: var(--adm-text-primary);
+}
+.adm-notif-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: var(--adm-error);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  min-width: 16px;
+  height: 16px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  border: 2px solid var(--adm-surface-elevated);
+}
+.adm-header-divider {
+  width: 1px;
+  height: 24px;
+  background: var(--adm-border);
+  margin: 0 4px;
+}
+.adm-header-user {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px 4px 4px;
+  border-radius: var(--adm-radius-md);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.adm-header-user:hover {
+  background: var(--adm-surface-subtle);
+}
+.adm-header-user .name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--adm-text-primary);
 }
 
-.sidebar-menu .el-menu-item {
-  color: #e2e8f0;
-  height: 50px;
-  line-height: 50px;
-}
-
-.sidebar-menu .el-menu-item:hover,
-.sidebar-menu .el-menu-item.is-active {
-  background-color: #263445;
-  color: #409eff;
-}
-
-.sidebar-menu :deep(.el-sub-menu__title) {
-  color: #e2e8f0 !important;
-  height: 50px;
-  line-height: 50px;
-}
-
-.sidebar-menu :deep(.el-sub-menu__title:hover) {
-  background-color: #263445 !important;
-  color: #409eff !important;
-}
-
-.sidebar-menu :deep(.el-sub-menu__title .el-sub-menu__icon-arrow) {
-  color: #a0aec0;
-}
-
-.sidebar-menu :deep(.el-sub-menu .el-menu-item) {
-  background-color: #1f2d3d;
-  color: #cbd5e0;
-}
-
-.sidebar-menu :deep(.el-sub-menu .el-menu-item:hover) {
-  background-color: #263445;
-  color: #409eff;
-}
-
-.sidebar-footer {
-  padding: 16px;
-  text-align: center;
-  border-top: 1px solid #4a5568;
-}
-
-.el-main {
-  padding: 20px;
-  overflow-y: auto;
+/* Content */
+.adm-content {
+  flex: 1;
+  padding: 24px;
+  max-width: 1400px;
+  width: 100%;
+  margin: 0 auto;
 }
 </style>
