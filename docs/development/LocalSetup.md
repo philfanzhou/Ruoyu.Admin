@@ -6,9 +6,7 @@
 |------|------|------|
 | .NET SDK | 8.0+ | 后端编译运行 |
 | Node.js | 18+ | 前端构建（可选） |
-| PostgreSQL | 12+ | 审计数据库（生产模式） |
-
-> 测试环境可使用 SQLite，无需 PostgreSQL。
+| PostgreSQL | 12+ | 审计数据库 |
 
 ## 后端配置
 
@@ -39,17 +37,13 @@ Admin Portal 通过 `SharedPostgreSqlConnectionStringFactory.BuildOrFallback` �
 3. 当 `PostgreSql:Host`、`PostgreSql:Username`、`Database:Name` 均非空时，与本地 `Database:Name` 合成 PostgreSQL 连接串
 4. 否则回退到本地 `ConnectionStrings:AuditDb`
 
-数据库类型判定：连接串包含 `Host=` 或 `Server=`（不区分大小写）→ PostgreSQL（Npgsql），否则 SQLite。
-
 - 本地开发：`ConnectionStrings:AuditDb` 指向本地 PostgreSQL（`Host=localhost;Username=phil`，无密码），无需 Consul 即可运行
 - 生产环境：由 Consul 的 `PostgreSql:*` 覆盖，`ConnectionStrings:AuditDb` 仅作兜底
-- SQLite 模式：将 `ConnectionStrings:AuditDb` 改为 `Data Source=admin.db` 即可
 
 3. 环境变量覆盖（可选）：
    ```bash
    export USE_LOCAL_OSS=1           # 使用本地文件系统替代 S3
    export OSS_LOCAL_PATH=data/oss   # 本地 OSS 存储路径
-   export ConnectionStrings__AuditDb="Data Source=admin.db"  # 使用 SQLite（覆盖兜底连接串）
    ```
 
 4. IOssService 凭证权限说明（Phase 4 变更）：

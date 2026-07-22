@@ -11,7 +11,7 @@ Admin Portal 作为管理聚合层，仅拥有少量自有数据，大部分数�
 
 ## 自有数据实体
 
-以下数据实体由 Admin Portal 服务**拥有**，存储在本地 PostgreSQL/SQLite 数据库中：
+以下数据实体由 Admin Portal 服务**拥有**，存储在本地 PostgreSQL 数据库中：
 
 ### OssAuditRecord
 

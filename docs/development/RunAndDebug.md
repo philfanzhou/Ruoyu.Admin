@@ -45,14 +45,9 @@ cp -r dist/* ../backend/wwwroot/
 
 ### gRPC 服务不可用时的降级测试
 
-- 使用 SQLite + `USE_LOCAL_OSS=1` 可在无下游服务时启动后端
+- 使用 `USE_LOCAL_OSS=1` 可在无下游服务时启动后端
 - OssAuditController 的查询/状态接口仅依赖本地数据库，可独立调试
 - StudentsController / MistakeController 需要 gRPC 服务运行
-
-### 数据库切换
-
-- PostgreSQL：`ConnectionStrings:AuditDb` 设为 PostgreSQL 连接串 → OssAuditWorker 注册为后台服务
-- SQLite：`ConnectionStrings:AuditDb` 设为 `Data Source=admin.db` → OssAuditWorker 不注册
 
 ### 日志级别调整
 

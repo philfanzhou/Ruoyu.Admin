@@ -76,10 +76,9 @@
 | 层次 | 技术 | 版本 | 说明 |
 |------|------|------|------|
 | 运行时 | .NET | 8.0 | ASP.NET Core Web API |
-| ORM | Entity Framework Core | 8.0 | Npgsql (PostgreSQL) / SQLite 提供程序 |
+| ORM | Entity Framework Core | 8.0 | Npgsql (PostgreSQL) 提供程序 |
 | gRPC 客户端 | Grpc.Net.ClientFactory | 2.62.0 | 连接 Student/Mistake 服务 |
-| 数据库 (生产) | PostgreSQL | 12+ | 通过 Npgsql.EntityFrameworkCore.PostgreSQL 8.0.11 |
-| 数据库 (测试) | SQLite | - | 通过 Microsoft.EntityFrameworkCore.Sqlite 8.0.11 |
+| 数据库 | PostgreSQL | 12+ | 通过 Npgsql.EntityFrameworkCore.PostgreSQL 8.0.11 |
 | API 文档 | Swashbuckle.AspNetCore | 6.5.0 | Swagger UI (仅 Development 环境) |
 | 对象存储 | S3 兼容 API / 本地文件 | - | 通过 IOssService 抽象（权限降级：只读 + 有限写，用于审计浏览 ListObjects、僵尸清理 Delete、迁移辅助 CopyObject） |
 | 前端 | Vue 3 + Element Plus | - | SPA，可集成部署到 wwwroot |

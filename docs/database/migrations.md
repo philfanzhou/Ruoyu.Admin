@@ -44,4 +44,3 @@ await DatabaseInitializer.InitializeAsync(db, logger, tableName => tableName swi
 - 由于不使用 EF Migrations，表结构变更需要手动编写 DDL 并更新 `DatabaseInitializer` 回调
 - `CREATE TABLE IF NOT EXISTS` 不会修改已存在的表结构，如需变更列定义需要手动 `ALTER TABLE`
 - 生产环境部署时，需注意手动执行 DDL 变更或重建数据库
-- SQLite 测试环境下，`OssAuditWorker` 不会作为 `HostedService` 注册（仅 PostgreSQL 环境启用定时审计）

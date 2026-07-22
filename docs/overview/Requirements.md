@@ -35,7 +35,7 @@ Admin Portal 是 Ruoyu.Study 平台的管理后台服务，为管理员提供统
 | NFR-4 | 代理容错 | Identity/Teacher Portal 不可达时返回 502，不崩溃 |
 | NFR-5 | 图片路径安全 | ImageController 检查路径中是否包含 `..` 或以 `/`、`\` 开头，防止路径遍历攻击 |
 | NFR-6 | CORS 配置 | 生产环境通过 `AdminWeb:AllowedOrigins` 限制跨域来源 |
-| NFR-7 | 数据库兼容 | 支持 PostgreSQL（生产）和 SQLite（测试），通过连接字符串自动切换 |
+| NFR-7 | 数据库 | 支持 PostgreSQL，通过 Npgsql EF Core 提供程序 |
 | NFR-8 | SPA 集成 | 支持前后端集成部署（wwwroot）和独立部署两种模式 |
 
 ### 约束
@@ -46,4 +46,3 @@ Admin Portal 是 Ruoyu.Study 平台的管理后台服务，为管理员提供统
 | C-2 | 不直接写入外部数据库 | 所有外部数据修改通过 gRPC/HTTP 接口进行 |
 | C-3 | 审计仅发现不自动删除 | 审计只标记僵尸对象，需管理员手动 Resolve 才会删除 |
 | C-4 | Resolve 前必须验证引用 | 删除 OSS 对象前必须再次验证 Student/Mistake 服务是否仍引用该路径 |
-| C-5 | SQLite 环境不启用定时审计 | `OssAuditWorker` 仅在 PostgreSQL 环境下注册为 HostedService |

@@ -152,31 +152,14 @@ builder.Services.AddSingleton<IOssService>(sp =>
 var connectionString = SharedPostgreSqlConnectionStringFactory.BuildOrFallback(
     builder.Configuration,
     builder.Configuration.GetConnectionString("AuditDb"));
-var isPostgreSql = !string.IsNullOrWhiteSpace(connectionString)
-    && (connectionString.Contains("Host=", StringComparison.OrdinalIgnoreCase)
-        || connectionString.Contains("Server=", StringComparison.OrdinalIgnoreCase));
 
 builder.Services.AddDbContext<AuditDbContext>(options =>
 {
-    if (isPostgreSql)
-        options.UseNpgsql(connectionString);
-    else
-        options.UseSqlite(connectionString);
+    options.UseNpgsql(connectionString);
 });
 
-if (!isPostgreSql && !string.IsNullOrEmpty(connectionString))
-{
-    var dir = Path.GetDirectoryName(connectionString.Replace("Data Source=", ""));
-    if (!string.IsNullOrEmpty(dir))
-        Directory.CreateDirectory(dir);
-}
-
-var useLocalDb = !isPostgreSql;
 builder.Services.AddSingleton<OssAuditWorker>();
-if (!useLocalDb)
-{
-    builder.Services.AddHostedService(sp => sp.GetRequiredService<OssAuditWorker>());
-}
+builder.Services.AddHostedService(sp => sp.GetRequiredService<OssAuditWorker>());
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
@@ -196,14 +179,10 @@ app.Logger.LogInformation(
     StartupDiagnosticsFormatter.SummarizePrefixes(consulRuntimeState.LoadedPrefixes),
     StartupDiagnosticsFormatter.SummarizeError(consulRuntimeState.LastError));
 app.Logger.LogInformation("Listening: http://+:{Port}", httpPort);
-if (isPostgreSql && !string.IsNullOrEmpty(connectionString))
+if (!string.IsNullOrEmpty(connectionString))
 {
     var csb = new DbConnectionStringBuilder { ConnectionString = connectionString };
     app.Logger.LogInformation("Database: PostgreSQL {Host}:{Port}/{Database}", csb["Host"], csb.TryGetValue("Port", out var dbPort) ? dbPort : "5432", csb["Database"]);
-}
-else
-{
-    app.Logger.LogInformation("Database: SQLite");
 }
 app.Logger.LogInformation(
     "Effective configuration diagnostics: PostgreSqlHost={PostgreSqlHost}, PostgreSqlPort={PostgreSqlPort}, PostgreSqlUsername={PostgreSqlUsername}, PostgreSqlPassword={PostgreSqlPassword}, DatabaseName={DatabaseName}",
