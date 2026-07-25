@@ -1,13 +1,7 @@
 import httpClient from './httpClient'
+import { checkSuccess } from './apiBase'
 
 class StudentLinkApi {
-  private checkSuccess<T extends { success: boolean; message?: string }>(result: T): T {
-    if (!result.success) {
-      throw new Error(result.message || 'Operation failed')
-    }
-    return result
-  }
-
   private url(role: 'teacher' | 'assistant', userId: string): string {
     const prefix = role === 'teacher' ? 'teacher-portal' : 'assistant-portal'
     const resource = role === 'teacher' ? 'teachers' : 'assistants'

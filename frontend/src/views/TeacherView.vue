@@ -359,15 +359,15 @@ async function loadAvailableSubjects() {
 }
 
 async function loadStudentCounts() {
-  for (const t of teachers.value) {
-    if (t.userId) {
+  await Promise.all(teachers.value
+    .filter(t => t.userId)
+    .map(async t => {
       try {
-        teacherStudentCounts.value[t.userId] = (await studentLinkApi.list(t.userId, 'teacher')).length
+        teacherStudentCounts.value[t.userId!] = (await studentLinkApi.list(t.userId!, 'teacher')).length
       } catch {
-        teacherStudentCounts.value[t.userId] = 0
+        teacherStudentCounts.value[t.userId!] = 0
       }
-    }
-  }
+    }))
 }
 
 function getStudentCount(userId: string | null): number {

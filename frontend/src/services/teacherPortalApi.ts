@@ -37,15 +37,10 @@ export interface SubjectOption {
   name: string
 }
 
+import { checkSuccess } from './apiBase'
+
 class TeacherPortalApiClient {
   private client = httpClient
-
-  private checkSuccess<T extends { success: boolean; message?: string }>(result: T): T {
-    if (!result.success) {
-      throw new Error(result.message || 'Operation failed')
-    }
-    return result
-  }
 
   async getTeachers() {
     const response = await this.client.get<{ success: boolean; data: TeacherAccountDto[] }>('/api/teacher-portal/admin/teachers')

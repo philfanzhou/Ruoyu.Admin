@@ -91,6 +91,7 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { studentLinkApi } from '../services/studentLinkApi'
 import { studentAdminClient, type StudentDto, type GradeOption } from '../services/studentAdminApi'
+import { extractMsg } from '../services/apiBase'
 import { getAvatarGradient, getAvatarChar } from '../utils/subject'
 
 const props = defineProps<{
@@ -121,11 +122,6 @@ const availableToAdd = computed(() =>
 
 function getGradeLabel(grade: number): string {
   return gradeOptions.value.find(g => g.value === grade)?.label || `年级 ${grade}`
-}
-
-function extractMsg(error: unknown): string {
-  if (error instanceof Error) return error.message
-  return '操作失败'
 }
 
 async function loadGradeOptions() {
@@ -182,13 +178,10 @@ async function searchStudents() {
 async function runLink(studentId: string, action: 'link' | 'unlink') {
   busyStudentId.value = studentId
   try {
-    if (action === 'link') {
-      await studentLinkApi.link(props.userId, studentId, props.role)
-      ElMessage.success('添加成功')
-    } else {
-      await studentLinkApi.unlink(props.userId, studentId, props.role)
-      ElMessage.success('移除成功')
-    }
+    await (action === 'link'
+      ? studentLinkApi.link(props.userId, studentId, props.role)
+      : studentLinkApi.unlink(props.userId, studentId, props.role))
+    ElMessage.success(action === 'link' ? '添加成功' : '移除成功')
     await loadStudents()
   } catch (error: unknown) {
     ElMessage.error(extractMsg(error))

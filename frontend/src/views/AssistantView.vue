@@ -248,6 +248,7 @@ import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { assistantPortalClient, type AssistantAccountDto, type SubjectOption } from '../services/assistantPortalApi'
 import { getIdentityAdminApiClient, type IdentityUser } from '../services/identityApi'
+import { studentLinkApi } from '../services/studentLinkApi'
 import {
   getSubjectLabel, getSubjectCssClass,
   getAvatarGradient, getAvatarChar, formatDate,
@@ -363,16 +364,15 @@ async function loadAvailableSubjects() {
 }
 
 async function loadStudentCounts() {
-  for (const a of assistants.value) {
-    if (a.userId) {
+  await Promise.all(assistants.value
+    .filter(a => a.userId)
+    .map(async a => {
       try {
-        const result = await assistantPortalClient.getAssistantStudents(a.userId)
-        assistantStudentCounts.value[a.userId] = result.data.length
+        assistantStudentCounts.value[a.userId!] = (await studentLinkApi.list(a.userId!, 'assistant')).length
       } catch {
-        assistantStudentCounts.value[a.userId] = 0
+        assistantStudentCounts.value[a.userId!] = 0
       }
-    }
-  }
+    }))
 }
 
 function onSearch() {

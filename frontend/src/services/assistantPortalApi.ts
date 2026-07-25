@@ -30,15 +30,10 @@ export interface SubjectOption {
   name: string
 }
 
+import { checkSuccess } from './apiBase'
+
 class AssistantPortalApiClient {
   private client = httpClient
-
-  private checkSuccess<T extends { success: boolean; message?: string }>(result: T): T {
-    if (!result.success) {
-      throw new Error(result.message || 'Operation failed')
-    }
-    return result
-  }
 
   async getAssistants() {
     const response = await this.client.get<{ success: boolean; data: AssistantAccountDto[] }>('/api/assistant-portal/admin/assistants')
