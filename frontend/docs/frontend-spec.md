@@ -27,7 +27,7 @@ src/admin_portal/frontend/src/
 │   ├── DashboardView.vue        # 数据仪表盘（KPI + 趋势 + 待办）
 │   ├── StudentView.vue          # 学生管理页面
 │   ├── TeacherView.vue          # 教师管理页面
-│   ├── AssistantView.vue        # 助教管理页面（含 Drawer 学生关联面板）
+│   ├── AssistantView.vue        # 助教管理页面（使用 StudentAssociationDrawer）
 │   ├── UploadRecordView.vue      # 上传记录管理页面（状态统计条 + 侧滑详情面板）
 │   ├── MistakeView.vue           # 错题管理页面（统计卡 + 详情 Modal）
 │   └── OssAuditView.vue          # OSS 审计页面（状态面板 + 浮动批量操作栏）
@@ -40,7 +40,8 @@ src/admin_portal/frontend/src/
 │   └── ossAuditApi.ts           # OSS 审计 API
 └── components/
     ├── ImagePreview.vue          # 图片预览组件
-    └── ImageViewer.vue           # 图片查看器组件
+    ├── ImageViewer.vue           # 图片查看器组件
+    └── StudentAssociationDrawer.vue  # 学生关联管理 Drawer（教师/助教共用）
 ```
 
 ---
@@ -112,6 +113,7 @@ src/admin_portal/frontend/src/
 | 学科标签 | 统一色彩（数学蓝/语文橙/英语绿/物理紫/化学粉紫/生物绿/历史红/地理蓝/政治紫），跨门户一致 |
 | Modal | 居中弹窗，用于详情/编辑表单 |
 | Drawer | 右侧滑出面板，宽度 400-480px，用于详情/批量操作 |
+| StudentAssociationDrawer | 学生关联管理 Drawer（右侧 400px 滑出），已关联学生 + 添加学生两个 section，通过 `role` prop 适配教师/助教 |
 | 浮动批量操作栏 | 底部 fixed，显示"已选择 N 项 + 批量操作按钮" |
 | 空状态 | 居中图标 + 文案 + 引导按钮 |
 | 骨架屏 | shimmer 动画（`linear-gradient` + `background-position` 动画） |
