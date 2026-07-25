@@ -90,6 +90,7 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { studentAssociationClient } from '../services/studentAssociationApi'
+import { getAssistantPortalErrorMessage } from '../services/assistantPortalApi'
 import { studentAdminClient, type StudentDto, type GradeOption } from '../services/studentAdminApi'
 import { getAvatarGradient, getAvatarChar } from '../utils/subject'
 
@@ -185,8 +186,8 @@ async function handleAdd(studentId: string) {
     await studentAssociationClient.addStudent(props.userId, studentId, props.role)
     ElMessage.success('添加成功')
     await loadStudents()
-  } catch (error: any) {
-    ElMessage.error(error.response?.data?.message || '添加失败')
+  } catch (error: unknown) {
+    ElMessage.error(getAssistantPortalErrorMessage(error))
   } finally {
     addingStudentId.value = null
   }
@@ -198,8 +199,8 @@ async function handleRemove(studentId: string) {
     await studentAssociationClient.removeStudent(props.userId, studentId, props.role)
     ElMessage.success('移除成功')
     await loadStudents()
-  } catch (error: any) {
-    ElMessage.error(error.response?.data?.message || '移除失败')
+  } catch (error: unknown) {
+    ElMessage.error(getAssistantPortalErrorMessage(error))
   } finally {
     removingStudentId.value = null
   }

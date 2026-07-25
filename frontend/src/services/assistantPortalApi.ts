@@ -25,10 +25,6 @@ export interface SetSubjectsRequest {
   subjects: number[]
 }
 
-export interface SetAssistantStudentsRequest {
-  studentIds: string[]
-}
-
 export interface SubjectOption {
   value: number
   name: string
@@ -95,14 +91,6 @@ class AssistantPortalApiClient {
   async getAssistantStudents(userId: string) {
     const response = await this.client.get<{ success: boolean; data: string[] }>(`/api/assistant-portal/admin/assistants/${encodeURIComponent(userId)}/students`)
     return response.data
-  }
-
-  async setAssistantStudents(userId: string, studentIds: string[]) {
-    const response = await this.client.post<AssistantOperationResponse>(
-      `/api/assistant-portal/admin/assistants/${encodeURIComponent(userId)}/students`,
-      { studentIds } as SetAssistantStudentsRequest
-    )
-    return this.checkSuccess(response.data)
   }
 
   async addAssistantStudent(userId: string, studentId: string) {

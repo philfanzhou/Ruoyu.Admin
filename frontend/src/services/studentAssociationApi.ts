@@ -1,6 +1,13 @@
 import httpClient from './httpClient'
 
 class StudentAssociationApiClient {
+  private checkSuccess<T extends { success: boolean; message?: string }>(result: T): T {
+    if (!result.success) {
+      throw new Error(result.message || 'Operation failed')
+    }
+    return result
+  }
+
   /**
    * Get the student IDs associated with a teacher/assistant.
    */
@@ -10,7 +17,8 @@ class StudentAssociationApiClient {
     const response = await httpClient.get<{ success: boolean; data: string[] }>(
       `/api/${prefix}/admin/${resource}/${encodeURIComponent(userId)}/students`
     )
-    return response.data.data
+    const result = this.checkSuccess(response.data)
+    return result.data
   }
 
   /**
@@ -19,9 +27,10 @@ class StudentAssociationApiClient {
   async addStudent(userId: string, studentId: string, role: 'teacher' | 'assistant'): Promise<void> {
     const prefix = role === 'teacher' ? 'teacher-portal' : 'assistant-portal'
     const resource = role === 'teacher' ? 'teachers' : 'assistants'
-    await httpClient.post(
+    const response = await httpClient.post<{ success: boolean; message?: string }>(
       `/api/${prefix}/admin/${resource}/${encodeURIComponent(userId)}/students/${encodeURIComponent(studentId)}`
     )
+    this.checkSuccess(response.data)
   }
 
   /**
@@ -30,9 +39,10 @@ class StudentAssociationApiClient {
   async removeStudent(userId: string, studentId: string, role: 'teacher' | 'assistant'): Promise<void> {
     const prefix = role === 'teacher' ? 'teacher-portal' : 'assistant-portal'
     const resource = role === 'teacher' ? 'teachers' : 'assistants'
-    await httpClient.delete(
+    const response = await httpClient.delete<{ success: boolean; message?: string }>(
       `/api/${prefix}/admin/${resource}/${encodeURIComponent(userId)}/students/${encodeURIComponent(studentId)}`
     )
+    this.checkSuccess(response.data)
   }
 }
 
