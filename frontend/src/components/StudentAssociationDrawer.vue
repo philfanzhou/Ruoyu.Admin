@@ -4,7 +4,7 @@
     <div class="drawer-header">
       <div>
         <div class="drawer-title">管理关联学生{{ displayName ? ' - ' + displayName : '' }}</div>
-        <div class="drawer-subtitle">当前关联 {{ currentStudentIds.length }} 名学生</div>
+        <div class="drawer-subtitle">当前关联 {{ linkedIds.length }} 名学生</div>
       </div>
       <button class="drawer-close" @click="close" title="关闭">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -28,7 +28,7 @@
       <div class="drawer-section">
         <div class="drawer-section-title">
           已关联学生
-          <span class="count">{{ currentStudentIds.length }}</span>
+          <span class="count">{{ linkedIds.length }}</span>
         </div>
         <div v-if="loading" class="drawer-loading">
           <span class="spinner-sm"></span>
@@ -42,8 +42,8 @@
               <div class="stu-name">{{ s.name }}</div>
               <div class="stu-grade">{{ getGradeLabel(s.grade) }} · {{ s.id }}</div>
             </div>
-            <button class="chip-remove" title="移除关联" :disabled="removingStudentId === s.id" @click="handleRemove(s.id)">
-              <svg v-if="removingStudentId !== s.id" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            <button class="chip-remove" title="移除关联" :disabled="busyStudentId === s.id" @click="runLink(s.id, 'unlink')">
+              <svg v-if="busyStudentId !== s.id" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               <span v-else class="spinner-sm"></span>
             </button>
           </div>
@@ -70,8 +70,8 @@
               <div class="stu-name">{{ s.name }}</div>
               <div class="stu-grade">{{ getGradeLabel(s.grade) }} · {{ s.id }}</div>
             </div>
-            <button class="chip-add" title="添加关联" :disabled="addingStudentId === s.id" @click="handleAdd(s.id)">
-              <svg v-if="addingStudentId !== s.id" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            <button class="chip-add" title="添加关联" :disabled="busyStudentId === s.id" @click="runLink(s.id, 'link')">
+              <svg v-if="busyStudentId !== s.id" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
               <span v-else class="spinner-sm"></span>
             </button>
           </div>
@@ -89,8 +89,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { studentAssociationClient } from '../services/studentAssociationApi'
-import { getAssistantPortalErrorMessage } from '../services/assistantPortalApi'
+import { studentLinkApi } from '../services/studentLinkApi'
 import { studentAdminClient, type StudentDto, type GradeOption } from '../services/studentAdminApi'
 import { getAvatarGradient, getAvatarChar } from '../utils/subject'
 
@@ -105,11 +104,9 @@ const emit = defineEmits<{
   (e: 'update:visible', value: boolean)
 }>()
 
-const currentStudentIds = ref<string[]>([])
-const currentStudentDetails = ref<StudentDto[]>([])
+const details = ref<StudentDto[]>([])
 const loading = ref(false)
-const removingStudentId = ref<string | null>(null)
-const addingStudentId = ref<string | null>(null)
+const busyStudentId = ref<string | null>(null)
 
 const searchKeyword = ref('')
 const searchResults = ref<StudentDto[]>([])
@@ -117,12 +114,18 @@ const searching = ref(false)
 
 const gradeOptions = ref<GradeOption[]>([])
 
+const linkedIds = computed(() => details.value.map(s => s.id))
 const availableToAdd = computed(() =>
-  searchResults.value.filter(s => !currentStudentIds.value.includes(s.id))
+  searchResults.value.filter(s => !linkedIds.value.includes(s.id))
 )
 
 function getGradeLabel(grade: number): string {
   return gradeOptions.value.find(g => g.value === grade)?.label || `年级 ${grade}`
+}
+
+function extractMsg(error: unknown): string {
+  if (error instanceof Error) return error.message
+  return '操作失败'
 }
 
 async function loadGradeOptions() {
@@ -136,20 +139,16 @@ async function loadGradeOptions() {
 async function loadStudents() {
   if (!props.userId) return
   loading.value = true
-  currentStudentDetails.value = []
+  details.value = []
   try {
-    currentStudentIds.value = await studentAssociationClient.getStudents(props.userId, props.role)
-    if (currentStudentIds.value.length > 0) {
-      const details: StudentDto[] = []
-      for (const sid of currentStudentIds.value) {
-        try {
-          const student = await studentAdminClient.getStudent(sid)
-          details.push(student)
-        } catch {
-          details.push({ id: sid, name: '未知', grade: 0, identityAccountIds: [], createdAt: 0, updatedAt: 0 })
-        }
-      }
-      currentStudentDetails.value = details
+    const ids = await studentLinkApi.list(props.userId, props.role)
+    if (ids.length > 0) {
+      const settled = await Promise.all(ids.map(sid =>
+        studentAdminClient.getStudent(sid).catch(() =>
+          ({ id: sid, name: '未知', grade: 0, identityAccountIds: [], createdAt: 0, updatedAt: 0 })
+        )
+      ))
+      details.value = settled
     }
   } catch (error) {
     console.error('Failed to load students:', error)
@@ -167,7 +166,7 @@ async function searchStudents() {
   searching.value = true
   try {
     const result = await studentAdminClient.getStudents({
-      name: searchKeyword.value || undefined,
+      name: searchKeyword.value,
       page: 1,
       pageSize: 20,
     })
@@ -180,29 +179,21 @@ async function searchStudents() {
   }
 }
 
-async function handleAdd(studentId: string) {
-  addingStudentId.value = studentId
+async function runLink(studentId: string, action: 'link' | 'unlink') {
+  busyStudentId.value = studentId
   try {
-    await studentAssociationClient.addStudent(props.userId, studentId, props.role)
-    ElMessage.success('添加成功')
+    if (action === 'link') {
+      await studentLinkApi.link(props.userId, studentId, props.role)
+      ElMessage.success('添加成功')
+    } else {
+      await studentLinkApi.unlink(props.userId, studentId, props.role)
+      ElMessage.success('移除成功')
+    }
     await loadStudents()
   } catch (error: unknown) {
-    ElMessage.error(getAssistantPortalErrorMessage(error))
+    ElMessage.error(extractMsg(error))
   } finally {
-    addingStudentId.value = null
-  }
-}
-
-async function handleRemove(studentId: string) {
-  removingStudentId.value = studentId
-  try {
-    await studentAssociationClient.removeStudent(props.userId, studentId, props.role)
-    ElMessage.success('移除成功')
-    await loadStudents()
-  } catch (error: unknown) {
-    ElMessage.error(getAssistantPortalErrorMessage(error))
-  } finally {
-    removingStudentId.value = null
+    busyStudentId.value = null
   }
 }
 

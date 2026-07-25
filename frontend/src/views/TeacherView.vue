@@ -249,7 +249,7 @@ import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { teacherPortalClient, type TeacherAccountDto, type SubjectOption } from '../services/teacherPortalApi'
 import { getIdentityAdminApiClient, type IdentityUser } from '../services/identityApi'
-import { studentAssociationClient } from '../services/studentAssociationApi'
+import { studentLinkApi } from '../services/studentLinkApi'
 import StudentAssociationDrawer from '../components/StudentAssociationDrawer.vue'
 import {
   getSubjectLabel, getSubjectCssClass,
@@ -362,8 +362,7 @@ async function loadStudentCounts() {
   for (const t of teachers.value) {
     if (t.userId) {
       try {
-        const studentIds = await studentAssociationClient.getStudents(t.userId, 'teacher')
-        teacherStudentCounts.value[t.userId] = studentIds.length
+        teacherStudentCounts.value[t.userId] = (await studentLinkApi.list(t.userId, 'teacher')).length
       } catch {
         teacherStudentCounts.value[t.userId] = 0
       }
