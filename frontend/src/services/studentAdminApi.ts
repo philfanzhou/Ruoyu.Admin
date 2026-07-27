@@ -40,6 +40,20 @@ export interface OperationResponse {
   warning?: string
 }
 
+// 学生关联的教师/助教
+export interface LinkedAccountDto {
+  userId: string
+  displayName: string
+  phone: string
+  subjects: string
+  role: string
+}
+
+export interface LinkedAccountsResponse {
+  teachers: LinkedAccountDto[]
+  assistants: LinkedAccountDto[]
+}
+
 // Identity 账户批量查询响应
 export interface IdentityAccountBatchResponse {
   accounts: IdentityAccountDto[]
@@ -240,6 +254,12 @@ class StudentAdminApiClient {
 
   async getStudentsByAccountId(accountId: string) {
     const response = await this.client.get<StudentDto[]>(`/api/admin/accounts/${accountId}/students`)
+    return response.data
+  }
+
+  // 获取学生关联的教师和助教
+  async getLinkedAccounts(studentId: string) {
+    const response = await this.client.get<LinkedAccountsResponse>(`/api/admin/students/${studentId}/linked-accounts`)
     return response.data
   }
 

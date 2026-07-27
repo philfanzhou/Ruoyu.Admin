@@ -6,7 +6,7 @@
 
 - API: `GET /api/assistant-portal/admin/assistants`
 - 返回所有助教账号，含 userId、phone、username、subjects、isActive、createdAt、updatedAt
-- 表格列：User ID、手机号、用户名、科目（Tag 列表）、创建时间、操作
+- 表格列：User ID、手机号、用户名、备注、关联账户、科目（Tag 列表）、关联学生、创建时间、操作
 
 ### 1.2 授予助教权限
 
@@ -27,6 +27,14 @@
 - 删除: `DELETE /api/assistant-portal/admin/assistants/{userId}/subjects/{subject}`
 - 可用科目: `GET /api/assistant-portal/admin/available-subjects`
 - 交互: Tag closable 删除单个 + "管理"按钮弹窗批量编辑
+
+### 1.5 关联账户管理
+
+- 查看: 表格"关联账户"列展示当前关联的身份账户（用户名/显示名），支持"关联"/"更换"按钮
+- 更换: `PUT /api/assistant-portal/admin/assistants/{userId}/user-id`
+  - 请求体: `{ newUserId: string }`
+  - 弹窗搜索 Identity 用户 → 选择 → 确认更换
+  - NewUserId 已被其他助教占用时返回 success=false
 
 ## 2. 助教-学生关联
 
