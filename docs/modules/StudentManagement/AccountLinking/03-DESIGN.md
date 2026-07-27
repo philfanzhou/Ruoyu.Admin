@@ -217,12 +217,17 @@ public IdentityAccountsController(
 4. 构建 `HashSet<string> accountIdSet`（大小写不敏感）。
 5. 读取 `TeacherPortal:Url` 和 `AssistantPortal:Url` 配置。
 6. 若 TeacherPortal 配置非空，调用 `FetchLinkedAccountsAsync("TeacherPortal", "{url}/api/admin/teachers", "教师", accountIdSet)`：
-   - HTTP GET 拉取全量教师列表。
+   - **创建 HttpRequestMessage（GET）并透传当前 HttpContext 的 `Authorization` 头**到下游请求。下游 `/api/admin/teachers` 端点要求 `[Authorize(Roles="admin")]`，不携带 JWT 会返回 401 导致聚合查询降级为空列表（此为 2026-07-27 修复的回归缺陷）。
+   - 通过 `IHttpClientFactory.CreateClient("TeacherPortal")` 发送请求。
    - 解析 JSON（兼容 `{ data: [...] }` 与裸数组）。
    - 过滤出 `userId` 在 `accountIdSet` 中的记录，构造 `LinkedAccountDto` 列表。
    - 任一步失败 → 记录 Warning，返回空列表。
-7. 若 AssistantPortal 配置非空，同理拉取助教列表。
+7. 若 AssistantPortal 配置非空，同理拉取助教列表（同样需透传 `Authorization` 头）。
 8. 返回 `LinkedAccountsResponse(teachers, assistants)`。
+
+> **安全约定**：本端点对 TeacherPortal/AssistantPortal 的调用属于"后端直连"（区别于前端经 `TeacherPortalProxyMiddleware` 的代理调用）。两条路径都必须携带调用方的 JWT：
+> - 前端代理路径：`TeacherPortalProxyMiddleware.InvokeAsync` 的 header 转发循环已透传 `Authorization`。
+> - 后端直连路径：`StudentAssociationsController.FetchLinkedAccountsAsync` 必须显式从 `HttpContext.Request.Headers["Authorization"]` 取值并写入出站 `HttpRequestMessage.Headers.Authorization`。
 
 ### 学生侧添加关联教师/助教（前端流程，无后端新端点）
 
@@ -261,7 +266,7 @@ public IdentityAccountsController(
   - `HttpRequestException(StatusCode.BadRequest)` → 400 Bad Request
   - `HttpRequestException(StatusCode.NotFound)` → 404 Not Found
   - 其他 `HttpRequestException` → 500（向上传播）
-- **TeacherPortal/AssistantPortal 容错**：聚合查询 `GetLinkedAccounts` 中任一下游不可用，对应角色返回空列表，不阻塞另一角色。
+- **TeacherPortal/AssistantPortal 容错**：聚合查询 `GetLinkedAccounts` 中任一下游不可用（网络错误、5xx），对应角色返回空列表，不阻塞另一角色。**注意**：401 Unauthorized 不属于"正常降级"场景——出站请求必须透传调用方 JWT；若出现 401 说明透传逻辑缺失（2026-07-27 修复前的回归缺陷），不应被静默吞掉为"空列表"。
 - **Identity Service 容错**：
   - AppId/AppSecret 未配置 → 降级返回空列表
   - HTTP 请求失败 → 降级返回空列表

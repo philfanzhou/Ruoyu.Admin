@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Net.Http.Headers;
 using System.Text.Json;
 using Ruoyu.Study.MistakeBff.HttpClients;
 using Admin.WebApi.Models;
@@ -77,7 +78,19 @@ public class StudentAssociationsController : ControllerBase
         try
         {
             var client = _httpClientFactory.CreateClient(clientName);
-            var response = await client.GetAsync(url);
+
+            // Forward the caller's JWT to the downstream portal. The TeacherPortal/AssistantPortal
+            // /api/admin/{role}s endpoints require [Authorize(Roles="admin")]; without the
+            // Authorization header the call returns 401 and the aggregate query silently degrades
+            // to an empty list (regression fixed on 2026-07-27).
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            var authHeader = HttpContext.Request.Headers.Authorization.ToString();
+            if (!string.IsNullOrEmpty(authHeader))
+            {
+                request.Headers.Authorization = AuthenticationHeaderValue.Parse(authHeader);
+            }
+
+            var response = await client.SendAsync(request);
             if (!response.IsSuccessStatusCode)
             {
                 _logger.LogWarning("Failed to fetch {Role} list: {StatusCode}", roleLabel, response.StatusCode);
