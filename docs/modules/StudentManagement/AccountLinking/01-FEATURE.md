@@ -6,16 +6,17 @@
 
 ## 核心用户故事
 
-作为管理员，我希望将身份账户关联到学生档案并支持双向查询，以便学生可以通过不同身份登录系统且管理员能追溯关联关系。
+作为管理员，我希望将身份账户关联到学生档案并支持双向查询与双向管理，以便学生可以通过不同身份登录系统且管理员能追溯关联关系，并能从学生侧或教师/助教侧任一视角增删关联。
 
 ## 补充约束
 
-1. **幂等性**：关联操作非幂等（重复关联同一账户到同一学生由 gRPC 服务层保证唯一性）
-2. **并发**：关联唯一性由 gRPC 服务层保证，Admin Portal 不做额外并发控制
-3. **事务边界**：关联/解关联为单次 gRPC 调用，无跨服务事务
+1. **幂等性**：关联操作非幂等（重复关联同一账户到同一学生由 Student HTTP 服务层保证唯一性）
+2. **并发**：关联唯一性由 Student HTTP 服务层保证，Admin Portal 不做额外并发控制
+3. **事务边界**：关联/解关联为单次 HTTP 调用，无跨服务事务
 4. **失败降级**：Identity Service 不可用时，批量查询身份账户信息返回空列表而非错误
 5. **关联校验**：IdentityAccountId 必须为合法 GUID 格式且不能为空
 6. **解关联参数**：需同时提供 studentId 和 accountId，均为 GUID 路由参数
+7. **双向管理**：关联关系的增删可从教师/助教侧（StudentAssociationDrawer）或学生侧（StudentView 关联教师/助教对话框）任一视角发起，二者调用同一组底层端点（POST/DELETE `/api/{teacher-portal|assistant-portal}/admin/{role}s/{userId}/students/{studentId}`），保证语义一致
 
 ## 关键验收条件摘要
 
@@ -26,6 +27,8 @@
 5. 批量查询身份账户信息通过 Identity Service HTTP API 实现
 6. Identity Service 不可用时批量查询返回空列表
 7. 可通过身份账户 ID 反查关联的学生列表
+8. 可在学生管理页面的"关联教师/助教"对话框中添加/移除关联的教师（调用 POST/DELETE `/api/teacher-portal/admin/teachers/{userId}/students/{studentId}`）
+9. 可在学生管理页面的"关联教师/助教"对话框中添加/移除关联的助教（调用 POST/DELETE `/api/assistant-portal/admin/assistants/{userId}/students/{studentId}`）
 
 ## 范围外
 
