@@ -2,7 +2,7 @@
 
 ## 功能概述和用户故事
 
-**概述**：身份账户关联功能允许管理员在学生档案和身份账户之间建立/解除关联关系，并通过 Identity Service 的 HTTP API 批量获取身份账户的详细信息。同时支持通过身份账户反查关联的学生列表。
+**概述**：身份账户关联功能允许管理员在学生档案和身份账户之间建立/解除关联关系，并通过 Identity Service 的 HTTP API 批量获取身份账户的详细信息。同时支持通过身份账户反查关联的学生列表，以及查看学生关联的教师/助教。
 
 **用户故事 1（管理员关联账户）**：作为管理员，我要将一个身份账户关联到学生档案，使学生可以通过该身份登录系统。
 
@@ -12,6 +12,8 @@
 
 **用户故事 4（管理员反查学生）**：作为管理员，我要通过身份账户 ID 查找该账户关联的所有学生档案。
 
+**用户故事 5（查看学生关联教师/助教）**：作为管理员，我要查看学生关联的所有教师和助教，了解该学生的师资配置。
+
 ## 功能要求清单（可独立测试）
 
 - [x] FR-01 能查询学生关联的身份账户 ID 列表。
@@ -19,6 +21,7 @@
 - [x] FR-03 能解除身份账户与学生档案的关联。
 - [x] FR-04 能批量查询身份账户的详细信息（通过 Identity Service HTTP API）。
 - [x] FR-05 能通过身份账户 ID 反查关联的学生列表。
+- [x] FR-13 能查询学生关联的教师和助教列表（通过学生 identityAccountIds 反查 TeacherPortal/AssistantPortal）。
 - [x] FR-06 关联时若 gRPC 返回 Success=false，API 返回 404。
 - [x] FR-07 关联时若 gRPC 返回 InvalidArgument，API 返回 400。
 - [x] FR-08 解关联时若 gRPC 返回 Success=false，API 返回 404。
@@ -34,6 +37,7 @@
 - AC-FR-03：调用 `DELETE /api/admin/students/{studentId}/accounts/{accountId}` 返回 `OperationResponse(true, "Identity account unlinked from student.")`；gRPC 返回 Success=false 时返回 404。
 - AC-FR-04：调用 `POST /api/admin/identity-accounts/batch` 传入 `List<string>` 账户 ID，返回 `List<IdentityAccountDto>`；每个 DTO 含 UserId、Username、DisplayName、Phone、Remark。
 - AC-FR-05：调用 `GET /api/admin/accounts/{accountId}/students` 返回 `IReadOnlyList<StudentDto>`。
+- AC-FR-13：调用 `GET /api/admin/students/{studentId}/linked-accounts` 返回 `{ teachers: LinkedAccountDto[], assistants: LinkedAccountDto[] }`；当 TeacherPortal/AssistantPortal 不可用时返回对应空列表。
 - AC-FR-06：关联操作 gRPC 返回 `Success=false` 时，API 返回 404 `ErrorResponse(ErrorMessage)`。
 - AC-FR-07：关联操作 gRPC 抛出 `RpcException(InvalidArgument)` 时，API 返回 400。
 - AC-FR-08：解关联操作 gRPC 返回 `Success=false` 时，API 返回 404 `ErrorResponse(ErrorMessage)`。

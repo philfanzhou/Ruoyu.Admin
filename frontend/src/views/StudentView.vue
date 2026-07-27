@@ -83,6 +83,7 @@
               <th class="col-name">姓名</th>
               <th class="col-grade">年级</th>
               <th class="col-account">关联账户</th>
+              <th class="col-teachers">关联教师/助教</th>
               <th class="col-subjects">开放学科</th>
               <th class="col-time">创建时间</th>
               <th class="col-actions">操作</th>
@@ -109,6 +110,16 @@
                 <div v-else class="account-cell">
                   <span class="status-tag unlinked">未绑定</span>
                   <button class="link-btn" @click="openLinkDialog(s)">关联账户</button>
+                </div>
+              </td>
+              <td>
+                <div class="linked-accounts-cell">
+                  <span v-if="getLinkedAccountCount(s) > 0" class="status-tag linked" :title="getLinkedAccountsTooltip(s)">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                    {{ getLinkedAccountCount(s) }}人
+                  </span>
+                  <span v-else class="status-tag unlinked">无</span>
+                  <button class="adm-btn adm-btn-ghost adm-btn-xs" @click="openLinkedAccountsDialog(s)">管理</button>
                 </div>
               </td>
               <td>
@@ -268,6 +279,67 @@
       </div>
     </div>
 
+    <!-- Linked Accounts Modal -->
+    <div v-if="showLinkedAccountsDialog" class="modal-mask" @click.self="closeLinkedAccountsDialog">
+      <div class="modal-box" style="width: 560px;">
+        <div class="modal-header">
+          <h3>关联教师/助教</h3>
+          <button class="modal-close" @click="closeLinkedAccountsDialog">×</button>
+        </div>
+        <div class="modal-body">
+          <div v-if="currentStudent" class="student-info-banner">
+            <div class="stu-avatar" :style="{ background: getAvatarGradient(currentStudent.name || currentStudent.id) }">{{ getAvatarChar(currentStudent.name || '?') }}</div>
+            <div>
+              <div class="info-name">{{ currentStudent.name }}</div>
+              <div class="info-sub">{{ getGradeLabel(currentStudent.grade) }} · {{ currentStudent.id }}</div>
+            </div>
+          </div>
+
+          <div v-if="linkedAccountsLoading" class="drawer-loading">
+            <span class="spinner-sm"></span>
+            <span>加载中...</span>
+          </div>
+
+          <div v-else>
+            <!-- 教师列表 -->
+            <div class="drawer-section">
+              <div class="drawer-section-title">
+                教师
+                <span class="count">{{ linkedAccountsData.teachers.length }}</span>
+              </div>
+              <div v-if="linkedAccountsData.teachers.length === 0" class="drawer-empty">暂无关联教师</div>
+              <div v-for="t in linkedAccountsData.teachers" :key="t.userId" class="account-row">
+                <div class="mini-avatar" :style="{ background: getAvatarGradient(t.displayName || t.userId) }">{{ getAvatarChar(t.displayName || '?') }}</div>
+                <div class="account-row-info">
+                  <div class="account-row-name">{{ t.displayName }}</div>
+                  <div class="account-row-meta">{{ t.phone || '无手机号' }} · {{ getSubjectLabels(t.subjects) }}</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 助教列表 -->
+            <div class="drawer-section">
+              <div class="drawer-section-title">
+                助教
+                <span class="count">{{ linkedAccountsData.assistants.length }}</span>
+              </div>
+              <div v-if="linkedAccountsData.assistants.length === 0" class="drawer-empty">暂无关联助教</div>
+              <div v-for="a in linkedAccountsData.assistants" :key="a.userId" class="account-row">
+                <div class="mini-avatar" :style="{ background: getAvatarGradient(a.displayName || a.userId) }">{{ getAvatarChar(a.displayName || '?') }}</div>
+                <div class="account-row-info">
+                  <div class="account-row-name">{{ a.displayName }}</div>
+                  <div class="account-row-meta">{{ a.phone || '无手机号' }} · {{ getSubjectLabels(a.subjects) }}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="adm-btn adm-btn-secondary" @click="closeLinkedAccountsDialog">关闭</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Manage Open Subjects Modal -->
     <div v-if="showOpenSubjectsDialogVisible" class="modal-mask" @click.self="showOpenSubjectsDialogVisible = false">
       <div class="modal-box" style="width: 560px;">
@@ -305,7 +377,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import studentAdminApi, { type IdentityAccountDto, type SubjectOption, type GradeOption } from '../services/studentAdminApi'
+import studentAdminApi, { type IdentityAccountDto, type LinkedAccountDto, type SubjectOption, type GradeOption } from '../services/studentAdminApi'
 import identityApi from '../services/identityApi'
 import {
   getSubjectMeta, getSubjectLabel, getSubjectCssClass,
@@ -372,6 +444,12 @@ const showOpenSubjectsDialogVisible = ref(false)
 const openSubjects = ref<number[]>([])
 const savingSubjects = ref(false)
 
+// Linked accounts dialog
+const showLinkedAccountsDialog = ref(false)
+const linkedAccountsLoading = ref(false)
+const linkedAccountsData = ref<{ teachers: LinkedAccountDto[], assistants: LinkedAccountDto[] }>({ teachers: [], assistants: [] })
+const linkedAccountCounts = ref<Record<string, number>>({})
+
 async function loadGradeOptions() {
   try {
     gradeOptions.value = await studentAdminApi.getGrades()
@@ -437,6 +515,46 @@ async function loadOpenSubjectsForList(items: StudentRow[]) {
 
 function getStudentSubjects(s: StudentRow): number[] {
   return studentSubjectMap.value.get(s.id) || s.openSubjects || []
+}
+
+function getLinkedAccountCount(s: StudentRow): number {
+  return linkedAccountCounts.value[s.id] ?? 0
+}
+
+function getLinkedAccountsTooltip(s: StudentRow): string {
+  const count = getLinkedAccountCount(s)
+  if (count > 0) return `关联教师/助教 ${count} 人`
+  return s.identityAccountIds && s.identityAccountIds.length > 0 ? '暂无关联教师/助教' : '无身份账户'
+}
+
+function getSubjectLabels(subjectsStr: string): string {
+  if (!subjectsStr) return '未分配科目'
+  const ids = subjectsStr.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n))
+  if (ids.length === 0) return '未分配科目'
+  return ids.map(id => getSubjectLabel(id)).join('、')
+}
+
+async function openLinkedAccountsDialog(s: StudentRow) {
+  currentStudent.value = s
+  showLinkedAccountsDialog.value = true
+  linkedAccountsLoading.value = true
+  linkedAccountsData.value = { teachers: [], assistants: [] }
+  try {
+    const result = await studentAdminApi.getLinkedAccounts(s.id)
+    linkedAccountsData.value = { teachers: [...result.teachers], assistants: [...result.assistants] }
+    const count = result.teachers.length + result.assistants.length
+    linkedAccountCounts.value = { ...linkedAccountCounts.value, [s.id]: count }
+  } catch (e) {
+    console.error('Failed to load linked accounts:', e)
+    ElMessage.error('加载关联教师/助教失败')
+  } finally {
+    linkedAccountsLoading.value = false
+  }
+}
+
+function closeLinkedAccountsDialog() {
+  showLinkedAccountsDialog.value = false
+  linkedAccountsData.value = { teachers: [], assistants: [] }
 }
 
 async function loadAccountMap() {
@@ -887,6 +1005,7 @@ onMounted(async () => {
 .col-name { width: 120px; }
 .col-grade { width: 130px; }
 .col-account { min-width: 200px; }
+.col-teachers { min-width: 160px; }
 .col-subjects { min-width: 200px; }
 .col-time { width: 130px; }
 .col-actions { width: 160px; text-align: right; }
@@ -958,6 +1077,44 @@ onMounted(async () => {
 }
 .link-btn:hover {
   background: var(--adm-primary-bg);
+}
+
+.linked-accounts-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.adm-btn-xs {
+  padding: 3px 8px;
+  font-size: 11px;
+  gap: 3px;
+}
+
+.account-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-radius-md);
+  margin-bottom: 6px;
+  background: #fff;
+}
+
+.account-row-info { flex: 1; min-width: 0; }
+
+.account-row-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--adm-text-primary);
+}
+
+.account-row-meta {
+  font-size: 11px;
+  color: var(--adm-text-tertiary);
+  margin-top: 1px;
 }
 .subj-tags {
   display: flex;
@@ -1269,5 +1426,56 @@ select.form-input {
   font-size: 12px;
   color: var(--adm-text-tertiary);
   margin-top: 2px;
+}
+
+/* Linked accounts dialog */
+.spinner-sm {
+  width: 14px; height: 14px;
+  border: 2px solid var(--adm-border);
+  border-top-color: var(--adm-primary);
+  border-radius: 50%;
+  animation: adm-spin 0.7s linear infinite;
+  display: inline-block;
+}
+
+.drawer-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 16px;
+  color: var(--adm-text-muted);
+  font-size: 12px;
+}
+
+.drawer-section { margin-bottom: 20px; }
+.drawer-section:last-child { margin-bottom: 0; }
+
+.drawer-section-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--adm-text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.drawer-section-title .count {
+  background: var(--adm-primary-bg);
+  color: var(--adm-primary);
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.drawer-empty {
+  text-align: center;
+  padding: 12px;
+  color: var(--adm-text-muted);
+  font-size: 12px;
 }
 </style>

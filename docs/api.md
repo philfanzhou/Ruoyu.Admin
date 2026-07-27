@@ -55,6 +55,7 @@ Admin Portal 采用 **mode-1 集成部署**：同一容器（端口 5020）既�
 5. [OSS 审计](#oss-审计)
 6. [OSS 上传记录](#oss-上传记录)
 7. [学生](#学生)
+8. [教师/助教关联账户](#教师助教关联账户)
 
 ---
 
@@ -930,6 +931,123 @@ Admin Portal 采用 **mode-1 集成部署**：同一容器（端口 5020）既�
   }
 ]
 ```
+
+### 获取学生关联的教师/助教
+
+根据学生 ID 查询该学生关联的所有教师和助教（通过学生 identityAccountIds 反查 TeacherPortal/AssistantPortal）。
+
+**接口:** `GET /api/admin/students/{studentId:guid}/linked-accounts`
+
+**路径参数:**
+- `studentId` (UUID): 学生 ID
+
+**响应示例:**
+
+```json
+{
+  "teachers": [
+    {
+      "userId": "550e8400-e29b-41d4-a716-446655440000",
+      "displayName": "张老师",
+      "phone": "13800138000",
+      "subjects": "1,3",
+      "role": "教师"
+    }
+  ],
+  "assistants": [
+    {
+      "userId": "660e8400-e29b-41d4-a716-446655440001",
+      "displayName": "李助教",
+      "phone": "13900139000",
+      "subjects": "2",
+      "role": "助教"
+    }
+  ]
+}
+```
+
+> **说明**：当 TeacherPortal 或 AssistantPortal 不可用时，对应列表降级为空数组。
+
+---
+
+## 教师/助教关联账户
+
+### 更换教师关联账户
+
+更换教师当前关联的身份账户。
+
+**接口:** `PUT /api/teacher-portal/admin/teachers/{userId}/user-id`
+
+**路径参数:**
+- `userId` (string): 教师当前关联的用户 ID
+
+**请求体:**
+
+```json
+{
+  "newUserId": "660e8400-e29b-41d4-a716-446655440001"
+}
+```
+
+**响应示例:**
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": 1,
+    "userId": "660e8400-e29b-41d4-a716-446655440001",
+    "phone": "13800138000",
+    "username": "张老师",
+    "subjects": [1, 3],
+    "createdAt": "2024-01-01T00:00:00Z",
+    "updatedAt": "2024-01-02T00:00:00Z"
+  }
+}
+```
+
+**错误情况:**
+- NewUserId 已被其他教师占用：`{ "success": false, "message": "NewUserId is already bound to another teacher" }`
+- 教师不存在：`{ "success": false, "message": "Teacher not found" }`
+
+### 更换助教关联账户
+
+更换助教当前关联的身份账户。
+
+**接口:** `PUT /api/assistant-portal/admin/assistants/{userId}/user-id`
+
+**路径参数:**
+- `userId` (string): 助教当前关联的用户 ID
+
+**请求体:**
+
+```json
+{
+  "newUserId": "770e8400-e29b-41d4-a716-446655440002"
+}
+```
+
+**响应示例:**
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": 1,
+    "userId": "770e8400-e29b-41d4-a716-446655440002",
+    "phone": "13900139000",
+    "username": "李助教",
+    "isActive": true,
+    "subjects": [2],
+    "createdAt": "2024-01-01T00:00:00Z",
+    "updatedAt": "2024-01-02T00:00:00Z"
+  }
+}
+```
+
+**错误情况:**
+- NewUserId 已被其他助教占用：`{ "success": false, "message": "NewUserId is already bound to another assistant" }`
+- 助教不存在：`{ "success": false, "message": "Assistant not found" }`
 
 ---
 
