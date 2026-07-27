@@ -83,7 +83,6 @@
               <th class="col-name">姓名</th>
               <th class="col-grade">年级</th>
               <th class="col-account">关联账户</th>
-              <th class="col-teachers">关联教师/助教</th>
               <th class="col-subjects">开放学科</th>
               <th class="col-time">创建时间</th>
               <th class="col-actions">操作</th>
@@ -99,19 +98,6 @@
               <td><span class="mono-id">{{ s.id }}</span></td>
               <td><span class="stu-name">{{ s.name }}</span></td>
               <td><span class="grade-text">{{ getGradeLabel(s.grade) }}</span></td>
-              <td>
-                <div v-if="s.identityAccountIds && s.identityAccountIds.length > 0" class="account-cell">
-                  <span class="status-tag linked">
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                    {{ getAccountDisplayName(s.identityAccountIds[0]) }}
-                  </span>
-                  <span v-if="s.identityAccountIds.length > 1" class="more-count">+{{ s.identityAccountIds.length - 1 }}</span>
-                </div>
-                <div v-else class="account-cell">
-                  <span class="status-tag unlinked">未绑定</span>
-                  <button class="link-btn" @click="openLinkDialog(s)">关联账户</button>
-                </div>
-              </td>
               <td>
                 <div class="linked-accounts-cell">
                   <button class="adm-btn adm-btn-ghost adm-btn-xs" @click="openLinkedAccountsDialog(s)">管理</button>
@@ -236,49 +222,11 @@
       </div>
     </div>
 
-    <!-- Link Account Modal -->
-    <div v-if="showLinkDialogVisible" class="modal-mask" @click.self="showLinkDialogVisible = false">
-      <div class="modal-box" style="width: 460px;">
-        <div class="modal-header">
-          <h3>关联账户</h3>
-          <button class="modal-close" @click="showLinkDialogVisible = false">×</button>
-        </div>
-        <div class="modal-body">
-          <div v-if="currentStudent" class="student-info-banner">
-            <div class="stu-avatar" :style="{ background: getAvatarGradient(currentStudent.name || currentStudent.id) }">{{ getAvatarChar(currentStudent.name || '?') }}</div>
-            <div>
-              <div class="info-name">{{ currentStudent.name }}</div>
-              <div class="info-sub">{{ getGradeLabel(currentStudent.grade) }}</div>
-            </div>
-          </div>
-          <div class="form-group">
-            <label class="form-label">搜索用户</label>
-            <div class="user-search-wrap">
-              <input v-model="linkForm.keyword" class="form-input" placeholder="输入用户名或手机号搜索" @input="searchIdentityUsers" />
-              <div v-if="identityUsers.length > 0" class="user-dropdown">
-                <div v-for="u in identityUsers" :key="u.userId" class="user-option" @click="linkForm.selectedUserId = u.userId">
-                  <div class="user-option-main">
-                    <span class="user-option-name">{{ u.username }}</span>
-                    <span class="user-option-phone">{{ u.phone || '无手机号' }}</span>
-                  </div>
-                  <span v-if="linkForm.selectedUserId === u.userId" class="user-option-checked">已选</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="adm-btn adm-btn-secondary" @click="showLinkDialogVisible = false">取消</button>
-          <button class="adm-btn adm-btn-primary" @click="linkAccount">关联</button>
-        </div>
-      </div>
-    </div>
-
     <!-- Linked Accounts Modal -->
     <div v-if="showLinkedAccountsDialog" class="modal-mask" @click.self="closeLinkedAccountsDialog">
       <div class="modal-box" style="width: 640px;">
         <div class="modal-header">
-          <h3>关联教师/助教</h3>
+          <h3>关联账户</h3>
           <button class="modal-close" @click="closeLinkedAccountsDialog">×</button>
         </div>
         <div class="modal-body">
@@ -296,75 +244,42 @@
           </div>
 
           <div v-else>
-            <!-- 教师列表 -->
+            <!-- 已关联账户 -->
             <div class="drawer-section">
               <div class="drawer-section-title">
-                教师
-                <span class="count">{{ linkedAccountsData.teachers.length }}</span>
+                已关联账户
+                <span class="count">{{ linkedAccountDetails.length }}</span>
               </div>
-              <div v-if="linkedAccountsData.teachers.length === 0" class="drawer-empty">暂无关联教师</div>
-              <div v-for="t in linkedAccountsData.teachers" :key="t.userId" class="account-row">
-                <div class="mini-avatar" :style="{ background: getAvatarGradient(t.displayName || t.userId) }">{{ getAvatarChar(t.displayName || '?') }}</div>
+              <div v-if="linkedAccountDetails.length === 0" class="drawer-empty">暂无关联账户</div>
+              <div v-for="a in linkedAccountDetails" :key="a.userId" class="account-row">
+                <div class="mini-avatar" :style="{ background: getAvatarGradient(a.displayName || a.username || a.userId) }">{{ getAvatarChar(a.displayName || a.username || '?') }}</div>
                 <div class="account-row-info">
-                  <div class="account-row-name">{{ t.displayName }}</div>
-                  <div class="account-row-meta">{{ t.phone || '无手机号' }} · {{ getSubjectLabels(t.subjects) }}</div>
+                  <div class="account-row-name">{{ a.displayName || a.username || a.userId }}</div>
+                  <div class="account-row-meta">{{ a.phone || '无手机号' }}<span v-if="a.remark"> · {{ a.remark }}</span></div>
                 </div>
-                <button class="chip-remove" title="移除关联" :disabled="busyLinkedUserId === t.userId" @click="runLinkAccount(t.userId, 'teacher', 'unlink')">
-                  <svg v-if="busyLinkedUserId !== t.userId" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                  <span v-else class="spinner-sm"></span>
-                </button>
-              </div>
-              <!-- 搜索添加教师 -->
-              <div class="link-search-wrap">
-                <input v-model="teacherSearchKeyword" class="form-input link-search-input" placeholder="搜索教师姓名/手机号/userId 添加" @input="searchTeachersForLink" />
-                <span v-if="searchingTeachers" class="link-search-spinner"><span class="spinner-sm"></span></span>
-              </div>
-              <div v-if="teacherSearchKeyword && availableTeachersToAdd.length === 0 && !searchingTeachers" class="drawer-empty-hint">无符合条件的可添加教师</div>
-              <div v-for="t in availableTeachersToAdd" :key="t.userId" class="account-row addable">
-                <div class="mini-avatar" :style="{ background: getAvatarGradient(t.username || t.userId || '?') }">{{ getAvatarChar(t.username || '?') }}</div>
-                <div class="account-row-info">
-                  <div class="account-row-name">{{ t.username || t.userId }}</div>
-                  <div class="account-row-meta">{{ t.phone || '无手机号' }} · {{ getSubjectLabelsFromArray(t.subjects) }}</div>
-                </div>
-                <button class="chip-add" title="添加关联" :disabled="busyLinkedUserId === t.userId" @click="runLinkAccount(t.userId || '', 'teacher', 'link')">
-                  <svg v-if="busyLinkedUserId !== t.userId" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                <button class="chip-remove" title="移除关联" :disabled="busyLinkedUserId === a.userId" @click="runLinkAccount(a.userId, 'unlink')">
+                  <svg v-if="busyLinkedUserId !== a.userId" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                   <span v-else class="spinner-sm"></span>
                 </button>
               </div>
             </div>
 
-            <!-- 助教列表 -->
+            <!-- 搜索添加账户 -->
             <div class="drawer-section">
-              <div class="drawer-section-title">
-                助教
-                <span class="count">{{ linkedAccountsData.assistants.length }}</span>
-              </div>
-              <div v-if="linkedAccountsData.assistants.length === 0" class="drawer-empty">暂无关联助教</div>
-              <div v-for="a in linkedAccountsData.assistants" :key="a.userId" class="account-row">
-                <div class="mini-avatar" :style="{ background: getAvatarGradient(a.displayName || a.userId) }">{{ getAvatarChar(a.displayName || '?') }}</div>
-                <div class="account-row-info">
-                  <div class="account-row-name">{{ a.displayName }}</div>
-                  <div class="account-row-meta">{{ a.phone || '无手机号' }} · {{ getSubjectLabels(a.subjects) }}</div>
-                </div>
-                <button class="chip-remove" title="移除关联" :disabled="busyLinkedUserId === a.userId" @click="runLinkAccount(a.userId, 'assistant', 'unlink')">
-                  <svg v-if="busyLinkedUserId !== a.userId" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                  <span v-else class="spinner-sm"></span>
-                </button>
-              </div>
-              <!-- 搜索添加助教 -->
+              <div class="drawer-section-title">添加账户</div>
               <div class="link-search-wrap">
-                <input v-model="assistantSearchKeyword" class="form-input link-search-input" placeholder="搜索助教姓名/手机号/userId 添加" @input="searchAssistantsForLink" />
-                <span v-if="searchingAssistants" class="link-search-spinner"><span class="spinner-sm"></span></span>
+                <input v-model="accountSearchKeyword" class="form-input link-search-input" placeholder="搜索用户名或手机号添加（至少 2 个字符）" @input="searchAccountsForLink" />
+                <span v-if="searchingAccounts" class="link-search-spinner"><span class="spinner-sm"></span></span>
               </div>
-              <div v-if="assistantSearchKeyword && availableAssistantsToAdd.length === 0 && !searchingAssistants" class="drawer-empty-hint">无符合条件的可添加助教</div>
-              <div v-for="a in availableAssistantsToAdd" :key="a.userId" class="account-row addable">
-                <div class="mini-avatar" :style="{ background: getAvatarGradient(a.username || a.userId || '?') }">{{ getAvatarChar(a.username || '?') }}</div>
+              <div v-if="accountSearchKeyword && availableAccountsToAdd.length === 0 && !searchingAccounts" class="drawer-empty-hint">无符合条件的可添加账户</div>
+              <div v-for="u in availableAccountsToAdd" :key="u.userId" class="account-row addable">
+                <div class="mini-avatar" :style="{ background: getAvatarGradient(u.username || u.userId) }">{{ getAvatarChar(u.username || '?') }}</div>
                 <div class="account-row-info">
-                  <div class="account-row-name">{{ a.username || a.userId }}</div>
-                  <div class="account-row-meta">{{ a.phone || '无手机号' }} · {{ getSubjectLabelsFromArray(a.subjects) }}</div>
+                  <div class="account-row-name">{{ u.username || u.userId }}</div>
+                  <div class="account-row-meta">{{ u.phone || '无手机号' }}</div>
                 </div>
-                <button class="chip-add" title="添加关联" :disabled="busyLinkedUserId === a.userId" @click="runLinkAccount(a.userId || '', 'assistant', 'link')">
-                  <svg v-if="busyLinkedUserId !== a.userId" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                <button class="chip-add" title="添加关联" :disabled="busyLinkedUserId === u.userId" @click="runLinkAccount(u.userId, 'link')">
+                  <svg v-if="busyLinkedUserId !== u.userId" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                   <span v-else class="spinner-sm"></span>
                 </button>
               </div>
@@ -414,11 +329,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import studentAdminApi, { type IdentityAccountDto, type LinkedAccountDto, type SubjectOption, type GradeOption } from '../services/studentAdminApi'
-import identityApi from '../services/identityApi'
-import { studentLinkApi } from '../services/studentLinkApi'
-import { teacherPortalClient, type TeacherAccountDto } from '../services/teacherPortalApi'
-import { assistantPortalClient, type AssistantAccountDto } from '../services/assistantPortalApi'
+import studentAdminApi, { type IdentityAccountDto, type SubjectOption, type GradeOption } from '../services/studentAdminApi'
+import identityApi, { type IdentityUser } from '../services/identityApi'
 import { extractMsg } from '../services/apiBase'
 import {
   getSubjectMeta, getSubjectLabel, getSubjectCssClass,
@@ -476,28 +388,26 @@ const creating = ref(false)
 const showEditDialog = ref(false)
 const editForm = ref({ id: '', name: '', grade: 0 })
 
-const showLinkDialogVisible = ref(false)
 const currentStudent = ref<StudentRow | null>(null)
-const linkForm = ref({ keyword: '', selectedUserId: '' })
-const identityUsers = ref<any[]>([])
 
 const showOpenSubjectsDialogVisible = ref(false)
 const openSubjects = ref<number[]>([])
 const savingSubjects = ref(false)
 
-// Linked accounts dialog
+// Linked accounts dialog — manages all Identity accounts linked to the student (no role filter)
 const showLinkedAccountsDialog = ref(false)
 const linkedAccountsLoading = ref(false)
-const linkedAccountsData = ref<{ teachers: LinkedAccountDto[], assistants: LinkedAccountDto[] }>({ teachers: [], assistants: [] })
-
-// Bidirectional management state inside the linked accounts dialog
-const teacherSearchKeyword = ref('')
-const assistantSearchKeyword = ref('')
-const teacherSearchResults = ref<TeacherAccountDto[]>([])
-const assistantSearchResults = ref<AssistantAccountDto[]>([])
-const searchingTeachers = ref(false)
-const searchingAssistants = ref(false)
+const linkedAccountIds = ref<string[]>([])
+const linkedAccountDetails = ref<IdentityAccountDto[]>([])
+const accountSearchKeyword = ref('')
+const accountSearchResults = ref<IdentityUser[]>([])
+const searchingAccounts = ref(false)
 const busyLinkedUserId = ref<string | null>(null)
+
+const availableAccountsToAdd = computed(() => {
+  const linkedIds = new Set(linkedAccountIds.value.map(id => id.toLowerCase()))
+  return accountSearchResults.value.filter(u => !linkedIds.has(u.userId.toLowerCase()))
+})
 
 async function loadGradeOptions() {
   try {
@@ -566,92 +476,40 @@ function getStudentSubjects(s: StudentRow): number[] {
   return studentSubjectMap.value.get(s.id) || s.openSubjects || []
 }
 
-function getSubjectLabels(subjectsStr: string): string {
-  if (!subjectsStr) return '未分配科目'
-  const ids = subjectsStr.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n))
-  if (ids.length === 0) return '未分配科目'
-  return ids.map(id => getSubjectLabel(id)).join('、')
-}
-
-function getSubjectLabelsFromArray(subjects: number[] | undefined | null): string {
-  if (!subjects || subjects.length === 0) return '未分配科目'
-  return subjects.map(id => getSubjectLabel(id)).join('、')
-}
-
-// Computed lists of teachers/assistants available to add (filtered by keyword, excluding already-linked)
-const availableTeachersToAdd = computed<TeacherAccountDto[]>(() => {
-  const linkedIds = new Set(linkedAccountsData.value.teachers.map(t => t.userId.toLowerCase()))
-  const keyword = teacherSearchKeyword.value.trim().toLowerCase()
-  return teacherSearchResults.value.filter(t => {
-    if (!t.userId) return false
-    if (linkedIds.has(t.userId.toLowerCase())) return false
-    if (!keyword) return true
-    return (
-      (t.username || '').toLowerCase().includes(keyword) ||
-      (t.phone || '').toLowerCase().includes(keyword) ||
-      t.userId.toLowerCase().includes(keyword)
-    )
-  })
-})
-
-const availableAssistantsToAdd = computed<AssistantAccountDto[]>(() => {
-  const linkedIds = new Set(linkedAccountsData.value.assistants.map(a => a.userId.toLowerCase()))
-  const keyword = assistantSearchKeyword.value.trim().toLowerCase()
-  return assistantSearchResults.value.filter(a => {
-    if (!a.userId) return false
-    if (linkedIds.has(a.userId.toLowerCase())) return false
-    if (!keyword) return true
-    return (
-      (a.username || '').toLowerCase().includes(keyword) ||
-      (a.phone || '').toLowerCase().includes(keyword) ||
-      a.userId.toLowerCase().includes(keyword)
-    )
-  })
-})
-
-async function searchTeachersForLink() {
-  if (!teacherSearchKeyword.value || teacherSearchKeyword.value.length < 1) {
-    teacherSearchResults.value = []
+async function searchAccountsForLink() {
+  if (!accountSearchKeyword.value || accountSearchKeyword.value.length < 2) {
+    accountSearchResults.value = []
     return
   }
-  searchingTeachers.value = true
+  searchingAccounts.value = true
   try {
-    const result = await teacherPortalClient.getTeachers()
-    teacherSearchResults.value = result.data || []
+    const keyword = accountSearchKeyword.value
+    const isPhone = /^\d+$/.test(keyword)
+    const result = await identityApi.getUsers({
+      username: isPhone ? undefined : keyword,
+      phone: isPhone ? keyword : undefined,
+      page: 1,
+      pageSize: 20,
+    })
+    accountSearchResults.value = result.items
   } catch (error) {
-    console.error('Search teachers failed:', error)
-    ElMessage.error('搜索教师失败')
+    console.error('Search identity users failed:', error)
+    ElMessage.error('搜索用户失败')
   } finally {
-    searchingTeachers.value = false
+    searchingAccounts.value = false
   }
 }
 
-async function searchAssistantsForLink() {
-  if (!assistantSearchKeyword.value || assistantSearchKeyword.value.length < 1) {
-    assistantSearchResults.value = []
-    return
-  }
-  searchingAssistants.value = true
-  try {
-    const result = await assistantPortalClient.getAssistants()
-    assistantSearchResults.value = result.data || []
-  } catch (error) {
-    console.error('Search assistants failed:', error)
-    ElMessage.error('搜索助教失败')
-  } finally {
-    searchingAssistants.value = false
-  }
-}
-
-async function runLinkAccount(userId: string, role: 'teacher' | 'assistant', action: 'link' | 'unlink') {
-  if (!userId || !currentStudent.value) return
-  busyLinkedUserId.value = userId
+async function runLinkAccount(accountId: string, action: 'link' | 'unlink') {
+  if (!accountId || !currentStudent.value) return
+  busyLinkedUserId.value = accountId
   try {
     await (action === 'link'
-      ? studentLinkApi.link(userId, currentStudent.value.id, role)
-      : studentLinkApi.unlink(userId, currentStudent.value.id, role))
+      ? studentAdminApi.linkIdentityAccount(currentStudent.value.id, accountId)
+      : studentAdminApi.unlinkIdentityAccount(currentStudent.value.id, accountId))
     ElMessage.success(action === 'link' ? '添加成功' : '移除成功')
     await refreshLinkedAccounts()
+    await loadStudents()
   } catch (error: unknown) {
     ElMessage.error(extractMsg(error))
   } finally {
@@ -662,8 +520,14 @@ async function runLinkAccount(userId: string, role: 'teacher' | 'assistant', act
 async function refreshLinkedAccounts() {
   if (!currentStudent.value) return
   try {
-    const result = await studentAdminApi.getLinkedAccounts(currentStudent.value.id)
-    linkedAccountsData.value = { teachers: [...result.teachers], assistants: [...result.assistants] }
+    const ids = await studentAdminApi.getIdentityAccountsByStudentId(currentStudent.value.id)
+    linkedAccountIds.value = ids
+    if (ids.length > 0) {
+      const batch = await studentAdminApi.getIdentityAccountsBatch(ids)
+      linkedAccountDetails.value = batch.accounts
+    } else {
+      linkedAccountDetails.value = []
+    }
   } catch (error) {
     console.error('Failed to refresh linked accounts:', error)
   }
@@ -673,21 +537,22 @@ async function openLinkedAccountsDialog(s: StudentRow) {
   currentStudent.value = s
   showLinkedAccountsDialog.value = true
   linkedAccountsLoading.value = true
-  linkedAccountsData.value = { teachers: [], assistants: [] }
-  // Reset bidirectional management state
-  teacherSearchKeyword.value = ''
-  assistantSearchKeyword.value = ''
-  teacherSearchResults.value = []
-  assistantSearchResults.value = []
-  searchingTeachers.value = false
-  searchingAssistants.value = false
+  linkedAccountIds.value = []
+  linkedAccountDetails.value = []
+  accountSearchKeyword.value = ''
+  accountSearchResults.value = []
+  searchingAccounts.value = false
   busyLinkedUserId.value = null
   try {
-    const result = await studentAdminApi.getLinkedAccounts(s.id)
-    linkedAccountsData.value = { teachers: [...result.teachers], assistants: [...result.assistants] }
+    const ids = await studentAdminApi.getIdentityAccountsByStudentId(s.id)
+    linkedAccountIds.value = ids
+    if (ids.length > 0) {
+      const batch = await studentAdminApi.getIdentityAccountsBatch(ids)
+      linkedAccountDetails.value = batch.accounts
+    }
   } catch (e) {
     console.error('Failed to load linked accounts:', e)
-    ElMessage.error('加载关联教师/助教失败')
+    ElMessage.error('加载关联账户失败')
   } finally {
     linkedAccountsLoading.value = false
   }
@@ -695,11 +560,10 @@ async function openLinkedAccountsDialog(s: StudentRow) {
 
 function closeLinkedAccountsDialog() {
   showLinkedAccountsDialog.value = false
-  linkedAccountsData.value = { teachers: [], assistants: [] }
-  teacherSearchKeyword.value = ''
-  assistantSearchKeyword.value = ''
-  teacherSearchResults.value = []
-  assistantSearchResults.value = []
+  linkedAccountIds.value = []
+  linkedAccountDetails.value = []
+  accountSearchKeyword.value = ''
+  accountSearchResults.value = []
   busyLinkedUserId.value = null
 }
 
@@ -874,56 +738,6 @@ async function deleteStudent(s: StudentRow) {
     if (e !== 'cancel') {
       ElMessage.error(e.response?.data?.message || '删除失败')
     }
-  }
-}
-
-function openLinkDialog(s: StudentRow) {
-  currentStudent.value = s
-  linkForm.value = { keyword: '', selectedUserId: '' }
-  identityUsers.value = []
-  showLinkDialogVisible.value = true
-}
-
-async function searchIdentityUsers() {
-  if (!linkForm.value.keyword || linkForm.value.keyword.length < 2) return
-  try {
-    const keyword = linkForm.value.keyword
-    const isPhone = /^\d+$/.test(keyword)
-    const result = await identityApi.getUsers({
-      username: isPhone ? undefined : keyword,
-      phone: isPhone ? keyword : undefined,
-      page: 1,
-      pageSize: 20,
-    })
-    identityUsers.value = result.items
-  } catch (e) {
-    console.error('Search users failed:', e)
-  }
-}
-
-async function linkAccount() {
-  if (!linkForm.value.selectedUserId) {
-    ElMessage.warning('请选择用户')
-    return
-  }
-  if (!currentStudent.value) return
-  try {
-    await studentAdminApi.linkIdentityAccount(currentStudent.value.id, linkForm.value.selectedUserId)
-    ElMessage.success('关联成功')
-    showLinkDialogVisible.value = false
-    await loadStudents()
-  } catch (e: any) {
-    ElMessage.error(e.response?.data?.message || '关联失败')
-  }
-}
-
-async function unlinkAccount(studentId: string, accountId: string) {
-  try {
-    await studentAdminApi.unlinkIdentityAccount(studentId, accountId)
-    ElMessage.success('取消关联成功')
-    await loadStudents()
-  } catch (e: any) {
-    ElMessage.error(e.response?.data?.message || '取消关联失败')
   }
 }
 
