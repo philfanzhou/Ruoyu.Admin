@@ -62,14 +62,6 @@ class TeacherPortalApiClient {
     return this.checkSuccess(response.data)
   }
 
-  async updateTeacherUserId(userId: string, newUserId: string) {
-    const response = await this.client.put<TeacherOperationResponse>(
-      `/api/teacher-portal/admin/teachers/${encodeURIComponent(userId)}/user-id`,
-      { newUserId }
-    )
-    return this.checkSuccess(response.data)
-  }
-
   async checkTeacher(userId: string, phone?: string) {
     const params = new URLSearchParams()
     params.set('userId', userId)

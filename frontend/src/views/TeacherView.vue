@@ -56,7 +56,6 @@
               <th class="col-phone">手机号</th>
               <th>用户名</th>
               <th>备注</th>
-              <th class="col-account">关联账户</th>
               <th>科目</th>
               <th class="col-students">关联学生</th>
               <th class="col-time">创建时间</th>
@@ -74,18 +73,6 @@
               <td>
                 <span v-if="getRemark(t)" class="note-cell" :title="getRemark(t)">{{ getRemark(t) }}</span>
                 <span v-else class="note-cell empty">-</span>
-              </td>
-              <td>
-                <div class="account-cell">
-                  <span v-if="t.userId" class="status-tag linked" :title="t.userId">
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                    {{ getAccountDisplayName(t.userId) }}
-                  </span>
-                  <span v-else class="status-tag unlinked">未关联</span>
-                  <button class="adm-btn adm-btn-ghost adm-btn-xs" @click="openAccountDialog(t)">
-                    {{ t.userId ? '更换' : '关联' }}
-                  </button>
-                </div>
               </td>
               <td>
                 <div v-if="t.subjects && t.subjects.length > 0" class="subj-tags">
@@ -248,70 +235,6 @@
       </div>
     </div>
 
-    <!-- Link/Change Account Modal -->
-    <div v-if="showAccountDialog" class="modal-mask" @click.self="closeAccountDialog">
-      <div class="modal-box" style="width: 480px;">
-        <div class="modal-header">
-          <h3>{{ accountDialogMode === 'link' ? '关联账户' : '更换关联账户' }}</h3>
-          <button class="modal-close" @click="closeAccountDialog">×</button>
-        </div>
-        <div class="modal-body">
-          <div v-if="accountDialogTeacher" class="teacher-info-banner">
-            <div class="tch-avatar" :style="{ background: getAvatarGradient(getDisplayName(accountDialogTeacher)) }">{{ getAvatarChar(getDisplayName(accountDialogTeacher)) }}</div>
-            <div>
-              <div class="info-name">{{ getDisplayName(accountDialogTeacher) }}</div>
-              <div class="info-sub">{{ getPhone(accountDialogTeacher) }} · 当前 {{ accountDialogTeacher.subjects.length }} 个科目</div>
-              <div v-if="accountDialogTeacher.userId" class="info-sub account-id">当前关联: {{ accountDialogTeacher.userId }}</div>
-            </div>
-          </div>
-          <div class="form-group">
-            <label class="form-label">搜索用户</label>
-            <div class="user-search-wrap">
-              <svg class="form-input-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-              <input
-                v-model="accountDialogForm.keyword"
-                class="form-input has-icon"
-                placeholder="输入手机号或用户名搜索"
-                @input="searchAccountDialogUsers"
-              />
-              <div v-if="accountDialogUsers.length > 0" class="user-dropdown">
-                <div
-                  v-for="u in accountDialogUsers"
-                  :key="u.userId"
-                  class="search-option"
-                  :class="{ selected: accountDialogForm.selectedUserId === u.userId }"
-                  @click="selectAccountDialogUser(u)"
-                >
-                  <div class="mini-avatar" :style="{ background: getAvatarGradient(u.username || u.userId) }">{{ getAvatarChar(u.username || u.userId) }}</div>
-                  <div class="opt-info">
-                    <div class="opt-phone">{{ u.phone || '无手机号' }}</div>
-                    <div class="opt-name">{{ u.username }}<span v-if="u.displayName && u.displayName !== u.username"> · {{ u.displayName }}</span></div>
-                  </div>
-                  <div v-if="accountDialogForm.selectedUserId === u.userId" class="check-mark">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div v-if="accountDialogForm.selectedUserId && accountDialogSelectedUser" class="selected-user-banner">
-              <div class="mini-avatar" :style="{ background: getAvatarGradient(accountDialogSelectedUser.username || accountDialogSelectedUser.userId) }">{{ getAvatarChar(accountDialogSelectedUser.username || accountDialogSelectedUser.userId) }}</div>
-              <div class="sel-info">
-                <div class="sel-name">{{ accountDialogSelectedUser.username }}</div>
-                <div class="sel-meta">{{ accountDialogSelectedUser.phone || '无手机号' }}</div>
-              </div>
-              <button class="sel-clear" @click="clearAccountDialogUser" title="清除选择">×</button>
-            </div>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="adm-btn adm-btn-secondary" @click="closeAccountDialog">取消</button>
-          <button class="adm-btn adm-btn-primary" :disabled="!accountDialogForm.selectedUserId || accountDialogSaving" @click="saveTeacherAccount">
-            {{ accountDialogSaving ? '保存中...' : '确认关联' }}
-          </button>
-        </div>
-      </div>
-    </div>
-
     <!-- Student Association Drawer -->
     <StudentAssociationDrawer
       v-model:visible="showStudentsDrawer"
@@ -372,22 +295,9 @@ const teacherStudentCounts = ref<Record<string, number>>({})
 const showStudentsDrawer = ref(false)
 const currentTeacherUserId = ref('')
 
-// Account association dialog
-const showAccountDialog = ref(false)
-const accountDialogMode = ref<'link' | 'change'>('link')
-const accountDialogTeacher = ref<TeacherAccountDto | null>(null)
-const accountDialogForm = ref({ keyword: '', selectedUserId: '' })
-const accountDialogUsers = ref<IdentityUser[]>([])
-const accountDialogSaving = ref(false)
-
 const selectedUser = computed(() => {
   if (!grantForm.value.selectedUserId) return null
   return searchResults.value.find(u => u.userId === grantForm.value.selectedUserId) || null
-})
-
-const accountDialogSelectedUser = computed(() => {
-  if (!accountDialogForm.value.selectedUserId) return null
-  return accountDialogUsers.value.find(u => u.userId === accountDialogForm.value.selectedUserId) || null
 })
 
 function getDisplayName(t: TeacherAccountDto): string {
@@ -463,84 +373,6 @@ async function loadStudentCounts() {
 function getStudentCount(userId: string | null): number {
   if (!userId) return 0
   return teacherStudentCounts.value[userId] ?? 0
-}
-
-function getAccountDisplayName(userId: string): string {
-  const user = identityUserMap.value[userId]
-  if (user) return user.displayName || user.username || userId.slice(0, 8)
-  return userId.slice(0, 8)
-}
-
-function openAccountDialog(t: TeacherAccountDto) {
-  accountDialogTeacher.value = t
-  accountDialogMode.value = t.userId ? 'change' : 'link'
-  accountDialogForm.value = { keyword: '', selectedUserId: '' }
-  accountDialogUsers.value = []
-  accountDialogSaving.value = false
-  showAccountDialog.value = true
-}
-
-function closeAccountDialog() {
-  showAccountDialog.value = false
-  accountDialogTeacher.value = null
-  accountDialogForm.value = { keyword: '', selectedUserId: '' }
-  accountDialogUsers.value = []
-}
-
-async function searchAccountDialogUsers() {
-  if (!accountDialogForm.value.keyword || accountDialogForm.value.keyword.length < 2) {
-    accountDialogUsers.value = []
-    return
-  }
-  try {
-    const keyword = accountDialogForm.value.keyword
-    const isPhone = /^\d+$/.test(keyword)
-    const result = await getIdentityAdminApiClient().getUsers({
-      username: isPhone ? undefined : keyword,
-      phone: isPhone ? keyword : undefined,
-      page: 1,
-      pageSize: 20,
-    })
-    const currentUserId = accountDialogTeacher.value?.userId
-    accountDialogUsers.value = result.items.filter(u => u.userId !== currentUserId)
-  } catch (error) {
-    console.error('Search users failed:', error)
-    ElMessage.error('搜索用户失败')
-  }
-}
-
-function selectAccountDialogUser(u: IdentityUser) {
-  accountDialogForm.value.selectedUserId = u.userId
-  accountDialogUsers.value = []
-  accountDialogForm.value.keyword = ''
-}
-
-function clearAccountDialogUser() {
-  accountDialogForm.value.selectedUserId = ''
-}
-
-async function saveTeacherAccount() {
-  if (!accountDialogTeacher.value?.userId && accountDialogMode.value === 'link') {
-    ElMessage.warning('该教师暂无关联账户，请先撤销后重新授予')
-    return
-  }
-  if (!accountDialogForm.value.selectedUserId) {
-    ElMessage.warning('请选择用户')
-    return
-  }
-  const teacher = accountDialogTeacher.value!
-  accountDialogSaving.value = true
-  try {
-    await teacherPortalClient.updateTeacherUserId(teacher.userId!, accountDialogForm.value.selectedUserId)
-    ElMessage.success('关联账户更新成功')
-    closeAccountDialog()
-    await loadTeachers()
-    await loadStudentCounts()
-  } catch (error: any) {
-    ElMessage.error(error.response?.data?.message || '更新失败')
-  } finally {
-    accountDialogSaving.value = false
-  }
 }
 
 function openStudentsDrawer(t: TeacherAccountDto) {
@@ -1197,22 +1029,6 @@ onMounted(async () => {
 
 /* Student association column */
 .col-students { width: 160px; }
-.col-account { min-width: 200px; }
-
-.account-cell {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.account-id {
-  font-family: 'SF Mono', Menlo, Consolas, monospace;
-  font-size: 11px;
-  color: var(--adm-text-muted);
-  margin-top: 2px;
-  word-break: break-all;
-}
 
 .student-count {
   display: inline-flex;

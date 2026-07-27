@@ -50,14 +50,6 @@ class AssistantPortalApiClient {
     return this.checkSuccess(response.data)
   }
 
-  async updateAssistantUserId(userId: string, newUserId: string) {
-    const response = await this.client.put<AssistantOperationResponse>(
-      `/api/assistant-portal/admin/assistants/${encodeURIComponent(userId)}/user-id`,
-      { newUserId }
-    )
-    return this.checkSuccess(response.data)
-  }
-
   async getAssistantSubjects(userId: string) {
     const response = await this.client.get<{ success: boolean; data: number[] }>(`/api/assistant-portal/admin/assistants/${encodeURIComponent(userId)}/subjects`)
     return response.data

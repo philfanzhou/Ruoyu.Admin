@@ -30,6 +30,11 @@
 8. 可在学生管理页面的"关联教师/助教"对话框中添加/移除关联的教师（调用 POST/DELETE `/api/teacher-portal/admin/teachers/{userId}/students/{studentId}`）
 9. 可在学生管理页面的"关联教师/助教"对话框中添加/移除关联的助教（调用 POST/DELETE `/api/assistant-portal/admin/assistants/{userId}/students/{studentId}`）
 
+## 已移除功能
+
+- **学生列表"关联教师/助教"数量列**：原设计在学生列表显示"X人/无"数量标签，由于数据为点击"管理"按钮后的懒加载，列表初次加载时全部显示"无"，存在误导。已于 2026-07-27 移除数量标签，"关联教师/助教"列仅保留"管理"按钮，数量在点击后弹出的对话框内展示。
+- **教师/助教管理页"关联账户"列**：原设计在教师/助教管理页提供"关联/更换 Identity 账户"功能（`PUT /api/{teacher-portal|assistant-portal}/admin/{role}s/{userId}/user-id`）。该功能未被要求且引入了额外的 userId 变更复杂度，已于 2026-07-27 删除前后端实现。教师/助教的 `userId` 在 `grant-teacher` / `grant-assistant` 授予时绑定，不再支持事后更换。
+
 ## 范围外
 
 - 身份账户的创建、修改和删除

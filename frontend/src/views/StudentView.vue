@@ -114,11 +114,6 @@
               </td>
               <td>
                 <div class="linked-accounts-cell">
-                  <span v-if="getLinkedAccountCount(s) > 0" class="status-tag linked" :title="getLinkedAccountsTooltip(s)">
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                    {{ getLinkedAccountCount(s) }}人
-                  </span>
-                  <span v-else class="status-tag unlinked">无</span>
                   <button class="adm-btn adm-btn-ghost adm-btn-xs" @click="openLinkedAccountsDialog(s)">管理</button>
                 </div>
               </td>
@@ -494,7 +489,6 @@ const savingSubjects = ref(false)
 const showLinkedAccountsDialog = ref(false)
 const linkedAccountsLoading = ref(false)
 const linkedAccountsData = ref<{ teachers: LinkedAccountDto[], assistants: LinkedAccountDto[] }>({ teachers: [], assistants: [] })
-const linkedAccountCounts = ref<Record<string, number>>({})
 
 // Bidirectional management state inside the linked accounts dialog
 const teacherSearchKeyword = ref('')
@@ -570,16 +564,6 @@ async function loadOpenSubjectsForList(items: StudentRow[]) {
 
 function getStudentSubjects(s: StudentRow): number[] {
   return studentSubjectMap.value.get(s.id) || s.openSubjects || []
-}
-
-function getLinkedAccountCount(s: StudentRow): number {
-  return linkedAccountCounts.value[s.id] ?? 0
-}
-
-function getLinkedAccountsTooltip(s: StudentRow): string {
-  const count = getLinkedAccountCount(s)
-  if (count > 0) return `关联教师/助教 ${count} 人`
-  return s.identityAccountIds && s.identityAccountIds.length > 0 ? '暂无关联教师/助教' : '无身份账户'
 }
 
 function getSubjectLabels(subjectsStr: string): string {
@@ -680,8 +664,6 @@ async function refreshLinkedAccounts() {
   try {
     const result = await studentAdminApi.getLinkedAccounts(currentStudent.value.id)
     linkedAccountsData.value = { teachers: [...result.teachers], assistants: [...result.assistants] }
-    const count = result.teachers.length + result.assistants.length
-    linkedAccountCounts.value = { ...linkedAccountCounts.value, [currentStudent.value.id]: count }
   } catch (error) {
     console.error('Failed to refresh linked accounts:', error)
   }
@@ -703,8 +685,6 @@ async function openLinkedAccountsDialog(s: StudentRow) {
   try {
     const result = await studentAdminApi.getLinkedAccounts(s.id)
     linkedAccountsData.value = { teachers: [...result.teachers], assistants: [...result.assistants] }
-    const count = result.teachers.length + result.assistants.length
-    linkedAccountCounts.value = { ...linkedAccountCounts.value, [s.id]: count }
   } catch (e) {
     console.error('Failed to load linked accounts:', e)
     ElMessage.error('加载关联教师/助教失败')
