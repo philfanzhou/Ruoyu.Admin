@@ -6,7 +6,7 @@
 
 ## 核心用户故事
 
-作为管理员，我希望将身份账户关联到学生档案并支持双向查询与双向管理，以便学生可以通过不同身份登录系统且管理员能追溯关联关系，并能从学生侧或教师/助教侧任一视角增删关联。
+作为管理员，我希望将身份账户关联到学生档案并支持关联管理与反查，以便学生可以通过不同身份登录系统且管理员能追溯关联关系。关联管理统一在学生管理页面"关联账户"对话框完成，不区分账户角色（教师/助教/普通用户均可），教师/助教管理页面不再提供关联学生功能。
 
 ## 补充约束
 
@@ -16,7 +16,7 @@
 4. **失败降级**：Identity Service 不可用时，批量查询身份账户信息返回空列表而非错误
 5. **关联校验**：IdentityAccountId 必须为合法 GUID 格式且不能为空
 6. **解关联参数**：需同时提供 studentId 和 accountId，均为 GUID 路由参数
-7. **双向管理**：关联关系的增删可从教师/助教侧（StudentAssociationDrawer，按角色筛选）或学生侧（StudentView"关联账户"对话框，不区分角色）任一视角发起。学生侧对话框调用 `POST/DELETE /api/admin/students/{studentId}/accounts` 与 `GET /api/admin/students/{studentId}/accounts`，可关联任意 Identity 账户（教师、助教、普通用户均可），不按角色区分
+7. **统一入口**：关联关系的增删仅在学生管理页"关联账户"对话框发起，调用 admin_portal 的 `GET/POST/DELETE /api/admin/students/{studentId}/accounts` 端点，可关联任意 Identity 账户（教师、助教、普通用户均可），不按角色区分
 
 ## 关键验收条件摘要
 
@@ -34,6 +34,10 @@
 - **学生列表"关联账户"（Identity 绑定状态）列**：原设计在学生列表单独一列展示 `identityAccountIds[0]`（首个绑定的 Identity 账户）及"关联账户"按钮打开单选关联对话框。该列与"关联教师/助教"列语义重复，已于 2026-07-27 合并：学生列表仅保留一列"关联账户"（原"关联教师/助教"列改名），点击"管理"按钮弹出的对话框统一管理该学生的全部 Identity 账户关联关系。
 - **学生列表"关联教师/助教"数量标签**：原设计在学生列表显示"X人/无"数量标签，由于数据为点击"管理"按钮后的懒加载，列表初次加载时全部显示"无"，存在误导。已于 2026-07-27 移除数量标签，仅保留"管理"按钮，数量在点击后弹出的对话框内展示。
 - **教师/助教管理页"关联账户"列**：原设计在教师/助教管理页提供"关联/更换 Identity 账户"功能（`PUT /api/{teacher-portal|assistant-portal}/admin/{role}s/{userId}/user-id`）。该功能未被要求且引入了额外的 userId 变更复杂度，已于 2026-07-27 删除前后端实现。教师/助教的 `userId` 在 `grant-teacher` / `grant-assistant` 授予时绑定，不再支持事后更换。
+- **教师/助教管理页"关联学生"列与管理按钮**：原设计在教师/助教管理页提供"关联学生"列展示学生数量并提供"管理"按钮打开 `StudentAssociationDrawer`。该功能与学生管理页"关联账户"对话框语义重复，且数量加载采用 N+1 查询（每个教师/助教一次 HTTP 请求）存在性能问题。已于 2026-07-27 删除前后端实现：
+  - 前端：删除 `StudentAssociationDrawer.vue` 组件、`studentLinkApi.ts` 服务、TeacherView/AssistantView 的"关联学生"列与相关函数。
+  - 后端：删除 `teacher_portal`/`assistant_portal` 的 `GET/POST/DELETE /api/admin/{role}s/{userId}/students[/{studentId}]` 端点及单元测试。
+  - 关联管理统一在学生管理页"关联账户"对话框完成。
 
 ## 范围外
 

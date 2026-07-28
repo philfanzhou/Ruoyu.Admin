@@ -57,7 +57,6 @@
               <th>用户名</th>
               <th>备注</th>
               <th>科目</th>
-              <th class="col-students">关联学生</th>
               <th class="col-time">创建时间</th>
               <th class="col-actions">操作</th>
             </tr>
@@ -86,12 +85,6 @@
                 <span v-else class="subj-warning">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
                   未分配科目
-                </span>
-              </td>
-              <td>
-                <span class="student-count" :class="{ zero: getStudentCount(t.userId) === 0 }">
-                  {{ getStudentCount(t.userId) }}人
-                  <button class="manage-btn" @click="openStudentsDrawer(t)">管理</button>
                 </span>
               </td>
               <td><span class="time-cell">{{ formatDate(t.createdAt) }}</span></td>
@@ -234,13 +227,6 @@
         </div>
       </div>
     </div>
-
-    <!-- Student Association Drawer -->
-    <StudentAssociationDrawer
-      v-model:visible="showStudentsDrawer"
-      :user-id="currentTeacherUserId"
-      role="teacher"
-    />
   </div>
 </template>
 
@@ -249,8 +235,6 @@ import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { teacherPortalClient, type TeacherAccountDto, type SubjectOption } from '../services/teacherPortalApi'
 import { getIdentityAdminApiClient, type IdentityUser } from '../services/identityApi'
-import { studentLinkApi } from '../services/studentLinkApi'
-import StudentAssociationDrawer from '../components/StudentAssociationDrawer.vue'
 import {
   getSubjectLabel, getSubjectCssClass,
   getAvatarGradient, getAvatarChar, formatDate,
@@ -290,10 +274,6 @@ const showSubjectsDialogVisible = ref(false)
 const currentTeacher = ref<TeacherAccountDto | null>(null)
 const selectedSubjects = ref<number[]>([])
 const savingSubjects = ref(false)
-
-const teacherStudentCounts = ref<Record<string, number>>({})
-const showStudentsDrawer = ref(false)
-const currentTeacherUserId = ref('')
 
 const selectedUser = computed(() => {
   if (!grantForm.value.selectedUserId) return null
@@ -356,28 +336,6 @@ async function loadAvailableSubjects() {
   } catch (error) {
     console.error('Failed to load subjects:', error)
   }
-}
-
-async function loadStudentCounts() {
-  await Promise.all(teachers.value
-    .filter(t => t.userId)
-    .map(async t => {
-      try {
-        teacherStudentCounts.value[t.userId!] = (await studentLinkApi.list(t.userId!, 'teacher')).length
-      } catch {
-        teacherStudentCounts.value[t.userId!] = 0
-      }
-    }))
-}
-
-function getStudentCount(userId: string | null): number {
-  if (!userId) return 0
-  return teacherStudentCounts.value[userId] ?? 0
-}
-
-function openStudentsDrawer(t: TeacherAccountDto) {
-  currentTeacherUserId.value = t.userId || ''
-  showStudentsDrawer.value = true
 }
 
 function onSearch() {
@@ -544,7 +502,6 @@ async function saveTeacherSubjects() {
 onMounted(async () => {
   await loadAvailableSubjects()
   await loadTeachers()
-  await loadStudentCounts()
 })
 </script>
 
@@ -1025,39 +982,5 @@ onMounted(async () => {
   font-size: 12px;
   color: var(--adm-text-tertiary);
   margin-top: 2px;
-}
-
-/* Student association column */
-.col-students { width: 160px; }
-
-.student-count {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 3px 4px 3px 10px;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  background: var(--adm-primary-bg);
-  color: var(--adm-primary);
-}
-.student-count.zero {
-  background: var(--adm-surface-subtle);
-  color: var(--adm-text-muted);
-}
-.student-count .manage-btn {
-  font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 4px;
-  background: rgba(59, 130, 246, 0.12);
-  color: var(--adm-primary-dark, #1d4ed8);
-  cursor: pointer;
-  font-weight: 500;
-  transition: all 0.1s;
-  border: none;
-}
-.student-count .manage-btn:hover {
-  background: var(--adm-primary);
-  color: #fff;
 }
 </style>

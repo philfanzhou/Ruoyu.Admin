@@ -4,7 +4,7 @@
     <div class="adm-page-header">
       <div>
         <h1 class="adm-page-title">助教管理</h1>
-        <p class="adm-page-subtitle">管理助教账户、学科授权和学生关联</p>
+        <p class="adm-page-subtitle">管理助教账户、学科授权和权限撤销</p>
       </div>
       <div class="adm-page-actions">
         <button class="adm-btn adm-btn-primary" @click="openGrantDialog">
@@ -57,7 +57,6 @@
               <th>用户名</th>
               <th>备注</th>
               <th>科目</th>
-              <th class="col-students">关联学生</th>
               <th class="col-time">创建时间</th>
               <th class="col-actions">操作</th>
             </tr>
@@ -66,7 +65,6 @@
             <tr
               v-for="a in filteredAssistants"
               :key="a.userId || a.id"
-              :class="{ highlighted: currentAssistant?.userId === a.userId && showStudentsDrawer }"
             >
               <td>
                 <div class="ast-avatar" :style="{ background: getAvatarGradient(getDisplayName(a)) }">{{ getAvatarChar(getDisplayName(a)) }}</div>
@@ -90,13 +88,6 @@
                 <span v-else class="subj-warning">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
                   未分配科目
-                </span>
-              </td>
-              <td>
-                <span class="student-count" :class="{ zero: getStudentCount(a.userId) === 0 }">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                  {{ getStudentCount(a.userId) }}人
-                  <button class="manage-btn" @click="openStudentsDrawer(a)">管理</button>
                 </span>
               </td>
               <td><span class="time-cell">{{ formatDate(a.createdAt) }}</span></td>
@@ -232,14 +223,6 @@
         </div>
       </div>
     </div>
-
-    <!-- Student Association Drawer -->
-    <StudentAssociationDrawer
-      v-model:visible="showStudentsDrawer"
-      :user-id="currentAssistant?.userId || ''"
-      role="assistant"
-      :display-name="currentAssistant ? getDisplayName(currentAssistant) : undefined"
-    />
   </div>
 </template>
 
@@ -248,18 +231,15 @@ import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { assistantPortalClient, type AssistantAccountDto, type SubjectOption } from '../services/assistantPortalApi'
 import { getIdentityAdminApiClient, type IdentityUser } from '../services/identityApi'
-import { studentLinkApi } from '../services/studentLinkApi'
 import {
   getSubjectLabel, getSubjectCssClass,
   getAvatarGradient, getAvatarChar, formatDate,
 } from '../utils/subject'
-import StudentAssociationDrawer from '../components/StudentAssociationDrawer.vue'
 
 const assistants = ref<AssistantAccountDto[]>([])
 const loading = ref(false)
 const identityUserMap = ref<Record<string, IdentityUser>>({})
 const availableSubjects = ref<SubjectOption[]>([])
-const assistantStudentCounts = ref<Record<string, number>>({})
 
 const searchKeyword = ref('')
 const searchSubject = ref<number | undefined>(undefined)
@@ -291,9 +271,6 @@ const currentAssistant = ref<AssistantAccountDto | null>(null)
 const selectedSubjects = ref<number[]>([])
 const savingSubjects = ref(false)
 
-// Drawer state
-const showStudentsDrawer = ref(false)
-
 const selectedUser = computed(() => {
   if (!grantForm.value.selectedUserId) return null
   return searchResults.value.find(u => u.userId === grantForm.value.selectedUserId) || null
@@ -316,11 +293,6 @@ function getPhone(a: AssistantAccountDto): string {
 function getRemark(a: AssistantAccountDto): string {
   if (a.userId && identityUserMap.value[a.userId]?.remark) return identityUserMap.value[a.userId].remark || ''
   return ''
-}
-
-function getStudentCount(userId: string | null): number {
-  if (!userId) return 0
-  return assistantStudentCounts.value[userId] ?? 0
 }
 
 async function loadAssistants() {
@@ -361,18 +333,6 @@ async function loadAvailableSubjects() {
     console.error('Failed to load subjects:', error)
     ElMessage.error('加载助教学科列表失败')
   }
-}
-
-async function loadStudentCounts() {
-  await Promise.all(assistants.value
-    .filter(a => a.userId)
-    .map(async a => {
-      try {
-        assistantStudentCounts.value[a.userId!] = (await studentLinkApi.list(a.userId!, 'assistant')).length
-      } catch {
-        assistantStudentCounts.value[a.userId!] = 0
-      }
-    }))
 }
 
 function onSearch() {
@@ -450,7 +410,6 @@ async function grantAssistant() {
     ElMessage.success('授予权限成功')
     closeGrantDialog()
     await loadAssistants()
-    await loadStudentCounts()
   } catch (error: any) {
     ElMessage.error(error.response?.data?.message || '授予权限失败')
   } finally {
@@ -465,14 +424,13 @@ async function revokeAssistant(a: AssistantAccountDto) {
   }
   try {
     await ElMessageBox.confirm(
-      `确认撤销 ${getDisplayName(a)} 的助教权限？关联的学生也将被清除。`,
+      `确认撤销 ${getDisplayName(a)} 的助教权限？该操作将移除其所有学科授权。`,
       '确认撤销',
       { type: 'warning' }
     )
     await assistantPortalClient.revokeAssistant(a.userId)
     ElMessage.success('撤销权限成功')
     await loadAssistants()
-    await loadStudentCounts()
   } catch (error: any) {
     if (error !== 'cancel') {
       ElMessage.error(error.response?.data?.message || '撤销权限失败')
@@ -532,15 +490,9 @@ async function saveAssistantSubjects() {
   }
 }
 
-function openStudentsDrawer(a: AssistantAccountDto) {
-  currentAssistant.value = a
-  showStudentsDrawer.value = true
-}
-
 onMounted(async () => {
   await loadAvailableSubjects()
   await loadAssistants()
-  await loadStudentCounts()
 })
 </script>
 
@@ -643,13 +595,10 @@ onMounted(async () => {
 }
 .adm-table tbody tr { transition: background 0.12s; }
 .adm-table tbody tr:hover { background: var(--adm-surface-subtle); }
-.adm-table tbody tr.highlighted { background: var(--adm-primary-bg); }
-.adm-table tbody tr.highlighted td:first-child { border-left: 3px solid var(--adm-primary); }
 .adm-table tbody tr:last-child td { border-bottom: none; }
 .col-avatar { width: 56px; }
 .col-id { width: 200px; }
 .col-phone { width: 140px; }
-.col-students { width: 160px; }
 .col-time { width: 130px; }
 .col-actions { width: 160px; text-align: right; }
 
@@ -737,42 +686,6 @@ onMounted(async () => {
   background: var(--adm-warning-bg, #fff7ed);
   color: var(--adm-warning, #ea580c);
   border: 1px solid var(--adm-warning-border, #fed7aa);
-}
-
-/* Student count badge */
-.student-count {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 3px 4px 3px 10px;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  background: var(--adm-primary-bg);
-  color: var(--adm-primary);
-}
-.student-count.zero {
-  background: var(--adm-surface-subtle);
-  color: var(--adm-text-muted);
-}
-.student-count .manage-btn {
-  font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 4px;
-  background: rgba(59, 130, 246, 0.12);
-  color: var(--adm-primary-dark, #1d4ed8);
-  cursor: pointer;
-  font-weight: 500;
-  transition: all 0.1s;
-  border: none;
-}
-.student-count .manage-btn:hover {
-  background: var(--adm-primary);
-  color: #fff;
-}
-.student-count.zero .manage-btn {
-  background: var(--adm-border);
-  color: var(--adm-text-tertiary);
 }
 
 .time-cell {

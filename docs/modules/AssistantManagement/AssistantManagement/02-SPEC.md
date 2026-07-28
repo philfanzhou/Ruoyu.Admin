@@ -6,7 +6,7 @@
 
 - API: `GET /api/assistant-portal/admin/assistants`
 - 返回所有助教账号，含 userId、phone、username、subjects、isActive、createdAt、updatedAt
-- 表格列：User ID、手机号、用户名、备注、关联账户、科目（Tag 列表）、关联学生、创建时间、操作
+- 表格列：User ID、手机号、用户名、备注、科目（Tag 列表）、创建时间、操作
 
 ### 1.2 授予助教权限
 
@@ -28,50 +28,9 @@
 - 可用科目: `GET /api/assistant-portal/admin/available-subjects`
 - 交互: Tag closable 删除单个 + "管理"按钮弹窗批量编辑
 
-### 1.5 关联账户管理
+## 2. Admin Portal 代理
 
-- 查看: 表格"关联账户"列展示当前关联的身份账户（用户名/显示名），支持"关联"/"更换"按钮
-- 更换: `PUT /api/assistant-portal/admin/assistants/{userId}/user-id`
-  - 请求体: `{ newUserId: string }`
-  - 弹窗搜索 Identity 用户 → 选择 → 确认更换
-  - NewUserId 已被其他助教占用时返回 success=false
-
-## 2. 助教-学生关联
-
-### 2.1 数据模型
-
-新增 `assistant_students` 关联表：
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| Id | bigint | PK, auto-increment |
-| AssistantId | bigint | FK → assistant_accounts.Id |
-| StudentId | varchar(36) | FK → 对应 Student 服务的 student.Id (GUID string) |
-| CreatedAt | DateTimeOffset | 创建时间 |
-
-- 一个助教可关联多个学生
-- 一个学生可被多个助教关联（多对多）
-- 联合唯一约束: (AssistantId, StudentId)
-
-### 2.2 API
-
-- `GET /api/admin/assistants/{userId}/students` — 获取助教关联的学生列表
-- `POST /api/admin/assistants/{userId}/students` — 批量设置助教关联学生（替换式）
-  - 请求体: `{ studentIds: string[] }` (GUID strings)
-- `POST /api/admin/assistants/{userId}/students/{studentId}` — 添加单个关联 (studentId = GUID string)
-- `DELETE /api/admin/assistants/{userId}/students/{studentId}` — 删除单个关联 (studentId = GUID string)
-
-### 2.3 前端交互
-
-- 助教列表操作栏新增"管理学生"按钮
-- 弹窗展示当前关联学生列表（姓名、年级）
-- 搜索学生（调用 Student gRPC 或现有 admin 接口）
-- 添加/移除学生关联
-- 撤销助教权限时自动清理关联关系
-
-## 3. Admin Portal 代理
-
-### 3.1 AssistantPortalProxyMiddleware
+### 2.1 AssistantPortalProxyMiddleware
 
 路径映射规则（与 TeacherPortalProxyMiddleware 对称）：
 
@@ -82,7 +41,7 @@
 
 认证: 透传调用方 `Authorization: Bearer`，下游 `[Authorize(Roles="admin")]` 校验；不再使用静态 `X-Admin-Key`
 
-### 3.2 配置
+### 2.2 配置
 
 ```json
 {
@@ -92,6 +51,11 @@
 }
 ```
 
-### 3.3 环境变量
+### 2.3 环境变量
 
 - `AssistantPortal__Url`
+
+## 3. 已移除功能
+
+- **关联账户管理（PUT /api/assistant-portal/admin/assistants/{userId}/user-id）**：原设计在助教管理页提供"关联/更换 Identity 账户"功能。该功能未被要求且引入了额外的 userId 变更复杂度，已于 2026-07-27 删除前后端实现。助教的 `userId` 在 `grant-assistant` 授予时绑定，不再支持事后更换。
+- **助教-学生关联（GET/POST/DELETE /api/admin/assistants/{userId}/students[/{studentId}]）**：原设计在助教管理页提供"关联学生"列展示学生数量并提供"管理"按钮。该功能与学生管理页"关联账户"对话框语义重复，且数量加载采用 N+1 查询存在性能问题，已于 2026-07-27 删除前后端实现。关联管理统一在学生管理页"关联账户"对话框完成，详见 [StudentManagement/AccountLinking](../../StudentManagement/AccountLinking/01-FEATURE.md)。

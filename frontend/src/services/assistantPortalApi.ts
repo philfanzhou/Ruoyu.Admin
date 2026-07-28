@@ -81,26 +81,6 @@ class AssistantPortalApiClient {
     const response = await this.client.get<{ success: boolean; data: SubjectOption[] }>('/api/assistant-portal/admin/available-subjects')
     return response.data
   }
-
-  // Student associations
-  async getAssistantStudents(userId: string) {
-    const response = await this.client.get<{ success: boolean; data: string[] }>(`/api/assistant-portal/admin/assistants/${encodeURIComponent(userId)}/students`)
-    return response.data
-  }
-
-  async addAssistantStudent(userId: string, studentId: string) {
-    const response = await this.client.post<AssistantOperationResponse>(
-      `/api/assistant-portal/admin/assistants/${encodeURIComponent(userId)}/students/${encodeURIComponent(studentId)}`
-    )
-    return this.checkSuccess(response.data)
-  }
-
-  async removeAssistantStudent(userId: string, studentId: string) {
-    const response = await this.client.delete<AssistantOperationResponse>(
-      `/api/assistant-portal/admin/assistants/${encodeURIComponent(userId)}/students/${encodeURIComponent(studentId)}`
-    )
-    return this.checkSuccess(response.data)
-  }
 }
 
 export const assistantPortalClient = new AssistantPortalApiClient()

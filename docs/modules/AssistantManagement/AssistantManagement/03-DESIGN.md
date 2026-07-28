@@ -20,48 +20,20 @@
   - `app.UseMiddleware<AssistantPortalProxyMiddleware>()`
   - 日志输出 AssistantPortal 地址
 
-## 2. 助教 Portal 后端 — 学生关联
+## 2. Assistant Portal 后端
 
-### 2.1 数据库
+### 2.1 AdminController 端点
 
-新增实体 `AssistantStudent`：
+保留的端点：
+- `GET /api/admin/assistants` — 获取助教列表
+- `POST /api/admin/identity-users/{userId}/grant-assistant` — 授予助教权限
+- `POST /api/admin/identity-users/{userId}/revoke-assistant` — 撤销助教权限
+- `GET/PUT/POST/DELETE /api/admin/assistants/{userId}/subjects[/{subject}]` — 科目管理
+- `GET /api/admin/available-subjects` — 可用科目列表
 
-```csharp
-namespace AssistantWebApi.Database.Entity;
+### 2.2 数据库
 
-public class AssistantStudent
-{
-    public long Id { get; set; }
-    public long AssistantId { get; set; }
-    public string StudentId { get; set; } = string.Empty;  // GUID string from Student service
-    public DateTimeOffset CreatedAt { get; set; }
-
-    public AssistantAccount Assistant { get; set; } = null!;
-}
-```
-
-`AssistantDbContext` 添加:
-- `DbSet<AssistantStudent> AssistantStudents`
-- 配置联合唯一索引: `.HasIndex(x => new { x.AssistantId, x.StudentId }).IsUnique()`
-
-### 2.2 DbService
-
-`AssistantDbService` 新增方法:
-- `GetStudentsByUserId(userId)` — 返回关联的 studentId 列表
-- `SetStudentsByUserId(userId, studentIds)` — 替换式设置
-- `AddStudentByUserId(userId, studentId)` — 添加单个
-- `RemoveStudentByUserId(userId, studentId)` — 删除单个
-- `RemoveAllStudentsByUserId(userId)` — 撤销权限时调用
-
-### 2.3 AdminController
-
-新增端点:
-- `GET /api/admin/assistants/{userId}/students`
-- `POST /api/admin/assistants/{userId}/students` (body: `{ studentIds: string[] }` — GUID strings)
-- `POST /api/admin/assistants/{userId}/students/{studentId}` (studentId = GUID string)
-- `DELETE /api/admin/assistants/{userId}/students/{studentId}` (studentId = GUID string)
-
-撤销权限时（`RevokeAssistantRole`）同步调用 `RemoveAllStudentsByUserId`。
+`AssistantDbContext` 包含 `AssistantAccounts` 和 `AssistantSubjects` 两张表，无学生关联表。
 
 ## 3. Admin Portal 前端
 
@@ -69,7 +41,7 @@ public class AssistantStudent
 
 `src/admin_portal/frontend/src/services/assistantPortalApi.ts`
 
-接口与 `teacherPortalApi.ts` 对称，增加学生关联方法:
+接口与 `teacherPortalApi.ts` 对称:
 - `getAssistants()`
 - `grantAssistant(userId, { subjects })`
 - `revokeAssistant(userId)`
@@ -78,20 +50,15 @@ public class AssistantStudent
 - `addAssistantSubject(userId, subject)`
 - `removeAssistantSubject(userId, subject)`
 - `getAvailableSubjects()`
-- `getAssistantStudents(userId)`
-- `setAssistantStudents(userId, studentIds)`
-- `addAssistantStudent(userId, studentId)`
-- `removeAssistantStudent(userId, studentId)`
 
 ### 3.2 视图组件
 
 `src/admin_portal/frontend/src/views/AssistantView.vue`
 
 布局与 TeacherView.vue 对称:
-- 主表格: User ID / 手机号 / 用户名 / 科目 / 创建时间 / 操作（撤销权限、管理学生）
+- 主表格: 头像 / User ID / 手机号 / 用户名 / 备注 / 科目 / 创建时间 / 操作（科目、撤销）
 - 授予权限弹窗: 搜索 Identity 用户 → 选择科目
 - 科目管理弹窗: 批量编辑科目
-- 学生管理弹窗: 当前关联学生列表 + 搜索添加 + 移除
 
 ### 3.3 路由
 
@@ -107,6 +74,7 @@ public class AssistantStudent
 
 侧边导航需同步添加入口。
 
-## 4. 学生数据来源
+## 4. 已移除功能
 
-学生列表通过 Admin Portal 现有的 Student gRPC 客户端获取（已在 `StudentsController` 和 `IdentityAccountsController` 中使用），无需新增数据源。
+- **关联账户管理**：原设计提供 `PUT /api/admin/assistants/{userId}/user-id` 端点更换 userId。已于 2026-07-27 删除。
+- **助教-学生关联**：原设计提供 `GET/POST/DELETE /api/admin/assistants/{userId}/students[/{studentId}]` 端点和 `AssistantStudent` 实体表。已于 2026-07-27 删除前后端实现。关联管理统一在学生管理页完成。

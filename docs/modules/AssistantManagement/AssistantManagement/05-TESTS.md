@@ -14,25 +14,37 @@
 | Authorization Bearer 透传 | 透传调用方的 Authorization 头，下游校验 role:admin |
 | POST 请求体转发 | 请求体正确转发 |
 
-## 2. AssistantDbService 学生关联测试
+## 2. AssistantDbService 测试
 
 | 方法 | 场景 | 预期 |
 |------|------|------|
-| GetStudentsByUserId | 有关联 | 返回 studentId 列表 |
-| GetStudentsByUserId | 无关联 | 返回空列表 |
-| SetStudentsByUserId | 替换式设置 | 旧关联清除，新关联写入 |
-| AddStudentByUserId | 新增 | 关联成功 |
-| AddStudentByUserId | 重复 | 幂等，不报错 |
-| RemoveStudentByUserId | 存在 | 删除成功 |
-| RemoveStudentByUserId | 不存在 | 返回 false |
-| RemoveAllStudentsByUserId | 撤销时 | 清除所有关联 |
+| AddAssistantByUserId | 新增 | 助教创建成功，含科目 |
+| GetByUserId | 存在 | 返回助教实体，含科目列表 |
+| GetByUserId | 不存在 | 返回 null |
+| SetSubjectsByUserId | 整体设置 | 旧科目清除，新科目写入 |
+| AddSubjectByUserId | 新增 | 科目关联成功 |
+| AddSubjectByUserId | 重复 | 幂等，不报错 |
+| RemoveSubjectByUserId | 存在 | 删除成功 |
+| RemoveSubjectByUserId | 不存在 | 返回 null |
+| RemoveAssistantByUserId | 撤销 | 助教及其科目被删除 |
 
-## 3. AdminController 学生关联端点测试
+## 3. AdminController 端点测试
 
 | 端点 | 场景 | 预期 |
 |------|------|------|
-| GET /assistants/{userId}/students | 正常 | 200 + 学生列表 |
-| POST /assistants/{userId}/students | 正常 | 200 + 成功 |
-| POST /assistants/{userId}/students/{studentId} | 正常 | 200 |
-| DELETE /assistants/{userId}/students/{studentId} | 正常 | 200 |
-| RevokeAssistantRole | 撤销后 | 学生关联被清理 |
+| GET /assistants | 正常 | 200 + 助教列表 |
+| POST /identity-users/{userId}/grant-assistant | 正常 | 200 + 成功 |
+| POST /identity-users/{userId}/revoke-assistant | 正常 | 200 + 成功 |
+| GET /assistants/{userId}/subjects | 正常 | 200 + 科目列表 |
+| PUT /assistants/{userId}/subjects | 正常 | 200 + 成功 |
+| POST /assistants/{userId}/subjects/{subject} | 正常 | 200 |
+| DELETE /assistants/{userId}/subjects/{subject} | 正常 | 200 |
+| GET /available-subjects | 正常 | 200 + 科目选项 |
+
+## 4. 已移除测试
+
+以下测试已随功能一起删除（2026-07-27）：
+
+- `GetAssistantStudents_*` — 随 `GET /api/admin/assistants/{userId}/students` 端点删除
+- `AddAssistantStudent_*` — 随 `POST /api/admin/assistants/{userId}/students/{studentId}` 端点删除
+- `RemoveAssistantStudent_*` — 随 `DELETE /api/admin/assistants/{userId}/students/{studentId}` 端点删除
