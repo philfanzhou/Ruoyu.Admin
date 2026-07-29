@@ -37,13 +37,28 @@ export interface SubjectOption {
   name: string
 }
 
+export interface TeacherListParams {
+  keyword?: string
+  subject?: number
+  page?: number
+  pageSize?: number
+}
+
+export interface TeacherPagedResponse {
+  success: boolean
+  data: TeacherAccountDto[]
+  total: number
+  page: number
+  pageSize: number
+}
+
 import { checkSuccess } from './apiBase'
 
 class TeacherPortalApiClient {
   private client = httpClient
 
-  async getTeachers() {
-    const response = await this.client.get<{ success: boolean; data: TeacherAccountDto[] }>('/api/teacher-portal/admin/teachers')
+  async getTeachers(params: TeacherListParams = {}) {
+    const response = await this.client.get<TeacherPagedResponse>('/api/teacher-portal/admin/teachers', { params })
     return response.data
   }
 

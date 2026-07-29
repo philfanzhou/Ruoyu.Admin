@@ -27,7 +27,7 @@ src/admin_portal/frontend/src/
 │   ├── DashboardView.vue        # 数据仪表盘（KPI + 趋势 + 待办）
 │   ├── StudentView.vue          # 学生管理页面
 │   ├── TeacherView.vue          # 教师管理页面
-│   ├── AssistantView.vue        # 助教管理页面（使用 StudentAssociationDrawer）
+│   ├── AssistantView.vue        # 助教管理页面
 │   ├── UploadRecordView.vue      # 上传记录管理页面（状态统计条 + 侧滑详情面板）
 │   ├── MistakeView.vue           # 错题管理页面（统计卡 + 详情 Modal）
 │   └── OssAuditView.vue          # OSS 审计页面（状态面板 + 浮动批量操作栏）
@@ -41,7 +41,6 @@ src/admin_portal/frontend/src/
 └── components/
     ├── ImagePreview.vue          # 图片预览组件
     ├── ImageViewer.vue           # 图片查看器组件
-    └── StudentAssociationDrawer.vue  # 学生关联管理 Drawer（教师/助教共用）
 ```
 
 ---
@@ -113,7 +112,6 @@ src/admin_portal/frontend/src/
 | 学科标签 | 统一色彩（数学蓝/语文橙/英语绿/物理紫/化学粉紫/生物绿/历史红/地理蓝/政治紫），跨门户一致 |
 | Modal | 居中弹窗，用于详情/编辑表单 |
 | Drawer | 右侧滑出面板，宽度 400-480px，用于详情/批量操作 |
-| StudentAssociationDrawer | 学生关联管理 Drawer（右侧 400px 滑出），已关联学生 + 添加学生两个 section，通过 `role` prop 适配教师/助教 |
 | 浮动批量操作栏 | 底部 fixed，显示"已选择 N 项 + 批量操作按钮" |
 | 空状态 | 居中图标 + 文案 + 引导按钮 |
 | 骨架屏 | shimmer 动画（`linear-gradient` + `background-position` 动画） |
@@ -169,7 +167,7 @@ src/admin_portal/frontend/src/
 | `/dashboard` | DashboardView.vue | 概览 | 数据仪表盘（KPI + 趋势 + 待办） |
 | `/students` | StudentView.vue | 用户管理 | 学生管理 |
 | `/teachers` | TeacherView.vue | 用户管理 | 教师管理 |
-| `/assistants` | AssistantView.vue | 用户管理 | 助教管理（含学生关联 Drawer） |
+| `/assistants` | AssistantView.vue | 用户管理 | 助教管理 |
 | `/upload-records` | UploadRecordView.vue | 数据管理 | 上传记录管理（含状态统计条 + 侧滑详情面板） |
 | `/mistakes` | MistakeView.vue | 数据管理 | 错题查询与管理（统计卡 + 详情 Modal） |
 | `/oss-audit` | OssAuditView.vue | 数据管理 | OSS 僵尸文件审计（状态面板 + 浮动批量栏） |
@@ -216,13 +214,19 @@ src/admin_portal/frontend/src/
 
 ### 1. 学生管理页面 (`/students`)
 
-**布局**：统计概览条 + 筛选栏 + 数据表格 + 弹窗（创建/编辑/关联/学科）。
+**布局**：筛选栏 + 数据表格 + 服务端分页 + 弹窗（创建/编辑/关联账户/开放学科）。
 
 **功能列表**：
-- 创建学生（姓名、年级、关联账户）
-- 学生列表（搜索、年级筛选、分页）
+- 创建学生（姓名、年级、关联账户、开放学科）；创建接口返回学生 ID 后立即保存勾选的开放学科
+- 若学生创建成功但开放学科保存失败，保留已创建学生并提示管理员稍后通过“学科”补充，不得把整个创建操作提示为失败
+- 学生列表（搜索、年级/学科筛选、服务端分页）
 - 编辑学生（修改信息、管理关联账户、管理开放学科）
 - 删除学生
+- 不展示“全部/已绑定/未绑定”统计概览条：现有后端未提供全量绑定聚合，禁止用当前页数量冒充全量统计
+
+**表格列**：头像、ID、姓名、年级、开放学科、创建时间、操作。关联账户不单独占列，入口合并到最右侧操作列。
+
+**操作列**：编辑、学科（无开放学科时为强调样式“分配”）、关联账户、删除。
 
 **API 调用**（按需加载）：
 - `getGrades()` - 加载年级选项
@@ -240,63 +244,79 @@ src/admin_portal/frontend/src/
 
 ### 2. 教师管理页面 (`/teachers`)
 
-**布局**：统计概览条 + 筛选栏 + 数据表格 + 授权弹窗 + 学科管理弹窗。
+**布局**：筛选栏 + 数据表格 + 服务端分页 + 授权弹窗 + 学科管理弹窗。
 
 **功能列表**：
 - 授予教师权限（搜索 Identity 用户 → 选择科目 → 授予）
 - 教师列表（查看科目、撤销权限）
-- 科目管理（增删教师负责科目，可关闭标签 X 按钮）
-- 未分配科目警告徽章
+- 学科管理（增删教师负责学科，可关闭标签 X 按钮）
+- 未分配学科警告徽章
 - 显示账号备注（从 Identity 服务批量获取用户备注信息，方便管理员识别教师身份）
+- 关键词、学科、页码和每页条数均传给 Teacher Portal，由数据库完成过滤、总数统计和分页；前端不得对单页结果做假分页
 
 **表格列**：
 | 列 | 说明 |
 |------|------|
+| 头像 | 36×36 用户头像 |
 | User ID | Identity 用户唯一标识 |
 | 手机号 | 用户手机号 |
 | 用户名 | 用户名 |
 | 备注 | 从 Identity 服务获取的账号备注，帮助管理员识别教师身份 |
-| 科目 | 教师负责的科目标签（可删除、可管理） |
+| 学科 | 教师负责的学科标签（可删除、可管理） |
 | 创建时间 | 教师记录创建时间 |
-| 更新时间 | 教师记录更新时间 |
-| 操作 | 撤销权限 |
+| 操作 | 学科（无学科时为强调样式“分配”）、撤销权限 |
 
 **数据加载流程**：
-1. 调用 `getTeachers()` 获取教师列表
-2. 收集所有教师的 `userId`，调用 `getUsersByIds(ids)` 批量获取 Identity 用户信息
+1. 调用 `getTeachers({ keyword, subject, page, pageSize })` 获取数据库分页结果
+2. 收集当前页教师的 `userId`，调用 `getUsersByIds(ids)` 批量获取 Identity 用户信息
 3. 通过 `userId` 映射，在表格中显示备注等 Identity 用户字段
 
 **API 调用**（按需加载）：
 - `getUsers(params)` - 搜索 Identity 用户
-- `getTeachers()` - 获取教师列表
+- `getTeachers(params)` - 按关键词/学科分页获取教师列表
 - `addTeacherByUserId(payload)` - 新增教师
 - `grantTeacher(userId, payload)` - 授予权限
 - `removeTeacherByUserId(userId)` - 撤销权限
-- `getTeacherSubjects(userId)` - 获取教师科目
-- `setTeacherSubjects(userId, subjects)` - 设置科目
-- `getAvailableSubjects()` - 获取可用科目
+- `getTeacherSubjects(userId)` - 获取教师学科
+- `setTeacherSubjects(userId, subjects)` - 设置学科
+- `getAvailableSubjects()` - 获取可用学科
 
 ---
 
 ### 3. 助教管理页面 (`/assistants`)
 
-**布局**：统计概览条 + 数据表格 + 授权弹窗 + 学科管理弹窗 + 学生关联 Drawer（右侧滑出）。
+**布局**：筛选栏 + 数据表格 + 服务端分页 + 授权弹窗 + 学科管理弹窗。
 
 **功能列表**：
 - 授予助教权限（搜索 Identity 用户 → 选择科目 → 授予）
-- 助教列表（查看科目、关联学生数、撤销权限）
-- 科目管理（增删助教负责科目）
-- 学生关联管理（右侧 Drawer：已关联学生 + 添加学生两个 section）
+- 助教列表（查看科目、撤销权限）
+- 学科管理（增删助教负责学科）
+- 未分配学科时显示警告徽章，并将“学科”操作替换为强调样式“分配”
+- 关键词、学科、页码和每页条数均传给 Assistant Portal，由数据库完成过滤、总数统计和分页；前端不得对单页结果做假分页
+
+**表格列**：头像、ID、手机号、用户名、备注、学科、创建时间、操作。
+
+**操作列**：学科（无学科时为强调样式“分配”）、撤销权限。
 
 **API 调用**：
-- `assistantPortalApi.getAssistants()` - 助教列表
+- `assistantPortalApi.getAssistants(params)` - 按关键词/学科分页获取助教列表
 - `assistantPortalApi.grantAssistant(userId, payload)` - 授予
 - `assistantPortalApi.revokeAssistant(userId)` - 撤销
-- `assistantPortalApi.getAssistantStudents(userId)` - 关联学生列表
-- `assistantPortalApi.addAssistantStudent(userId, studentId)` - 添加学生
-- `assistantPortalApi.removeAssistantStudent(userId, studentId)` - 移除学生
 - `assistantPortalApi.setAssistantSubjects(userId, subjects)` - 设置科目
-- `studentAdminClient.getStudents(params)` - 搜索学生
+
+---
+
+### 用户管理页面统一视觉约定
+
+- 三个页面第一列表头统一为“头像”，列表头像统一为 36×36；弹窗信息横幅头像统一为 40×40
+- ID 列宽统一为 200px，创建时间列宽统一为 130px，操作列统一预留 260px 并右对齐
+- 姓名/用户名保持各自业务命名，但单元格均左对齐、`font-weight: 500`
+- 筛选栏统一使用主按钮“搜索”和次级按钮“重置”，筛选控件高度统一为 36px
+- 表单统一使用 `--adm-surface-elevated` 背景、主文本标签、18px 组间距、`9px 12px` 输入内边距和 2px 必填标记左间距
+- 列表学科标签统一使用全局 `.adm-subj-tag`；可删除标签通过统一的关闭按钮扩展样式实现
+- 学科选择网格统一使用带 16×16 自定义勾选框的结构
+- Identity 用户搜索项统一包含 30×30 头像、主名称、手机号/显示名等次要信息和选中状态
+- 表格、筛选控件、弹窗、表单、头像、用户搜索项、学科标签/网格、信息横幅等三页共用样式统一定义在 `src/style.css`；组件 `<style scoped>` 仅保留页面专属样式
 
 ---
 
@@ -477,7 +497,7 @@ src/admin_portal/frontend/src/
 
 | 方法 | HTTP | 路径 | 说明 |
 |------|------|------|------|
-| `getTeachers()` | GET | `/api/teacher-portal/admin/teachers` | 获取教师列表 |
+| `getTeachers(params)` | GET | `/api/teacher-portal/admin/teachers` | 按 keyword/subject/page/pageSize 分页获取教师 |
 | `addTeacherByUserId(payload)` | POST | `/api/teacher-portal/admin/teachers/by-user` | 新增教师 |
 | `grantTeacher(userId, payload)` | POST | `/api/teacher-portal/admin/identity-users/:userId/grant-teacher` | 授予权限 |
 | `removeTeacherByUserId(userId)` | DELETE | `/api/teacher-portal/admin/teachers/by-user/:userId` | 撤销权限 |
@@ -487,6 +507,19 @@ src/admin_portal/frontend/src/
 | `addTeacherSubject(userId, subject)` | POST | `/api/teacher-portal/admin/teachers/:userId/subjects/:subject` | 添加科目 |
 | `removeTeacherSubject(userId, subject)` | DELETE | `/api/teacher-portal/admin/teachers/:userId/subjects/:subject` | 移除科目 |
 | `getAvailableSubjects()` | GET | `/api/teacher-portal/admin/available-subjects` | 可用科目 |
+
+### assistantPortalApi.ts
+
+| 方法 | HTTP | 路径 | 说明 |
+|------|------|------|------|
+| `getAssistants(params)` | GET | `/api/assistant-portal/admin/assistants` | 按 keyword/subject/page/pageSize 分页获取助教 |
+| `grantAssistant(userId, payload)` | POST | `/api/assistant-portal/admin/identity-users/:userId/grant-assistant` | 授予权限 |
+| `revokeAssistant(userId)` | POST | `/api/assistant-portal/admin/identity-users/:userId/revoke-assistant` | 撤销权限 |
+| `getAssistantSubjects(userId)` | GET | `/api/assistant-portal/admin/assistants/:userId/subjects` | 获取助教学科 |
+| `setAssistantSubjects(userId, subjects)` | PUT | `/api/assistant-portal/admin/assistants/:userId/subjects` | 设置学科 |
+| `addAssistantSubject(userId, subject)` | POST | `/api/assistant-portal/admin/assistants/:userId/subjects/:subject` | 添加学科 |
+| `removeAssistantSubject(userId, subject)` | DELETE | `/api/assistant-portal/admin/assistants/:userId/subjects/:subject` | 移除学科 |
+| `getAvailableSubjects()` | GET | `/api/assistant-portal/admin/available-subjects` | 可用学科 |
 
 ### ossAuditApi.ts
 
@@ -505,6 +538,14 @@ src/admin_portal/frontend/src/
 ```typescript
 interface PaginatedResponse<T> {
   items: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+interface PortalPagedResponse<T> {
+  success: boolean;
+  data: T[];
   total: number;
   page: number;
   pageSize: number;
@@ -588,7 +629,7 @@ interface EnumOptionsResponse {
 
 - **UI 框架**：Element Plus，使用 `size="small"` 紧凑模式
 - **布局**：侧边栏导航（含二级菜单）+ 主内容区，各页面独立
-- **分页**：统一每页 20 条
+- **分页**：用户管理列表默认每页 20 条；学生由 Student 服务分页，教师/助教分别由 Teacher Portal / Assistant Portal 在数据库查询中完成过滤、计数与分页，前端只渲染服务端返回的当前页
 - **懒加载路由**：按需加载页面组件
 - **按需调用 API**：每个页面只调用自己需要的接口
 - **错误处理**：Axios 错误统一提取 `response.data.message`，使用 `ElMessage.error` 提示

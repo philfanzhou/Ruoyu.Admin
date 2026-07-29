@@ -30,13 +30,28 @@ export interface SubjectOption {
   name: string
 }
 
+export interface AssistantListParams {
+  keyword?: string
+  subject?: number
+  page?: number
+  pageSize?: number
+}
+
+export interface AssistantPagedResponse {
+  success: boolean
+  data: AssistantAccountDto[]
+  total: number
+  page: number
+  pageSize: number
+}
+
 import { checkSuccess } from './apiBase'
 
 class AssistantPortalApiClient {
   private client = httpClient
 
-  async getAssistants() {
-    const response = await this.client.get<{ success: boolean; data: AssistantAccountDto[] }>('/api/assistant-portal/admin/assistants')
+  async getAssistants(params: AssistantListParams = {}) {
+    const response = await this.client.get<AssistantPagedResponse>('/api/assistant-portal/admin/assistants', { params })
     return response.data
   }
 
