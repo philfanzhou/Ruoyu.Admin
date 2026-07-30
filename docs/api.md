@@ -82,7 +82,7 @@ Admin Portal 采用 **mode-1 集成部署**：同一容器（端口 5020）既�
 }
 ```
 
-> **变更**：2026 年 6 月起不再返回 `mistakeTypes` 字段，错题错误类型已下线（参见 [ruoyu.common/constants.md](../ruoyu.common/docs/constants.md) 历史记录）。
+> **变更**：2026 年 6 月起不再返回 `mistakeTypes` 字段，错题错误类型已下线（参见 [ruoyu.common/constants.md](../../ruoyu.common/docs/constants.md) 历史记录）。
 
 ---
 

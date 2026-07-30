@@ -94,4 +94,4 @@ Admin Portal 依赖以下下游服务运行：
 
 > **Phase 4 变更**：Student Service 不可用时，影响范围扩大（新增图片预签名 URL、图片迁移、路径聚合）。Mistake Service 不可用时，审计 Mistake 路径聚合跳过而非完全失败。OSS 存储仅影响审计场景，图片查看已改为 gRPC 预签名 URL 不再直接依赖 OSS。
 
-> 详细配置说明见 [deployment.md](../deployment.md)
+> 详细配置说明见 [Deployment.md](./Deployment.md)
