@@ -11,8 +11,5 @@ Admin Portal 是 Ruoyu.Study 的管理后台服务，负责学生管理、上传
 | [Integration/](./Integration/README.md) | 外部系统交互 |
 | [database/](./database/README.md) | 数据结构与数据主责 |
 | [development/](./development/README.md) | 开发执行支持 |
-| [AgentReviewNotes.md](./AgentReviewNotes.md) | 审阅遗留项 |
-| [AgentExecutionAudit.md](./AgentExecutionAudit.md) | 执行审计 |
-| [AgentAnnotationResolutionAudit.md](./AgentAnnotationResolutionAudit.md) | 批注整改审计 |
 | [api.md](./api.md) | 补充接口文档 |
-| [deployment.md](./deployment.md) | 部署说明 |
+| [development/Deployment.md](./development/Deployment.md) | 部署说明 |
