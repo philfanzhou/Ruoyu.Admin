@@ -140,12 +140,7 @@ builder.Services.AddSingleton<IOssService>(sp =>
         return new LocalFileOssService(localPath);
     }
     var ossOptions = builder.Configuration.GetSection("Oss").Get<OssOptions>() ?? new OssOptions();
-    return new S3OssService(
-        ossOptions.Endpoint,
-        ossOptions.AccessKey,
-        ossOptions.SecretKey,
-        ossOptions.BucketName,
-        publicEndpoint: ossOptions.PublicEndpoint);
+    return new S3OssService(ossOptions);
     // 不配置 allowedPrefixes：Admin Portal 需要访问所有路径前缀（审计+运维）
 });
 
