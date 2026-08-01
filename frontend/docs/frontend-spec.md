@@ -643,7 +643,7 @@ interface EnumOptionsResponse {
   - **Bearer 通道**：axios 请求（API 调用）走 `Authorization: Bearer <jwt>`，token 从 localStorage 读取（由 `services/httpClient.ts` 拦截器注入）
   - **Cookie 通道**：登录成功时后端 `AdminAuthController.Login` 把同一份 JWT 写入 HttpOnly cookie（`adminAuthToken`，SameSite=Strict，Path=/）。`<img>` 标签的图片请求自动携带该 cookie。后端 `AddJwtBearer` 的 `OnMessageReceived` 事件优先读 Authorization 头，缺失时回退读 cookie，保证 `[Authorize]` 端点对两种通道都生效
   - **退出登录时**：后端 `AdminAuthController.Logout` 清除 cookie；前端 `clearAuth()` 清除 localStorage
-- **图片端点 URL 约定**：`GET /api/admin/image?path=<ossPath>&size=<small|medium|空>`，保留 `[Authorize]`（由 cookie 通道鉴权），返回 302 重定向到 OSS presigned URL，浏览器跟随重定向后从 nginx `/oss/` 代理拉取图片。
+- **图片端点 URL 约定**：`GET /api/admin/image?path=<ossPath>&size=<small|medium|空>`，保留 `[Authorize]`（由 cookie 通道鉴权），返回 302 重定向到 OSS presigned URL；浏览器随后从平台公共 `https://oss.example.com/oss/` 入口拉取图片，该入口由 User Web Nginx 统一代理。
   - 列表缩略图：`size=small`
   - 详情页中等图：`size=medium`
   - 详情页点击放大预览：不传 `size`（返回原图）

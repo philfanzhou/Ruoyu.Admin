@@ -22,7 +22,6 @@
 | 9 | 出站 | gRPC Client | Student Service | gRPC (h2c) | `StudentGrpcService:Address` (默认 `:5005`) | 图片迁移 | `StudentLearningGrpcService`: MigrateImagesToMistake |
 | 10 | 出站 | S3 API | OSS 存储 | S3 / 本地文件 | `Oss:*` 配置 | 审计浏览+僵尸清理+迁移辅助 | `IOssService`: ListObjectsAsync, DeleteAsync（自动清理关联缩略图）, CopyObjectAsync, GetPresignedUrl, ObjectExists；无路径前缀校验（审计需访问所有路径前缀） |
 | 11 | 入站 | HTTP | 前端 Web UI | HTTP/JSON | `AdminApi:Port` (默认 `:5020`) | 管理 API | 所有 `/api/admin/*` 路由 |
-| 12 | 入站 | HTTP | Nginx 容器 → SeaweedFS | HTTP | Nginx 配置 | OSS 对象代理 | `/oss/*` → `http://ruoyu-seaweedfs:8333`，strip `/oss/` 前缀，`proxy_set_header Host ruoyu-seaweedfs:8333` |
 
 ## 失败语义总结
 

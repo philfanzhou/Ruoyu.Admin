@@ -24,7 +24,6 @@ Admin Portal 是 Ruoyu.Study 平台的**管理后台服务**，为管理员提�
                     ┌─────────────────────────┐
                     │   Nginx 容器             │
                     │   前端静态文件 + 反向代理  │
-                    │   /oss/ → SeaweedFS      │
                     └───────────┬─────────────┘
                                 │ HTTP/JSON
                                 ▼
@@ -65,7 +64,7 @@ Admin Portal 是 Ruoyu.Study 平台的**管理后台服务**，为管理员提�
 |------|------|
 | 调用方 | 管理员浏览器 |
 | 协议 | HTTPS |
-| 说明 | 管理员通过浏览器访问 Nginx 容器，Nginx 提供前端静态文件服务和 API/OSS 反向代理 |
+| 说明 | 管理员通过浏览器访问前端，前端容器或集成式 ASP.NET Core Host 提供静态文件和 API 入口 |
 
 ### Nginx 容器 → Admin Portal API
 
@@ -76,16 +75,15 @@ Admin Portal 是 Ruoyu.Study 平台的**管理后台服务**，为管理员提�
 | 路由前缀 | `/api/admin/*` |
 | 说明 | Nginx 将 API 请求代理到 Admin Portal 后端 |
 
-### Nginx 容器 → SeaweedFS（OSS 代理）
+### 管理员浏览器 → 公共 OSS 入口
 
 | 属性 | 值 |
 |------|------|
-| 调用方 | Nginx 容器 |
-| 协议 | HTTP |
+| 调用方 | 管理员浏览器 |
+| 协议 | HTTPS |
 | 路由前缀 | `/oss/*` |
-| 代理目标 | `http://ruoyu-seaweedfs:8333` |
-| 路径重写 | strip `/oss/` 前缀 |
-| 说明 | 前端通过 Nginx 代理访问 OSS 预签名 URL 中的对象，`proxy_set_header Host ruoyu-seaweedfs:8333` 确保 S3 签名验证通过 |
+| 公共入口 | `https://oss.example.com/oss/*` |
+| 说明 | Admin API 返回 302 预签名地址后，浏览器访问平台公共 OSS 入口；仓库内由 User Web Nginx 统一代理，Admin Nginx 不再维护 `/oss/` location |
 
 ## 下游（被调用方）
 
@@ -145,10 +143,10 @@ Admin Portal 是 Ruoyu.Study 平台的**管理后台服务**，为管理员提�
 | 属性 | 值 |
 |------|------|
 | 协议 | S3 兼容 API / 本地文件系统 |
-| 配置键 | `Oss:Endpoint`, `Oss:AccessKey`, `Oss:SecretKey`, `Oss:BucketName`, `Oss:PublicEndpoint` |
+| 配置键 | `Oss:InternalEndpoint`, `Oss:InternalSecure`, `Oss:AccessKey`, `Oss:SecretKey`, `Oss:BucketName`, `Oss:PublicBaseUrl` |
 | 环境变量切换 | `USE_LOCAL_OSS=1` → 使用 `LocalFileOssService` |
 | 使用场景 | 审计 ListObjects、清理 DeleteObject（权限降级为只读+有限写） |
-| Nginx 代理 | `/oss/` → SeaweedFS（strip `/oss/` 前缀），`Oss:PublicEndpoint` 控制预签名 URL 替换 |
+| 公网访问 | `Oss:PublicBaseUrl` 控制预签名公共地址；User Web Nginx 负责 `/oss/` 代理 |
 
 ## 服务边界
 

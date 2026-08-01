@@ -1,104 +1,56 @@
-# 部署与运�?
+# 部署与运维
 
-## 构建与部�?
+## 构建与启动
 
-- Dockerfile：`backend/Dockerfile`
-- 部署脚本：`start.sh`（仓库根 `src/admin_portal/start.sh`）
-- 注意：`Admin.WebApi.Persistence` 命名空间包含 `AuditDbContext` 和实体类，必须在构建前存在
+- 集成镜像：`backend/Admin.WebApi/Dockerfile`，先构建 Vue 前端，再把产物复制到 API 的 `wwwroot`。
+- 启动脚本：仓库根 `src/admin_portal/start.sh`。
+- 容器：`ruoyu-admin`，容器内监听 5020，默认映射到宿主机 10901。
+- 独立前端镜像位于 `frontend/Dockerfile`，其 Nginx 只提供静态文件和 Admin API 代理，不负责 `/oss/`。
 
-## 部署模式
+## 配置加载
 
-### 模式一：前后端集成部署（原有）
+Admin API 启动时通过 Consul `config/ruoyu/*` 加载 PostgreSQL、OSS 和下游服务共享配置。`start.sh` 注入 Consul 地址、数据库名和 Identity 应用凭据。
 
-前端构建产物部署到后�?`wwwroot` 目录，由 ASP.NET Core 提供静态文件服务。单一容器部署�?
-
-### 模式二：Nginx 容器前后端分离部署（oss-nginx-proxy 变更�?
-
-新增 Nginx 容器，前端静态文件由 Nginx 提供，API 请求代理到后端，OSS 对象通过 `/oss/` 路径代理�?SeaweedFS�?
-
-**Nginx 容器职责**�?
-- 提供前端静态文件服�?
-- `/api/` 请求代理�?Admin Portal 后端（`:5020`�?
-- `/oss/` 请求代理�?SeaweedFS（`:8333`），strip `/oss/` 前缀
-
-**Nginx OSS 代理配置**�?
-
-```nginx
-location /oss/ {
-    proxy_pass http://ruoyu-seaweedfs:8333/;
-    proxy_set_header Host ruoyu-seaweedfs:8333;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-    add_header Cache-Control "public, max-age=3600";
-}
-```
-
-关键配置说明�?
-- `proxy_pass` 末尾 `/`：strip `/oss/` 前缀，如 `/oss/ruoyu-study/mistakes/xxx/image.jpg` �?`/ruoyu-study/mistakes/xxx/image.jpg`
-- `proxy_set_header Host ruoyu-seaweedfs:8333`：S3 签名验证基于 Host 头，必须设为 SeaweedFS 内部地址
-- `Cache-Control: public, max-age=3600`�? 小时公共缓存，减�?SeaweedFS 请求压力
-
-## 配置�?
-
-### 数据库连�?
-
-```json
-{
-  "ConnectionStrings": {
-    "Default": "Host=ruoyu-postgres;Port=5432;Database=ruoyu_study_admin;Username=postgres;Password=postgres"
-  }
-}
-```
-
-### 服务端口
-
-| 端口 | 协议 | 用�?|
-|------|------|------|
-| 5020 | HTTP | 管理门户后端 + 健康检�?|
-| 5175 | HTTP | 管理门户前端 |
-| 80 | HTTP | Nginx 容器（前端静态文�?+ API/OSS 反向代理�?|
-
-### 下游服务配置
-
-| 依赖服务 | 地址 | 协议 |
-|----------|------|------|
-| Student 服务 | `http://ruoyu-student:5005` | HTTP |
-| Mistake 服务 | `http://ruoyu-mistake:5007` | HTTP |
-| Identity 服务 | `http://ruoyu-identity:5002` | HTTP |
-| Teacher Portal | `http://ruoyu-teacher-portal-api:5004` | HTTP |
-| SeaweedFS (OSS) | `http://ruoyu-seaweedfs:8333` | S3 API |
-
-> **变更说明**：Student/Mistake 服务已从 gRPC 迁移至 HTTP（详见各服务 Program.cs）。Admin Portal 通过 `Ruoyu.Study.MistakeBff.HttpClients` 项目中的 `StudentHttpClient`/`MistakeHttpClient` 发起 HTTP 调用，不再依赖 Contract proto 项目。
-
-### PublicEndpoint 配置
-
-使用 Nginx 容器部署时，需配置 `Oss:PublicEndpoint` 使预签名 URL 指向 Nginx 代理地址�?
+### OSS
 
 ```json
 {
   "Oss": {
-    "Endpoint": "ruoyu-seaweedfs:8333",
+    "InternalEndpoint": "10.20.30.40:8333",
+    "InternalSecure": false,
     "AccessKey": "seaweedfs_admin",
     "SecretKey": "seaweedfs_admin",
     "BucketName": "ruoyu-study",
-    "PublicEndpoint": "https://admin.example.com"
+    "PublicBaseUrl": "https://oss.example.com/oss"
   }
 }
 ```
 
-`PublicEndpoint` 非空时，`GetPresignedUrlAsync` 生成的预签名 URL 会将 scheme+host 替换�?`{PublicEndpoint}/oss`，前端通过 Nginx `/oss/` 代理访问 OSS 对象�?
+- `InternalEndpoint/InternalSecure`：Admin 后端审计、清理、下载和迁移辅助使用的实际 S3 连接。
+- `PublicBaseUrl`：`GetPresignedUrlAsync` 使用的公共签名地址。
+- 浏览器访问 `/oss/` 时由 User Web Nginx 统一代理；Admin Nginx 不维护 SeaweedFS 上游地址。
+- `USE_LOCAL_OSS=1` 时使用 `LocalFileOssService`，目录由 `OSS_LOCAL_PATH` 指定，默认 `data/oss`。
 
-## 健康检�?
+### 下游服务
 
-- 端点：`/health`（端�?5020�?
+| 依赖 | 默认地址 | 协议 |
+|------|----------|------|
+| Student | `http://ruoyu-student:5005` | HTTP |
+| Mistake | `http://ruoyu-mistake:5007` | HTTP |
+| Identity | `http://ruoyu-identity:5002` | HTTP |
+| Teacher Portal | `http://ruoyu-teacher-api:5004` | HTTP |
+| Assistant Portal | `http://ruoyu-assistant-api:5021` | HTTP |
+| SeaweedFS | `Oss:InternalEndpoint` | S3 |
+
+## 健康检查
+
+```text
+GET /health
+```
 
 ## 数据库备份与恢复
 
 ```bash
-# 备份
-docker exec ruoyu-postgres pg_dump -U postgres ruoyu_study_admin | gzip > backup_admin_$(date +%Y%m%d_%H%M%S).sql.gz
-
-# 恢复
-gunzip -c backup_admin_20240101_020000.sql.gz | docker exec -i ruoyu-postgres psql -U postgres -d ruoyu_study_admin
+docker exec ruoyu-postgres pg_dump -U postgres ruoyu_admin | gzip > backup_admin.sql.gz
+gunzip -c backup_admin.sql.gz | docker exec -i ruoyu-postgres psql -U postgres -d ruoyu_admin
 ```

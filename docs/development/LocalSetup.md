@@ -61,15 +61,15 @@ Admin Portal 通过 `SharedPostgreSqlConnectionStringFactory.BuildOrFallback` �
 
    > 本地开发使用 `LocalFileOssService`（`USE_LOCAL_OSS=1`）时无权限限制；生产环境需配置对应权限的 OSS 凭证。
 
-5. PublicEndpoint 配置（oss-nginx-proxy 变更）：
-
-   `Oss:PublicEndpoint` 为可选配置，用于将预签名 URL 的内部 SeaweedFS 地址替换为外部可访问的 Nginx 代理地址。本地开发通常不需要配置此项。
+5. OSS 地址配置：
 
    | 配置键 | 说明 | 示例 |
    |--------|------|------|
-   | `Oss:PublicEndpoint` | 公共访问端点（可选） | `https://admin.example.com` |
+   | `Oss:InternalEndpoint` | Admin 后端实际连接的 S3 地址 | `localhost:8333` |
+   | `Oss:InternalSecure` | 内部连接是否使用 HTTPS | `false` |
+   | `Oss:PublicBaseUrl` | 浏览器使用的预签名公共基础 URL | `https://oss.example.com/oss` |
 
-   > 非空时，预签名 URL 的 scheme+host 替换为 `{PublicEndpoint}/oss`，前端通过 Nginx `/oss/` 代理访问 OSS。
+   本地开发使用 `LocalFileOssService` 时不读取这些 S3 地址。Admin 前端 Nginx 不提供 `/oss/` 代理，公共对象由 User Web Nginx 统一代理。
 
 ## 前端配置
 
