@@ -7,7 +7,7 @@ OSS 审计运行记录表，记录每次审计任务的执行状态和结果。
 | 属性 | 值 |
 |------|------|
 | 表名 | `OssAuditRuns` |
-| 所属数据库 | `ruoyu_study_admin`（PostgreSQL） |
+| 所属数据库 | `ruoyu_admin`（PostgreSQL） |
 | 实体类 | `Admin.WebApi.Persistence.OssAuditRun` |
 | DbContext | `AuditDbContext` |
 

@@ -21,12 +21,13 @@
 | 配置键 | 默认值 | 说明 |
 |--------|--------|------|
 | `AdminApi:Port` | 5020 | API 监听端口 |
-| `ConnectionStrings:AuditDb` | `Host=localhost;Port=5432;Database=ruoyu_study_admin;Username=phil` | 审计数据库连接串（dev 兜底，生产由 Consul 覆盖） |
-| `Database:Name` | `ruoyu_study_admin` | 数据库名（与 Consul `PostgreSql:*` 合成连接串时使用） |
-| `StudentGrpcService:Address` | `http://localhost:5005` | Student gRPC 服务 |
-| `MistakeGrpcService:Address` | `http://localhost:5006` | Mistake gRPC 服务 |
+| `ConnectionStrings:AuditDb` | `Host=localhost;Port=5432;Database=ruoyu_admin;Username=phil` | 审计数据库连接串（dev 兜底，生产由 Consul 覆盖） |
+| `Database:Name` | `ruoyu_admin` | 数据库名（与 Consul `PostgreSql:*` 合成连接串时使用） |
+| `StudentService:Url` | `http://localhost:5005` | Student HTTP 服务 |
+| `MistakeService:Url` | `http://localhost:5007` | Mistake HTTP 服务 |
 | `IdentityService:Authority` | `http://localhost:5002` | Identity HTTP 服务（JWT OIDC discovery + HTTP 代理） |
 | `TeacherPortal:Url` | `http://localhost:5004` | Teacher Portal HTTP 服务 |
+| `AssistantPortal:Url` | `http://localhost:5021` | Assistant Portal HTTP 服务 |
 
 ### 数据库连接策略
 
@@ -87,11 +88,12 @@ Admin Portal 依赖以下下游服务运行：
 | 服务 | 端口 | 必要性 | 不可用时影响 |
 |------|------|--------|-------------|
 | Student Service | 5005 | 必须 | 学生管理、上传记录、图片预签名 URL、图片迁移均不可用；审计路径聚合不可用 |
-| Mistake Service | 5006 | 必须 | 错题管理、图片预签名 URL 不可用；审计 Mistake 路径聚合跳过（可能误报） |
+| Mistake Service | 5007 | 必须 | 错题管理、图片预签名 URL 不可用；审计 Mistake 路径聚合跳过（可能误报） |
 | Identity Service | 5002 | 可选 | 身份代理返回 502；账户批量查询返回空列表 |
 | Teacher Portal | 5004 | 可选 | 教师门户代理返回 502/503 |
-| OSS 存储 | - | 必须（审计场景） | 审计浏览、僵尸清理不可用；图片查看走 gRPC 预签名 URL 不受影响 |
+| Assistant Portal | 5021 | 可选 | 助教门户代理返回 502/503 |
+| OSS 存储 | - | 必须（审计场景） | 审计浏览、僵尸清理不可用；图片查看通过下游 HTTP 服务获取预签名 URL |
 
-> **Phase 4 变更**：Student Service 不可用时，影响范围扩大（新增图片预签名 URL、图片迁移、路径聚合）。Mistake Service 不可用时，审计 Mistake 路径聚合跳过而非完全失败。OSS 存储仅影响审计场景，图片查看已改为 gRPC 预签名 URL 不再直接依赖 OSS。
+> **Phase 4 变更**：Student Service 不可用时，影响范围扩大（新增图片预签名 URL、图片迁移、路径聚合）。Mistake Service 不可用时，审计 Mistake 路径聚合跳过而非完全失败。OSS 存储仅影响审计场景，图片查看已改为通过下游 HTTP 服务获取预签名 URL，不再由 Admin 直接读取对象内容。
 
 > 详细配置说明见 [Deployment.md](./Deployment.md)

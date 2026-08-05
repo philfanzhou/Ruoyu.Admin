@@ -236,9 +236,9 @@ Admin Portal 不维护 `/oss/` Nginx location。Admin API 使用 `Oss:PublicBase
 |--------|------|
 | `AdminApi:Port` | 服务监听端口 |
 | `ConnectionStrings:AuditDb` | 审计数据库连接串（dev 兜底，生产由 Consul 覆盖） |
-| `Database:Name` | 数据库名（与 Consul `PostgreSql:*` 合成连接串，`ruoyu_study_admin`） |
-| `StudentGrpcService:Address` | Student gRPC 服务地址 |
-| `MistakeGrpcService:Address` | Mistake gRPC 服务地址 |
+| `Database:Name` | 数据库名（与 Consul `PostgreSql:*` 合成连接串，`ruoyu_admin`） |
+| `StudentService:Url` | Student HTTP 服务地址 |
+| `MistakeService:Url` | Mistake HTTP 服务地址 |
 | `IdentityService:*` | Identity 服务地址和认证信息 |
 | `TeacherPortal:*` | Teacher Portal 地址和 API Key |
 | `OssAudit:*` | 审计定时任务配置 |

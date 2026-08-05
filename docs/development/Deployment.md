@@ -5,11 +5,12 @@
 - 集成镜像：`backend/Admin.WebApi/Dockerfile`，先构建 Vue 前端，再把产物复制到 API 的 `wwwroot`。
 - 启动脚本：仓库根 `src/admin_portal/start.sh`。
 - 容器：`ruoyu-admin`，容器内监听 5020，默认映射到宿主机 10901。
+- 容器使用 Docker 默认 bridge，不依赖 `ruoyu-net` 或容器名解析；跨主机依赖通过 Consul KV 中的局域网地址访问。
 - 独立前端镜像位于 `frontend/Dockerfile`，其 Nginx 只提供静态文件和 Admin API 代理，不负责 `/oss/`。
 
 ## 配置加载
 
-Admin API 启动时通过 Consul `config/ruoyu/*` 加载 PostgreSQL、OSS 和下游服务共享配置。`start.sh` 注入 Consul 地址、数据库名和 Identity 应用凭据。
+Admin API 启动时通过 Consul `config/ruoyu/*` 加载 PostgreSQL、OSS 和下游服务共享配置。`start.sh` 注入 Consul 地址、数据库名 `ruoyu_admin` 和 Identity 应用凭据。仓库脚本中的 `127.0.0.1` 是假内网示例，部署时通过 `CONSUL_HTTP_ADDR` 指向实际 Consul 地址。
 
 ### OSS
 
@@ -38,17 +39,20 @@ Admin API 启动时通过 Consul `config/ruoyu/*` 加载 PostgreSQL、OSS 和下
 | Student | `http://127.0.0.1:5005`（示例内网地址） | HTTP |
 | Mistake | `http://127.0.0.1:5007`（仓库假内网示例） | HTTP |
 | Identity | `http://127.0.0.1:5002`（仓库假内网示例） | HTTP |
-| Teacher Portal | `http://ruoyu-teacher-api:5004` | HTTP |
-| Assistant Portal | `http://ruoyu-assistant-api:5021` | HTTP |
+| Teacher Portal | `http://127.0.0.1:5004`（仓库假内网示例） | HTTP |
+| Assistant Portal | `http://127.0.0.1:5021`（仓库假内网示例） | HTTP |
 | SeaweedFS | `Oss:InternalEndpoint` | S3 |
 
-Student 地址来自 Consul `StudentService:Url`。跨主机迁移时需要同时更新 seed/live KV，并重启 Admin Portal API 才会加载新值。
+下游地址分别来自 Consul 的 `StudentService:Url`、`MistakeService:Url`、`IdentityService:Authority`、`TeacherPortal:Url` 和 `AssistantPortal:Url`。跨主机迁移时需要更新 live KV（需要时再同步 seed KV），并重启 Admin Portal 才会加载新值。
 
 ## 健康检查
 
-```text
-GET /health
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:10901/
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:10901/api/admin/students
 ```
+
+首页应返回 200；未携带登录凭据访问受保护的 Admin API 应返回 401。再结合 `docker inspect ruoyu-admin` 的运行状态、重启次数和启动日志判断服务是否稳定。
 
 ## 数据库备份与恢复
 

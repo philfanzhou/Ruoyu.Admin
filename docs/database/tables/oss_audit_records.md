@@ -7,7 +7,7 @@ OSS 僵尸对象审计记录表，存储被检测到未被任何业务引用的 
 | 属性 | 值 |
 |------|------|
 | 表名 | `OssAuditRecords` |
-| 所属数据库 | `ruoyu_study_admin`（PostgreSQL） |
+| 所属数据库 | `ruoyu_admin`（PostgreSQL） |
 | 实体类 | `Admin.WebApi.Persistence.OssAuditRecord` |
 | DbContext | `AuditDbContext` |
 
