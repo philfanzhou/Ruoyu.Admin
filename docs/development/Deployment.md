@@ -36,8 +36,8 @@ Admin API 启动时通过 Consul `config/ruoyu/*` 加载 PostgreSQL、OSS 和下
 | 依赖 | 默认地址 | 协议 |
 |------|----------|------|
 | Student | `http://127.0.0.1:5005`（示例内网地址） | HTTP |
-| Mistake | `http://ruoyu-mistake:5007` | HTTP |
-| Identity | `http://ruoyu-identity:5002` | HTTP |
+| Mistake | `http://127.0.0.1:5007`（仓库假内网示例） | HTTP |
+| Identity | `http://127.0.0.1:5002`（仓库假内网示例） | HTTP |
 | Teacher Portal | `http://ruoyu-teacher-api:5004` | HTTP |
 | Assistant Portal | `http://ruoyu-assistant-api:5021` | HTTP |
 | SeaweedFS | `Oss:InternalEndpoint` | S3 |
