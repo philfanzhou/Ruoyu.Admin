@@ -35,12 +35,14 @@ Admin API 启动时通过 Consul `config/ruoyu/*` 加载 PostgreSQL、OSS 和下
 
 | 依赖 | 默认地址 | 协议 |
 |------|----------|------|
-| Student | `http://ruoyu-student:5005` | HTTP |
+| Student | `http://127.0.0.1:5005`（示例内网地址） | HTTP |
 | Mistake | `http://ruoyu-mistake:5007` | HTTP |
 | Identity | `http://ruoyu-identity:5002` | HTTP |
 | Teacher Portal | `http://ruoyu-teacher-api:5004` | HTTP |
 | Assistant Portal | `http://ruoyu-assistant-api:5021` | HTTP |
 | SeaweedFS | `Oss:InternalEndpoint` | S3 |
+
+Student 地址来自 Consul `StudentService:Url`。跨主机迁移时需要同时更新 seed/live KV，并重启 Admin Portal API 才会加载新值。
 
 ## 健康检查
 
