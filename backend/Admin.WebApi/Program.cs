@@ -28,6 +28,7 @@ const int httpPort = 5020;
 
 var studentServiceUrl = builder.Configuration["StudentService:Url"] ?? "http://localhost:5005";
 var mistakeServiceUrl = builder.Configuration["MistakeService:Url"] ?? "http://localhost:5007";
+var homeworkServiceUrl = builder.Configuration["HomeworkService:Url"] ?? "http://localhost:5009";
 
 builder.WebHost.ConfigureKestrel(options =>
 {
@@ -40,6 +41,11 @@ builder.Services.AddStudentHttpClient(studentServiceUrl);
 
 // Mistake service: HTTP (migrated from gRPC)
 builder.Services.AddMistakeHttpClient(mistakeServiceUrl);
+builder.Services.AddHttpClient<HomeworkReferenceClient>(client =>
+{
+    client.BaseAddress = new Uri(homeworkServiceUrl);
+    client.Timeout = TimeSpan.FromSeconds(30);
+});
 
 // ========== Authentication (JWT Bearer via Identity OIDC) ==========
 // Admin portal authenticates via Identity-issued JWT. The admin role is injected by Identity

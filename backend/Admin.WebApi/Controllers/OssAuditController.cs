@@ -20,6 +20,7 @@ public partial class OssAuditController : ControllerBase
     private readonly IOssService _ossService;
     private readonly OssAuditWorker _auditWorker;
     private readonly ILogger<OssAuditController> _logger;
+    private readonly HomeworkReferenceClient? _homeworkClient;
 
     public OssAuditController(
         AuditDbContext dbContext,
@@ -27,7 +28,8 @@ public partial class OssAuditController : ControllerBase
         IMistakeHttpClient mistakeClient,
         IOssService ossService,
         OssAuditWorker auditWorker,
-        ILogger<OssAuditController> logger)
+        ILogger<OssAuditController> logger,
+        HomeworkReferenceClient? homeworkClient = null)
     {
         _dbContext = dbContext;
         _studentClient = studentClient;
@@ -35,6 +37,7 @@ public partial class OssAuditController : ControllerBase
         _ossService = ossService;
         _auditWorker = auditWorker;
         _logger = logger;
+        _homeworkClient = homeworkClient;
     }
 
     [HttpGet("records")]
@@ -166,8 +169,8 @@ public partial class OssAuditController : ControllerBase
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "删除前无法验证 Student 服务引用");
-                return StatusCode(502, new ErrorResponse("Student 服务不可用，无法安全删除。"));
+                _logger.LogError(ex, "删除前无法验证 Student/Homework 服务引用");
+                return StatusCode(502, new ErrorResponse("Student 或 Homework 服务不可用，无法安全删除。"));
             }
 
             try
@@ -243,8 +246,8 @@ public partial class OssAuditController : ControllerBase
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "批量删除前无法验证 Student 服务引用");
-                return StatusCode(502, new ErrorResponse("Student 服务不可用，无法安全删除。"));
+                _logger.LogError(ex, "批量删除前无法验证 Student/Homework 服务引用");
+                return StatusCode(502, new ErrorResponse("Student 或 Homework 服务不可用，无法安全删除。"));
             }
 
             try
@@ -335,6 +338,9 @@ public partial class OssAuditController
 
             page++;
         }
+
+        if (_homeworkClient != null)
+            paths.UnionWith(await _homeworkClient.GetAllImagePathsAsync());
 
         return paths;
     }

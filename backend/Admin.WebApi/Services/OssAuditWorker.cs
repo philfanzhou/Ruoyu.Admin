@@ -95,6 +95,7 @@ public class OssAuditWorker : BackgroundService
                 .GetRequiredService<IStudentHttpClient>();
             var mistakeClient = scope.ServiceProvider
                 .GetRequiredService<IMistakeHttpClient>();
+            var homeworkClient = scope.ServiceProvider.GetRequiredService<HomeworkReferenceClient>();
 
             HashSet<string> registeredPaths;
             try
@@ -108,6 +109,22 @@ public class OssAuditWorker : BackgroundService
                 auditRun.Status = 2;
                 auditRun.CompletedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
                 auditRun.ErrorMessage = "Student service unavailable";
+                await dbContext.SaveChangesAsync(cancellationToken);
+                return;
+            }
+
+            try
+            {
+                var homeworkPaths = await homeworkClient.GetAllImagePathsAsync(cancellationToken);
+                registeredPaths.UnionWith(homeworkPaths);
+                _logger.LogInformation("Got {Count} referenced paths from Homework service", homeworkPaths.Count);
+            }
+            catch (HttpRequestException ex)
+            {
+                _logger.LogError("Homework service unavailable, aborting audit: {Message}", ex.Message);
+                auditRun.Status = 2;
+                auditRun.CompletedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                auditRun.ErrorMessage = "Homework service unavailable";
                 await dbContext.SaveChangesAsync(cancellationToken);
                 return;
             }
