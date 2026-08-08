@@ -64,17 +64,17 @@ class TeacherPortalApiClient {
 
   async addTeacherByUserId(payload: AddTeacherByUserIdRequest) {
     const response = await this.client.post<TeacherOperationResponse>('/api/teacher-portal/admin/teachers/by-user', payload)
-    return this.checkSuccess(response.data)
+    return checkSuccess(response.data)
   }
 
   async grantTeacher(userId: string, payload: GrantTeacherRequest) {
     const response = await this.client.post<TeacherOperationResponse>(`/api/teacher-portal/admin/identity-users/${encodeURIComponent(userId)}/grant-teacher`, payload)
-    return this.checkSuccess(response.data)
+    return checkSuccess(response.data)
   }
 
   async removeTeacherByUserId(userId: string) {
     const response = await this.client.delete<TeacherOperationResponse>(`/api/teacher-portal/admin/teachers/by-user/${encodeURIComponent(userId)}`)
-    return this.checkSuccess(response.data)
+    return checkSuccess(response.data)
   }
 
   async checkTeacher(userId: string, phone?: string) {
@@ -95,21 +95,21 @@ class TeacherPortalApiClient {
       `/api/teacher-portal/admin/teachers/${encodeURIComponent(userId)}/subjects`,
       { subjects } as SetSubjectsRequest
     )
-    return this.checkSuccess(response.data)
+    return checkSuccess(response.data)
   }
 
   async addTeacherSubject(userId: string, subject: number) {
     const response = await this.client.post<TeacherOperationResponse>(
       `/api/teacher-portal/admin/teachers/${encodeURIComponent(userId)}/subjects/${subject}`
     )
-    return this.checkSuccess(response.data)
+    return checkSuccess(response.data)
   }
 
   async removeTeacherSubject(userId: string, subject: number) {
     const response = await this.client.delete<TeacherOperationResponse>(
       `/api/teacher-portal/admin/teachers/${encodeURIComponent(userId)}/subjects/${subject}`
     )
-    return this.checkSuccess(response.data)
+    return checkSuccess(response.data)
   }
 
   async getAvailableSubjects() {

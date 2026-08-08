@@ -281,10 +281,10 @@ const currentTeacher = ref<TeacherAccountDto | null>(null)
 const selectedSubjects = ref<number[]>([])
 const savingSubjects = ref(false)
 
-const selectedUser = computed(() => {
-  if (!grantForm.value.selectedUserId) return null
-  return searchResults.value.find(u => u.userId === grantForm.value.selectedUserId) || null
-})
+// Keep the selected account separate from searchResults. Selecting an account
+// clears the dropdown results, so deriving this value from searchResults made
+// the selection banner disappear immediately after the click.
+const selectedUser = ref<IdentityUser | null>(null)
 
 function getDisplayName(t: TeacherAccountDto): string {
   if (t.username) return t.username
@@ -375,6 +375,7 @@ function onPageChange(nextPage: number) {
 function openGrantDialog() {
   grantForm.value = { keyword: '', selectedUserId: '', selectedSubjects: [] }
   searchResults.value = []
+  selectedUser.value = null
   showGrantDialog.value = true
 }
 
@@ -382,6 +383,7 @@ function closeGrantDialog() {
   showGrantDialog.value = false
   grantForm.value = { keyword: '', selectedUserId: '', selectedSubjects: [] }
   searchResults.value = []
+  selectedUser.value = null
 }
 
 async function searchUsers() {
@@ -407,12 +409,14 @@ async function searchUsers() {
 
 function selectUser(u: IdentityUser) {
   grantForm.value.selectedUserId = u.userId
+  selectedUser.value = u
   searchResults.value = []
   grantForm.value.keyword = ''
 }
 
 function clearSelectedUser() {
   grantForm.value.selectedUserId = ''
+  selectedUser.value = null
 }
 
 function toggleGrantSubject(subject: number) {

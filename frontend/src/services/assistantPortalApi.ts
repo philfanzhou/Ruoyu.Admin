@@ -57,12 +57,12 @@ class AssistantPortalApiClient {
 
   async grantAssistant(userId: string, payload: GrantAssistantRequest) {
     const response = await this.client.post<AssistantOperationResponse>(`/api/assistant-portal/admin/identity-users/${encodeURIComponent(userId)}/grant-assistant`, payload)
-    return this.checkSuccess(response.data)
+    return checkSuccess(response.data)
   }
 
   async revokeAssistant(userId: string) {
     const response = await this.client.post<AssistantOperationResponse>(`/api/assistant-portal/admin/identity-users/${encodeURIComponent(userId)}/revoke-assistant`)
-    return this.checkSuccess(response.data)
+    return checkSuccess(response.data)
   }
 
   async getAssistantSubjects(userId: string) {
@@ -75,21 +75,21 @@ class AssistantPortalApiClient {
       `/api/assistant-portal/admin/assistants/${encodeURIComponent(userId)}/subjects`,
       { subjects } as SetSubjectsRequest
     )
-    return this.checkSuccess(response.data)
+    return checkSuccess(response.data)
   }
 
   async addAssistantSubject(userId: string, subject: number) {
     const response = await this.client.post<AssistantOperationResponse>(
       `/api/assistant-portal/admin/assistants/${encodeURIComponent(userId)}/subjects/${subject}`
     )
-    return this.checkSuccess(response.data)
+    return checkSuccess(response.data)
   }
 
   async removeAssistantSubject(userId: string, subject: number) {
     const response = await this.client.delete<AssistantOperationResponse>(
       `/api/assistant-portal/admin/assistants/${encodeURIComponent(userId)}/subjects/${subject}`
     )
-    return this.checkSuccess(response.data)
+    return checkSuccess(response.data)
   }
 
   async getAvailableSubjects() {
