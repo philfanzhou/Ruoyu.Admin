@@ -86,6 +86,12 @@ OssAuditRun:
   更新 → 审计完成或失败时更新 Status/CompletedAt/ErrorMessage
 ```
 
+## 旧 Homework 批改图清理
+
+`OssAuditWorker` 在启动延迟结束后列出 `uploads/homework` 对象，只对六段路径且三个动态段均为非空 UUID、文件扩展名为 `.jpg` 的 `uploads/homework/{homeworkId}/{studentId}/reviews/{revisionId}.jpg` 调用删除。该路径是已废弃的服务端批改合成图，不属于当前业务引用；学生原图不包含 `reviews` 段。
+
+匹配器不直接删除缩略图文件名，`IOssService.DeleteAsync` 在删除派生原图时按统一规则清理其缩略图。OSS 清理后删除相同规则下的残留 `OssAuditRecord`；失败对象记录日志，下一次 Admin API 启动可安全重试。
+
 ## 缩略图处理设计
 
 ### 审计扫描中的缩略图跳过

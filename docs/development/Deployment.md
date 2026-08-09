@@ -54,6 +54,10 @@ curl -s -o /dev/null -w "%{http_code}\n" http://localhost:10901/api/admin/studen
 
 首页应返回 200；未携带登录凭据访问受保护的 Admin API 应返回 401。再结合 `docker inspect ruoyu-admin` 的运行状态、重启次数和启动日志判断服务是否稳定。
 
+## 旧批改派生图清理
+
+包含 ADR-0007 的 Admin API 在启动后延迟 2 分钟，自动扫描 `uploads/homework` 并删除严格匹配旧 `.../reviews/{revisionId}.jpg` UUID 路径规则的批改派生图，关联缩略图和残留 OSS 审计记录同步删除。该流程可重试且不匹配学生提交原图；部署后检查日志 `Obsolete homework review image cleanup completed` 获取删除数量或失败告警。
+
 ## 数据库备份与恢复
 
 ```bash

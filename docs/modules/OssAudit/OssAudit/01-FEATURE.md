@@ -20,6 +20,7 @@
 8. **缩略图自动清理**：`IOssService.DeleteAsync` 自动清理关联缩略图，删除僵尸原图时会连带删除同目录下的所有尺寸缩略图，无需调用方额外处理
 9. **无路径前缀校验**：Admin Portal 的 `S3OssService` 不配置路径前缀校验（`allowedPrefixes` 为 null），因为审计需要访问所有路径前缀（uploads/、mistakes/、questions/）
 10. **缩略图路径规则**：缩略图与原图同目录，路径格式 `{dirname}/{stem}_{size}.jpg`（旧规则 `uploads/thumbnails/` 已废弃）
+11. **旧批改图定向清理**：Worker 启动后只自动删除严格匹配 `uploads/homework/{homeworkId}/{studentId}/reviews/{revisionId}.jpg` 的已废弃批改派生图及其残留审计记录；三个 ID 都必须为非空 UUID，删除原图时连带删除缩略图。学生提交原图和其他路径不进入该规则。
 
 ## 关键验收条件摘要
 
@@ -32,13 +33,14 @@
 7. Student 服务不可用时审计中止，Mistake 服务不可用时仅警告
 8. 审计扫描跳过缩略图文件，不将缩略图误报为僵尸文件
 9. 清理僵尸原图时自动删除关联缩略图
+10. Admin API 重启后自动清理旧批改派生图，不要求管理员逐条 resolve
 
 ## 范围外
 
 - OSS 存储桶的创建与配置
 - 文件上传流程
 - 审计结果的导出与报表
-- 僵尸文件的自动定时清理（仅支持手动 resolve/ignore）
+- 普通僵尸文件的自动定时清理（旧批改派生图的定向启动清理除外）
 
 ## 文档索引
 

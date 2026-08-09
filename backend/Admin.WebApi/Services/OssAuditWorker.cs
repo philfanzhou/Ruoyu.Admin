@@ -25,6 +25,14 @@ public class OssAuditWorker : BackgroundService
     {
         await Task.Delay(TimeSpan.FromMinutes(2), stoppingToken);
 
+        using (var scope = _serviceProvider.CreateScope())
+        {
+            var ossService = scope.ServiceProvider.GetRequiredService<IOssService>();
+            await CleanupLegacyHomeworkReviewImagesAsync(ossService, _logger, stoppingToken);
+            var dbContext = scope.ServiceProvider.GetRequiredService<AuditDbContext>();
+            await CleanupLegacyHomeworkReviewAuditRecordsAsync(dbContext, _logger, stoppingToken);
+        }
+
         while (!stoppingToken.IsCancellationRequested)
         {
             var now = DateTime.Now;
@@ -48,6 +56,72 @@ public class OssAuditWorker : BackgroundService
 
             await RunAuditAsync("scheduled", stoppingToken);
         }
+    }
+
+    internal static async Task<int> CleanupLegacyHomeworkReviewImagesAsync(
+        IOssService ossService,
+        ILogger logger,
+        CancellationToken cancellationToken = default)
+    {
+        var objects = await ossService.ListObjectsWithBucketAsync(OssBucket.Uploads, "homework");
+        var deletedCount = 0;
+        foreach (var obj in objects)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!IsLegacyHomeworkReviewImagePath(obj.ObjectPath))
+                continue;
+
+            if (await ossService.DeleteAsync(obj.ObjectPath))
+            {
+                deletedCount++;
+            }
+            else
+            {
+                logger.LogWarning(
+                    "Failed to delete obsolete homework review image {ObjectPath}", obj.ObjectPath);
+            }
+        }
+
+        logger.LogInformation(
+            "Obsolete homework review image cleanup completed. Deleted {Count} objects",
+            deletedCount);
+        return deletedCount;
+    }
+
+    internal static bool IsLegacyHomeworkReviewImagePath(string path)
+    {
+        var segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        return segments.Length == 6
+            && string.Equals(segments[0], "uploads", StringComparison.Ordinal)
+            && string.Equals(segments[1], "homework", StringComparison.Ordinal)
+            && Guid.TryParse(segments[2], out var homeworkId)
+            && homeworkId != Guid.Empty
+            && Guid.TryParse(segments[3], out var studentId)
+            && studentId != Guid.Empty
+            && string.Equals(segments[4], "reviews", StringComparison.Ordinal)
+            && string.Equals(Path.GetExtension(segments[5]), ".jpg", StringComparison.OrdinalIgnoreCase)
+            && Guid.TryParse(Path.GetFileNameWithoutExtension(segments[5]), out var revisionId)
+            && revisionId != Guid.Empty;
+    }
+
+    internal static async Task<int> CleanupLegacyHomeworkReviewAuditRecordsAsync(
+        AuditDbContext dbContext,
+        ILogger logger,
+        CancellationToken cancellationToken = default)
+    {
+        var records = await dbContext.OssAuditRecords.ToListAsync(cancellationToken);
+        var obsoleteRecords = records
+            .Where(record => IsLegacyHomeworkReviewImagePath(record.ObjectPath))
+            .ToList();
+        if (obsoleteRecords.Count == 0)
+            return 0;
+
+        dbContext.OssAuditRecords.RemoveRange(obsoleteRecords);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        logger.LogInformation(
+            "Removed {Count} obsolete homework review image audit records",
+            obsoleteRecords.Count);
+        return obsoleteRecords.Count;
     }
 
     public async Task RunAuditAsync(string triggerType = "manual", CancellationToken cancellationToken = default)

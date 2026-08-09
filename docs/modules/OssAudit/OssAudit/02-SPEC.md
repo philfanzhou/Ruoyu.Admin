@@ -23,6 +23,7 @@
 - [ ] FR-10：清理 Resolved 状态的记录时跳过引用校验[推断：允许对已标记为 Resolved 的记录执行清理]
 - [ ] FR-11：审计扫描跳过缩略图文件，使用 `ThumbnailHelper.IsThumbnailPath` 判断路径是否为缩略图（匹配 `_{size}.jpg` 模式），缩略图不作为僵尸文件记录
 - [ ] FR-12：清理僵尸原图时，`IOssService.DeleteAsync` 自动删除关联缩略图（`ThumbnailHelper.GetAllThumbnailPaths`），无需调用方额外处理
+- [ ] FR-13：Worker 启动延迟结束后自动清理 UUID 路径结构严格匹配的旧 Homework 批改派生图；不得匹配学生提交原图、缩略图文件名或其他桶路径
 
 ## 详细的验收标准
 
@@ -107,6 +108,16 @@
 - **When** `ThumbnailHelper.IsThumbnailPath` 返回 true
 - **Then** 只删除该缩略图文件本身，不触发递归清理
 
+### AC-FR-13：旧 Homework 批改派生图启动清理
+
+- **Given** OSS 存在 `uploads/homework/{homeworkId}/{studentId}/reviews/{revisionId}.jpg`，三个 ID 都是非空 UUID
+- **When** Admin API Worker 完成启动延迟
+- **Then** 调用 `IOssService.DeleteAsync` 删除该派生原图，并由 OSS 组件连带删除其缩略图；相同路径的残留 `OssAuditRecord` 同步删除
+
+- **Given** 路径是学生提交原图、`reviews` 缩略图、ID 非 UUID 或非 `uploads` 桶
+- **When** 执行启动清理
+- **Then** 路径不匹配，不调用删除
+
 ## 非功能需求
 
 ### 性能
@@ -125,6 +136,7 @@
 - Student 服务不可用时审计应中止并标记 Failed，不产生不完整的审计结果
 - Mistake 服务不可用时审计应继续执行（仅警告），因为其引用数据为可选
 - 审计 Worker 启动后延迟 2 分钟，避免应用启动时资源竞争
+- 启动延迟后先执行一次旧 Homework 批改派生图定向清理，再进入每日审计调度；失败对象记录 Warning 并可在后续重启重试
 
 ### 可观测性
 - `OssAuditRun` 表记录每次审计的开始时间、完成时间、状态、新增僵尸数量、触发类型、错误信息
@@ -153,6 +165,7 @@
 7. 批量清理中部分记录验证失败 → [待确认：是整体回滚还是部分成功部分失败]
 8. 审计扫描遇到缩略图文件 → 跳过，不创建 OssAuditRecord
 9. 清理僵尸原图时 `IOssService.DeleteAsync` 自动删除关联缩略图 → 缩略图一并被清理
+10. 启动清理只匹配严格的旧 Homework 批改派生图路径，学生原图不得删除
 
 ### 测试环境要求
 - 需要 mock Student gRPC 服务和 Mistake gRPC 服务
