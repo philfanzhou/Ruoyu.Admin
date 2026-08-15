@@ -189,6 +189,47 @@ public class IdentityProxyMiddlewareTests
     }
 
     [Fact]
+    public async Task BootstrapRequired_PreservesStructured503Response()
+    {
+        const string body =
+            "{\"error\":\"bootstrap_configuration_required\",\"error_description\":\"Configure SignaCore first.\"}";
+        var handlerMock = new Mock<HttpMessageHandler>();
+        handlerMock.Protected()
+            .Setup<Task<HttpResponseMessage>>("SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync(() =>
+            {
+                var response = new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)
+                {
+                    Content = new StringContent(body, Encoding.UTF8, "application/json")
+                };
+                response.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(
+                    TimeSpan.FromSeconds(30));
+                return response;
+            });
+        using var client = new HttpClient(handlerMock.Object);
+        var factoryMock = new Mock<IHttpClientFactory>();
+        factoryMock.Setup(factory => factory.CreateClient("IdentityService")).Returns(client);
+        var middleware = CreateMiddleware(
+            _ => Task.CompletedTask,
+            factoryMock.Object,
+            new IdentityServiceOptions { Authority = "http://localhost:5002" });
+        var context = new DefaultHttpContext();
+        context.Request.Path = "/api/identity/users";
+        context.Request.Method = HttpMethods.Get;
+        context.Response.Body = new MemoryStream();
+
+        await middleware.InvokeAsync(context);
+
+        context.Response.StatusCode.Should().Be(StatusCodes.Status503ServiceUnavailable);
+        context.Response.ContentType.Should().StartWith("application/json");
+        context.Response.Headers.RetryAfter.ToString().Should().Be("30");
+        context.Response.Body.Position = 0;
+        (await new StreamReader(context.Response.Body).ReadToEndAsync()).Should().Be(body);
+    }
+
+    [Fact]
     public async Task QueryParameters_PreservedInPathRewrite()
     {
         // Arrange

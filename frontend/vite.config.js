@@ -14,9 +14,8 @@ export default defineConfig({
     port: 8090,
     proxy: {
       '/api/identity': {
-        target: 'http://localhost:5002',
+        target: 'http://localhost:5020',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/identity/, '/api'),
       },
       '/api/admin': {
         target: 'http://localhost:5020',

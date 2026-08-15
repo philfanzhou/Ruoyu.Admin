@@ -38,7 +38,7 @@ internal sealed class IdentityProxyMiddleware
         var targetPath = context.Request.Path.Value!.Replace("/api/identity", "/api");
         var targetUri = $"{_options.Authority.TrimEnd('/')}{targetPath}{context.Request.QueryString}";
 
-        var requestMessage = new HttpRequestMessage(new HttpMethod(context.Request.Method), targetUri);
+        using var requestMessage = new HttpRequestMessage(new HttpMethod(context.Request.Method), targetUri);
 
         if (context.Request.Body != null && !HttpMethods.IsGet(context.Request.Method))
         {
@@ -81,20 +81,27 @@ internal sealed class IdentityProxyMiddleware
             return;
         }
 
-        context.Response.StatusCode = (int)response.StatusCode;
-
-        foreach (var header in response.Headers)
+        using (response)
         {
-            if (ExcludedResponseHeaders.Contains(header.Key)) continue;
-            context.Response.Headers[header.Key] = header.Value.ToArray();
-        }
-        foreach (var header in response.Content.Headers)
-        {
-            if (ExcludedResponseHeaders.Contains(header.Key)) continue;
-            context.Response.Headers[header.Key] = header.Value.ToArray();
-        }
+            context.Response.StatusCode = (int)response.StatusCode;
+            if (response.Content.Headers.ContentType is { } contentType)
+            {
+                context.Response.ContentType = contentType.ToString();
+            }
 
-        await response.Content.CopyToAsync(context.Response.Body).ConfigureAwait(false);
+            foreach (var header in response.Headers)
+            {
+                if (ExcludedResponseHeaders.Contains(header.Key)) continue;
+                context.Response.Headers[header.Key] = header.Value.ToArray();
+            }
+            foreach (var header in response.Content.Headers)
+            {
+                if (ExcludedResponseHeaders.Contains(header.Key)) continue;
+                context.Response.Headers[header.Key] = header.Value.ToArray();
+            }
+
+            await response.Content.CopyToAsync(context.Response.Body).ConfigureAwait(false);
+        }
     }
 }
 
@@ -102,7 +109,7 @@ public sealed class IdentityServiceOptions
 {
     public const string SectionName = "IdentityService";
 
-    public string Authority { get; set; } = "http://localhost:5002";
+    public string Authority { get; set; } = string.Empty;
     public string AppId { get; set; } = "";
     public string AppSecret { get; set; } = "";
 }

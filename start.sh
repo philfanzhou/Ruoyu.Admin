@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 
 IMAGE_NAME="ruoyu.admin:20260502"
 CONTAINER_NAME="ruoyu-admin"
@@ -12,6 +12,9 @@ DB_NAME="ruoyu_admin"
 
 IDENTITY_APP_ID="${IDENTITY_APP_ID:-}"
 IDENTITY_APP_SECRET="${IDENTITY_APP_SECRET:-}"
+: "${IDENTITY_APP_ID:?IDENTITY_APP_ID must come from the Admin Portal deployment secret}"
+: "${IDENTITY_APP_SECRET:?IDENTITY_APP_SECRET must come from the Admin Portal deployment secret}"
+echo "Using Admin Portal Identity AppId ${IDENTITY_APP_ID:0:4}...${IDENTITY_APP_ID: -4}"
 
 if [ -n "$(docker ps -q --filter "name=^/${CONTAINER_NAME}$")" ]; then
     echo "Container is already running, stopping it..."

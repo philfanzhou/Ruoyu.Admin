@@ -3,9 +3,8 @@ using Admin.WebApi;
 using Admin.WebApi.Models;
 using Admin.WebApi.Persistence;
 using Admin.WebApi.Services;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.IdentityModel.Tokens;
+using Ruoyu.Study.Common.Authentication;
 using Ruoyu.Study.Common.Database;
 using Ruoyu.Study.Common.Oss;
 using Ruoyu.Study.Consul.Shared;
@@ -29,6 +28,13 @@ const int httpPort = 5020;
 var studentServiceUrl = builder.Configuration["StudentService:Url"] ?? "http://localhost:5005";
 var mistakeServiceUrl = builder.Configuration["MistakeService:Url"] ?? "http://localhost:5007";
 var homeworkServiceUrl = builder.Configuration["HomeworkService:Url"] ?? "http://localhost:5009";
+var identityAppId = builder.Configuration["IdentityService:AppId"];
+var identityAppSecret = builder.Configuration["IdentityService:AppSecret"];
+if (string.IsNullOrWhiteSpace(identityAppId) || string.IsNullOrWhiteSpace(identityAppSecret))
+{
+    throw new InvalidOperationException(
+        "IdentityService:AppId and IdentityService:AppSecret must be configured for Admin Portal.");
+}
 
 builder.WebHost.ConfigureKestrel(options =>
 {
@@ -50,46 +56,15 @@ builder.Services.AddHttpClient<HomeworkReferenceClient>(client =>
 // ========== Authentication (JWT Bearer via Identity OIDC) ==========
 // Admin portal authenticates via Identity-issued JWT. The admin role is injected by Identity
 // through admin_portal's callback (/api/auth/callback) for whitelisted AdminUserIds.
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options =>
+builder.Services.AddRuoyuJwtBearer(
+    builder.Configuration,
+    builder.Environment,
+    options =>
     {
-        options.Authority = builder.Configuration["IdentityService:Authority"];
-        options.Audience = "PlatformAudience";
-        options.RequireHttpsMetadata = false;
-        options.TokenValidationParameters = new TokenValidationParameters
-        {
-            ValidateIssuer = true,
-            ValidIssuer = "IdentityIssuer",
-            ValidateAudience = true,
-            ValidAudience = "PlatformAudience",
-            ValidateLifetime = true,
-            ClockSkew = TimeSpan.FromSeconds(30),
-        };
-        // Dual-channel JWT extraction:
-        // - Authorization: Bearer <token> header (axios API requests via httpClient.ts)
-        // - adminAuthToken HttpOnly cookie (browser-native <img>/<el-image> requests
-        //   that cannot carry custom headers; W3C standard limitation)
-        // Login endpoint (AdminAuthController.Login) sets the cookie alongside the
-        // JSON response so both channels share the same JWT. This keeps [Authorize]
-        // on image endpoints working without [AllowAnonymous].
-        options.Events = new JwtBearerEvents
-        {
-            OnMessageReceived = ctx =>
-            {
-                if (string.IsNullOrEmpty(ctx.Token))
-                {
-                    ctx.Token = ctx.Request.Cookies["adminAuthToken"];
-                }
-                return Task.CompletedTask;
-            }
-        };
+        // Browser-native image requests cannot attach an Authorization header.
+        // The shared handler preserves header precedence and uses this cookie only as fallback.
+        options.AccessTokenCookieName = "adminAuthToken";
     });
-builder.Services.AddAuthorization(options =>
-{
-    options.FallbackPolicy = new Microsoft.AspNetCore.Authorization.AuthorizationPolicyBuilder()
-        .RequireAuthenticatedUser()
-        .Build();
-});
 
 builder.Services.Configure<IdentityServiceOptions>(
     builder.Configuration.GetSection(IdentityServiceOptions.SectionName));
@@ -169,8 +144,17 @@ builder.Services.AddSwaggerGen(c =>
 });
 
 var app = builder.Build();
+var identityTrust = app.Services
+    .GetRequiredService<Microsoft.Extensions.Options.IOptions<IdentityAuthenticationOptions>>()
+    .Value;
 
 app.Logger.LogInformation("Admin Portal starting");
+app.Logger.LogInformation(
+    "Identity trust: Authority={Authority}, Issuers={Issuers}, Audience={Audience}, RequireHttpsMetadata={RequireHttpsMetadata}",
+    identityTrust.Authority,
+    string.Join(",", identityTrust.GetValidIssuers()),
+    identityTrust.Audience,
+    identityTrust.RequireHttpsMetadata);
 app.Logger.LogInformation(
     "Consul startup diagnostics: Address={Address}, Token={Token}, Source={Source}, KeyCount={KeyCount}, Prefixes={Prefixes}, LastError={LastError}",
     $"{consulOptions.Host}:{consulOptions.Port}",
