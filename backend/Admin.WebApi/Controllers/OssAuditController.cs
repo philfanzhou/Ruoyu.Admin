@@ -4,8 +4,8 @@ using Microsoft.EntityFrameworkCore;
 using Admin.WebApi.Persistence;
 using Admin.WebApi.Models;
 using Admin.WebApi.Services;
-using Ruoyu.Study.Common.Oss;
-using Ruoyu.Study.MistakeBff.HttpClients;
+using Ruoyu.Admin.Common.Oss;
+using Ruoyu.Admin.ServiceClients;
 
 namespace Admin.WebApi.Controllers;
 

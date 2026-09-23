@@ -3,7 +3,7 @@
 ## 本功能在项目中的目录与文件结构
 
 ```
-src/admin_portal/
+
 ├── backend/
 │   ├── Controllers/
 │   │   └── StudentsController.cs              # GetStudentOpenSubjects, SetStudentOpenSubjects
@@ -70,7 +70,7 @@ public StudentsController(
 ### 外部常量依赖
 
 ```csharp
-// Ruoyu.Study.Common.Constants.SubjectConstants
+// Ruoyu.Admin.Common.Constants.SubjectConstants
 SubjectConstants.IsValid(int subject)  // 校验科目值是否有效
 SubjectConstants.DateFormat            // 日期格式字符串[推断]
 ```
@@ -119,7 +119,7 @@ SubjectConstants.DateFormat            // 日期格式字符串[推断]
 | 接口 | 提供能力 | 所在模块 |
 | --- | --- | --- |
 | `StudentManagementGrpcServiceClient` | GetStudentOpenSubjects, SetStudentOpenSubjects | `Ruoyu.Study.Student.Contract.Protos` |
-| `SubjectConstants` | IsValid(int), DateFormat | `Ruoyu.Study.Common.Constants` |
+| `SubjectConstants` | IsValid(int), DateFormat | `Ruoyu.Admin.Common.Constants` |
 
 ## 可测试性设计
 

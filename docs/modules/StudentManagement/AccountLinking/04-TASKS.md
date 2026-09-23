@@ -107,8 +107,8 @@
     "id": "BUILD-01",
     "depends_on": ["TEST-01", "TEST-02", "TEST-03", "IMPL-01"],
     "action": "在 Release 配置下编译解决方案并运行所有测试，前端执行 npm run build，打印覆盖率摘要。",
-    "files": ["src/admin_portal/backend/*.csproj", "src/admin_portal/test/**/*.cs", "src/admin_portal/frontend/package.json"],
-    "acceptance": "dotnet test --configuration Release；cd src/admin_portal/frontend && npm run build；必须零警告，无测试失败。",
+    "files": ["backend/*.csproj", "backend/Tests/**/*.cs", "frontend/package.json"],
+    "acceptance": "dotnet test --configuration Release；cd frontend && npm run build；必须零警告，无测试失败。",
     "notes": "",
     "status": "todo"
   }

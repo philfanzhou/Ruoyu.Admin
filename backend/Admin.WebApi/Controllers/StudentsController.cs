@@ -1,10 +1,10 @@
 using System.Net;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Ruoyu.Study.Common.Constants;
-using Ruoyu.Study.MistakeBff.HttpClients;
+using Ruoyu.Admin.Common.Constants;
+using Ruoyu.Admin.ServiceClients;
 using Admin.WebApi.Models;
-using StudentHttpDto = Ruoyu.Study.MistakeBff.HttpClients.StudentDto;
+using StudentHttpDto = Ruoyu.Admin.ServiceClients.StudentDto;
 
 namespace Admin.WebApi.Controllers;
 

@@ -12,7 +12,7 @@
 
 1. 复制配置文件：
    ```bash
-   cd src/admin_portal/backend
+   cd backend
    # appsettings.json 已包含开发默认值，可直接使用
    ```
 
@@ -75,7 +75,7 @@ Admin Portal 通过 `SharedPostgreSqlConnectionStringFactory.BuildOrFallback` �
 ## 前端配置
 
 ```bash
-cd src/admin_portal/frontend
+cd frontend
 npm install
 ```
 

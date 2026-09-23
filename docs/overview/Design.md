@@ -88,39 +88,49 @@
 ## 依赖关系图
 
 ```
-                    Admin.WebApi (ASP.NET Core 8.0)
-                         │
-            ┌────────────┼────────────────┐
-            │            │                │
-            ▼            ▼                ▼
-   Ruoyu.Study.    Ruoyu.Study.    Ruoyu.Study.
-   Student.Contract Mistake.Contract  Common
-   (gRPC Protos)   (gRPC Protos)    (Constants)
-            │            │                │
-            │            │                ├─ IOssService
-            │            │                │  ├─ S3OssService
-            │            │                │  └─ LocalFileOssService
-            │            │                │  [权限降级：只读 + 有限写]
-            │            │                │  ListObjects / Delete / CopyObject
-            │            │                │
-            │            │                ├─ DatabaseInitializer
-            │            │                │
-            │            │                └─ Constants
-            │            │                   ├─ GradeConstants
-            │            │                   ├─ SubjectConstants
-            │            │                   ├─ UploadStatusConstants
-            │            │                   ├─ ClassificationConstants
-            │            │                   └─ ReviewStatusConstants
-            │            │
-            ▼            ▼
-     Student gRPC    Mistake gRPC
-     :5005           :5006
-  (StudentLearning    (MistakeGrpcService
-   GrpcService         仅通用接口)
-   仅通用接口)
+                     Admin.WebApi (ASP.NET Core 8.0)
+                                │
+     ┌──────────────┬───────────┼──────────────┬─────────────────┐
+     │              │           │              │                 │
+     ▼              ▼           ▼              ▼                 ▼
+Ruoyu.Admin.   Ruoyu.Admin.  Ruoyu.Admin.  IdentityProxy    TeacherPortalProxy
+ServiceClients   Common        Consul      Middleware       AssistantPortalProxy
+     │              │           │                          Middleware
+     │              │           ├─ AddRuoyuConsulConfiguration
+     │              │           ├─ UseRuoyuSerilog (Console + Loki)
+     │              │           ├─ SharedPostgreSqlConnectionStringFactory
+     │              │           └─ StartupDiagnosticsFormatter
+     │              │
+     │              ├─ IOssService
+     │              │  ├─ S3OssService
+     │              │  └─ LocalFileOssService
+     │              │  [权限降级：只读 + 有限写]
+     │              │  ListObjects / Delete / CopyObject
+     │              │
+     │              ├─ DatabaseInitializer
+     │              ├─ Authentication (AddRuoyuJwtBearer)
+     │              │
+     │              └─ Constants
+     │                 ├─ GradeConstants
+     │                 ├─ SubjectConstants
+     │                 ├─ UploadStatusConstants
+     │                 ├─ ClassificationConstants
+     │                 └─ ReviewStatusConstants
+     │
+     ├─ IStudentHttpClient ──► Student HTTP  :5005
+     ├─ IMistakeHttpClient ──► Mistake HTTP  :5007
+     └─ HomeworkReferenceClient（Admin.WebApi 自有）──► Homework HTTP :5009
 ```
 
-> **Phase 4 变更说明**：`StudentManagementGrpcServiceClient` 已移除，所有 Student gRPC 调用统一通过 `StudentLearningGrpcServiceClient`。Admin 专用接口（ListOssObjects、GetRegisteredOssPaths、DeleteOssObject 等）不再由 Student 服务提供，改为 Admin Portal 自行实现（直接 IOssService + 通用 gRPC）。
+代理中间件转发的下游：
+
+| 中间件 | 路由前缀 | 下游 | 认证 |
+|--------|----------|------|------|
+| `IdentityProxyMiddleware` | `/api/identity/*` | Identity :5002 | 注入 `X-Admin-AppId` / `X-Admin-AppSecret` |
+| `TeacherPortalProxyMiddleware` | `/api/teacher-portal/*` | Teacher Portal :5004 | 透传调用方 `Authorization: Bearer`，下游校验 `role=admin` |
+| `AssistantPortalProxyMiddleware` | `/api/assistant-portal/*` | Assistant Portal :5021 | 同上 |
+
+> **协议现状**：所有下游调用均为 HTTP/JSON，gRPC 已全部移除。`Ruoyu.Admin.ServiceClients` 中的 DTO 是 Student 与 Mistake 服务对外 HTTP 契约的镜像副本，二者由 [Ruoyu.Study](https://github.com/philfanzhou/Ruoyu.Study) 仓库主责，本仓库不拥有其定义权。
 
 ## 关键设计决策
 
@@ -199,34 +209,24 @@
 
 Admin Portal 不维护 `/oss/` Nginx location。Admin API 使用 `Oss:PublicBaseUrl` 生成以公共域名签名的下载地址，浏览器跟随 302 到平台公共 OSS 入口；仓库内由 User Web Nginx 唯一代理该路径。
 
-实际 S3 操作使用 `Oss:InternalEndpoint`，因此 Admin 后端可以直接连接独立服务器上的 SeaweedFS，不依赖 Portal Nginx 或 Docker DNS。完整决策见仓库级 [ADR-0003](../../../../docs/adr/0003-separate-internal-oss-access-from-public-presigned-routing.md)。
+实际 S3 操作使用 `Oss:InternalEndpoint`，因此 Admin 后端可以直接连接独立服务器上的 SeaweedFS，不依赖 Portal Nginx 或 Docker DNS。完整决策见 [Ruoyu.Study ADR-0003](https://github.com/philfanzhou/Ruoyu.Study/blob/master/docs/adr/0003-separate-internal-oss-access-from-public-presigned-routing.md)（跨仓库决策，由 Ruoyu.Study 主责）。
 
-### 6. gRPC 合约引用方式
+### 6. 下游 HTTP 合约引用方式
 
-**决策**：直接引用 proto 文件并设置 `GrpcServices="Client"`，通过 `ProtoRoot` 解决 import 路径问题。
+**决策**：不使用契约生成，改为在 `Ruoyu.Admin.ServiceClients` 内手写 `IStudentHttpClient` / `IMistakeHttpClient` 与镜像 DTO。
 
-**实现方式**：
-```xml
-<Protobuf Include="..\..\src\services\ruoyu.student\src\Contract\Protos\student.proto"
-          GrpcServices="Client"
-          ProtoRoot="..\..\src\services\ruoyu.student\src\Contract" />
-<Protobuf Include="..\..\src/services/ruoyu.mistake\src\Contract\Protos\mistake.proto"
-          GrpcServices="Client"
-          ProtoRoot="..\..\src/services/ruoyu.mistake\src\Contract" />
-<Protobuf Include="..\..\src/services/ruoyu.mistake\src\Contract\Protos\mistake.common.proto"
-          GrpcServices="None"
-          ProtoRoot="..\..\src/services/ruoyu.mistake\src\Contract" />
-```
+**历史**：早期实现直接 `<Protobuf>` 引用 monorepo 中 Student / Mistake 的 proto 文件生成 gRPC Client。gRPC 已整体下线，改为 HTTP/JSON，proto 引用随之移除。
 
-**原因**：
-- Admin Portal 只需要 gRPC Client 代码，不需要 Server 端基类
-- `GrpcServices="Client"` 只生成 `xxxClient` 类，避免生成无用的 Server 端代码
-- `ProtoRoot` 指定 proto 文件的根目录，使 `mistake.proto` 中的 `import "Protos/mistake.common.proto"` 能正确解析
-- 不再依赖 Contract 项目的 `GrpcServices="Both"` 设置，避免服务器构建时因生成不需要的 Server 代码而失败
+**当前方式**：
+- `Ruoyu.Admin.ServiceClients` 是独立类库，只依赖 `Microsoft.Extensions.Http` 与 ASP.NET Core 共享框架。
+- 每个下游服务一个接口 + 一个实现 + 一组 DTO，DTO 字段与下游 HTTP 响应逐一镜像。
+- 通过 `AddStudentHttpClient(url)` / `AddMistakeHttpClient(url)` 在 `Program.cs` 注册。
+- `HomeworkReferenceClient` 是 Admin 专用的一次性聚合客户端，只有一个方法，保留在 `Admin.WebApi/Services/` 内，不进共享库。
 
 **注意事项**：
-- `ProtoRoot` 必须指向 Contract 项目的根目录（包含 `Protos/` 子目录的父目录），而不是 `Protos/` 目录本身
-- 如果 Contract 项目的 proto 文件新增了 import 依赖，Admin.WebApi.csproj 也需要同步添加对应的 `<Protobuf>` 引用（`GrpcServices="None"`）
+- DTO 是**副本**，不是共享定义。Student / Mistake 的 HTTP 契约由 [Ruoyu.Study](https://github.com/philfanzhou/Ruoyu.Study) 仓库主责，其字段变更不会在本仓库产生编译错误，只会产生运行时反序列化偏差。
+- 因此下游契约变更必须同步修改 `Ruoyu.Admin.ServiceClients`，并补充对应的 Controller 单测。
+- 后续演进方向是由下游发布 OpenAPI 规范、本仓库生成客户端，从根上消除手写镜像。
 
 ## 配置结构
 

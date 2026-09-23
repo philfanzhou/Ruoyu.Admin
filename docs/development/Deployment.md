@@ -2,11 +2,23 @@
 
 ## 构建与启动
 
-- 集成镜像：`backend/Admin.WebApi/Dockerfile`，先构建 Vue 前端，再把产物复制到 API 的 `wwwroot`。
-- 启动脚本：仓库根 `src/admin_portal/start.sh`。
+- 集成镜像：`backend/Admin.WebApi/Dockerfile`，先构建 Vue 前端，再把产物复制到 API 的 `wwwroot`。构建入口 `./scripts/build.sh`，产物 `ruoyu.admin:${IMAGE_TAG}`（`IMAGE_TAG` 默认 `20260502`）。
+- 启动脚本：仓库根 `start.sh`。
 - 容器：`ruoyu-admin`，容器内监听 5020，默认映射到宿主机 10901。
 - 容器使用 Docker 默认 bridge，不依赖 `ruoyu-net` 或容器名解析；跨主机依赖通过 Consul KV 中的局域网地址访问。
-- 独立前端镜像位于 `frontend/Dockerfile`，其 Nginx 只提供静态文件和 Admin API 代理，不负责 `/oss/`。
+- 独立前端镜像位于 `frontend/Dockerfile`，构建入口 `./scripts/build-web.sh`，产物 `ruoyu.admin.web:${IMAGE_TAG}`。其 Nginx 只提供静态文件和 Admin API 代理，不负责 `/oss/`。
+- 两个 Dockerfile 的构建上下文都是**仓库根**，且都受仓库根 `.dockerignore` 约束。
+
+### 服务标识
+
+迁出 monorepo 时服务标识从 `Ruoyu.Study.AdminPortal` 改为 `Ruoyu.Admin`，出现在两处：
+
+| 位置 | 键 | 影响 |
+|------|-----|------|
+| `appsettings.json` | `Serilog:WriteTo:GrafanaLoki:labels[service]` | Loki 日志标签。**已有的 Grafana 查询、面板和告警若按 `service="Ruoyu.Study.AdminPortal"` 过滤，必须同步改名**，否则新日志查不到 |
+| `appsettings.json` | `Consul:ServiceName` | 仅作标识。Consul KV 读取只使用 `Consul:KvPrefix`（`config/ruoyu`），`RuoyuConsulKvLoader.BuildPrefixes` 不消费 `ServiceName`，因此改名不影响配置加载 |
+
+若部署环境希望保留旧标识以复用既有看板：`Consul:ServiceName` 可用环境变量 `CONSUL_SERVICE_NAME` 覆盖（见 `RuoyuConsulOptions.Bind`），Loki 标签则直接改 `appsettings.json` 或用配置覆盖，两者都不需要改代码。
 
 ## 配置加载
 

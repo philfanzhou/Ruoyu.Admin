@@ -8,7 +8,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
 using Moq.Protected;
-using Ruoyu.Study.MistakeBff.HttpClients;
+using Ruoyu.Admin.ServiceClients;
 using Xunit;
 
 namespace Admin.WebApi.Tests.Controllers;

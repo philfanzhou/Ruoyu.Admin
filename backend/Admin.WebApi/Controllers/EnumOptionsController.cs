@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Admin.WebApi.Models;
-using Ruoyu.Study.Common.Constants;
+using Ruoyu.Admin.Common.Constants;
 
 namespace Admin.WebApi.Controllers;
 

@@ -4,11 +4,11 @@ using Admin.WebApi.Models;
 using Admin.WebApi.Persistence;
 using Admin.WebApi.Services;
 using Microsoft.EntityFrameworkCore;
-using Ruoyu.Study.Common.Authentication;
-using Ruoyu.Study.Common.Database;
-using Ruoyu.Study.Common.Oss;
-using Ruoyu.Study.Consul.Shared;
-using Ruoyu.Study.MistakeBff.HttpClients;
+using Ruoyu.Admin.Common.Authentication;
+using Ruoyu.Admin.Common.Database;
+using Ruoyu.Admin.Common.Oss;
+using Ruoyu.Admin.Consul;
+using Ruoyu.Admin.ServiceClients;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -19,7 +19,7 @@ var consulRuntimeState = RuoyuConsulRuntimeState.Instance;
 
 // ========== Serilog (Console + Grafana Loki) ==========
 builder.Configuration.AddRuoyuLokiSink();
-builder.Host.UseRuoyuSerilog("Ruoyu.Study.AdminPortal");
+builder.Host.UseRuoyuSerilog("Ruoyu.Admin");
 
 // HTTP listen port is hardcoded to 5020 (not configurable).
 // nginx in the same container proxies /api/ to this port.

@@ -2,7 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Net.Http.Headers;
 using System.Text.Json;
-using Ruoyu.Study.MistakeBff.HttpClients;
+using Ruoyu.Admin.ServiceClients;
 using Admin.WebApi.Models;
 
 namespace Admin.WebApi.Controllers;

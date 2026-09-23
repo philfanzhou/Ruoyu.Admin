@@ -4,8 +4,8 @@ using FluentAssertions;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Moq;
-using Ruoyu.Study.Common.Oss;
-using Ruoyu.Study.MistakeBff.HttpClients;
+using Ruoyu.Admin.Common.Oss;
+using Ruoyu.Admin.ServiceClients;
 using Xunit;
 
 namespace Admin.WebApi.Tests.Controllers;

@@ -4,7 +4,7 @@
 
 ### 1.1 AssistantPortalProxyMiddleware
 
-- 位置: `src/admin_portal/backend/Admin.WebApi/AssistantPortalProxyMiddleware.cs`
+- 位置: `backend/Admin.WebApi/AssistantPortalProxyMiddleware.cs`
 - 模式: 与 TeacherPortalProxyMiddleware 完全对称
 - 注册: Program.cs 中 `app.UseMiddleware<AssistantPortalProxyMiddleware>()`
 - 配置: `AssistantPortalOptions`（Url）
@@ -39,7 +39,7 @@
 
 ### 3.1 API 客户端
 
-`src/admin_portal/frontend/src/services/assistantPortalApi.ts`
+`frontend/src/services/assistantPortalApi.ts`
 
 接口与 `teacherPortalApi.ts` 对称:
 - `getAssistants()`
@@ -53,7 +53,7 @@
 
 ### 3.2 视图组件
 
-`src/admin_portal/frontend/src/views/AssistantView.vue`
+`frontend/src/views/AssistantView.vue`
 
 布局与 TeacherView.vue 对称:
 - 主表格: 头像 / User ID / 手机号 / 用户名 / 备注 / 科目 / 创建时间 / 操作（科目、撤销）

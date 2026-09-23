@@ -37,7 +37,7 @@
     "action": "确认 SubjectConstants.IsValid 的科目值范围和 SubjectConstants.DateFormat 的格式字符串，验证 SetStudentOpenSubjects 中的校验逻辑使用正确的常量。",
     "files": ["backend/Controllers/StudentsController.cs"],
     "acceptance": "编译通过；SubjectConstants.IsValid 覆盖所有有效科目值。",
-    "notes": "SubjectConstants 定义在 Ruoyu.Study.Common.Constants 包中，需确认版本一致性。",
+    "notes": "SubjectConstants 定义在 Ruoyu.Admin.Common.Constants 包中，需确认版本一致性。",
     "status": "implemented"
   },
   {
@@ -62,7 +62,7 @@
     "id": "BUILD-01",
     "depends_on": ["TEST-01", "TEST-02"],
     "action": "在 Release 配置下编译解决方案并运行所有测试，打印覆盖率摘要。",
-    "files": ["src/admin_portal/backend/*.csproj", "src/admin_portal/test/**/*.cs"],
+    "files": ["backend/*.csproj", "backend/Tests/**/*.cs"],
     "acceptance": "dotnet test --configuration Release",
     "notes": "必须零警告，无测试失败。",
     "status": "todo"

@@ -1,0 +1,34 @@
+# Git
+.git
+.gitignore
+.gitattributes
+.github
+
+# .NET build output
+**/bin/
+**/obj/
+**/publish/
+**/TestResults/
+
+# Frontend
+**/node_modules/
+**/dist/
+**/coverage/
+
+# Frontend build output that is baked into the API image during Docker build
+**/wwwroot/
+
+# Docs and repo metadata are not needed inside build contexts
+docs/
+frontend/docs/
+*.md
+
+# Local runtime data
+data/
+**/data/
+
+# Agent workspace
+.agent/
+.claude/
+.trae/
+.worktrees/

@@ -1,7 +1,7 @@
 using Admin.WebApi.Persistence;
 using Microsoft.EntityFrameworkCore;
-using Ruoyu.Study.Common.Oss;
-using Ruoyu.Study.MistakeBff.HttpClients;
+using Ruoyu.Admin.Common.Oss;
+using Ruoyu.Admin.ServiceClients;
 
 namespace Admin.WebApi.Services;
 

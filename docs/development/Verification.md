@@ -3,16 +3,16 @@
 ## 运行测试
 
 ```bash
-cd src/admin_portal
+cd backend
 
 # 运行全部测试
-dotnet test
+dotnet test Ruoyu.Admin.sln --configuration Release
 
 # 运行指定测试类
-dotnet test --filter "FullyQualifiedName~OssUploadRecordControllerLegacyTests"
+dotnet test Ruoyu.Admin.sln --filter "FullyQualifiedName~OssUploadRecordControllerLegacyTests"
 
 # 运行模型测试
-dotnet test --filter "FullyQualifiedName~ModelTests"
+dotnet test Ruoyu.Admin.sln --filter "FullyQualifiedName~ModelTests"
 ```
 
 ## 测试项目结构
@@ -51,7 +51,7 @@ dotnet test --collect:"XPlat Code Coverage"
 
 ```bash
 # Release 构建
-cd src/admin_portal/backend
+cd backend
 dotnet publish -c Release -o ./publish
 
 # 验证构建产物

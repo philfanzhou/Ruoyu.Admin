@@ -1,7 +1,7 @@
 using System.Net;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Ruoyu.Study.MistakeBff.HttpClients;
+using Ruoyu.Admin.ServiceClients;
 
 namespace Admin.WebApi.Controllers;
 

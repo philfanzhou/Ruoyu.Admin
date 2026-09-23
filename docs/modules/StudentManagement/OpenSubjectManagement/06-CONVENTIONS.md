@@ -55,7 +55,7 @@
 - **校验方法**：使用 `SubjectConstants.IsValid(int subject)` 静态方法校验科目值有效性。
 - **校验时机**：在 Controller 层 SetStudentOpenSubjects 方法中，遍历每个 SubjectItem 时逐一校验。
 - **校验失败行为**：立即返回 400，不继续校验后续 SubjectItem。
-- **科目值来源**：有效科目值由 `Ruoyu.Study.Common.Constants.SubjectConstants` 定义。
+- **科目值来源**：有效科目值由 `Ruoyu.Admin.Common.Constants.SubjectConstants` 定义。
 
 ## 测试工具要求
 

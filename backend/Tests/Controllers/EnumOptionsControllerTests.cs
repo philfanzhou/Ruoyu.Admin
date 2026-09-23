@@ -2,7 +2,7 @@ using Admin.WebApi.Controllers;
 using Admin.WebApi.Models;
 using FluentAssertions;
 using Microsoft.AspNetCore.Mvc;
-using Ruoyu.Study.Common.Constants;
+using Ruoyu.Admin.Common.Constants;
 using Xunit;
 
 namespace Admin.WebApi.Tests.Controllers;

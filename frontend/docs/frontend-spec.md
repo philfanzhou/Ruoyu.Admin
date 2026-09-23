@@ -17,7 +17,7 @@
 ## 项目结构
 
 ```
-src/admin_portal/frontend/src/
+frontend/src/
 ├── main.ts                      # 入口，注册 ElementPlus + VueRouter
 ├── App.vue                      # 根组件，主布局（240px 侧边栏 + 56px 顶部栏 + 面包屑）
 ├── router/

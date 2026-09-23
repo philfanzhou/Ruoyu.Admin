@@ -8,7 +8,7 @@
 
 ### DatabaseInitializer
 
-位于 `Ruoyu.Study.Common` 项目中，在 `Program.cs` 启动时调用：
+位于 `Ruoyu.Admin.Common` 项目中，在 `Program.cs` 启动时调用：
 
 ```csharp
 await DatabaseInitializer.InitializeAsync(db, logger, tableName => tableName switch

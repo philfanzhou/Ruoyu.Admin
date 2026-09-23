@@ -4,7 +4,7 @@ using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Moq;
-using Ruoyu.Study.Common.Oss;
+using Ruoyu.Admin.Common.Oss;
 using Xunit;
 
 namespace Admin.WebApi.Tests.Services;

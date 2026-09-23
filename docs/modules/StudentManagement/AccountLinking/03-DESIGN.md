@@ -3,7 +3,7 @@
 ## 本功能在项目中的目录与文件结构
 
 ```
-src/admin_portal/
+
 ├── backend/
 │   ├── Controllers/
 │   │   ├── StudentsController.cs              # 关联/解关联/查询账户 ID（HTTP）
@@ -203,7 +203,7 @@ public IdentityAccountsController(
 
 | 接口 | 提供能力 | 所在模块 | 协议 |
 | --- | --- | --- | --- |
-| `IStudentHttpClient` | GetIdentityAccountsByStudentIdAsync, LinkIdentityAccountToStudentAsync, UnlinkIdentityAccountFromStudentAsync, GetStudentsByIdentityAccountIdAsync | `Ruoyu.Study.MistakeBff.HttpClients` | HTTP |
+| `IStudentHttpClient` | GetIdentityAccountsByStudentIdAsync, LinkIdentityAccountToStudentAsync, UnlinkIdentityAccountFromStudentAsync, GetStudentsByIdentityAccountIdAsync | `Ruoyu.Admin.ServiceClients` | HTTP |
 | Identity Service HTTP API | `/api/gateway/users/batch` 批量查询用户信息，`/api/gateway/users` 搜索用户 | 外部服务 | HTTP |
 
 ## 可测试性设计
