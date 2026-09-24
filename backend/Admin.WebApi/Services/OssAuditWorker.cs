@@ -21,6 +21,40 @@ public class OssAuditWorker : BackgroundService
         _configuration = configuration;
     }
 
+    /// <summary>
+    /// Buckets the audit is allowed to scan.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A bucket may appear here only if some reference source aggregates the paths stored under
+    /// it. Any bucket scanned without a reference source has every one of its objects flagged as
+    /// an orphan by construction, and an orphan record can be resolved into a real
+    /// <see cref="IOssService.DeleteAsync"/> against production storage.
+    /// </para>
+    /// <para>
+    /// <see cref="OssBucket.Questions"/> is deliberately excluded: QuestionBank owns
+    /// <c>questions/</c> but publishes no reference query, so scanning it flagged every question
+    /// image as deletable. <see cref="OssBucket.Documents"/> is excluded because DocLibrary
+    /// delegates original and artifact storage to StructaDoc. Re-adding either requires landing
+    /// its reference source in the same change.
+    /// </para>
+    /// </remarks>
+    internal static readonly IReadOnlyList<OssBucket> AuditedBuckets = new[]
+    {
+        OssBucket.Uploads,
+        OssBucket.Mistakes,
+    };
+
+    /// <summary>
+    /// Persisted <see cref="OssAuditRecord.Bucket"/> value for each audited bucket.
+    /// </summary>
+    internal static readonly IReadOnlyDictionary<OssBucket, string> AuditedBucketNames =
+        new Dictionary<OssBucket, string>
+        {
+            { OssBucket.Uploads, "uploads" },
+            { OssBucket.Mistakes, "mistakes" },
+        };
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         await Task.Delay(TimeSpan.FromMinutes(2), stoppingToken);
@@ -31,6 +65,7 @@ public class OssAuditWorker : BackgroundService
             await CleanupLegacyHomeworkReviewImagesAsync(ossService, _logger, stoppingToken);
             var dbContext = scope.ServiceProvider.GetRequiredService<AuditDbContext>();
             await CleanupLegacyHomeworkReviewAuditRecordsAsync(dbContext, _logger, stoppingToken);
+            await CleanupUnauditedBucketAuditRecordsAsync(dbContext, _logger, stoppingToken);
         }
 
         while (!stoppingToken.IsCancellationRequested)
@@ -124,6 +159,39 @@ public class OssAuditWorker : BackgroundService
         return obsoleteRecords.Count;
     }
 
+    /// <summary>
+    /// Removes audit records whose bucket is no longer audited.
+    /// </summary>
+    /// <remarks>
+    /// Earlier revisions scanned <c>questions/</c> without any QuestionBank reference source, so
+    /// every question image was recorded as an orphan. Those records stay resolvable into a real
+    /// delete, so they are purged on startup rather than left for an operator to act on. Records
+    /// with an unrecognised or empty bucket are kept: their origin cannot be established, so they
+    /// cannot be classified as false positives.
+    /// </remarks>
+    internal static async Task<int> CleanupUnauditedBucketAuditRecordsAsync(
+        AuditDbContext dbContext,
+        ILogger logger,
+        CancellationToken cancellationToken = default)
+    {
+        var auditedBucketNames = AuditedBucketNames.Values.ToHashSet(StringComparer.Ordinal);
+        var records = await dbContext.OssAuditRecords.ToListAsync(cancellationToken);
+        var obsoleteRecords = records
+            .Where(record =>
+                !string.IsNullOrWhiteSpace(record.Bucket)
+                && !auditedBucketNames.Contains(record.Bucket))
+            .ToList();
+        if (obsoleteRecords.Count == 0)
+            return 0;
+
+        dbContext.OssAuditRecords.RemoveRange(obsoleteRecords);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        logger.LogWarning(
+            "Removed {Count} audit records in buckets that have no reference source and are no longer audited",
+            obsoleteRecords.Count);
+        return obsoleteRecords.Count;
+    }
+
     public async Task RunAuditAsync(string triggerType = "manual", CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("Starting OSS audit (trigger: {Trigger})...", triggerType);
@@ -203,8 +271,7 @@ public class OssAuditWorker : BackgroundService
                 return;
             }
 
-            HashSet<string> mistakePaths = new(StringComparer.OrdinalIgnoreCase);
-            bool mistakeServiceAvailable = true;
+            HashSet<string> mistakePaths;
             try
             {
                 mistakePaths = await GetMistakeImagePathsAsync(mistakeClient, cancellationToken);
@@ -212,23 +279,30 @@ public class OssAuditWorker : BackgroundService
             }
             catch (Exception ex)
             {
-                _logger.LogWarning("Mistake service unavailable, audit results may have false positives: {Message}", ex.Message);
-                mistakeServiceAvailable = false;
+                // Abort rather than degrade, matching Student and Homework. Every mistakes/ object
+                // was migrated out of uploads/, so none of them appear in the Student upload
+                // records: with an empty mistakePaths set every one of them is recorded as an
+                // orphan while the run still reports success and a bogus NewZombieCount.
+                //
+                // This is not by itself a delete path — OssAuditController re-aggregates the same
+                // reference sources before DeleteAsync and refuses with 502 when any of them is
+                // unreachable, so a genuinely referenced file stays protected once Mistake
+                // recovers. But that guard is only as good as the sweep that feeds it, and an
+                // audit whose pending queue is entirely noise is worse than no audit: it trains
+                // operators to batch-resolve. An explicit failure is cheap to retry.
+                _logger.LogError("Mistake service unavailable, aborting audit: {Message}", ex.Message);
+                auditRun.Status = 2;
+                auditRun.CompletedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                auditRun.ErrorMessage = "Mistake service unavailable";
+                await dbContext.SaveChangesAsync(cancellationToken);
+                return;
             }
-
-            var buckets = new[] { OssBucket.Uploads, OssBucket.Mistakes, OssBucket.Questions };
-            var bucketNames = new Dictionary<OssBucket, string>
-            {
-                { OssBucket.Uploads, "uploads" },
-                { OssBucket.Mistakes, "mistakes" },
-                { OssBucket.Questions, "questions" },
-            };
 
             int totalNewZombies = 0;
 
-            foreach (var bucket in buckets)
+            foreach (var bucket in AuditedBuckets)
             {
-                var bucketName = bucketNames[bucket];
+                var bucketName = AuditedBucketNames[bucket];
                 _logger.LogInformation("Auditing bucket: {Bucket}", bucketName);
 
                 var objects = await ossService.ListObjectsWithBucketAsync(bucket);
@@ -242,7 +316,7 @@ public class OssAuditWorker : BackgroundService
                         continue;
 
                     var isInRegistered = registeredPaths.Contains(path);
-                    var isInMistake = mistakeServiceAvailable && mistakePaths.Contains(path);
+                    var isInMistake = mistakePaths.Contains(path);
 
                     if (!isInRegistered && !isInMistake)
                     {

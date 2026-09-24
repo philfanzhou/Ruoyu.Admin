@@ -179,7 +179,7 @@ ServiceClients   Common        Consul      Middleware       AssistantPortalProxy
 
 **oss-path-autonomy 变更**：
 - `IOssService.DeleteAsync` 自动清理关联缩略图：`S3OssService.DeleteAsync` 内部调用 `ThumbnailHelper.IsThumbnailPath` 判断是否为缩略图，若为原图则调用 `ThumbnailHelper.GetAllThumbnailPaths` 获取所有缩略图路径并逐一删除后再删除原图；若为缩略图则只删除该文件本身，不触发递归清理
-- Admin Portal 的 `S3OssService` 不配置路径前缀校验（`allowedPrefixes` 为 null），因为审计需要访问所有路径前缀（uploads/、mistakes/、questions/）
+- Admin Portal 的 `S3OssService` 不配置路径前缀校验（`allowedPrefixes` 为 null），因为审计浏览与运维操作需要访问任意路径前缀，包括当前不在审计范围内的 questions/、documents/
 - 缩略图路径规则变更：从 `uploads/thumbnails/` 改为与原图同目录，路径格式 `{dirname}/{stem}_{size}.jpg`
 - `OssUploadRecordController`：改用通用 gRPC + 直接 OSS 操作
 

@@ -10,7 +10,7 @@
 |------|------|------|------|
 | Id | | PK | 主键 |
 | ObjectPath | string | UNIQUE | OSS对象路径 |
-| Bucket | string | | 所属桶名（uploads/mistakes/questions） |
+| Bucket | string | | 所属桶名。新记录只会是 uploads 或 mistakes（`OssAuditWorker.AuditedBucketNames`）；questions、documents 等历史误判值由启动清理移除 |
 | Size | long | | 对象大小（字节） |
 | LastModified | DateTime | | 对象最后修改时间 |
 | Status | int | | 0=Pending, 1=Resolved, 2=Ignored |
@@ -110,7 +110,7 @@ OssAuditRun:
 4. 删除原图
 5. 若为缩略图路径，只删除该文件本身，不触发递归清理
 
-Admin Portal 的 `S3OssService` 不配置路径前缀校验（`allowedPrefixes` 为 null），因为审计需要访问所有路径前缀（uploads/、mistakes/、questions/）。
+Admin Portal 的 `S3OssService` 不配置路径前缀校验（`allowedPrefixes` 为 null），因为审计浏览与运维操作需要访问任意路径前缀，包括当前不在审计范围内的 questions/、documents/。这与审计的「扫描桶范围」是两件事：前者约束 `IOssService` 能读写哪些路径，后者约束审计扫描并判定哪些路径。
 
 ### 缩略图路径规则
 

@@ -22,23 +22,34 @@ OSS 审计用于发现 OSS 存储中未被任何业务引用的"僵尸"文件。
                        │
                        ▼
 ┌──────────────────────────────────────────────────────┐
-│ 2. 获取 Student 服务的已注册 OSS 路径                  │
-│    gRPC: GetRegisteredOssPaths                        │
-│    → 若 Student 服务不可用 → 标记 Run 为 Failed，退出  │
+│ 2. 聚合 Student 的已注册 OSS 路径                       │
+│    HTTP: IStudentHttpClient.GetAllUploadRecordsAsync  │
+│    （分页遍历上传记录，本地聚合 image_paths）            │
+│    → 若 Student 服务不可用 → 标记 Run 为 Failed，退出   │
 └──────────────────────┬───────────────────────────────┘
                        │
                        ▼
 ┌──────────────────────────────────────────────────────┐
-│ 3. 获取 Mistake 服务的已引用图片路径                    │
-│    gRPC: GetAllReferencedImagePaths                   │
-│    → 若 Mistake 服务不可用 → 记录警告，继续审计         │
-│      （结果可能存在误报）                               │
+│ 3. 并入 Homework 的引用路径                            │
+│    HTTP: HomeworkReferenceClient.GetAllImagePathsAsync│
+│    → 若 Homework 服务不可用 → 标记 Run 为 Failed，退出  │
 └──────────────────────┬───────────────────────────────┘
                        │
                        ▼
 ┌──────────────────────────────────────────────────────┐
-│ 4. 遍历 OSS Buckets (uploads/mistakes/questions)      │
-│    IOssService: ListObjectsWithBucket (per bucket)    │
+│ 4. 聚合 Mistake 的已引用图片路径                        │
+│    HTTP: IMistakeHttpClient.GetMistakeItemListAsync   │
+│    （分页遍历错题条目，聚合 source_regions 图片路径）     │
+│    → 若 Mistake 服务不可用 → 标记 Run 为 Failed，退出   │
+│      引用聚合不完整时不得产出可处置结论，因此不降级继续    │
+└──────────────────────┬───────────────────────────────┘
+                       │
+                       ▼
+┌──────────────────────────────────────────────────────┐
+│ 5. 遍历 OssAuditWorker.AuditedBuckets                 │
+│    当前为 uploads、mistakes 两个桶                     │
+│    （questions、documents 无引用来源，不在审计范围内）   │
+│    IOssService: ListObjectsWithBucketAsync (per bucket)│
 │                                                       │
 │    对每个对象：                                        │
 │    ├─ ThumbnailHelper.IsThumbnailPath？ → 跳过        │
@@ -51,7 +62,7 @@ OSS 审计用于发现 OSS 存储中未被任何业务引用的"僵尸"文件。
                        │
                        ▼
 ┌──────────────────────────────────────────────────────┐
-│ 5. 更新 OssAuditRun                                  │
+│ 6. 更新 OssAuditRun                                  │
 │    Status=Completed, NewZombieCount=N                 │
 └──────────────────────────────────────────────────────┘
 ```

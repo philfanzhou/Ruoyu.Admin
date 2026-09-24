@@ -1,9 +1,12 @@
 # 集成文档
 
-> **Phase 4 计划变更（尚未实施）**：以下集成矩阵已更新为 Phase 4 目标状态。主要变更：
-> - `StudentManagementGrpcService` 整体移除，通用方法迁移至 `StudentLearningGrpcService`，Admin 专用方法由 Admin Portal 自行实现
-> - `MistakeGrpcService.GetAllReferencedImagePaths` 移除，Admin Portal 通过通用 gRPC 分页遍历后自行聚合路径
-> - `IOssService` 扩展为审计浏览 + 僵尸清理 + 迁移辅助，凭证权限降级为只读 + 有限写
+> **⚠️ 本文档整体过期，尚未重新核对。**
+>
+> 下面的集成矩阵仍按 **gRPC** 描述，且带有「Phase 4 计划变更（尚未实施）」的历史标注。实际实现已全部改为 HTTP/JSON，gRPC 已整体移除；矩阵也**缺少 Homework（:5009）**这一路下游——`HomeworkReferenceClient` 为 Storage Audit 聚合图片引用，是审计的必需依赖之一。
+>
+> 当前实现事实以代码为准：`backend/Admin.WebApi/Program.cs`（下游注册）、`backend/Admin.WebApi/Controllers/`（对外端点）、三个 `*ProxyMiddleware.cs`（代理转发）、`backend/Ruoyu.Admin.ServiceClients/`（Student / Mistake 契约镜像）、`backend/Admin.WebApi/Services/HomeworkReferenceClient.cs`。
+>
+> 下方「失败语义总结」中 Storage Audit 相关的行已按当前代码更正，其余行仍可能过期。重新核对整份矩阵是独立的待办项。
 
 ## 集成矩阵
 
@@ -25,12 +28,15 @@
 
 ## 失败语义总结
 
-### gRPC 调用失败
+### 下游调用失败
+
+> 实际协议为 HTTP/JSON，小节标题沿用原文以保留链接；下表 Storage Audit 相关行已按当前代码更正。
 
 | 场景 | 服务 | 失败处理 | HTTP 响应 |
 |------|------|----------|-----------|
-| Student Service 不可用 | Student | 审计任务标记为 Failed（路径聚合不可用）；Resolve 操作返回 502；CRUD 操作返回 500；图片预签名 URL 返回 502；图片迁移返回 500 | 502 Bad Gateway / 500 Internal Server Error |
-| Mistake Service 不可用 | Mistake | 审计任务继续（Mistake 路径聚合跳过，可能产生误报）；Resolve 操作返回 502；查询操作返回 500；图片预签名 URL 返回 502 | 502 Bad Gateway / 500 Internal Server Error |
+| Student Service 不可用 | Student | 审计任务标记为 Failed（路径聚合不可用）；Resolve / BatchResolve 返回 502 且不删；CRUD 操作返回 500；图片预签名 URL 返回 502；图片迁移返回 500 | 502 Bad Gateway / 500 Internal Server Error |
+| Homework Service 不可用 | Homework | 审计任务标记为 Failed（`ErrorMessage="Homework service unavailable"`），在扫描任何桶之前中止；Resolve / BatchResolve 返回 502 且不删（复核的 `GetRegisteredOssPathsAsync` 同时聚合 Student 与 Homework） | 502 Bad Gateway / 500 Internal Server Error |
+| Mistake Service 不可用 | Mistake | 审计任务标记为 Failed（引用聚合不完整，不得产出可处置结论）；Resolve / BatchResolve 返回 502 且整批不删；查询操作返回 500；图片预签名 URL 返回 502 | 502 Bad Gateway / 500 Internal Server Error |
 | gRPC InvalidArgument | Student/Mistake | 返回客户端错误 | 400 Bad Request |
 | gRPC NotFound | Student/Mistake | 返回资源不存在 | 404 Not Found |
 | gRPC 通用异常 | Student/Mistake | 记录日志，返回 500 | 500 Internal Server Error |

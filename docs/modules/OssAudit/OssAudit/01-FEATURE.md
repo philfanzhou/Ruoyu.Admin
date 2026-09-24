@@ -13,12 +13,12 @@
 1. **幂等性**：resolve 操作对 Pending 状态记录执行前需再次校验引用，对 Resolved 状态记录跳过校验（幂等）
 2. **并发**：审计互斥，同一时间只允许一个审计任务运行，通过 OssAuditRun 记录实现锁机制
 3. **事务边界**：单次 resolve/ignore 为单条记录操作；审计扫描为后台长任务，无整体事务
-4. **失败降级**：Student 服务不可用时审计必须中止；Mistake 服务不可用时仅警告不中止
-5. **扫描桶范围**：uploads、mistakes、questions 三个桶
-6. **清理安全校验**：对 Pending 状态记录执行 resolve 前需再次验证文件未被 Student 或 Mistake 服务引用
+4. **失败即中止**：Student、Homework、Mistake 三个引用来源任一不可达，审计必须中止（`OssAuditRun.Status=2`），且在扫描任何桶之前中止。引用聚合不完整时不得产出可处置结论——审计记录会被 resolve 成真实删除，噪声队列比没有审计更危险
+5. **扫描桶范围**：只扫描存在引用来源的桶，当前为 uploads、mistakes（`OssAuditWorker.AuditedBuckets`）。questions（QuestionBank）与 documents（DocLibrary，原件已交由 StructaDoc 主责）没有引用来源，不在审计范围内；启动时会清理历史遗留的这两类误判记录
+6. **清理安全校验**：对 Pending 状态记录执行 resolve / batch-resolve 前，需重新聚合 Student + Homework 与 Mistake 的引用路径再验证一次；任一来源不可达时返回 502 拒删。注意这道复核查询的是同一批来源，只能防下游临时故障，无法纠正审计判定本身的错误
 7. **缩略图跳过**：审计扫描使用 `ThumbnailHelper.IsThumbnailPath` 跳过缩略图文件，避免将缩略图误报为僵尸文件（缩略图与原图关联，删原图时自动清理）
 8. **缩略图自动清理**：`IOssService.DeleteAsync` 自动清理关联缩略图，删除僵尸原图时会连带删除同目录下的所有尺寸缩略图，无需调用方额外处理
-9. **无路径前缀校验**：Admin Portal 的 `S3OssService` 不配置路径前缀校验（`allowedPrefixes` 为 null），因为审计需要访问所有路径前缀（uploads/、mistakes/、questions/）
+9. **无路径前缀校验**：Admin Portal 的 `S3OssService` 不配置路径前缀校验（`allowedPrefixes` 为 null），因为审计浏览与运维操作需要访问任意路径前缀，包括当前不在审计范围内的 questions/、documents/。这与「扫描桶范围」是两件事：前者约束 `IOssService` 能读写哪些路径，后者约束审计扫描并判定哪些路径
 10. **缩略图路径规则**：缩略图与原图同目录，路径格式 `{dirname}/{stem}_{size}.jpg`（旧规则 `uploads/thumbnails/` 已废弃）
 11. **旧批改图定向清理**：Worker 启动后只自动删除严格匹配 `uploads/homework/{homeworkId}/{studentId}/reviews/{revisionId}.jpg` 的已废弃批改派生图及其残留审计记录；三个 ID 都必须为非空 UUID，删除原图时连带删除缩略图。学生提交原图和其他路径不进入该规则。
 

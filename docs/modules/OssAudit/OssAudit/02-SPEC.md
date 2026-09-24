@@ -7,7 +7,8 @@
 **补充约束**：
 - 审计任务必须互斥执行，同一时间只允许一个审计运行
 - 清理操作必须验证对象确实未被引用后才可执行，防止误删
-- Mistake 服务的引用查询为可选依赖，不可用时审计仍可继续（仅基于 Student 注册路径判断）
+- **Student、Homework、Mistake 三个引用来源均为必需依赖**：任一不可达时审计中止（`OssAuditRun.Status=2`），不扫描任何桶、不产生任何记录。Mistake 曾按「可选依赖、降级继续」实现，已改为中止，原因见 [06-CONVENTIONS.md 错误处理](./06-CONVENTIONS.md)
+- **只允许扫描存在引用来源的桶**（当前 `uploads`、`mistakes`）。扫描一个无来源的桶等价于把该桶下每个对象都标记为可删除，因为删除前复核查的是同一批来源，对无来源的桶必然放行
 
 ## 功能要求清单
 
@@ -30,7 +31,7 @@
 ### AC-FR-01：每日定时自动审计
 - **Given** 系统配置了 `OssAudit:ScheduledHour` 和 `OssAudit:ScheduledMinute`（默认 2:00 AM）
 - **When** 到达调度时间
-- **Then** 系统自动执行 `RunAuditAsync("scheduled")`，创建 `OssAuditRun` 记录（TriggerType=scheduled），扫描所有桶并生成僵尸记录
+- **Then** 系统自动执行 `RunAuditAsync("scheduled")`，创建 `OssAuditRun` 记录（TriggerType=scheduled），扫描 `OssAuditWorker.AuditedBuckets` 中的桶并生成僵尸记录
 
 ### AC-FR-02：手动触发审计
 - **Given** 当前没有审计任务正在运行

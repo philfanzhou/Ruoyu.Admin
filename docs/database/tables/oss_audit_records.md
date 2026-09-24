@@ -17,7 +17,7 @@ OSS 僵尸对象审计记录表，存储被检测到未被任何业务引用的 
 |------|------|------|------|
 | `Id` | `bigint` | PK | 主键，自增 |
 | `ObjectPath` | `string` | NOT NULL, UNIQUE | OSS 对象路径，如 `uploads/xxx.jpg`、`mistakes/xxx.jpg` |
-| `Bucket` | `string` | NOT NULL | 所属 Bucket 名称，取值：`uploads`、`mistakes`、`questions` |
+| `Bucket` | `string` | NOT NULL | 所属 Bucket 名称。新记录取值只有 `uploads`、`mistakes`（由 `OssAuditWorker.AuditedBucketNames` 决定）；`questions`、`documents` 是历史误判遗留值，会在应用启动时被 `CleanupUnauditedBucketAuditRecordsAsync` 移除 |
 | `Size` | `bigint` | NOT NULL | 对象大小（字节） |
 | `LastModified` | `bigint` | NOT NULL | 对象最后修改时间（Unix 秒） |
 | `Status` | `int` | NOT NULL, DEFAULT 0 | 审计状态，见下方枚举 |

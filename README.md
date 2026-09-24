@@ -149,13 +149,19 @@ npm run build
 
 ## Known issues
 
-**Storage Audit misclassifies every QuestionBank image as an orphan.** `OssAuditWorker` scans the `uploads/`, `mistakes/` and `questions/` prefixes but only aggregates referenced paths from Student, Homework and Mistake. Nothing aggregates QuestionBank's question images, so every object under `questions/` is written to `OssAuditRecords` as unreferenced. Resolving those records calls `IOssService.DeleteAsync`, which **permanently deletes the files** along with their thumbnails.
+**Storage Audit used to misclassify every QuestionBank image as an orphan — fixed during the extraction.** `OssAuditWorker` scanned `uploads/`, `mistakes/` and `questions/` but only aggregated referenced paths from Student, Homework and Mistake. Nothing covered `questions/`, so every object there was recorded as unreferenced; the pre-delete revalidation queries the same sources and therefore could not object, and resolving those records called `IOssService.DeleteAsync` — permanently deleting question images along with their thumbnails.
 
-Until this is fixed, do not resolve or batch-resolve audit records whose `Bucket` is `questions`.
+The audit scope is now `OssAuditWorker.AuditedBuckets` (`Uploads`, `Mistakes`) under the invariant that a bucket may only be scanned when a reference source covers it, and stale `questions` / `documents` records are purged on startup. `Mistake` unavailability now aborts the run instead of degrading, matching Student and Homework.
 
-`AdminApi:Port` in `appsettings.json` is dead configuration; nothing reads it. The listen port is the hardcoded `const int httpPort = 5020` in `Program.cs`.
+> **Upgrade note:** the purge runs at application startup. If your database already holds records with `Bucket = 'questions'`, do not resolve or batch-resolve them on the old version — upgrade first and let the startup cleanup remove them.
 
-Both issues are inherited from the monorepo, not introduced by the extraction. Details and fix options: [docs/README.md](docs/README.md).
+**`OssAuditController` has no test coverage.** The pre-delete revalidation in `ResolveRecord` / `BatchResolve` is the only runtime guard against deleting a file that is still referenced, and nothing tests it. The monorepo documentation listed eighteen such tests as implemented; they do not exist there either. This is the highest-priority test gap.
+
+**`AdminApi:Port` in `appsettings.json` is dead configuration**; nothing reads it. The listen port is the hardcoded `const int httpPort = 5020` in `Program.cs`.
+
+**`Ruoyu.Admin.ServiceClients` carries unused downstream methods.** The library was shared with the Mistake service and several portals in the monorepo; this repository consumes 20 of Student's 25 methods and 7 of Mistake's 14. The remainder, including the mistake→student DTO block, is dead code here.
+
+Everything except the Storage Audit fix is inherited from the monorepo rather than introduced by the extraction. Full list with fix options: [docs/README.md](docs/README.md).
 
 ## Project status
 
