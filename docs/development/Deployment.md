@@ -22,7 +22,7 @@
 
 ## 配置加载
 
-Admin API 启动时通过 Consul `config/ruoyu/*` 加载 PostgreSQL、OSS 和下游服务共享配置。`start.sh` 注入 Consul 地址、数据库名 `ruoyu_admin` 和 Identity 应用凭据。仓库脚本中的 `127.0.0.1` 是假内网示例，部署时通过 `CONSUL_HTTP_ADDR` 指向实际 Consul 地址。
+Admin API 启动时通过 Consul `config/ruoyu/*` 加载 PostgreSQL、OSS 和下游服务共享配置。`start.sh` 注入 Consul 地址、数据库名 `ruoyu_admin` 和 Identity 应用凭据。仓库中的 `127.0.0.1` 只是占位默认值，**不是任何真实部署的地址**；部署时通过 `CONSUL_HTTP_ADDR` 指向实际 Consul 地址。
 
 ### OSS
 
@@ -46,14 +46,16 @@ Admin API 启动时通过 Consul `config/ruoyu/*` 加载 PostgreSQL、OSS 和下
 
 ### 下游服务
 
-| 依赖 | 默认地址 | 协议 |
+| 依赖 | 仓库占位默认值 | 协议 |
 |------|----------|------|
-| Student | `http://127.0.0.1:5005`（示例内网地址） | HTTP |
-| Mistake | `http://127.0.0.1:5007`（仓库假内网示例） | HTTP |
-| Identity | `http://127.0.0.1:5002`（仓库假内网示例） | HTTP |
-| Teacher Portal | `http://127.0.0.1:5004`（仓库假内网示例） | HTTP |
-| Assistant Portal | `http://127.0.0.1:5021`（仓库假内网示例） | HTTP |
+| Student | `http://127.0.0.1:5005` | HTTP |
+| Mistake | `http://127.0.0.1:5007` | HTTP |
+| Identity | `http://127.0.0.1:5002` | HTTP |
+| Teacher Portal | `http://127.0.0.1:5004` | HTTP |
+| Assistant Portal | `http://127.0.0.1:5021` | HTTP |
 | SeaweedFS | `Oss:InternalEndpoint` | S3 |
+
+上表均为占位值，实际地址一律由部署配置下发，本仓库不记录任何真实环境地址。
 
 下游地址分别来自 Consul 的 `StudentService:Url`、`MistakeService:Url`、`IdentityService:Authority`、`TeacherPortal:Url` 和 `AssistantPortal:Url`。跨主机迁移时需要更新 live KV（需要时再同步 seed KV），并重启 Admin Portal 才会加载新值。
 
