@@ -7,7 +7,9 @@ Ruoyu.Admin 是 Ruoyu.Study 平台的管理后台：.NET 8 BFF API、Vue 3 / Ele
 - 本文件是 AI 协作流程、项目边界和验证约束的统一入口。
 - Codex 直接读取本文件；Claude Code 通过根目录 `CLAUDE.md` 导入本文件。
 - `.agent`、`.claude`、`.trae` 等工具目录可以补充工具专属规则，但不得覆盖本文件的边界、测试和安全约束。
-- 本仓库没有 CI。所有验证必须在本地显式运行，未运行或失败的验证必须如实说明，不得假定通过。
+- CI 位于 `.github/workflows/`：`ci.yml`（Build & Test：后端编译+测试、前端构建、两个 Dockerfile 镜像构建验证；tag 推送时发布 GHCR 镜像与 GitHub Release）与 `codeql.yml`（Analyze csharp / javascript-typescript）。`main` 由 `Protect main` ruleset 保护：禁止直推、force-push 和删除，PR 必须通过上述三个 required check 才能合并。
+- 发布契约：tag 不带 `v` 前缀。`X.Y.Z-rc.N` 只发布不可变版本标签的**测试镜像**并创建 pre-release；`X.Y.Z` 发布**正式镜像**并同时移动 `X.Y` 与 `latest`。镜像为 `ghcr.io/philfanzhou/ruoyu.admin`（API+SPA 集成）与 `ghcr.io/philfanzhou/ruoyu.admin.web`（独立 Nginx 前端）。
+- CI 不豁免本地验证：推送前仍须按「验证」一节显式运行，未运行或失败的验证必须如实说明，不得假定通过。
 
 ## 文档与沟通语言
 

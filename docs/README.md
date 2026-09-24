@@ -73,6 +73,12 @@ Student、Mistake、Homework、Teacher Portal、Assistant Portal 与 Identity �
 
 ## 待补的继承缺陷
 
+### `Steeltoe.Discovery.Consul` 4.2.0 高危漏洞（GHSA-67c9-f6v2-qv86）
+
+继承自源仓库的 Consul 服务发现/配置组件存在已知高危公告：畸形 `secure` 元数据会导致服务实例查找中止（DoS）。受影响范围 `>= 4.0.0, <= 4.2.0`，修复版本 `4.3.0`；`dotnet restore` 以 NU1903 警告呈现。
+
+`ci.yml` 中两个 trivy 镜像扫描步骤（HIGH/CRITICAL + `ignore-unfixed`）当前为 **report-only（`exit-code: '0'`）**：该漏洞已有修复版本，`ignore-unfixed` 不会跳过它，若设为阻塞，required check `Build & Test` 会让每个 PR 从当天起直接红。**升级条件**：以独立变更把 `Ruoyu.Admin.Consul` 的 Steeltoe.Discovery.Consul 升到 `>= 4.3.0`（涉及 Consul KV 加载与服务注册行为，需按验证纪律完整回归），结合首批 trivy 扫描的其余发现复核后，把两个步骤改为 `exit-code: '1'`（对齐 SignaCore 的阻塞策略）。
+
 ### `AdminApi:Port` 是死配置
 
 `appsettings.json` 里的 `AdminApi:Port` 没有任何代码读取。监听端口由 `Program.cs` 中的 `const int httpPort = 5020` 硬编码。删除该配置键或让端口真正可配，都需要单独决定。

@@ -135,6 +135,28 @@ cd frontend
 npm run build
 ```
 
+## Releases
+
+Push a tag to publish container images to GHCR. Tags carry no `v` prefix and are
+validated against `MAJOR.MINOR.PATCH(-rc.N)`; images are published only after
+`Build & Test` passes on the tag.
+
+| Tag | Published tags per image | Channel |
+|-----|--------------------------|---------|
+| `X.Y.Z-rc.N` | `X.Y.Z-rc.N` only | Test build. Immutable tag, never moves a production tag; GitHub Release marked pre-release |
+| `X.Y.Z` | `X.Y.Z`, `X.Y`, `latest` | Stable release; GitHub Release marked latest |
+
+Images: `ghcr.io/philfanzhou/ruoyu.admin` (unified API + SPA, from
+`backend/Admin.WebApi/Dockerfile`) and `ghcr.io/philfanzhou/ruoyu.admin.web`
+(standalone Nginx SPA + `/api/` proxy, from `frontend/Dockerfile`). Both are
+built with the repository root as context, with provenance and SBOM
+attestations.
+
+`main` is protected by a ruleset: changes land through pull requests that pass
+the required checks (`Build & Test`, `Analyze (csharp)`,
+`Analyze (javascript-typescript)`); direct pushes, force-pushes and branch
+deletion are blocked.
+
 ## Documentation
 
 | Entry point | Contents |
@@ -157,6 +179,8 @@ The audit scope is now `OssAuditWorker.AuditedBuckets` (`Uploads`, `Mistakes`) u
 `OssAuditController` also had **no test coverage at all** — the monorepo documentation listed twenty-two such tests as implemented, and they did not exist there either. `OssAuditControllerTests` now covers every refusal branch of the pre-delete revalidation (31 cases), including case-insensitive matching, the null `HomeworkReferenceClient` path, and whole-batch refusal when a reference source is unreachable. The two 502-guard cases were A/B verified against the guard removed. Writing them surfaced a second defect: `BatchResolve`'s empty-result early return omitted `totalRequested`, which `docs/api.md` and the frontend's `BatchResolveResponse` both declare as required; the two paths now agree.
 
 > **Upgrade note:** the purge runs at application startup. If your database already holds records with `Bucket = 'questions'`, do not resolve or batch-resolve them on the old version — upgrade first and let the startup cleanup remove them.
+
+**`Steeltoe.Discovery.Consul` 4.2.0 carries a known high-severity advisory** (GHSA-67c9-f6v2-qv86: malformed `secure` metadata aborts service instance lookup — a denial of service; patched in 4.3.0). Inherited from the monorepo; `dotnet restore` surfaces it as NU1903. The CI image scans run report-only (`exit-code: '0'`) until the bump lands: the advisory has a patched release, so `--ignore-unfixed` would not skip it and a blocking scan would fail every pull request today. The bump needs its own verification of Consul KV loading and service registration, and promoting the scans to blocking rides with that change.
 
 **`AdminApi:Port` in `appsettings.json` is dead configuration**; nothing reads it. The listen port is the hardcoded `const int httpPort = 5020` in `Program.cs`.
 
