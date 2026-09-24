@@ -83,4 +83,10 @@ Student、Mistake、Homework、Teacher Portal、Assistant Portal 与 Identity �
 
 ### `Ruoyu.Admin.Common.Constants.OssPathPrefixConstants` 在本仓库未被引用
 
-它是 Student 图片指纹懒校验用的跨前缀清单，随 `Ruoyu.Study.Common` 整体复制过来。`All` 只列 `uploads/`、`mistakes/`、`homework/`，与 `OssBucket` 的四个值并不对应——**不要**把它当作审计范围的依据，审计范围由 `OssAuditWorker.AuditedBuckets` 定义。可考虑删除或补注释说明其真实归属。
+它是 Student 图片指纹懒校验用的跨前缀清单，随共享库整体复制过来，本仓库没有任何代码读取它。
+
+它的 `All` 只列 `uploads/`、`mistakes/`、`homework/`，与 `OssBucket` 的四个值（`Uploads`、`Mistakes`、`Questions`、`Documents`）并不对应。**不要**把它当作审计范围的依据——审计范围由 `OssAuditWorker.AuditedBuckets` 定义。
+
+另外 `homework/` 这个前缀本身具有误导性：Homework 服务没有 OSS 集成，作业图片实际由 Student 存放在 `uploads/homework/` 之下（`OssAuditWorker.CleanupLegacyHomeworkReviewImagesAsync` 处理的正是这个路径），源码注释也标明该常量是「reserved for future homework-service image upload」。判断某类对象归谁所有时，应以实际写入方为准，不要以这个常量为准。
+
+处理选项：删除该文件，或补注释说明其真实归属与 `homework/` 的保留状态。
