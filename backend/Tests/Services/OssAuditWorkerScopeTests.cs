@@ -3,6 +3,7 @@ using Admin.WebApi.Persistence;
 using Admin.WebApi.Services;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -229,6 +230,7 @@ public class OssAuditWorkerScopeTests
         {
             var options = new DbContextOptionsBuilder<AuditDbContext>()
                 .UseInMemoryDatabase(Guid.NewGuid().ToString(), _databaseRoot)
+                .ConfigureWarnings(w => w.Ignore(CoreEventId.ManyServiceProvidersCreatedWarning))
                 .Options;
             Options = options;
 
@@ -325,6 +327,7 @@ public class OssAuditWorkerScopeTests
     {
         var options = new DbContextOptionsBuilder<AuditDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString(), new InMemoryDatabaseRoot())
+                .ConfigureWarnings(w => w.Ignore(CoreEventId.ManyServiceProvidersCreatedWarning))
             .Options;
         var context = new AuditDbContext(options);
         await context.Database.EnsureCreatedAsync();

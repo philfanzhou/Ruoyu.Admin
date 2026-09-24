@@ -61,11 +61,17 @@ Student、Mistake、Homework、Teacher Portal、Assistant Portal 与 Identity �
 
 **运维注意**：修复只在应用启动时清理误判记录。若线上库中已有 `Bucket = 'questions'` 的记录，升级后首次启动会自动移除；升级前不要对这些记录执行 resolve 或 batch-resolve。
 
+### `OssAuditController` 曾完全没有测试覆盖（迁出时补齐）
+
+`ResolveRecord` / `BatchResolve` 的删除前复核是唯一阻止误删的运行时保护，迁出时 `backend/Tests/Controllers/` 下没有 `OssAuditControllerTests`。原 monorepo 文档把 22 个此类用例标注为「已实现」，实际在源仓库中也不存在——属虚构清单。
+
+现已按实际代码补齐 `OssAuditControllerTests`，31 个用例覆盖复核的每一条拒删分支、大小写不敏感比对、`_homeworkClient` 为 null 的收窄语义、删除失败留档、批量处置的整批拒绝与逐条跳过，以及查询与触发端点。两个 502 守卫用例已做 A/B 验证（临时移除守卫后确实失败）。补测试过程中还发现并修复了 `BatchResolve` 空结果早退路径缺 `totalRequested` 字段、与 `docs/api.md` 和前端 `BatchResolveResponse` 声明不一致的问题。
+
+清单见 [modules/OssAudit/OssAudit/05-TESTS.md](./modules/OssAudit/OssAudit/05-TESTS.md)。
+
+**仍未覆盖**：`OssAuditWorker.ExecuteAsync` 的调度计算与并发互斥分支。
+
 ## 待补的继承缺陷
-
-### `OssAuditController` 完全没有测试覆盖
-
-`ResolveRecord` / `BatchResolve` 的删除前复核是唯一阻止误删的运行时保护，但 `backend/Tests/Controllers/` 下没有 `OssAuditControllerTests`。原 monorepo 文档把这些用例标注为「已实现」，实际在源仓库中也不存在，本次已更正为目标清单（见 [modules/OssAudit/OssAudit/05-TESTS.md](./modules/OssAudit/OssAudit/05-TESTS.md)）。这是当前优先级最高的测试缺口。
 
 ### `AdminApi:Port` 是死配置
 

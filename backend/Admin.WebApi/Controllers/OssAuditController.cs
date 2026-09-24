@@ -231,7 +231,7 @@ public partial class OssAuditController : ControllerBase
             .ToListAsync();
 
         if (records.Count == 0)
-            return Ok(new { resolvedCount = 0, errors = new List<string>() });
+            return Ok(new { resolvedCount = 0, errors = new List<string>(), totalRequested = request.Ids.Count });
 
         // Only fetch reference paths for Pending records that need validation
         var pendingRecords = records.Where(r => r.Status == 0).ToList();

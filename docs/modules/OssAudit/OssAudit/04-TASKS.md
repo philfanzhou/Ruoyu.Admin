@@ -40,8 +40,8 @@
   {
     "id": "T6",
     "title": "批量清理僵尸文件",
-    "description": "管理员通过 POST /api/admin/oss-audit/batch-resolve 批量清理多条记录，一次性获取引用路径后逐条校验和删除",
-    "endpoint": "POST /api/admin/oss-audit/batch-resolve",
+    "description": "管理员通过 POST /api/admin/oss-audit/records/batch-resolve 批量清理多条记录，一次性获取引用路径后逐条校验和删除",
+    "endpoint": "POST /api/admin/oss-audit/records/batch-resolve",
     "method": "POST"
   },
   {

@@ -154,9 +154,9 @@ npm run build
 
 The audit scope is now `OssAuditWorker.AuditedBuckets` (`Uploads`, `Mistakes`) under the invariant that a bucket may only be scanned when a reference source covers it, and stale `questions` / `documents` records are purged on startup. `Mistake` unavailability now aborts the run instead of degrading, matching Student and Homework.
 
-> **Upgrade note:** the purge runs at application startup. If your database already holds records with `Bucket = 'questions'`, do not resolve or batch-resolve them on the old version — upgrade first and let the startup cleanup remove them.
+`OssAuditController` also had **no test coverage at all** — the monorepo documentation listed twenty-two such tests as implemented, and they did not exist there either. `OssAuditControllerTests` now covers every refusal branch of the pre-delete revalidation (31 cases), including case-insensitive matching, the null `HomeworkReferenceClient` path, and whole-batch refusal when a reference source is unreachable. The two 502-guard cases were A/B verified against the guard removed. Writing them surfaced a second defect: `BatchResolve`'s empty-result early return omitted `totalRequested`, which `docs/api.md` and the frontend's `BatchResolveResponse` both declare as required; the two paths now agree.
 
-**`OssAuditController` has no test coverage.** The pre-delete revalidation in `ResolveRecord` / `BatchResolve` is the only runtime guard against deleting a file that is still referenced, and nothing tests it. The monorepo documentation listed eighteen such tests as implemented; they do not exist there either. This is the highest-priority test gap.
+> **Upgrade note:** the purge runs at application startup. If your database already holds records with `Bucket = 'questions'`, do not resolve or batch-resolve them on the old version — upgrade first and let the startup cleanup remove them.
 
 **`AdminApi:Port` in `appsettings.json` is dead configuration**; nothing reads it. The listen port is the hardcoded `const int httpPort = 5020` in `Program.cs`.
 
