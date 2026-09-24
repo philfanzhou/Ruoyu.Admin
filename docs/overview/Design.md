@@ -130,7 +130,7 @@ ServiceClients   Common        Consul      Middleware       AssistantPortalProxy
 | `TeacherPortalProxyMiddleware` | `/api/teacher-portal/*` | Teacher Portal :5004 | 透传调用方 `Authorization: Bearer`，下游校验 `role=admin` |
 | `AssistantPortalProxyMiddleware` | `/api/assistant-portal/*` | Assistant Portal :5021 | 同上 |
 
-> **协议现状**：所有下游调用均为 HTTP/JSON，gRPC 已全部移除。`Ruoyu.Admin.ServiceClients` 中的 DTO 是 Student 与 Mistake 服务对外 HTTP 契约的镜像副本，二者由 [Ruoyu.Study](https://github.com/philfanzhou/Ruoyu.Study) 仓库主责，本仓库不拥有其定义权。
+> **协议现状**：所有下游调用均为 HTTP/JSON，gRPC 已全部移除。`Ruoyu.Admin.ServiceClients` 中的 DTO 是 Student 与 Mistake 服务对外 HTTP 契约的镜像副本，二者由 Ruoyu.Study 仓库主责，本仓库不拥有其定义权。
 
 ## 关键设计决策
 
@@ -209,7 +209,7 @@ ServiceClients   Common        Consul      Middleware       AssistantPortalProxy
 
 Admin Portal 不维护 `/oss/` Nginx location。Admin API 使用 `Oss:PublicBaseUrl` 生成以公共域名签名的下载地址，浏览器跟随 302 到平台公共 OSS 入口；仓库内由 User Web Nginx 唯一代理该路径。
 
-实际 S3 操作使用 `Oss:InternalEndpoint`，因此 Admin 后端可以直接连接独立服务器上的 SeaweedFS，不依赖 Portal Nginx 或 Docker DNS。完整决策见 [Ruoyu.Study ADR-0003](https://github.com/philfanzhou/Ruoyu.Study/blob/master/docs/adr/0003-separate-internal-oss-access-from-public-presigned-routing.md)（跨仓库决策，由 Ruoyu.Study 主责）。
+实际 S3 操作使用 `Oss:InternalEndpoint`，因此 Admin 后端可以直接连接独立服务器上的 SeaweedFS，不依赖 Portal Nginx 或 Docker DNS。完整决策见 Ruoyu.Study 仓库的 ADR-0003（separate-internal-oss-access-from-public-presigned-routing，该仓库未公开）（跨仓库决策，由 Ruoyu.Study 主责）。
 
 ### 6. 下游 HTTP 合约引用方式
 
@@ -224,7 +224,7 @@ Admin Portal 不维护 `/oss/` Nginx location。Admin API 使用 `Oss:PublicBase
 - `HomeworkReferenceClient` 是 Admin 专用的一次性聚合客户端，只有一个方法，保留在 `Admin.WebApi/Services/` 内，不进共享库。
 
 **注意事项**：
-- DTO 是**副本**，不是共享定义。Student / Mistake 的 HTTP 契约由 [Ruoyu.Study](https://github.com/philfanzhou/Ruoyu.Study) 仓库主责，其字段变更不会在本仓库产生编译错误，只会产生运行时反序列化偏差。
+- DTO 是**副本**，不是共享定义。Student / Mistake 的 HTTP 契约由 Ruoyu.Study 仓库主责，其字段变更不会在本仓库产生编译错误，只会产生运行时反序列化偏差。
 - 因此下游契约变更必须同步修改 `Ruoyu.Admin.ServiceClients`，并补充对应的 Controller 单测。
 - 后续演进方向是由下游发布 OpenAPI 规范、本仓库生成客户端，从根上消除手写镜像。
 

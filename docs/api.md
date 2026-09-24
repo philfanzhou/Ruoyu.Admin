@@ -82,7 +82,7 @@ Admin Portal 采用 **mode-1 集成部署**：同一容器（端口 5020）既�
 }
 ```
 
-> **变更**：2026 年 6 月起不再返回 `mistakeTypes` 字段，错题错误类型已下线（该字段的定义与下线记录由 [Ruoyu.Study](https://github.com/philfanzhou/Ruoyu.Study) 仓库的共享常量文档主责）。
+> **变更**：2026 年 6 月起不再返回 `mistakeTypes` 字段，错题错误类型已下线（该字段的定义与下线记录由 Ruoyu.Study 仓库的共享常量文档主责）。
 
 ---
 

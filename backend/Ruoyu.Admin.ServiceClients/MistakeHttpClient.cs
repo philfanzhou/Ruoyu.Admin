@@ -8,7 +8,7 @@ namespace Ruoyu.Admin.ServiceClients;
 
 // ===== Mistake service DTOs =====
 // These DTOs mirror the HTTP response shapes published by the Mistake service, which lives in
-// the separate Ruoyu.Study repository (https://github.com/philfanzhou/Ruoyu.Study). They are
+// the separate, non-public Ruoyu.Study repository. They are
 // hand-maintained copies: this repository has no compile-time reference to the Mistake service,
 // so an upstream contract change surfaces as a deserialization mismatch, not a build error.
 // Field names and JSON shapes must match the Mistake service HTTP endpoints exactly.

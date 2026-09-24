@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
-Ruoyu.Admin is the administration console for the [Ruoyu.Study](https://github.com/philfanzhou/Ruoyu.Study) English-learning platform. It combines a .NET 8 BFF API with a Vue 3 / Element Plus single-page app, shipped as one container.
+Ruoyu.Admin is the administration console for the Ruoyu.Study English-learning platform. It combines a .NET 8 BFF API with a Vue 3 / Element Plus single-page app, shipped as one container.
 
 It owns almost no business data. It authenticates administrators, aggregates and proxies the platform's downstream services, and owns exactly one domain of its own: **Storage Audit** — finding and disposing object-storage files that no business record references any more.
 
@@ -48,7 +48,7 @@ Browser ── Vue 3 SPA (Element Plus, served from wwwroot)
 | `backend/Ruoyu.Admin.ServiceClients` | Hand-written HTTP clients and mirror DTOs for the Student and Mistake services |
 | `backend/Tests` | xUnit + Moq + FluentAssertions unit tests |
 
-`Ruoyu.Admin.ServiceClients` holds **copies** of the downstream DTO shapes, not shared definitions. The Student and Mistake HTTP contracts are owned by [Ruoyu.Study](https://github.com/philfanzhou/Ruoyu.Study); an upstream change surfaces here as a deserialization mismatch, not a compile error.
+`Ruoyu.Admin.ServiceClients` holds **copies** of the downstream DTO shapes, not shared definitions. The Student and Mistake HTTP contracts are owned by Ruoyu.Study; an upstream change surfaces here as a deserialization mismatch, not a compile error.
 
 ## Dependencies
 
@@ -145,6 +145,7 @@ npm run build
 | [docs/Integration/](docs/Integration/) | External system contracts |
 | [docs/database/](docs/database/) | Audit schema and data ownership |
 | [docs/development/](docs/development/) | Local setup, run and debug, deployment, verification |
+| [docs/pending-decisions.md](docs/pending-decisions.md) | Open design decisions |
 | [CONTEXT.md](CONTEXT.md) | Storage Audit ubiquitous language |
 
 ## Known issues
@@ -165,7 +166,9 @@ Everything except the Storage Audit fix is inherited from the monorepo rather th
 
 ## Project status
 
-Extracted from the [Ruoyu.Study](https://github.com/philfanzhou/Ruoyu.Study) monorepo in September 2026 with full subtree history preserved. It is in production use against the Ruoyu.Study platform, but it is **not** a general-purpose product: its downstream contracts are specific to that platform and are not versioned or published independently.
+Extracted from the Ruoyu.Study monorepo in September 2026 with full subtree history preserved. It is in production use against the Ruoyu.Study platform, but it is **not** a general-purpose product: its downstream contracts are specific to that platform and are not versioned or published independently.
+
+**Ruoyu.Study itself is not public.** It is therefore named in these docs but never linked, and the downstream HTTP contracts are described only as far as this repository consumes them. Configuration values that identify a specific deployment — Identity issuer and audience, the public object-storage base URL, Consul and service addresses — are placeholders in this repository and must be supplied by your own deployment configuration.
 
 Known documentation debt carried over from the monorepo is listed in [docs/README.md](docs/README.md).
 

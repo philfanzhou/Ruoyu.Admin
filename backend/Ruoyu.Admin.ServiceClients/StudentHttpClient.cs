@@ -9,7 +9,7 @@ namespace Ruoyu.Admin.ServiceClients;
 
 // ===== Student service HTTP client and DTOs =====
 // These DTOs mirror the HTTP response shapes published by the Student service, which lives in
-// the separate Ruoyu.Study repository (https://github.com/philfanzhou/Ruoyu.Study). They are
+// the separate, non-public Ruoyu.Study repository. They are
 // hand-maintained copies: this repository has no compile-time reference to the Student service,
 // so an upstream contract change surfaces as a deserialization mismatch, not a build error.
 

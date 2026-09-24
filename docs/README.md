@@ -1,6 +1,6 @@
 # Ruoyu.Admin 文档
 
-Ruoyu.Admin 是 [Ruoyu.Study](https://github.com/philfanzhou/Ruoyu.Study) 平台的管理后台服务，负责学生管理、上传记录审核、错题管理与 OSS 存储审计能力。
+Ruoyu.Admin 是 Ruoyu.Study 平台的管理后台服务，负责学生管理、上传记录审核、错题管理与 OSS 存储审计能力。
 
 ## 入口
 
@@ -11,6 +11,7 @@ Ruoyu.Admin 是 [Ruoyu.Study](https://github.com/philfanzhou/Ruoyu.Study) 平台
 | [Integration/](./Integration/README.md) | 外部系统交互 |
 | [database/](./database/README.md) | 数据结构与数据主责 |
 | [development/](./development/README.md) | 开发执行支持 |
+| [pending-decisions.md](./pending-decisions.md) | 本仓库唯一的未决设计入口 |
 | [api.md](./api.md) | 补充接口文档 |
 | [development/Deployment.md](./development/Deployment.md) | 部署说明 |
 | [../CONTEXT.md](../CONTEXT.md) | Storage Audit 上下文术语 |
@@ -30,7 +31,7 @@ Ruoyu.Admin 是 [Ruoyu.Study](https://github.com/philfanzhou/Ruoyu.Study) 平台
 
 ## 外部契约归属
 
-Student、Mistake、Homework、Teacher Portal、Assistant Portal 与 Identity 的接口定义**不由本仓库主责**，均在 [Ruoyu.Study](https://github.com/philfanzhou/Ruoyu.Study) 与 [SignaCore](https://github.com/philfanzhou/SignaCore) 仓库内。`backend/Ruoyu.Admin.ServiceClients` 中的 DTO 是这些 HTTP 契约的手写镜像副本：上游字段变更不会在本仓库产生编译错误，只会产生运行时反序列化偏差，因此上游变更必须同步修改 ServiceClients 并补充 Controller 单测。
+Student、Mistake、Homework、Teacher Portal、Assistant Portal 与 Identity 的接口定义**不由本仓库主责**，均在 Ruoyu.Study 与 [SignaCore](https://github.com/philfanzhou/SignaCore) 仓库内。`backend/Ruoyu.Admin.ServiceClients` 中的 DTO 是这些 HTTP 契约的手写镜像副本：上游字段变更不会在本仓库产生编译错误，只会产生运行时反序列化偏差，因此上游变更必须同步修改 ServiceClients 并补充 Controller 单测。
 
 ## 已知文档债（自 monorepo 继承）
 

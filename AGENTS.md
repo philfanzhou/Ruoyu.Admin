@@ -1,6 +1,6 @@
 # Ruoyu.Admin 协作规范
 
-Ruoyu.Admin 是 [Ruoyu.Study](https://github.com/philfanzhou/Ruoyu.Study) 平台的管理后台：.NET 8 BFF API、Vue 3 / Element Plus 管理端、单容器部署。它几乎不持有业务数据，只主责 Storage Audit（存储审计）一个领域。
+Ruoyu.Admin 是 Ruoyu.Study 平台的管理后台：.NET 8 BFF API、Vue 3 / Element Plus 管理端、单容器部署。它几乎不持有业务数据，只主责 Storage Audit（存储审计）一个领域。
 
 ## 维护方式
 
@@ -31,7 +31,7 @@ Ruoyu.Admin 是 [Ruoyu.Study](https://github.com/philfanzhou/Ruoyu.Study) 平台
 
 ## 外部契约归属
 
-Student、Mistake、Homework、Teacher Portal、Assistant Portal 的接口由 [Ruoyu.Study](https://github.com/philfanzhou/Ruoyu.Study) 主责，Identity 由 [SignaCore](https://github.com/philfanzhou/SignaCore) 主责。本仓库无编译期依赖。
+Student、Mistake、Homework、Teacher Portal、Assistant Portal 的接口由 Ruoyu.Study 主责，Identity 由 [SignaCore](https://github.com/philfanzhou/SignaCore) 主责。本仓库无编译期依赖。
 
 - `backend/Ruoyu.Admin.ServiceClients` 中的 DTO 是下游 HTTP 契约的**手写镜像副本**。上游字段变更不会在本仓库产生编译错误，只会产生运行时反序列化偏差。
 - 因此下游契约变更必须同步修改 ServiceClients，并补充对应 Controller 单测。
@@ -45,6 +45,14 @@ Student、Mistake、Homework、Teacher Portal、Assistant Portal 的接口由 [R
 - `appsettings.json` 中的 OSS 凭据是本地开发用的 mock 值；生产凭据只来自 Consul KV 或环境变量。不得把真实凭据写进任何 `appsettings*.json`。
 - 认证、授权、审计删除、代理和 CORS 的行为变化必须有针对性测试和文档说明。
 - 提交前检查文档链接、secret 和仓库状态。
+
+## 未决事项
+
+- 仓库级尚未做出的决定只写入 `docs/pending-decisions.md`，不得创建分散的 `HumanReview.md` 或在能力文档里夹带待办。
+- 待决事项只阻塞文件中声明的范围，不冻结无关任务。
+- 决定形成后迁入 ADR、能力文档或实施 Issue，并从 pending 文件移除。
+- 主责在 Ruoyu.Study 的跨仓库契约问题记录在该仓库，本仓库只保留 Admin 侧取舍。
+- 完成记录、测试结果、普通缺陷和代码卫生建议不得写入 pending 文件；已知缺陷记录在 `docs/README.md`。
 
 ## 已知文档债
 
