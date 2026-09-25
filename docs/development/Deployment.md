@@ -6,9 +6,9 @@
 - 启动脚本：仓库根 `start.sh`。
 - 容器：`ruoyu-admin`，容器内监听 5020，默认映射到宿主机 10901。
 - 容器使用 Docker 默认 bridge，不依赖 `ruoyu-net` 或容器名解析；跨主机依赖通过 Consul KV 中的局域网地址访问。
-- 独立前端镜像位于 `frontend/Dockerfile`，构建入口 `./scripts/build-web.sh`，产物 `ruoyu.admin.web:${IMAGE_TAG}`。其 Nginx 只提供静态文件和 Admin API 代理，不负责 `/oss/`。
-- 两个 Dockerfile 的构建上下文都是**仓库根**，且都受仓库根 `.dockerignore` 约束。
-- 发布镜像：推送 `X.Y.Z-rc.N`（测试版）或 `X.Y.Z`（正式版）tag 后，CI（`.github/workflows/ci.yml`）会把两个镜像发布到 GHCR：`ghcr.io/philfanzhou/ruoyu.admin` 与 `ghcr.io/philfanzhou/ruoyu.admin.web`。正式版同时移动 `X.Y` 与 `latest`；rc 只保留不可变版本标签。部署主机可以不从源码构建，直接 `docker pull ghcr.io/philfanzhou/ruoyu.admin:<version>`。
+- Dockerfile 的构建上下文是**仓库根**，受仓库根 `.dockerignore` 约束。
+- 发布镜像：推送 `X.Y.Z-rc.N`（测试版）或 `X.Y.Z`（正式版）tag 后，CI（`.github/workflows/ci.yml`）会把镜像发布到 GHCR：`ghcr.io/philfanzhou/ruoyu.admin`。正式版同时移动 `X.Y` 与 `latest`；rc 只保留不可变版本标签。部署主机可以不从源码构建，直接 `docker pull ghcr.io/philfanzhou/ruoyu.admin:<version>`。
+- 历史注：monorepo 继承的独立前端镜像（`frontend/Dockerfile` + `scripts/build-web.sh`，产物 `ruoyu.admin.web`）已于 2026-09-25 移除——前后端分离模式从未被任何部署使用，产品形态就是 API+SPA 单容器。
 
 ### 服务标识
 

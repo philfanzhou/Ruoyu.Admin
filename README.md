@@ -99,12 +99,6 @@ IDENTITY_APP_ID=... IDENTITY_APP_SECRET=... ./start.sh
 
 `start.sh` maps host port **10901** to container port 5020, and expects `CONSUL_HTTP_ADDR`, `IDENTITY_APP_ID` and `IDENTITY_APP_SECRET` from the deployment environment.
 
-To deploy the frontend separately behind Nginx:
-
-```bash
-./scripts/build-web.sh
-```
-
 ## Configuration
 
 Configuration is read from `appsettings.json`, then Consul KV under `config/ruoyu` (when reachable), then environment variables. Consul results are cached locally so the host still starts when Consul is down.
@@ -146,11 +140,11 @@ validated against `MAJOR.MINOR.PATCH(-rc.N)`; images are published only after
 | `X.Y.Z-rc.N` | `X.Y.Z-rc.N` only | Test build. Immutable tag, never moves a production tag; GitHub Release marked pre-release |
 | `X.Y.Z` | `X.Y.Z`, `X.Y`, `latest` | Stable release; GitHub Release marked latest |
 
-Images: `ghcr.io/philfanzhou/ruoyu.admin` (unified API + SPA, from
-`backend/Admin.WebApi/Dockerfile`) and `ghcr.io/philfanzhou/ruoyu.admin.web`
-(standalone Nginx SPA + `/api/` proxy, from `frontend/Dockerfile`). Both are
-built with the repository root as context, with provenance and SBOM
-attestations.
+Image: `ghcr.io/philfanzhou/ruoyu.admin` — the unified API + SPA single
+container (`backend/Admin.WebApi/Dockerfile`, repository root as context),
+the only shape any deployment has ever run, published with provenance and
+SBOM attestations. The standalone frontend image inherited from the monorepo
+was retired unused: no environment ever ran the split mode.
 
 `main` is protected by a ruleset: changes land through pull requests that pass
 the required checks (`Build & Test`, `Analyze (csharp)`,
