@@ -77,7 +77,7 @@ Student、Mistake、Homework、Teacher Portal、Assistant Portal 与 Identity �
 
 继承自源仓库的 Consul 服务发现/配置组件存在已知高危公告：畸形 `secure` 元数据会导致服务实例查找中止（DoS）。受影响范围 `>= 4.0.0, <= 4.2.0`，修复版本 `4.3.0`；`dotnet restore` 以 NU1903 警告呈现。
 
-`ci.yml` 中两个 trivy 镜像扫描步骤（HIGH/CRITICAL + `ignore-unfixed`）当前为 **report-only（`exit-code: '0'`）**：该漏洞已有修复版本，`ignore-unfixed` 不会跳过它，若设为阻塞，required check `Build & Test` 会让每个 PR 从当天起直接红。**升级条件**：以独立变更把 `Ruoyu.Admin.Consul` 的 Steeltoe.Discovery.Consul 升到 `>= 4.3.0`（涉及 Consul KV 加载与服务注册行为，需按验证纪律完整回归），结合首批 trivy 扫描的其余发现复核后，把两个步骤改为 `exit-code: '1'`（对齐 SignaCore 的阻塞策略）。
+`ci.yml` 中的 trivy 镜像扫描步骤（HIGH/CRITICAL + `ignore-unfixed`）当前为 **report-only（`exit-code: '0'`）**：该漏洞已有修复版本，`ignore-unfixed` 不会跳过它，若设为阻塞，required check `Build & Test` 会让每个 PR 从当天起直接红。**升级条件**：以独立变更把 `Ruoyu.Admin.Consul` 的 Steeltoe.Discovery.Consul 升到 `>= 4.3.0`（涉及 Consul KV 加载与服务注册行为，需按验证纪律完整回归），复核通过后把该步骤改为 `exit-code: '1'`（对齐 SignaCore 的阻塞策略）。首扫时另一镜像（已废弃的独立前端镜像，其 nginx:1.30.0-alpine 基础层贡献了 39 个 HIGH）已随 2026-09-25 的分离模式退役一并消失；当前扫描对象只剩集成镜像，已知发现仅 Steeltoe 这一条。
 
 ### `AdminApi:Port` 是死配置
 

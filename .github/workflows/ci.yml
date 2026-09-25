@@ -1,7 +1,7 @@
 name: CI
 
 # This public-repository workflow only builds and tests on GitHub-hosted runners,
-# and publishes container images on release tags. Deployment is intentionally
+# and publishes the container image on release tags. Deployment is intentionally
 # separate; do not add a job that would let pull-request code run on deployment
 # infrastructure.
 
@@ -20,7 +20,7 @@ permissions:
   contents: read
 
 env:
-  # Both Dockerfiles default NPM_REGISTRY to a mirror that is fast from the
+  # The Dockerfile defaults NPM_REGISTRY to a mirror that is fast from the
   # maintainer's network; GitHub-hosted runners use the official registry instead.
   NPM_REGISTRY: https://registry.npmjs.org/
 
@@ -58,33 +58,26 @@ jobs:
           npm ci
           npm run build
 
-      # Building both images on every push keeps the Dockerfiles honest even when
-      # only backend or only frontend code changed; each image embeds both sides
-      # (the unified API image bakes the SPA into wwwroot).
-      - name: Build unified API image
+      # The product is a single unified image (API + built SPA in wwwroot), the
+      # same one every deployment runs; building it on every push keeps the
+      # Dockerfile honest even when only backend or only frontend code changed.
+      - name: Build unified image
         run: |
           docker build -f backend/Admin.WebApi/Dockerfile \
             --build-arg NPM_REGISTRY="$NPM_REGISTRY" \
             -t ruoyu.admin:ci .
 
-      - name: Build standalone web image
-        run: |
-          docker build -f frontend/Dockerfile \
-            --build-arg NPM_REGISTRY="$NPM_REGISTRY" \
-            -t ruoyu.admin.web:ci .
-
       # Report-only for now (exit-code 0), unlike SignaCore's blocking scan.
-      # Reason: the API image embeds Steeltoe.Discovery.Consul 4.2.0, whose known
+      # Reason: the image embeds Steeltoe.Discovery.Consul 4.2.0, whose known
       # high-severity advisory GHSA-67c9-f6v2-qv86 (DoS via malformed 'secure'
       # metadata) is patched in 4.3.0, so --ignore-unfixed will not skip it and a
       # blocking scan would fail every pull request from day one. The bump is a
       # dependency change with its own verification surface (Consul KV loading)
-      # and must not ride along with CI infrastructure. Promote both steps to
-      # exit-code 1 in the change that bumps Steeltoe to >= 4.3.0, after
-      # re-evaluating whatever else these first scans surface.
+      # and must not ride along with CI infrastructure. Promote this step to
+      # exit-code 1 in the change that bumps Steeltoe to >= 4.3.0.
       # Pin the action commit because scanner distribution channels are part of
       # the threat model.
-      - name: Scan API image for high and critical vulnerabilities (report-only)
+      - name: Scan image for high and critical vulnerabilities (report-only)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: ruoyu.admin:ci
@@ -95,19 +88,7 @@ jobs:
           ignore-unfixed: true
           exit-code: '0'
 
-      - name: Scan web image for high and critical vulnerabilities (report-only)
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          image-ref: ruoyu.admin.web:ci
-          version: v0.73.0
-          skip-setup-trivy: true
-          format: table
-          scanners: vuln
-          severity: HIGH,CRITICAL
-          ignore-unfixed: true
-          exit-code: '0'
-
-  # Tag pushes only. MAJOR.MINOR.PATCH publishes the stable images and moves the
+  # Tag pushes only. MAJOR.MINOR.PATCH publishes the stable image and moves the
   # minor channel and latest; MAJOR.MINOR.PATCH-rc.N publishes a test image under
   # its exact immutable version tag and never touches a production tag.
   publish-images:
@@ -120,11 +101,9 @@ jobs:
       contents: read
       packages: write
     env:
-      API_IMAGE: ghcr.io/philfanzhou/ruoyu.admin
-      WEB_IMAGE: ghcr.io/philfanzhou/ruoyu.admin.web
+      REGISTRY_IMAGE: ghcr.io/philfanzhou/ruoyu.admin
     outputs:
-      api-digest: ${{ steps.push-api.outputs.digest }}
-      web-digest: ${{ steps.push-web.outputs.digest }}
+      digest: ${{ steps.push.outputs.digest }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
@@ -149,30 +128,19 @@ jobs:
       # `flavor: latest=false` keeps the explicit gated row below as the only
       # source of `latest`, so the action's automatic latest never leaks onto an
       # rc build. Release tags carry no `v` prefix, same convention as SignaCore.
-      - name: Generate API image metadata
-        id: meta-api
+      - name: Generate image metadata
+        id: meta
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
-          images: ${{ env.API_IMAGE }}
+          images: ${{ env.REGISTRY_IMAGE }}
           flavor: latest=false
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}},enable=${{ !contains(github.ref_name, '-') }}
             type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
 
-      - name: Generate web image metadata
-        id: meta-web
-        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
-        with:
-          images: ${{ env.WEB_IMAGE }}
-          flavor: latest=false
-          tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}},enable=${{ !contains(github.ref_name, '-') }}
-            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
-
-      - name: Build and publish API image
-        id: push-api
+      - name: Build and publish image
+        id: push
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
@@ -180,52 +148,33 @@ jobs:
           build-args: NPM_REGISTRY=${{ env.NPM_REGISTRY }}
           platforms: linux/amd64
           push: true
-          tags: ${{ steps.meta-api.outputs.tags }}
-          labels: ${{ steps.meta-api.outputs.labels }}
-          cache-from: type=gha,scope=ruoyu-admin-api
-          cache-to: type=gha,mode=max,scope=ruoyu-admin-api
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=ruoyu-admin-release
+          cache-to: type=gha,mode=max,scope=ruoyu-admin-release
           provenance: mode=max
           sbom: true
 
-      - name: Build and publish web image
-        id: push-web
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
-        with:
-          context: .
-          file: frontend/Dockerfile
-          build-args: NPM_REGISTRY=${{ env.NPM_REGISTRY }}
-          platforms: linux/amd64
-          push: true
-          tags: ${{ steps.meta-web.outputs.tags }}
-          labels: ${{ steps.meta-web.outputs.labels }}
-          cache-from: type=gha,scope=ruoyu-admin-web
-          cache-to: type=gha,mode=max,scope=ruoyu-admin-web
-          provenance: mode=max
-          sbom: true
-
-      - name: Record published images
+      - name: Record published image
         env:
-          META_TAGS: |
-            ${{ steps.meta-api.outputs.tags }}
-            ${{ steps.meta-web.outputs.tags }}
+          META_TAGS: ${{ steps.meta.outputs.tags }}
         run: |
           {
-            echo "### Published containers"
+            echo "### Published container"
             echo
-            echo "- API digest: \`${{ steps.push-api.outputs.digest }}\`"
-            echo "- Web digest: \`${{ steps.push-web.outputs.digest }}\`"
+            echo "- Digest: \`${{ steps.push.outputs.digest }}\`"
             echo "- Tags:"
             # `continue` rather than a trailing `&&`: the last command of the loop
             # body sets the status of the loop, the group, and the step, so a blank
-            # final line would fail the step after the images are already pushed.
+            # final line would fail the step after the image is already pushed.
             while IFS= read -r image_tag; do
               [ -n "$image_tag" ] || continue
               printf '  - `%s`\n' "$image_tag"
             done <<< "${META_TAGS}"
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # Runs last so a release only ever exists for a tag whose images are actually
-  # pullable, and so the notes can quote the digests that were really published.
+  # Runs last so a release only ever exists for a tag whose image is actually
+  # pullable, and so the notes can quote the digest that was really published.
   publish-release:
     name: Publish GitHub Release
     if: startsWith(github.ref, 'refs/tags/')
@@ -235,10 +184,8 @@ jobs:
     permissions:
       contents: write
     env:
-      API_IMAGE: ghcr.io/philfanzhou/ruoyu.admin
-      WEB_IMAGE: ghcr.io/philfanzhou/ruoyu.admin.web
-      API_DIGEST: ${{ needs.publish-images.outputs.api-digest }}
-      WEB_DIGEST: ${{ needs.publish-images.outputs.web-digest }}
+      REGISTRY_IMAGE: ghcr.io/philfanzhou/ruoyu.admin
+      IMAGE_DIGEST: ${{ needs.publish-images.outputs.digest }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_REPO: ${{ github.repository }}
     steps:
@@ -258,7 +205,7 @@ jobs:
 
           if [[ "${GITHUB_REF_NAME}" == *-* ]]; then
             release_flags=(--prerelease)
-            channel_note="Pre-release (test) images; the stable minor channel and latest tags were not moved."
+            channel_note="Pre-release (test) image; the stable minor channel and latest tags were not moved."
           else
             minor="${GITHUB_REF_NAME%.*}"
             release_flags=(--latest)
@@ -267,11 +214,9 @@ jobs:
 
           # printf keeps the Markdown backticks literal; a heredoc would need them escaped.
           {
-            printf '## Container images\n\n'
-            printf '```\n%s:%s\n%s:%s\n```\n\n' \
-              "${API_IMAGE}" "${GITHUB_REF_NAME}" \
-              "${WEB_IMAGE}" "${GITHUB_REF_NAME}"
-            printf 'Digests: API `%s`, web `%s`\n\n' "${API_DIGEST}" "${WEB_DIGEST}"
+            printf '## Container image\n\n'
+            printf '```\n%s:%s\n```\n\n' "${REGISTRY_IMAGE}" "${GITHUB_REF_NAME}"
+            printf 'Digest: `%s`\n\n' "${IMAGE_DIGEST}"
             printf '%s\n' "${channel_note}"
           } > release-notes.md
 
