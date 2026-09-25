@@ -14,7 +14,7 @@ COPY frontend/ ./
 RUN npm run build
 
 # ========== Stage 2: Build & Publish Backend ==========
-FROM mcr.microsoft.com/dotnet/sdk:8.0 AS backend-build
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS backend-build
 WORKDIR /src
 
 # Restore first with csproj only, so the layer cache survives source edits.
@@ -32,7 +32,7 @@ COPY --from=frontend-build /frontend/dist ./backend/Admin.WebApi/wwwroot
 RUN dotnet publish "backend/Admin.WebApi/Admin.WebApi.csproj" -c Release -o /app/publish /p:UseAppHost=false --no-restore
 
 # ========== Stage 3: Runtime ==========
-FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
 WORKDIR /app
 COPY --from=backend-build /app/publish .
 
