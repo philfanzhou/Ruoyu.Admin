@@ -4,7 +4,7 @@
 
 - 集成镜像：`backend/Admin.WebApi/Dockerfile`，先构建 Vue 前端，再把产物复制到 API 的 `wwwroot`。构建入口 `./scripts/build.sh`，产物 `ruoyu.admin:${IMAGE_TAG}`（`IMAGE_TAG` 默认 `20260502`）。
 - 启动脚本：仓库根 `start.sh`。
-- 容器：`ruoyu-admin`，容器内监听 5020，默认映射到宿主机 10901。
+- 容器：`ruoyu-admin`，容器内监听 5020，默认映射到宿主机 5020（宿主端口与容器端口一致，与平台其他 API 的映射惯例相同；monorepo 时代的 10901 已废弃）。
 - 容器使用 Docker 默认 bridge，不依赖 `ruoyu-net` 或容器名解析；跨主机依赖通过 Consul KV 中的局域网地址访问。
 - Dockerfile 的构建上下文是**仓库根**，受仓库根 `.dockerignore` 约束。
 - 发布镜像：推送 `X.Y.Z-rc.N`（测试版）或 `X.Y.Z`（正式版）tag 后，CI（`.github/workflows/ci.yml`）会把镜像发布到 GHCR：`ghcr.io/philfanzhou/ruoyu.admin`。正式版同时移动 `X.Y` 与 `latest`；rc 只保留不可变版本标签。部署主机可以不从源码构建，直接 `docker pull ghcr.io/philfanzhou/ruoyu.admin:<version>`。
@@ -63,8 +63,8 @@ Admin API 启动时通过 Consul `config/ruoyu/*` 加载 PostgreSQL、OSS 和下
 ## 健康检查
 
 ```bash
-curl -s -o /dev/null -w "%{http_code}\n" http://localhost:10901/
-curl -s -o /dev/null -w "%{http_code}\n" http://localhost:10901/api/admin/students
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:5020/
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:5020/api/admin/students
 ```
 
 首页应返回 200；未携带登录凭据访问受保护的 Admin API 应返回 401。再结合 `docker inspect ruoyu-admin` 的运行状态、重启次数和启动日志判断服务是否稳定。

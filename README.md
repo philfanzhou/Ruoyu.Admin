@@ -97,7 +97,7 @@ The integrated image serves the API and the built SPA from one container:
 IDENTITY_APP_ID=... IDENTITY_APP_SECRET=... ./start.sh
 ```
 
-`start.sh` maps host port **10901** to container port 5020, and expects `CONSUL_HTTP_ADDR`, `IDENTITY_APP_ID` and `IDENTITY_APP_SECRET` from the deployment environment.
+`start.sh` maps host port **5020** to container port 5020 (host port equals container port, matching the platform's other APIs), and expects `CONSUL_HTTP_ADDR`, `IDENTITY_APP_ID` and `IDENTITY_APP_SECRET` from the deployment environment.
 
 ## Configuration
 
