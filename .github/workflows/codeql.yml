@@ -36,7 +36,7 @@ jobs:
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         if: matrix.language == 'csharp'
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: '10.0.x'
 
       # Commit-pinned official action; the comment records the moving major used for updates.
       - name: Initialize CodeQL

@@ -1,6 +1,6 @@
 # Ruoyu.Admin 协作规范
 
-Ruoyu.Admin 是 Ruoyu.Study 平台的管理后台：.NET 8 BFF API、Vue 3 / Element Plus 管理端、单容器部署。它几乎不持有业务数据，只主责 Storage Audit（存储审计）一个领域。
+Ruoyu.Admin 是 Ruoyu.Study 平台的管理后台：.NET 10 BFF API、Vue 3 / Element Plus 管理端、单容器部署。它几乎不持有业务数据，只主责 Storage Audit（存储审计）一个领域。
 
 ## 维护方式
 
