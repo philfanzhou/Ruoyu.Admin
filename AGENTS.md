@@ -23,7 +23,7 @@ Ruoyu.Admin 是 Ruoyu.Study 平台的管理后台：.NET 8 BFF API、Vue 3 / Ele
 
 - `backend/Ruoyu.Admin.Common`、`backend/Ruoyu.Admin.Consul`、`backend/Ruoyu.Admin.ServiceClients` 是类库，不得反向引用 `backend/Admin.WebApi`。
 - `backend/Admin.WebApi` 负责 HTTP、认证、配置、代理中间件和宿主组合。Controller 不得直接构造 `HttpClient`，一律通过 `Ruoyu.Admin.ServiceClients` 的接口或 `IHttpClientFactory` 命名客户端。
-- API 监听端口 **5020 是硬编码的**（`Program.cs` 中的 `const int httpPort`），不是配置项。改端口属于部署契约变更，必须同步 `start.sh`、`frontend/nginx.conf`、`frontend/vite.config.js` 和部署文档。
+- API 监听端口 **5020 是硬编码的**（`Program.cs` 中的 `const int httpPort`），不是配置项。改端口属于部署契约变更，必须同步 `start.sh`、`frontend/vite.config.js` 和部署文档。
 - 数据库只有 `ruoyu_admin`，只有 `OssAuditRuns` 和 `OssAuditRecords` 两张表，建表由 `Program.cs` 中的 `DatabaseInitializer` 回调负责。本仓库不使用 EF Core Migrations——`GENERATED ALWAYS AS IDENTITY` 不被 `EnsureCreated` 支持，改动建表语句时必须保持 `CREATE TABLE IF NOT EXISTS` 幂等语义。
 - Storage Audit 的处置动作会**真实删除生产对象存储中的文件**（`IOssService.DeleteAsync` 还会连带删除缩略图）。任何触及审计判定逻辑、路径聚合或删除路径的改动都必须有测试。
 - **审计不变量：一个桶只有在存在可达的引用来源时才允许进入 `OssAuditWorker.AuditedBuckets`。** 审计记录不是报告而是待处置项，`resolve` / `batch-resolve` 会真实删除文件；删除前复核查询的是**同一批**引用来源，因此对没有来源的桶必然放行删除。要把 `Questions` 或 `Documents` 加回审计范围，必须在同一个变更里落地其引用来源，并同步 `OssAuditController` 的删除前复核。
@@ -79,7 +79,7 @@ npm ci
 npm run build
 ```
 
-触及 Dockerfile、`start.sh` 或 `nginx.conf` 时，还需实际构建镜像：
+触及 Dockerfile 或 `start.sh` 时，还需实际构建镜像：
 
 ```bash
 ./scripts/build.sh
