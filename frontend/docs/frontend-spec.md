@@ -449,6 +449,13 @@ frontend/src/
 
 **状态**：待处理(0) / 已删除(1) / 已忽略(2)
 
+**批量选择与删除（删除会真实删除生产对象存储文件）**：
+- 只有待处理（status=0）的行可以勾选，其他行复选框禁用；全选只选当前显示的待处理行。
+- 不变量：选择集合 ⊆ 当前显示的待处理行。`loadRecords` 成功替换列表时清空选择，覆盖翻页、筛选、路径搜索、重置、处置后刷新与轮询刷新。
+- 批量删除在打开确认框时对选中 id 做快照，确认框显示快照数量，确认后只发送该快照；确认框打开期间列表刷新不改变要删除的集合。取消/关闭/Esc 不发任何请求。
+- 单条删除请求进行中，该行的「删除/忽略」禁用。
+- 服务端仍对每条记录做引用复核（被引用则拒绝，来源不可达返回 502），前端确认不替代服务端复核。
+
 ---
 
 ## API 服务层
@@ -633,7 +640,7 @@ interface EnumOptionsResponse {
 - **懒加载路由**：按需加载页面组件
 - **按需调用 API**：每个页面只调用自己需要的接口
 - **错误处理**：Axios 错误统一提取 `response.data.message`，使用 `ElMessage.error` 提示
-- **确认操作**：删除等危险操作使用 `ElMessageBox.confirm` 二次确认
+- **确认操作**：删除、撤销权限、移除授权、解除关联等破坏性操作必须使用 `src/utils/confirm.ts` 的 `confirmDanger({ title, message, confirmText })`：危险图标与危险按钮、打开时确认按钮不获得焦点（回车不会执行）、点击遮罩不关闭、Esc/取消返回 `false` 且不抛异常。文案写明对象与后果；需要强调时用 `h()` 构造 VNode，**禁止** `dangerouslyUseHTMLString`（姓名、路径来自后端数据）。调用方写 `if (!(await confirmDanger(...))) return`，API 错误在自己的 try/catch 中处理。非破坏性操作（退回、重置状态、忽略、触发扫描等）不使用危险样式。
 - **认证**：JWT Bearer。登录后前端将 access token 存入 localStorage，通过共享 axios 实例（`services/httpClient.ts`）的请求拦截器统一附加 `Authorization: Bearer` 头；后端使用 `[Authorize]` / `[Authorize(Roles="admin")]` 校验 Identity 签发的 JWT
 - **共享 HTTP 客户端**：所有 API 服务（`studentAdminApi` / `teacherPortalApi` / `assistantPortalApi` / `identityApi` / `ossAuditApi`）必须复用 `services/httpClient.ts` 导出的共享 axios 实例，不得各自 `axios.create()` 单独建实例。原因：axios 实例间不共享拦截器，单独建实例会导致 JWT 未注入 → 后端返回 401。共享实例同时配置：
   - 请求拦截器：从 localStorage 读取 token，附加 `Authorization: Bearer <token>` 头

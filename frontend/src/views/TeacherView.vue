@@ -246,7 +246,8 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
+import { confirmDanger } from '../utils/confirm'
 import {
   teacherPortalClient,
   getTeacherPortalErrorMessage,
@@ -457,19 +458,18 @@ async function revokeTeacher(teacher: TeacherAccountDto) {
     ElMessage.warning('该教师没有关联的用户ID')
     return
   }
+  const confirmed = await confirmDanger({
+    title: '确认撤销',
+    message: `确认撤销 ${getDisplayName(teacher)} 的教师权限？该操作将移除其所有学科授权。`,
+    confirmText: '撤销',
+  })
+  if (!confirmed) return
   try {
-    await ElMessageBox.confirm(
-      `确认撤销 ${getDisplayName(teacher)} 的教师权限？该操作将移除其所有学科授权。`,
-      '确认撤销',
-      { type: 'warning' }
-    )
     await teacherPortalClient.removeTeacherByUserId(teacher.userId)
     ElMessage.success('撤销权限成功')
     await loadTeachers()
   } catch (error: unknown) {
-    if (error !== 'cancel') {
-      ElMessage.error(getTeacherPortalErrorMessage(error) || '撤销权限失败')
-    }
+    ElMessage.error(getTeacherPortalErrorMessage(error) || '撤销权限失败')
   }
 }
 
@@ -494,19 +494,18 @@ async function removeSubject(teacher: TeacherAccountDto, subjectId: number) {
     return
   }
   const label = getSubjectLabel(subjectId)
+  const confirmed = await confirmDanger({
+    title: '确认移除',
+    message: `确认移除「${getDisplayName(teacher)}」的「${label}」学科授权？`,
+    confirmText: '移除',
+  })
+  if (!confirmed) return
   try {
-    await ElMessageBox.confirm(
-      `确认移除「${getDisplayName(teacher)}」的「${label}」学科授权？`,
-      '确认移除',
-      { type: 'warning' }
-    )
     await teacherPortalClient.removeTeacherSubject(teacher.userId, subjectId)
     ElMessage.success(`已移除 ${label}`)
     await loadTeachers()
   } catch (error: unknown) {
-    if (error !== 'cancel') {
-      ElMessage.error(getTeacherPortalErrorMessage(error) || '删除学科失败')
-    }
+    ElMessage.error(getTeacherPortalErrorMessage(error) || '删除学科失败')
   }
 }
 

@@ -324,7 +324,8 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
+import { confirmDanger } from '../utils/confirm'
 import studentAdminApi, { type IdentityAccountDto, type SubjectOption, type GradeOption } from '../services/studentAdminApi'
 import identityApi, { type IdentityUser } from '../services/identityApi'
 import { extractMsg } from '../services/apiBase'
@@ -475,6 +476,16 @@ async function searchAccountsForLink() {
 
 async function runLinkAccount(accountId: string, action: 'link' | 'unlink') {
   if (!accountId || !currentStudent.value) return
+  if (action === 'unlink') {
+    const account = linkedAccountDetails.value.find(a => a.userId === accountId)
+    const accountName = account?.displayName || account?.username || accountId
+    const confirmed = await confirmDanger({
+      title: '解除账户关联',
+      message: `将解除学生「${currentStudent.value.name}」与账户「${accountName}」的关联。`,
+      confirmText: '解除关联',
+    })
+    if (!confirmed || !currentStudent.value) return
+  }
   busyLinkedUserId.value = accountId
   try {
     await (action === 'link'
@@ -722,15 +733,18 @@ async function saveEdit() {
 }
 
 async function deleteStudent(s: StudentRow) {
+  const confirmed = await confirmDanger({
+    title: '删除学生',
+    message: `将删除学生「${s.name}」（ID：${s.id}）。`,
+    confirmText: '删除',
+  })
+  if (!confirmed) return
   try {
-    await ElMessageBox.confirm(`确认删除学生「${s.name}」？`, '确认', { type: 'warning' })
     await studentAdminApi.deleteStudent(s.id)
     ElMessage.success('删除成功')
     await loadStudents()
   } catch (error: unknown) {
-    if (error !== 'cancel') {
-      ElMessage.error(extractMsg(error) || '删除失败')
-    }
+    ElMessage.error(extractMsg(error) || '删除失败')
   }
 }
 
