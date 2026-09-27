@@ -1,0 +1,108 @@
+{
+ "load": {
+  "calls": [
+   "GET /api/admin/oss-audit/records?page=1&pageSize=20",
+   "GET /api/admin/oss-audit/status",
+   "GET /api/admin/oss-audit/records?page=1&pageSize=1&status=1"
+  ]
+ },
+ "deeplink": {
+  "calls": [
+   "GET /api/admin/oss-audit/records?page=1&pageSize=20&status=2",
+   "GET /api/admin/oss-audit/status",
+   "GET /api/admin/oss-audit/records?page=1&pageSize=1&status=1"
+  ]
+ },
+ "filters": {
+  "calls": [
+   "GET /api/admin/oss-audit/records?page=1&pageSize=20",
+   "GET /api/admin/oss-audit/status",
+   "GET /api/admin/oss-audit/records?page=1&pageSize=1&status=1",
+   "GET /api/admin/oss-audit/records?page=1&pageSize=20&status=2",
+   "GET /api/admin/oss-audit/records?page=1&pageSize=20&status=0",
+   "GET /api/admin/oss-audit/records?page=1&pageSize=20&status=0&bucket=ruoyu-homework"
+  ]
+ },
+ "pathReset": {
+  "calls": [
+   "GET /api/admin/oss-audit/records?page=1&pageSize=20",
+   "GET /api/admin/oss-audit/status",
+   "GET /api/admin/oss-audit/records?page=1&pageSize=1&status=1",
+   "GET /api/admin/oss-audit/records?page=1&pageSize=20",
+   "GET /api/admin/oss-audit/records?page=1&pageSize=20"
+  ]
+ },
+ "paging": {
+  "calls": [
+   "GET /api/admin/oss-audit/records?page=1&pageSize=20",
+   "GET /api/admin/oss-audit/status",
+   "GET /api/admin/oss-audit/records?page=1&pageSize=1&status=1",
+   "GET /api/admin/oss-audit/records?page=2&pageSize=20"
+  ]
+ },
+ "singleDelete": {
+  "calls": [
+   "GET /api/admin/oss-audit/records?page=1&pageSize=20",
+   "GET /api/admin/oss-audit/status",
+   "GET /api/admin/oss-audit/records?page=1&pageSize=1&status=1",
+   "POST /api/admin/oss-audit/records/1044/resolve",
+   "GET /api/admin/oss-audit/records?page=1&pageSize=20",
+   "GET /api/admin/oss-audit/status",
+   "GET /api/admin/oss-audit/records?page=1&pageSize=1&status=1"
+  ]
+ },
+ "ignoreOne": {
+  "calls": [
+   "GET /api/admin/oss-audit/records?page=1&pageSize=20",
+   "GET /api/admin/oss-audit/status",
+   "GET /api/admin/oss-audit/records?page=1&pageSize=1&status=1",
+   "POST /api/admin/oss-audit/records/1042/ignore {\"note\":\"头像\"}",
+   "GET /api/admin/oss-audit/records?page=1&pageSize=20",
+   "GET /api/admin/oss-audit/status"
+  ]
+ },
+ "batchDelete": {
+  "calls": [
+   "GET /api/admin/oss-audit/records?page=1&pageSize=20",
+   "GET /api/admin/oss-audit/status",
+   "GET /api/admin/oss-audit/records?page=1&pageSize=1&status=1",
+   "POST /api/admin/oss-audit/records/batch-resolve {\"ids\":[1044,1042,1041]}",
+   "GET /api/admin/oss-audit/records?page=1&pageSize=20",
+   "GET /api/admin/oss-audit/status",
+   "GET /api/admin/oss-audit/records?page=1&pageSize=1&status=1"
+  ]
+ },
+ "batchDeleteAll": {
+  "calls": [
+   "GET /api/admin/oss-audit/records?page=1&pageSize=20",
+   "GET /api/admin/oss-audit/status",
+   "GET /api/admin/oss-audit/records?page=1&pageSize=1&status=1",
+   "POST /api/admin/oss-audit/records/batch-resolve {\"ids\":[1044,1042,1041,1039,1038,1037,1036,1035,1033,1032,1030,1029,1028,1027,1026]}",
+   "GET /api/admin/oss-audit/records?page=1&pageSize=20",
+   "GET /api/admin/oss-audit/status",
+   "GET /api/admin/oss-audit/records?page=1&pageSize=1&status=1"
+  ]
+ },
+ "batchIgnore": {
+  "calls": [
+   "GET /api/admin/oss-audit/records?page=1&pageSize=20",
+   "GET /api/admin/oss-audit/status",
+   "GET /api/admin/oss-audit/records?page=1&pageSize=1&status=1",
+   "POST /api/admin/oss-audit/records/1044/ignore {}",
+   "POST /api/admin/oss-audit/records/1042/ignore {}",
+   "GET /api/admin/oss-audit/records?page=1&pageSize=20",
+   "GET /api/admin/oss-audit/status"
+  ]
+ },
+ "trigger": {
+  "calls": [
+   "GET /api/admin/oss-audit/records?page=1&pageSize=20",
+   "GET /api/admin/oss-audit/status",
+   "GET /api/admin/oss-audit/records?page=1&pageSize=1&status=1",
+   "POST /api/admin/oss-audit/trigger",
+   "GET /api/admin/oss-audit/status",
+   "GET /api/admin/oss-audit/records?page=1&pageSize=20"
+  ]
+ },
+ "pageErrors": []
+}
