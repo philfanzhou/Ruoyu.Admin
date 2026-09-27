@@ -13,19 +13,10 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 8090,
     proxy: {
-      '/api/identity': {
-        target: 'http://localhost:5020',
-        changeOrigin: true,
-      },
-      '/api/admin': {
-        target: 'http://localhost:5020',
-        changeOrigin: true,
-      },
-      '/api/teacher-portal': {
-        target: 'http://localhost:5020',
-        changeOrigin: true,
-      },
-      '/api/assistant-portal': {
+      // Everything under /api/ belongs to the Admin API (controllers + proxy
+      // middlewares), so forward the whole prefix instead of listing sub-paths.
+      // The trailing slash keeps non-API paths such as /apix on the SPA.
+      '/api/': {
         target: 'http://localhost:5020',
         changeOrigin: true,
       },
