@@ -1,0 +1,253 @@
+{
+ "load": {
+  "calls": [
+   "GET /api/admin/students/grades",
+   "GET /api/admin/students/subject-options",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=20",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=1",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=2",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=3",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=4",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=5"
+  ]
+ },
+ "deeplink": {
+  "calls": [
+   "GET /api/admin/students/grades",
+   "GET /api/admin/students/subject-options",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=20&status=3",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=1",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=2",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=3",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=4",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=5"
+  ]
+ },
+ "statCard": {
+  "calls": [
+   "GET /api/admin/students/grades",
+   "GET /api/admin/students/subject-options",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=20",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=1",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=2",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=3",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=4",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=5",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=20&status=1",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=20"
+  ]
+ },
+ "statusSelect": {
+  "calls": [
+   "GET /api/admin/students/grades",
+   "GET /api/admin/students/subject-options",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=20",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=1",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=2",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=3",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=4",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=5",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=20&status=4"
+  ]
+ },
+ "student": {
+  "calls": [
+   "GET /api/admin/students/grades",
+   "GET /api/admin/students/subject-options",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=20",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=1",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=2",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=3",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=4",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=5",
+   "GET /api/admin/students?name=%E5%BC%A0&pageSize=20",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=20&studentId=s1",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=20"
+  ]
+ },
+ "paging": {
+  "calls": [
+   "GET /api/admin/students/grades",
+   "GET /api/admin/students/subject-options",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=20",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=1",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=2",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=3",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=4",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=5",
+   "GET /api/admin/oss-upload-records?page=2&pageSize=20",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=50"
+  ]
+ },
+ "resetAndSearch": {
+  "calls": [
+   "GET /api/admin/students/grades",
+   "GET /api/admin/students/subject-options",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=20&status=2",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=1",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=2",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=3",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=4",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=5",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=20&status=2",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=20"
+  ]
+ },
+ "rotateDeleteAssign": {
+  "calls": [
+   "GET /api/admin/students/grades",
+   "GET /api/admin/students/subject-options",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=20",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=1",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=2",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=3",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=4",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=5",
+   "GET /api/admin/students/s1",
+   "POST /api/admin/oss-upload-records/rec-001/rotate {\"studentId\":\"s1\",\"imageIndex\":0,\"rotation\":90}",
+   "DELETE /api/admin/oss-upload-records/rec-001/images/1?studentId=s1",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=20",
+   "POST /api/admin/oss-upload-records/rec-001/assign {\"studentId\":\"s1\",\"assignments\":[{\"imageIndices\":[0,1],\"subject\":2,\"grade\":8,\"comments\":\"第三题看不清\"}]}",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=20",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=1",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=2",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=3",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=4",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=5"
+  ]
+ },
+ "assignValidation": {
+  "calls": [
+   "GET /api/admin/students/grades",
+   "GET /api/admin/students/subject-options",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=20",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=1",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=2",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=3",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=4",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=5",
+   "GET /api/admin/students/s1"
+  ],
+  "toast": [
+   "请选择学科"
+  ]
+ },
+ "assignPrefill": {
+  "calls": [
+   "GET /api/admin/students/grades",
+   "GET /api/admin/students/subject-options",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=20",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=1",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=2",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=3",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=4",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=5",
+   "GET /api/admin/students/s1",
+   "POST /api/admin/oss-upload-records/rec-001/assign {\"studentId\":\"s1\",\"assignments\":[{\"imageIndices\":[0,1,2],\"subject\":2,\"grade\":7,\"comments\":\"第三题看不清\"}]}",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=20",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=1",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=2",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=3",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=4",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=5"
+  ]
+ },
+ "vl": {
+  "calls": [
+   "GET /api/admin/students/grades",
+   "GET /api/admin/students/subject-options",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=20",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=1",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=2",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=3",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=4",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=5",
+   "GET /api/admin/students/s1",
+   "POST /api/admin/oss-upload-records/rec-001/analyze",
+   "POST /api/admin/oss-upload-records/rec-001/assign {\"studentId\":\"s1\",\"assignments\":[{\"imageIndices\":[0,1],\"subject\":2,\"grade\":8,\"comments\":\"第三题看不清\"}]}",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=20",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=1",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=2",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=3",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=4",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=5"
+  ]
+ },
+ "resetStatus": {
+  "calls": [
+   "GET /api/admin/students/grades",
+   "GET /api/admin/students/subject-options",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=20",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=1",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=2",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=3",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=4",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=5",
+   "GET /api/admin/students/s2",
+   "POST /api/admin/oss-upload-records/rec-002/reset-status {\"studentId\":\"s2\",\"targetStatus\":4}",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=20",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=1",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=2",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=3",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=4",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=5"
+  ]
+ },
+ "returnRecord": {
+  "calls": [
+   "GET /api/admin/students/grades",
+   "GET /api/admin/students/subject-options",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=20",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=1",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=2",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=3",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=4",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=5",
+   "GET /api/admin/students/s3",
+   "POST /api/admin/oss-upload-records/rec-003/reset-status {\"studentId\":\"s3\",\"targetStatus\":5}",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=20",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=1",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=2",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=3",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=4",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=5"
+  ]
+ },
+ "legacy": {
+  "calls": [
+   "GET /api/admin/students/grades",
+   "GET /api/admin/students/subject-options",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=20",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=1",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=2",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=3",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=4",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=5",
+   "GET /api/admin/oss-upload-records/legacy-check/rec-004",
+   "POST /api/admin/oss-upload-records/legacy-clean/rec-004",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=20",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=1",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=2",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=3",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=4",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=5"
+  ]
+ },
+ "deleteLast": {
+  "calls": [
+   "GET /api/admin/students/grades",
+   "GET /api/admin/students/subject-options",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=20",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=1",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=2",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=3",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=4",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=1&status=5",
+   "GET /api/admin/students/s1",
+   "DELETE /api/admin/oss-upload-records/rec-001/images/0?studentId=s1",
+   "GET /api/admin/oss-upload-records?page=1&pageSize=20"
+  ],
+  "drawerOpen": false
+ },
+ "pageErrors": []
+}
