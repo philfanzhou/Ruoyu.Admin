@@ -36,7 +36,8 @@ frontend/src/
 │   ├── StudentView.vue          # 学生管理页面
 │   ├── TeacherView.vue          # 教师管理页面
 │   ├── AssistantView.vue        # 助教管理页面
-│   ├── UploadRecordView.vue      # 上传记录管理页面（状态统计条 + 侧滑详情面板）
+│   ├── UploadRecordView.vue      # 上传记录管理页面（列表与编排：状态统计卡 + 公共列表组件）
+│   ├── upload-records/           # 上传记录子组件：详情抽屉、图片画廊、VL 分析卡/结果弹窗、指派表单、重置/遗留检查弹窗、状态映射
 │   ├── MistakeView.vue           # 错题管理页面（统计卡 + 详情 Modal）
 │   └── OssAuditView.vue          # OSS 审计页面（状态面板 + 浮动批量操作栏）
 ├── services/
@@ -149,7 +150,7 @@ frontend/src/
 | `/students` | StudentView.vue | 用户 | 学生管理 |
 | `/teachers` | TeacherView.vue | 用户 | 教师管理 |
 | `/assistants` | AssistantView.vue | 用户 | 助教管理 |
-| `/upload-records` | UploadRecordView.vue | 内容与上传 | 上传记录管理（含状态统计条 + 侧滑详情面板） |
+| `/upload-records` | UploadRecordView.vue | 内容与上传 | 上传记录管理（含状态统计卡 + 非模态详情抽屉） |
 | `/mistakes` | MistakeView.vue | 内容与上传 | 错题查询与管理（统计卡 + 详情 Modal） |
 | `/oss-audit` | OssAuditView.vue | 存储审计 | OSS 僵尸文件审计（状态面板 + 浮动批量栏） |
 
@@ -290,7 +291,7 @@ frontend/src/
 
 ### 列表页规范
 
-所有列表页（学生、教师、助教已迁移；上传记录、错题、OSS 审计由后续迁移 task 接入）统一使用 `src/components/list/` 下的公共组件，不再各写一套原生表格、手写模态框或分页器：
+所有列表页（学生、教师、助教、上传记录已迁移；错题、OSS 审计由后续迁移 task 接入）统一使用 `src/components/list/` 下的公共组件，不再各写一套原生表格、手写模态框或分页器：
 
 | 组件 | 接口 | 约定 |
 |------|------|------|
@@ -316,6 +317,12 @@ frontend/src/
 ### 4. 上传记录管理页面 (`/upload-records`)
 
 **所属分组**：内容与上传
+
+**布局**：页头（刷新）+ 5 张状态统计卡（点击按该状态筛选，再次点击取消）+ 筛选栏（学生 `el-select filterable remote`，规则沿用原实现：去空格后为空不请求、250ms 防抖、`getStudents({ name, pageSize: 20 })`；状态）+ 数据表格 + 服务端分页。点击行或「详情」打开右侧 480px 详情抽屉（`src/views/upload-records/UploadRecordDetailDrawer.vue`）：抽屉**非模态**（`:modal="false" modal-penetrable`），打开时列表仍可点击其他行切换详情，当前行高亮；Esc 关闭。重置状态、遗留检查、VL 完整结果为 `el-dialog`。
+
+**状态映射**（`src/views/upload-records/uploadRecord.ts` 的 `UPLOAD_STATUSES`，与后端 `UploadStatusConstants.DisplayNames` 一致，统计卡、筛选、表格、详情共用）：1 待处理 / 2 处理中 / 3 审核中 / 4 处理失败 / 5 已退回。
+
+**确认**：删除图片使用 `confirmDanger`（文案说明若为最后一张，整条上传记录一并删除）；退回、重置状态为非破坏性操作，使用普通确认或弹窗；遗留清理为两步（检查结果弹窗 → 弹窗内「确认清理」）。
 
 **功能列表**：
 - 上传记录列表（学生搜索筛选、状态筛选、分页）
