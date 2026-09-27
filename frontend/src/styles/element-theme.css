@@ -1,0 +1,93 @@
+/* =========================================================
+   Element Plus theme mapped onto --adm-* tokens.
+   Element Plus ships its hover/active shades as precomputed static
+   values, so every derived shade is overridden explicitly here;
+   overriding only the base color would leave hovers on the default blue.
+   light-N = base mixed with N0% white, dark-2 = base mixed with 20% black,
+   matching Element Plus' own derivation.
+   ========================================================= */
+
+:root {
+  --el-color-primary: var(--adm-primary);
+  --el-color-primary-light-3: color-mix(in srgb, var(--adm-primary) 70%, #fff);
+  --el-color-primary-light-5: color-mix(in srgb, var(--adm-primary) 50%, #fff);
+  --el-color-primary-light-7: color-mix(in srgb, var(--adm-primary) 30%, #fff);
+  --el-color-primary-light-8: color-mix(in srgb, var(--adm-primary) 20%, #fff);
+  --el-color-primary-light-9: color-mix(in srgb, var(--adm-primary) 10%, #fff);
+  --el-color-primary-dark-2: color-mix(in srgb, var(--adm-primary) 80%, #000);
+
+  --el-color-success: var(--adm-success);
+  --el-color-success-light-3: color-mix(in srgb, var(--adm-success) 70%, #fff);
+  --el-color-success-light-5: color-mix(in srgb, var(--adm-success) 50%, #fff);
+  --el-color-success-light-7: color-mix(in srgb, var(--adm-success) 30%, #fff);
+  --el-color-success-light-8: color-mix(in srgb, var(--adm-success) 20%, #fff);
+  --el-color-success-light-9: color-mix(in srgb, var(--adm-success) 10%, #fff);
+  --el-color-success-dark-2: color-mix(in srgb, var(--adm-success) 80%, #000);
+
+  --el-color-warning: var(--adm-warning);
+  --el-color-warning-light-3: color-mix(in srgb, var(--adm-warning) 70%, #fff);
+  --el-color-warning-light-5: color-mix(in srgb, var(--adm-warning) 50%, #fff);
+  --el-color-warning-light-7: color-mix(in srgb, var(--adm-warning) 30%, #fff);
+  --el-color-warning-light-8: color-mix(in srgb, var(--adm-warning) 20%, #fff);
+  --el-color-warning-light-9: color-mix(in srgb, var(--adm-warning) 10%, #fff);
+  --el-color-warning-dark-2: color-mix(in srgb, var(--adm-warning) 80%, #000);
+
+  --el-color-danger: var(--adm-danger);
+  --el-color-danger-light-3: color-mix(in srgb, var(--adm-danger) 70%, #fff);
+  --el-color-danger-light-5: color-mix(in srgb, var(--adm-danger) 50%, #fff);
+  --el-color-danger-light-7: color-mix(in srgb, var(--adm-danger) 30%, #fff);
+  --el-color-danger-light-8: color-mix(in srgb, var(--adm-danger) 20%, #fff);
+  --el-color-danger-light-9: color-mix(in srgb, var(--adm-danger) 10%, #fff);
+  --el-color-danger-dark-2: color-mix(in srgb, var(--adm-danger) 80%, #000);
+  /* Element Plus keeps a separate "error" palette (ElMessage.error, form validation). */
+  --el-color-error: var(--adm-danger);
+  --el-color-error-light-3: color-mix(in srgb, var(--adm-danger) 70%, #fff);
+  --el-color-error-light-5: color-mix(in srgb, var(--adm-danger) 50%, #fff);
+  --el-color-error-light-7: color-mix(in srgb, var(--adm-danger) 30%, #fff);
+  --el-color-error-light-8: color-mix(in srgb, var(--adm-danger) 20%, #fff);
+  --el-color-error-light-9: color-mix(in srgb, var(--adm-danger) 10%, #fff);
+  --el-color-error-dark-2: color-mix(in srgb, var(--adm-danger) 80%, #000);
+
+  --el-color-info: var(--adm-neutral);
+  --el-color-info-light-3: color-mix(in srgb, var(--adm-neutral) 70%, #fff);
+  --el-color-info-light-5: color-mix(in srgb, var(--adm-neutral) 50%, #fff);
+  --el-color-info-light-7: color-mix(in srgb, var(--adm-neutral) 30%, #fff);
+  --el-color-info-light-8: color-mix(in srgb, var(--adm-neutral) 20%, #fff);
+  --el-color-info-light-9: color-mix(in srgb, var(--adm-neutral) 10%, #fff);
+  --el-color-info-dark-2: color-mix(in srgb, var(--adm-neutral) 80%, #000);
+
+  /* RGB triplets cannot be derived from a hex var; keep in sync with tokens.css. */
+  --el-color-primary-rgb: 37, 99, 235;
+  --el-color-success-rgb: 21, 128, 61;
+  --el-color-warning-rgb: 180, 83, 9;
+  --el-color-danger-rgb: 220, 38, 38;
+  --el-color-error-rgb: 220, 38, 38;
+  --el-color-info-rgb: 100, 116, 139;
+
+  --el-font-family: var(--adm-font-family);
+  --el-font-size-base: var(--adm-font-size-base);
+  --el-font-size-small: var(--adm-font-size-sm);
+  --el-font-size-extra-small: var(--adm-font-size-xs);
+  --el-font-size-medium: var(--adm-font-size-md);
+  --el-font-size-large: var(--adm-font-size-lg);
+
+  --el-border-radius-base: var(--adm-radius-md);
+  --el-border-radius-small: var(--adm-radius-sm);
+
+  --el-text-color-primary: var(--adm-text-primary);
+  --el-text-color-regular: var(--adm-text-secondary);
+  --el-text-color-secondary: var(--adm-text-tertiary);
+  --el-text-color-placeholder: var(--adm-text-muted);
+
+  --el-border-color: var(--adm-border);
+  --el-border-color-light: var(--adm-border);
+  --el-border-color-lighter: var(--adm-border-light);
+  --el-border-color-extra-light: var(--adm-border-light);
+  --el-border-color-hover: var(--adm-border-hover);
+
+  --el-bg-color: var(--adm-surface-elevated);
+  --el-bg-color-overlay: var(--adm-surface-elevated);
+  --el-bg-color-page: var(--adm-surface);
+  --el-fill-color-light: var(--adm-surface-subtle);
+  --el-fill-color-lighter: var(--adm-surface-subtle);
+}

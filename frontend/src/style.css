@@ -1,69 +1,18 @@
 /* =========================================================
-   Admin Portal Global Stylesheet
-   Design tokens come from ruoyu-prototype/assets/design-system.css
-   (Professional Blue-Gray palette, --adm-* variables)
+   Admin Portal global stylesheet
+   Tokens live in styles/tokens.css; Element Plus theming in
+   styles/element-theme.css. This file holds base element styles and
+   shared classes still used by the views.
    ========================================================= */
 
 :root {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
-    'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', Arial,
-    'Noto Sans SC', sans-serif;
+  font-family: var(--adm-font-family);
   color: var(--adm-text-primary);
   background: var(--adm-surface);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-
-  /* ---- Design Tokens: Admin Portal (Professional Blue-Gray) ---- */
-  /* Brand */
-  --adm-primary: #3b82f6;
-  --adm-primary-dark: #2563eb;
-  --adm-primary-light: #60a5fa;
-  --adm-primary-bg: #eff6ff;
-  /* Sidebar */
-  --adm-sidebar: #1e293b;
-  --adm-sidebar-hover: #334155;
-  --adm-sidebar-active: #3b82f6;
-  /* Surfaces */
-  --adm-surface: #f1f5f9;
-  --adm-surface-elevated: #ffffff;
-  --adm-surface-subtle: #f8fafc;
-  --adm-surface-hover: #f1f5f9;
-  /* Borders */
-  --adm-border: #e2e8f0;
-  --adm-border-light: #f1f5f9;
-  --adm-border-hover: #cbd5e1;
-  /* Text */
-  --adm-text-primary: #0f172a;
-  --adm-text-secondary: #475569;
-  --adm-text-tertiary: #64748b;
-  --adm-text-muted: #94a3b8;
-  --adm-text-on-dark: #e2e8f0;
-  --adm-text-on-dark-muted: #94a3b8;
-  /* Semantic */
-  --adm-success: #10b981;
-  --adm-success-bg: #ecfdf5;
-  --adm-success-border: #a7f3d0;
-  --adm-warning: #f59e0b;
-  --adm-warning-bg: #fffbeb;
-  --adm-warning-border: #fde68a;
-  --adm-error: #ef4444;
-  --adm-error-bg: #fef2f2;
-  --adm-error-border: #fecaca;
-  --adm-info: #3b82f6;
-  --adm-info-bg: #eff6ff;
-  --adm-info-border: #bfdbfe;
-  /* Radius */
-  --adm-radius-sm: 6px;
-  --adm-radius-md: 8px;
-  --adm-radius-lg: 12px;
-  /* Shadow */
-  --adm-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
-  --adm-shadow-md: 0 4px 12px rgba(15, 23, 42, 0.08);
-  --adm-shadow-lg: 0 8px 24px rgba(15, 23, 42, 0.10);
-  /* Transitions */
-  --adm-ease: cubic-bezier(0.25, 1, 0.5, 1);
 }
 
 * {
@@ -136,9 +85,6 @@ a {
   font-weight: 600;
   color: var(--adm-text-primary);
 }
-.adm-card-body {
-  padding: 20px;
-}
 
 /* Buttons (adm-* family, can be used alongside el-button) */
 .adm-btn {
@@ -191,46 +137,7 @@ a {
 .adm-btn-link.success { color: var(--adm-success); }
 .adm-btn-link.success:hover { background: var(--adm-success-bg); }
 
-/* Status badges (color + dot, color-blind friendly) */
-.adm-status {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 4px 10px;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 500;
-  white-space: nowrap;
-}
-.adm-status .dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
-  flex-shrink: 0;
-}
-.adm-status.pending { background: var(--adm-warning-bg); color: var(--adm-warning); }
-.adm-status.processing { background: var(--adm-info-bg); color: var(--adm-info); }
-.adm-status.completed,
-.adm-status.confirmed,
-.adm-status.normal { background: var(--adm-success-bg); color: var(--adm-success); }
-.adm-status.failed,
-.adm-status.returned,
-.adm-status.rejected,
-.adm-status.deleted { background: var(--adm-error-bg); color: var(--adm-error); }
-.adm-status.ignored { background: #fef9c3; color: #a16207; }
-
-/* Spinner (for processing status) */
 @keyframes adm-spin { to { transform: rotate(360deg); } }
-.adm-status .spinner {
-  width: 10px;
-  height: 10px;
-  border: 1.5px solid currentColor;
-  border-top-color: transparent;
-  border-radius: 50%;
-  animation: adm-spin 0.7s linear infinite;
-  flex-shrink: 0;
-}
 
 /* Subject tag (unified color system across portals) */
 .adm-subj-tag {
@@ -291,56 +198,6 @@ a {
   font-size: 14px;
   flex-shrink: 0;
 }
-
-/* Stats grid helpers */
-.adm-stats-row {
-  display: grid;
-  gap: 12px;
-  margin-bottom: 16px;
-}
-.adm-stats-row.cols-2 { grid-template-columns: repeat(2, 1fr); }
-.adm-stats-row.cols-3 { grid-template-columns: repeat(3, 1fr); }
-.adm-stats-row.cols-4 { grid-template-columns: repeat(4, 1fr); }
-.adm-stats-row.cols-5 { grid-template-columns: repeat(5, 1fr); }
-
-.adm-stat-card {
-  background: var(--adm-surface-elevated);
-  border: 1px solid var(--adm-border);
-  border-radius: var(--adm-radius-md);
-  padding: 16px 20px;
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  transition: all 0.2s;
-}
-.adm-stat-card:hover { box-shadow: var(--adm-shadow-sm); }
-.adm-stat-card .st-label {
-  font-size: 12px;
-  color: var(--adm-text-tertiary);
-  margin-bottom: 4px;
-}
-.adm-stat-card .st-value {
-  font-size: 24px;
-  font-weight: 700;
-  color: var(--adm-text-primary);
-  line-height: 1;
-}
-.adm-stat-card .st-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-left: auto;
-  flex-shrink: 0;
-}
-.adm-stat-card.total .st-icon { background: var(--adm-primary-bg); color: var(--adm-primary); }
-.adm-stat-card.pending .st-icon { background: var(--adm-warning-bg); color: var(--adm-warning); }
-.adm-stat-card.completed .st-icon,
-.adm-stat-card.confirmed .st-icon { background: var(--adm-success-bg); color: var(--adm-success); }
-.adm-stat-card.failed .st-icon,
-.adm-stat-card.returned .st-icon { background: var(--adm-error-bg); color: var(--adm-error); }
 
 /* Stat pill with colored left border */
 .adm-stat-pill {
@@ -1021,73 +878,3 @@ select.form-input {
   to { opacity: 1; transform: translateY(0); }
 }
 .adm-fade-in { animation: adm-fade-in 0.3s var(--adm-ease) forwards; }
-
-/* Dev Note (red dashed callout — used to surface caveats; final UI should not show these) */
-.adm-dev-note {
-  border: 1px dashed var(--adm-error);
-  background: var(--adm-error-bg);
-  color: var(--adm-error);
-  padding: 8px 12px;
-  border-radius: var(--adm-radius-sm);
-  font-size: 12px;
-  margin: 12px 0;
-}
-
-/* Compact Element Plus overrides */
-.compact-form .el-form-item { margin-bottom: 10px; }
-.compact-form .el-form-item__label {
-  padding-bottom: 4px;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--adm-text-secondary);
-  line-height: 1;
-}
-.compact-form .el-input__wrapper,
-.compact-form .el-select .el-input__wrapper {
-  padding: 0 8px;
-  min-height: 30px;
-}
-.compact-form .el-input__inner { font-size: 13px; }
-
-.data-table .el-table__cell { padding: 6px 0 !important; }
-.data-table .el-table__header th.el-table__cell {
-  padding: 8px 0 !important;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--adm-text-tertiary);
-  background: var(--adm-surface-subtle);
-}
-.data-table .cell {
-  font-size: 13px;
-  line-height: 1.4;
-  padding-left: 12px;
-  padding-right: 12px;
-}
-
-/* Compact dialog */
-.compact-dialog .el-dialog__header {
-  padding: 14px 20px;
-  margin-right: 0;
-  border-bottom: 1px solid var(--adm-border-light);
-}
-.compact-dialog .el-dialog__title {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--adm-text-primary);
-}
-.compact-dialog .el-dialog__body { padding: 16px 20px; }
-.compact-dialog .el-dialog__footer {
-  padding: 12px 20px;
-  border-top: 1px solid var(--adm-border-light);
-}
-
-/* Path text (monospace) */
-.adm-path-text {
-  font-family: 'SF Mono', Menlo, Consolas, monospace;
-  font-size: 12px;
-  color: var(--adm-text-secondary);
-}
-.adm-path-text.strike {
-  color: var(--adm-text-muted);
-  text-decoration: line-through;
-}

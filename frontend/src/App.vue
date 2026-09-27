@@ -2,91 +2,60 @@
   <div v-if="isLoginPage">
     <router-view />
   </div>
-  <div v-else class="adm-layout">
-    <!-- Sidebar -->
+  <div v-else class="adm-layout" :class="{ 'is-collapsed': collapsed }">
     <aside class="adm-sidebar">
       <div class="adm-sidebar-logo">
-        <div class="logo-title">若愚智库</div>
-        <div class="logo-sub">ADMIN CONSOLE</div>
+        <span class="logo-mark">若</span>
+        <span v-if="!collapsed" class="logo-text">
+          <span class="logo-title">若愚智库</span>
+          <span class="logo-sub">管理后台</span>
+        </span>
       </div>
 
-      <nav class="adm-sidebar-nav">
-        <!-- 概览 -->
-        <div class="nav-group">
-          <div class="nav-group-label">概览</div>
-          <router-link to="/dashboard" class="nav-item" :class="{ active: currentPath === '/dashboard' }">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-            <span>数据仪表盘</span>
-          </router-link>
-        </div>
-
-        <!-- 用户管理 -->
-        <div class="nav-group">
-          <div class="nav-group-label">用户管理</div>
-          <router-link to="/students" class="nav-item" :class="{ active: currentPath === '/students' }">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-            <span>学生管理</span>
-          </router-link>
-          <router-link to="/teachers" class="nav-item" :class="{ active: currentPath === '/teachers' }">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>
-            <span>教师管理</span>
-          </router-link>
-          <router-link to="/assistants" class="nav-item" :class="{ active: currentPath === '/assistants' }">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 11l-3-3m0 6l3-3"/></svg>
-            <span>助教管理</span>
-          </router-link>
-        </div>
-
-        <!-- 数据管理 -->
-        <div class="nav-group">
-          <div class="nav-group-label">数据管理</div>
-          <router-link to="/upload-records" class="nav-item" :class="{ active: currentPath === '/upload-records' }">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-            <span>上传记录</span>
-          </router-link>
-          <router-link to="/mistakes" class="nav-item" :class="{ active: currentPath === '/mistakes' }">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-            <span>错题管理</span>
-          </router-link>
-          <router-link to="/oss-audit" class="nav-item" :class="{ active: currentPath === '/oss-audit' }">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7l-8-4-8 4 8 4 8-4z"/><path d="M4 7v10l8 4 8-4V7"/><path d="M12 11v10"/></svg>
-            <span>OSS 审计</span>
-          </router-link>
-        </div>
-      </nav>
-
-      <div class="adm-sidebar-footer">
-        <div class="adm-avatar">{{ userInitial }}</div>
-        <div class="adm-user-info">
-          <div class="adm-user-name">{{ username || 'Admin' }}</div>
-          <div class="adm-user-role">管理员</div>
-        </div>
-        <button class="adm-logout-btn" title="退出登录" @click="handleLogout">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-        </button>
-      </div>
+      <el-scrollbar class="adm-sidebar-scroll">
+        <el-menu
+          class="adm-nav"
+          :default-active="activeName"
+          :collapse="collapsed"
+          :collapse-transition="false"
+          @select="handleSelect"
+        >
+          <el-menu-item-group v-for="group in navGroups" :key="group.key">
+            <template #title>
+              <span class="nav-group-label">{{ group.label }}</span>
+            </template>
+            <el-menu-item v-for="item in group.items" :key="item.name" :index="item.name">
+              <el-icon><component :is="item.icon" /></el-icon>
+              <template #title>{{ item.title }}</template>
+            </el-menu-item>
+          </el-menu-item-group>
+        </el-menu>
+      </el-scrollbar>
     </aside>
 
-    <!-- Main -->
     <div class="adm-main">
       <header class="adm-header">
-        <nav class="adm-breadcrumb">
-          <router-link to="/dashboard">首页</router-link>
-          <span class="sep">/</span>
-          <span v-if="currentGroup" class="group">{{ currentGroup }}</span>
-          <span v-if="currentGroup" class="sep">/</span>
-          <span class="current">{{ currentTitle }}</span>
-        </nav>
-        <div class="adm-header-actions">
-          <button class="adm-icon-btn" title="通知">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-            <span class="adm-notif-badge">0</span>
-          </button>
-          <div class="adm-header-divider"></div>
-          <div class="adm-header-user">
-            <div class="adm-avatar" style="width: 28px; height: 28px; font-size: 12px;">{{ userInitial }}</div>
+        <div class="adm-header-left">
+          <el-button
+            class="adm-collapse-btn"
+            text
+            :icon="collapsed ? Expand : Fold"
+            :aria-label="collapsed ? '展开侧边栏' : '折叠侧边栏'"
+            :title="collapsed ? '展开侧边栏' : '折叠侧边栏'"
+            @click="toggle"
+          />
+          <el-breadcrumb separator="/">
+            <el-breadcrumb-item :to="{ path: '/dashboard' }">首页</el-breadcrumb-item>
+            <el-breadcrumb-item v-if="currentGroupLabel">{{ currentGroupLabel }}</el-breadcrumb-item>
+            <el-breadcrumb-item>{{ currentTitle }}</el-breadcrumb-item>
+          </el-breadcrumb>
+        </div>
+        <div class="adm-header-right">
+          <span class="adm-header-user">
+            <span class="adm-avatar">{{ userInitial }}</span>
             <span class="name">{{ username || 'Admin' }}</span>
-          </div>
+          </span>
+          <el-button text :icon="SwitchButton" @click="handleLogout">退出登录</el-button>
         </div>
       </header>
 
@@ -100,14 +69,37 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { Expand, Fold, SwitchButton } from '@element-plus/icons-vue'
 import { clearAuth, getAuthToken } from './services/auth'
 import httpClient from './services/httpClient'
+import { NAV_GROUPS } from './router/navigation'
+import { useSidebar } from './composables/useSidebar'
 
 const route = useRoute()
 const router = useRouter()
+const { collapsed, toggle } = useSidebar()
 
-const currentPath = computed(() => route.path)
 const isLoginPage = computed(() => route.path === '/login')
+
+// Sidebar, groups and breadcrumb are all derived from route meta.
+const navGroups = NAV_GROUPS.map((group) => ({
+  ...group,
+  items: router.options.routes
+    .filter((r) => r.meta?.group === group.key && typeof r.name === 'string')
+    .map((r) => ({ name: r.name as string, title: r.meta!.title ?? '', icon: r.meta!.icon })),
+})).filter((group) => group.items.length > 0)
+
+// Match by route name so links carrying a query string still highlight.
+const activeName = computed(() => (typeof route.name === 'string' ? route.name : ''))
+
+const currentTitle = computed(() => route.meta.title || '管理后台')
+const currentGroupLabel = computed(
+  () => NAV_GROUPS.find((group) => group.key === route.meta.group)?.label ?? '',
+)
+
+const handleSelect = (name: string) => {
+  router.push({ name })
+}
 
 // Read username from localStorage (set alongside token on login if available)
 const username = computed(() => {
@@ -120,16 +112,6 @@ const username = computed(() => {
 const userInitial = computed(() => {
   const name = username.value || 'A'
   return name.charAt(0).toUpperCase()
-})
-
-const currentTitle = computed(() => (route.meta.title as string) || '管理后台')
-
-const currentGroup = computed(() => {
-  const path = route.path
-  if (path === '/dashboard') return '概览'
-  if (['/students', '/teachers', '/assistants'].includes(path)) return '用户管理'
-  if (['/upload-records', '/mistakes', '/oss-audit'].includes(path)) return '数据管理'
-  return ''
 })
 
 const handleLogout = async () => {
@@ -150,9 +132,12 @@ const handleLogout = async () => {
 
 <style scoped>
 .adm-layout {
-  display: flex;
+  --sidebar-w: var(--adm-sidebar-width);
   min-height: 100vh;
   background: var(--adm-surface);
+}
+.adm-layout.is-collapsed {
+  --sidebar-w: var(--adm-sidebar-collapsed-width);
 }
 
 /* Sidebar */
@@ -160,230 +145,163 @@ const handleLogout = async () => {
   position: fixed;
   top: 0;
   left: 0;
-  width: 240px;
+  width: var(--sidebar-w);
   height: 100vh;
-  background: var(--adm-sidebar);
-  color: var(--adm-text-on-dark);
   display: flex;
   flex-direction: column;
-  z-index: 100;
+  background: var(--adm-sidebar);
+  color: var(--adm-text-on-dark);
+  z-index: var(--adm-z-sidebar);
+  transition: width 0.2s var(--adm-ease);
+  overflow: hidden;
 }
 .adm-sidebar-logo {
-  padding: 20px 20px 18px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-}
-.adm-sidebar-logo .logo-title {
-  font-size: 18px;
-  font-weight: 700;
-  color: #fff;
-  letter-spacing: 0.5px;
-}
-.adm-sidebar-logo .logo-sub {
-  font-size: 11px;
-  color: var(--adm-text-on-dark-muted);
-  margin-top: 2px;
-  letter-spacing: 2px;
-  font-weight: 500;
-}
-.adm-sidebar-nav {
-  flex: 1;
-  padding: 12px 10px;
-  overflow-y: auto;
-}
-.nav-group {
-  margin-bottom: 16px;
-}
-.nav-group-label {
-  font-size: 11px;
-  text-transform: uppercase;
-  color: var(--adm-text-on-dark-muted);
-  padding: 8px 12px 6px;
-  letter-spacing: 1.2px;
-  font-weight: 600;
-}
-.nav-item {
+  height: var(--adm-header-height);
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 9px 12px;
-  margin-bottom: 2px;
-  border-radius: var(--adm-radius-md);
-  color: var(--adm-text-on-dark);
-  font-size: 14px;
-  cursor: pointer;
-  transition: all 0.15s var(--adm-ease);
-  text-decoration: none;
-  position: relative;
-}
-.nav-item:hover {
-  background: var(--adm-sidebar-hover);
-  color: #fff;
-}
-.nav-item.active {
-  background: var(--adm-primary);
-  color: #fff;
-  font-weight: 500;
-  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.35);
-}
-.nav-item svg {
+  gap: var(--adm-space-3);
+  padding: 0 var(--adm-space-4);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   flex-shrink: 0;
 }
-.adm-sidebar-footer {
-  padding: 14px 16px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.adm-user-info {
-  flex: 1;
-  min-width: 0;
-}
-.adm-user-name {
-  font-size: 13px;
-  color: #fff;
-  font-weight: 500;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.adm-user-role {
-  font-size: 11px;
-  color: var(--adm-text-on-dark-muted);
-}
-.adm-logout-btn {
-  width: 30px;
-  height: 30px;
-  border-radius: 6px;
-  display: flex;
+.logo-mark {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: var(--adm-text-on-dark-muted);
-  transition: all 0.15s;
-  cursor: pointer;
-  background: transparent;
-  border: none;
-}
-.adm-logout-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
+  border-radius: var(--adm-radius-md);
+  background: var(--adm-primary);
   color: #fff;
+  font-weight: 700;
+  font-size: var(--adm-font-size-md);
+}
+.logo-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+.logo-title {
+  color: #fff;
+  font-size: var(--adm-font-size-md);
+  font-weight: 600;
+}
+.logo-sub {
+  color: var(--adm-text-on-dark-muted);
+  font-size: var(--adm-font-size-xs);
+}
+.adm-sidebar-scroll {
+  flex: 1;
+}
+
+.adm-nav {
+  --el-menu-bg-color: var(--adm-sidebar);
+  --el-menu-text-color: var(--adm-text-on-dark);
+  --el-menu-hover-text-color: #fff;
+  --el-menu-hover-bg-color: var(--adm-sidebar-hover);
+  --el-menu-active-color: #fff;
+  --el-menu-border-color: transparent;
+  --el-menu-item-height: 40px;
+  --el-menu-item-font-size: var(--adm-font-size-base);
+  border-right: none;
+  padding: var(--adm-space-2) var(--adm-space-2) var(--adm-space-4);
+}
+.adm-nav:not(.el-menu--collapse) {
+  width: 100%;
+}
+.adm-nav :deep(.el-menu-item-group__title) {
+  padding: var(--adm-space-3) var(--adm-space-3) var(--adm-space-1) !important;
+}
+.nav-group-label {
+  color: var(--adm-text-on-dark-muted);
+  font-size: var(--adm-font-size-xs);
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+.adm-nav.el-menu--collapse :deep(.el-menu-item-group__title) {
+  height: 1px;
+  margin: var(--adm-space-2) var(--adm-space-3);
+  padding: 0 !important;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+.adm-nav.el-menu--collapse .nav-group-label {
+  display: none;
+}
+.adm-nav :deep(.el-menu-item) {
+  margin-bottom: 2px;
+  border-radius: var(--adm-radius-md);
+}
+.adm-nav :deep(.el-menu-item.is-active) {
+  background: var(--adm-primary);
+  font-weight: 500;
+}
+.adm-nav :deep(.el-menu-item:focus-visible) {
+  outline: 2px solid var(--adm-primary-light);
+  outline-offset: -2px;
 }
 
 /* Main */
 .adm-main {
-  margin-left: 240px;
-  flex: 1;
+  margin-left: var(--sidebar-w);
+  min-width: 0;
+  min-height: 100vh;
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  transition: margin-left 0.2s var(--adm-ease);
 }
 
 /* Header */
 .adm-header {
-  height: 56px;
-  background: var(--adm-surface-elevated);
-  border-bottom: 1px solid var(--adm-border);
+  position: sticky;
+  top: 0;
+  z-index: var(--adm-z-header);
+  height: var(--adm-header-height);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 24px;
-  position: sticky;
-  top: 0;
-  z-index: 50;
+  gap: var(--adm-space-4);
+  padding: 0 var(--adm-space-6) 0 var(--adm-space-3);
+  background: var(--adm-surface-elevated);
+  border-bottom: 1px solid var(--adm-border);
 }
-.adm-breadcrumb {
+.adm-header-left,
+.adm-header-right {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  color: var(--adm-text-tertiary);
+  gap: var(--adm-space-2);
+  min-width: 0;
 }
-.adm-breadcrumb a {
-  color: var(--adm-text-tertiary);
-  transition: color 0.15s;
-  text-decoration: none;
-}
-.adm-breadcrumb a:hover {
-  color: var(--adm-primary);
-}
-.adm-breadcrumb .sep {
-  color: var(--adm-text-muted);
-  font-size: 12px;
-}
-.adm-breadcrumb .current {
-  color: var(--adm-text-primary);
-  font-weight: 500;
-}
-.adm-header-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.adm-icon-btn {
-  width: 36px;
-  height: 36px;
-  border-radius: var(--adm-radius-md);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--adm-text-secondary);
-  transition: all 0.15s;
-  cursor: pointer;
-  position: relative;
-  background: transparent;
-  border: none;
-}
-.adm-icon-btn:hover {
-  background: var(--adm-surface-subtle);
-  color: var(--adm-text-primary);
-}
-.adm-notif-badge {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  background: var(--adm-error);
-  color: #fff;
-  font-size: 10px;
-  font-weight: 700;
-  min-width: 16px;
-  height: 16px;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 4px;
-  border: 2px solid var(--adm-surface-elevated);
-}
-.adm-header-divider {
-  width: 1px;
-  height: 24px;
-  background: var(--adm-border);
-  margin: 0 4px;
+.adm-collapse-btn {
+  font-size: var(--adm-font-size-lg);
 }
 .adm-header-user {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 4px 8px 4px 4px;
-  border-radius: var(--adm-radius-md);
-  cursor: pointer;
-  transition: background 0.15s;
-}
-.adm-header-user:hover {
-  background: var(--adm-surface-subtle);
+  gap: var(--adm-space-2);
+  padding-right: var(--adm-space-2);
+  border-right: 1px solid var(--adm-border);
 }
 .adm-header-user .name {
-  font-size: 13px;
-  font-weight: 500;
   color: var(--adm-text-primary);
+  font-size: var(--adm-font-size-sm);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.adm-header-user .adm-avatar {
+  width: 28px;
+  height: 28px;
+  font-size: var(--adm-font-size-xs);
 }
 
 /* Content */
 .adm-content {
   flex: 1;
-  padding: 24px;
-  max-width: 1400px;
   width: 100%;
+  max-width: var(--adm-content-max-width);
   margin: 0 auto;
+  padding: var(--adm-space-6);
 }
 </style>

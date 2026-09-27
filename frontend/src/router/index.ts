@@ -1,4 +1,6 @@
+import { markRaw } from 'vue'
 import { createRouter, createWebHistory } from 'vue-router'
+import { Box, Collection, DataBoard, Reading, Service, Upload, User } from '@element-plus/icons-vue'
 import { isAuthenticated } from '../services/auth'
 
 const router = createRouter({
@@ -18,43 +20,43 @@ const router = createRouter({
       path: '/dashboard',
       name: 'dashboard',
       component: () => import('../views/DashboardView.vue'),
-      meta: { title: '数据仪表盘' }
+      meta: { title: '数据仪表盘', group: 'overview', icon: markRaw(DataBoard) }
     },
     {
       path: '/students',
       name: 'students',
       component: () => import('../views/StudentView.vue'),
-      meta: { title: '学生管理' }
+      meta: { title: '学生管理', group: 'users', icon: markRaw(User) }
     },
     {
       path: '/teachers',
       name: 'teachers',
       component: () => import('../views/TeacherView.vue'),
-      meta: { title: '教师管理' }
+      meta: { title: '教师管理', group: 'users', icon: markRaw(Reading) }
     },
     {
       path: '/assistants',
       name: 'assistants',
       component: () => import('../views/AssistantView.vue'),
-      meta: { title: '助教管理' }
+      meta: { title: '助教管理', group: 'users', icon: markRaw(Service) }
     },
     {
       path: '/upload-records',
       name: 'upload-records',
       component: () => import('../views/UploadRecordView.vue'),
-      meta: { title: '上传记录' }
+      meta: { title: '上传记录', group: 'content', icon: markRaw(Upload) }
     },
     {
       path: '/mistakes',
       name: 'mistakes',
       component: () => import('../views/MistakeView.vue'),
-      meta: { title: '错题管理' }
+      meta: { title: '错题管理', group: 'content', icon: markRaw(Collection) }
     },
     {
       path: '/oss-audit',
       name: 'oss-audit',
       component: () => import('../views/OssAuditView.vue'),
-      meta: { title: 'OSS 审计' }
+      meta: { title: 'OSS 审计', group: 'storage', icon: markRaw(Box) }
     }
   ]
 })

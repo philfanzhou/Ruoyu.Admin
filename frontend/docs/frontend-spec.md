@@ -10,7 +10,8 @@
 | 构建工具 | Vite |
 | 路由 | Vue Router 4 |
 | 入口 | `src/main.ts` |
-| 设计规范 | `ruoyu-prototype/assets/design-system.css` 中的 `--adm-*` 令牌 |
+| 图标 | `@element-plus/icons-vue` |
+| 设计令牌 | `src/styles/tokens.css`（`--adm-*`），Element Plus 主题映射见 `src/styles/element-theme.css` |
 
 ---
 
@@ -18,12 +19,19 @@
 
 ```
 frontend/src/
-├── main.ts                      # 入口，注册 ElementPlus + VueRouter
-├── App.vue                      # 根组件，主布局（240px 侧边栏 + 56px 顶部栏 + 面包屑）
+├── main.ts                      # 入口，注册 ElementPlus + VueRouter；样式引入顺序：EP css → tokens.css → element-theme.css → style.css
+├── App.vue                      # 根组件，应用外壳（可折叠侧边栏 + 56px 顶部栏 + 面包屑）
+├── styles/
+│   ├── tokens.css               # 设计令牌（色板、字号、间距、圆角、阴影、z-index、布局尺寸）
+│   └── element-theme.css        # 把 --el-* 变量（含派生色）映射到 --adm-* 令牌
+├── style.css                    # 基础元素样式 + 各页面仍在使用的共享类
+├── composables/
+│   └── useSidebar.ts            # 侧边栏折叠状态（视口断点 + localStorage 偏好）
 ├── router/
-│   └── index.ts                 # 路由配置
+│   ├── index.ts                 # 路由配置（meta: title / group / icon）
+│   └── navigation.ts            # 导航分组常量表与 RouteMeta 类型声明
 ├── views/
-│   ├── LoginView.vue            # 登录页（双栏：品牌渐变 + 表单）
+│   ├── LoginView.vue            # 登录页（单卡片）
 │   ├── DashboardView.vue        # 数据仪表盘（KPI + 趋势 + 待办）
 │   ├── StudentView.vue          # 学生管理页面
 │   ├── TeacherView.vue          # 教师管理页面
@@ -38,68 +46,66 @@ frontend/src/
 │   ├── teacherPortalApi.ts      # 教师权限管理 API
 │   ├── assistantPortalApi.ts    # 助教权限管理 API
 │   └── ossAuditApi.ts           # OSS 审计 API
-└── components/
-    ├── ImagePreview.vue          # 图片预览组件
-    ├── ImageViewer.vue           # 图片查看器组件
+└── utils/
+    └── subject.ts               # 学科名称与颜色映射
 ```
 
 ---
 
-## 设计规范（Professional Blue-Gray）
+## 设计规范
 
-参考原型：`ruoyu-prototype/pages/admin-*.html` + `ruoyu-prototype/assets/design-system.css`。
+定位为内部运维工具：信息清晰、操作高效、危险操作醒目。
 
 ### Design Tokens（CSS 变量）
 
-所有 `--adm-*` 变量统一定义在 `src/style.css` 的 `:root` 中，供全局使用：
+所有 `--adm-*` 令牌统一定义在 `src/styles/tokens.css`，其他样式只引用令牌，不写裸色值。主要取值：
 
 | 类别 | 变量 | 值 |
 |------|------|----|
-| 主色 | `--adm-primary` | `#3b82f6` (Blue 500) |
-| 主色深 | `--adm-primary-dark` | `#2563eb` |
-| 主色浅 | `--adm-primary-bg` | `#eff6ff` |
-| 侧边栏 | `--adm-sidebar` | `#1e293b` |
-| 侧边栏悬停 | `--adm-sidebar-hover` | `#334155` |
-| 内容区背景 | `--adm-surface` | `#f1f5f9` |
-| 卡片背景 | `--adm-surface-elevated` | `#ffffff` |
-| 次级背景 | `--adm-surface-subtle` | `#f8fafc` |
-| 边框 | `--adm-border` | `#e2e8f0` |
-| 边框浅 | `--adm-border-light` | `#f1f5f9` |
-| 主文本 | `--adm-text-primary` | `#0f172a` |
-| 次文本 | `--adm-text-secondary` | `#475569` |
-| 三级文本 | `--adm-text-tertiary` | `#64748b` |
-| 静音文本 | `--adm-text-muted` | `#94a3b8` |
-| 暗背景文本 | `--adm-text-on-dark` | `#e2e8f0` |
-| 暗背景静音 | `--adm-text-on-dark-muted` | `#94a3b8` |
-| 成功 | `--adm-success` / `*-bg` / `*-border` | `#10b981` / `#ecfdf5` / `#a7f3d0` |
-| 警告 | `--adm-warning` / `*-bg` / `*-border` | `#f59e0b` / `#fffbeb` / `#fde68a` |
-| 错误 | `--adm-error` / `*-bg` / `*-border` | `#ef4444` / `#fef2f2` / `#fecaca` |
-| 圆角 | `--adm-radius-sm/md/lg` | `6px` / `8px` / `12px` |
-| 阴影 | `--adm-shadow-sm/md/lg` | `0 1px 2px` / `0 4px 12px` / `0 8px 24px` |
+| 主色 | `--adm-primary` / `-hover` / `-bg` / `-border` | `#2563eb` / `#1d4ed8` / `#eff6ff` / `#bfdbfe` |
+| 成功 | `--adm-success` / `-hover` / `-bg` / `-border` | `#15803d` / `#166534` / `#f0fdf4` / `#bbf7d0` |
+| 警告 | `--adm-warning` / `-hover` / `-bg` / `-border` | `#b45309` / `#92400e` / `#fffbeb` / `#fde68a` |
+| 危险 | `--adm-danger` / `-hover` / `-bg` / `-border` | `#dc2626` / `#b91c1c` / `#fef2f2` / `#fecaca` |
+| 信息 | `--adm-info*` | 同主色 |
+| 中性 | `--adm-neutral` | `#64748b`（Element Plus `info` 色） |
+| 侧边栏 | `--adm-sidebar` / `--adm-sidebar-hover` | `#0f172a` / `#1e293b` |
+| 背景 | `--adm-surface` / `-elevated` / `-subtle` | `#f1f5f9` / `#ffffff` / `#f8fafc` |
+| 边框 | `--adm-border` / `-light` / `-hover` | `#e2e8f0` / `#f1f5f9` / `#cbd5e1` |
+| 文本 | `--adm-text-primary` / `-secondary` / `-tertiary` / `-muted` | `#0f172a` / `#475569` / `#64748b` / `#7d8ba1` |
+| 字号 | `--adm-font-size-xs/sm/base/md/lg/xl` | 12 / 13 / 14 / 16 / 18 / 22px |
+| 间距 | `--adm-space-1…8` | 4px 基准 |
+| 圆角 | `--adm-radius-sm/md/lg` | 4 / 6 / 8px |
+| 布局 | `--adm-sidebar-width` / `--adm-sidebar-collapsed-width` / `--adm-header-height` | 220 / 64 / 56px |
+
+- `--adm-error*` 是 `--adm-danger*` 的兼容别名，仅供尚未迁移的页面使用；新代码使用 `--adm-danger*`。
+- 对比度约束：正文文本（`--adm-text-primary`/`-secondary`）与语义色文字在白色背景上 ≥ 4.5:1，次级文本（`-tertiary`/`-muted`）在 `--adm-surface` 与白色背景上 ≥ 3:1。修改令牌时需重新核对。
+
+### Element Plus 主题映射
+
+`src/styles/element-theme.css` 在 `:root` 中覆盖 `--el-color-{primary,success,warning,danger,error,info}` 及其派生色 `-light-3/-light-5/-light-7/-light-8/-light-9/-dark-2`，并映射字号、圆角、文本色、边框色与背景色。Element Plus 的 hover/active 色是预计算的静态值，**必须显式覆盖派生色**，只改基色会让 hover 仍是默认蓝。派生色用 `color-mix()` 从令牌计算（与 Element Plus 自身的混色比例一致）；`--el-color-*-rgb` 三元组无法从十六进制变量派生，需与令牌手动保持一致。
 
 ### 整体布局
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│ 240px Sidebar │ 56px Header (面包屑 + 通知 + 用户)              │
-│               ├──────────────────────────────────────────────┤
-│  - 仪表盘     │                                              │
-│  - 学生管理   │                                              │
-│  - 教师管理   │       Main Content Area                      │
-│  - 助教管理   │       (max-width: 1400px, padding: 24px)     │
-│  - 数据管理   │                                              │
-│    ├─上传记录 │                                              │
-│    ├─错题管理 │                                              │
-│    └─OSS审计 │                                              │
-│               │                                              │
-│  Footer:      │                                              │
-│  用户+退出    │                                              │
+│ Sidebar 220px │ 56px Header：折叠按钮 + 面包屑 ……… 用户名 + 退出登录 │
+│ (折叠为 64px)  ├──────────────────────────────────────────────┤
+│  概览          │                                              │
+│   数据仪表盘   │                                              │
+│  用户          │       Main Content Area                      │
+│   学生/教师/助教│       (max-width: 1400px, padding: 24px)     │
+│  内容与上传    │                                              │
+│   上传记录/错题 │                                              │
+│  存储审计      │                                              │
+│   OSS 审计     │                                              │
 └───────────────┴──────────────────────────────────────────────┘
 ```
 
-- **侧边栏**：固定 240px，深色 `#1e293b`，分组标签 + 菜单项；激活项用主色背景 + 阴影
-- **顶部栏**：56px 高，sticky，左侧面包屑（首页 / 分组 / 当前页），右侧通知铃铛 + 用户头像
-- **内容区**：`max-width: 1400px`，居中，24px 内边距
+- **导航单一来源**：路由 `meta` 声明 `title`、`group`、`icon`（`@element-plus/icons-vue`），分组显示名在 `router/navigation.ts` 的 `NAV_GROUPS` 常量表中。侧边栏、分组和面包屑（首页 / 分组 / 页面）都由此生成，不在外壳中硬编码路径表。
+- **侧边栏**：`el-menu` 实现，深色背景；激活项按路由 `name` 判断，带 query 的地址（如 `/upload-records?status=1`）同样高亮。点击导航项跳转到无 query 的页面地址。
+- **折叠**：视口 < 1024px 时自动折叠为 64px 图标栏，在此宽度下的手动切换只是临时的；视口 ≥ 1024px 时使用用户偏好（默认展开），手动切换写入 `localStorage.adminSidebarCollapsed`（`'1'`/`'0'`），刷新后保持。`localStorage` 读写失败时按宽度默认值处理，不报错。折叠态悬停导航项显示名称提示；折叠按钮带 `aria-label`。
+- **顶部栏**：56px 高，sticky；只包含折叠按钮、面包屑、用户名和「退出登录」，不放无功能的按钮。
+- **内容区**：`max-width: 1400px`，居中，24px 内边距；外壳本身不产生横向滚动，页面自身的最小宽度由各列表页负责。
 
 ### 组件规范
 
@@ -132,45 +138,20 @@ frontend/src/
 
 ## 页面架构
 
-### 整体布局
-
-```
-┌──────────────────────────────────────────────────────────┐
-│  Header: 面包屑 + 通知铃铛 + 用户头像                       │
-├────────────┬─────────────────────────────────────────────┤
-│            │                                             │
-│  Sidebar   │         Main Content Area                  │
-│  240px     │         (max-width: 1400px, padding: 24px)  │
-│  深色       │                                             │
-│            │                                             │
-│  概览       │                                             │
-│  - 仪表盘   │                                             │
-│  用户管理   │                                             │
-│  - 学生     │                                             │
-│  - 教师     │                                             │
-│  - 助教     │                                             │
-│  数据管理   │                                             │
-│  - 上传记录 │                                             │
-│  - 错题     │                                             │
-│  - OSS审计  │                                             │
-│            │                                             │
-│  ──────    │                                             │
-│  用户+退出  │                                             │
-└────────────┴─────────────────────────────────────────────┘
-```
+整体布局见上文「设计规范 → 整体布局」。
 
 ### 页面清单
 
 | 路由 | 页面 | 所属分组 | 说明 |
 |------|------|----------|------|
-| `/login` | LoginView.vue | 认证 | 双栏品牌+表单登录页 |
+| `/login` | LoginView.vue | 认证 | 单卡片登录页 |
 | `/dashboard` | DashboardView.vue | 概览 | 数据仪表盘（KPI + 趋势 + 待办） |
-| `/students` | StudentView.vue | 用户管理 | 学生管理 |
-| `/teachers` | TeacherView.vue | 用户管理 | 教师管理 |
-| `/assistants` | AssistantView.vue | 用户管理 | 助教管理 |
-| `/upload-records` | UploadRecordView.vue | 数据管理 | 上传记录管理（含状态统计条 + 侧滑详情面板） |
-| `/mistakes` | MistakeView.vue | 数据管理 | 错题查询与管理（统计卡 + 详情 Modal） |
-| `/oss-audit` | OssAuditView.vue | 数据管理 | OSS 僵尸文件审计（状态面板 + 浮动批量栏） |
+| `/students` | StudentView.vue | 用户 | 学生管理 |
+| `/teachers` | TeacherView.vue | 用户 | 教师管理 |
+| `/assistants` | AssistantView.vue | 用户 | 助教管理 |
+| `/upload-records` | UploadRecordView.vue | 内容与上传 | 上传记录管理（含状态统计条 + 侧滑详情面板） |
+| `/mistakes` | MistakeView.vue | 内容与上传 | 错题查询与管理（统计卡 + 详情 Modal） |
+| `/oss-audit` | OssAuditView.vue | 存储审计 | OSS 僵尸文件审计（状态面板 + 浮动批量栏） |
 
 默认重定向：`/` → `/dashboard`（已登录）/ `/login`（未登录）。
 
@@ -180,12 +161,12 @@ frontend/src/
 
 ### 0. 登录页 (`/login`)
 
-**布局**：双栏式（左侧品牌渐变面板 + 右侧表单）。
+**布局**：居中单卡片（品牌名 + 标题 + 表单），使用 Element Plus 表单组件与设计令牌，不包含营销文案、版本号或版权年份。
 
-- **左侧品牌面板**：深色渐变背景（`#0f172a → #1e3a5f → #1e40af`），展示 logo、品牌标语、特性列表、版本徽章
-- **右侧表单**：登录图标 + 标题、用户名输入（带头像图标）、密码输入（带锁图标 + 显示/隐藏切换）、记住我复选框、登录按钮（渐变背景 + 阴影）
-- **错误提示**：内联错误提示框（红色背景 + 警告图标）
-- **加载状态**：登录中显示 spinner
+- **表单**：用户名 / 手机号、密码（可切换显示）、「记住用户名」复选框、登录按钮
+- **记住用户名**：勾选时登录成功后写入 `localStorage.adminUsername`（外壳显示用户名用），取消勾选时删除；与 token 是否保存无关
+- **提交**：用户名或密码为空时按钮禁用；回车可提交；登录中按钮进入 loading 状态并忽略重复提交
+- **错误提示**：内联 `el-alert` 显示后端返回的 `message`
 
 **API 调用**：
 - `login(username, password)` - 提交登录表单，成功后写入 token 到 localStorage
@@ -322,7 +303,7 @@ frontend/src/
 
 ### 4. 上传记录管理页面 (`/upload-records`)
 
-**所属分组**：数据管理
+**所属分组**：内容与上传
 
 **功能列表**：
 - 上传记录列表（学生搜索筛选、状态筛选、分页）
@@ -431,7 +412,7 @@ frontend/src/
 
 ### 6. OSS 审计页面 (`/oss-audit`)
 
-**所属分组**：数据管理
+**所属分组**：存储审计
 
 **功能列表**：
 - 审计记录列表（状态筛选、Bucket 筛选、分页）
@@ -628,7 +609,7 @@ interface EnumOptionsResponse {
 ## 设计规范
 
 - **UI 框架**：Element Plus，使用 `size="small"` 紧凑模式
-- **布局**：侧边栏导航（含二级菜单）+ 主内容区，各页面独立
+- **布局**：可折叠侧边栏（按功能分组，由路由 meta 生成）+ 顶部栏 + 主内容区，详见上文「设计规范 → 整体布局」
 - **分页**：用户管理列表默认每页 20 条；学生由 Student 服务分页，教师/助教分别由 Teacher Portal / Assistant Portal 在数据库查询中完成过滤、计数与分页，前端只渲染服务端返回的当前页
 - **懒加载路由**：按需加载页面组件
 - **按需调用 API**：每个页面只调用自己需要的接口
