@@ -546,6 +546,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { confirmDanger } from '../utils/confirm'
 import { studentAdminClient } from '../services/studentAdminApi'
@@ -554,6 +555,10 @@ import {
   getSubjectLabel, getSubjectCssClass,
   getAvatarGradient, getAvatarChar, formatDateTime,
 } from '../utils/subject'
+import { parseEnumQuery, useEnumQueryFilter } from '../utils/routeQuery'
+
+const UPLOAD_STATUS_VALUES = [1, 2, 3, 4, 5] as const
+const route = useRoute()
 
 // ===== State =====
 const uploadRecords = ref<UploadRecordDto[]>([])
@@ -562,7 +567,8 @@ const total = ref(0)
 const page = ref(1)
 const pageSize = ref(20)
 
-const filterStatus = ref<number | undefined>(undefined)
+// Initialised from ?status= so the first list request already carries the deep-link filter.
+const filterStatus = ref<number | undefined>(parseEnumQuery(route.query.status, UPLOAD_STATUS_VALUES))
 const filterStudentId = ref<string | undefined>(undefined)
 const filterStudentName = ref('')
 const filterStudentOptions = ref<StudentDto[]>([])
@@ -776,13 +782,20 @@ function onPreviewError(e: Event) {
 }
 
 // ===== Filters =====
+const { syncToUrl: syncStatusToUrl } = useEnumQueryFilter('status', UPLOAD_STATUS_VALUES, filterStatus, () => {
+  page.value = 1
+  loadUploadRecords()
+})
+
 function setFilterStatus(value: number | undefined) {
   filterStatus.value = filterStatus.value === value ? undefined : value
+  syncStatusToUrl()
   page.value = 1
   loadUploadRecords()
 }
 
 function onFilterChange() {
+  syncStatusToUrl()
   page.value = 1
   loadUploadRecords()
 }
@@ -794,6 +807,7 @@ function onSearch() {
 
 function resetFilters() {
   filterStatus.value = undefined
+  syncStatusToUrl()
   filterStudentId.value = undefined
   filterStudentName.value = ''
   filterStudentOptions.value = []

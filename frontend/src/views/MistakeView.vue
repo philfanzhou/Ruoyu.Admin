@@ -402,10 +402,15 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import studentAdminApi from '../services/studentAdminApi'
 import type { MistakeItemDto, StudentDto } from '../services/studentAdminApi'
 import { getSubjectLabel, getSubjectCssClass, getAvatarGradient, getAvatarChar, formatDateTime } from '../utils/subject'
+import { parseEnumQuery, useEnumQueryFilter } from '../utils/routeQuery'
+
+const REVIEW_STATUS_VALUES = [1, 2, 3] as const
+const route = useRoute()
 
 interface MistakeItem extends MistakeItemDto {}
 
@@ -422,7 +427,8 @@ const filterStudentName = ref('')
 const filterStudentOptions = ref<StudentDto[]>([])
 const filterSubject = ref<number | undefined>(undefined)
 const filterGrade = ref<number | undefined>(undefined)
-const filterReviewStatus = ref<number | undefined>(undefined)
+// Initialised from ?reviewStatus= so the first list request already carries the deep-link filter.
+const filterReviewStatus = ref<number | undefined>(parseEnumQuery(route.query.reviewStatus, REVIEW_STATUS_VALUES))
 
 // Stats
 const statsLoading = ref(false)
@@ -638,13 +644,20 @@ function copyPath(path: string | undefined) {
 }
 
 // ===== Filters =====
+const { syncToUrl: syncReviewStatusToUrl } = useEnumQueryFilter('reviewStatus', REVIEW_STATUS_VALUES, filterReviewStatus, () => {
+  page.value = 1
+  loadMistakes()
+})
+
 function setFilterStatus(value: number | undefined) {
   filterReviewStatus.value = filterReviewStatus.value === value ? undefined : value
+  syncReviewStatusToUrl()
   page.value = 1
   loadMistakes()
 }
 
 function onFilterChange() {
+  syncReviewStatusToUrl()
   page.value = 1
   loadMistakes()
 }
@@ -656,6 +669,7 @@ function onSearch() {
 
 function resetFilters() {
   filterReviewStatus.value = undefined
+  syncReviewStatusToUrl()
   filterSubject.value = undefined
   filterGrade.value = undefined
   filterStudentId.value = undefined

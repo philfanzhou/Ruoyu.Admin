@@ -32,7 +32,7 @@ frontend/src/
 │   └── navigation.ts            # 导航分组常量表与 RouteMeta 类型声明
 ├── views/
 │   ├── LoginView.vue            # 登录页（单卡片）
-│   ├── DashboardView.vue        # 数据仪表盘（KPI + 趋势 + 待办）
+│   ├── DashboardView.vue        # 待办与概况（待处理 + 规模指标，只展示真实数据）
 │   ├── StudentView.vue          # 学生管理页面
 │   ├── TeacherView.vue          # 教师管理页面
 │   ├── AssistantView.vue        # 助教管理页面
@@ -145,7 +145,7 @@ frontend/src/
 | 路由 | 页面 | 所属分组 | 说明 |
 |------|------|----------|------|
 | `/login` | LoginView.vue | 认证 | 单卡片登录页 |
-| `/dashboard` | DashboardView.vue | 概览 | 数据仪表盘（KPI + 趋势 + 待办） |
+| `/dashboard` | DashboardView.vue | 概览 | 待办与概况（待处理 + 规模指标，只展示真实数据） |
 | `/students` | StudentView.vue | 用户 | 学生管理 |
 | `/teachers` | TeacherView.vue | 用户 | 教师管理 |
 | `/assistants` | AssistantView.vue | 用户 | 助教管理 |
@@ -175,21 +175,22 @@ frontend/src/
 
 ### 0.5 数据仪表盘 (`/dashboard`)
 
-**功能列表**：
-- 4 个 KPI 卡片（学生总数 / 教师总数 / 待处理上传 / 待审核错题），带 sparkline 趋势线
-- 上传趋势柱状图（学生/教师双柱对比，最近 7 天）
-- 待处理事项列表（点击跳转对应管理页）
-- 学科分布条形图
-- 活动时间线（最近 5 条系统活动）
-- 快捷操作卡片（跳转到常用页面）
+页面标题「待办与概况」。只展示能从现有接口取得的真实数字，不包含任何示例数据、趋势图或活动流（需要新增后端统计接口，不在前端范围）。
 
-**API 调用**（全部复用现有 API，不新增后端接口）：
-- `studentAdminApi.getStudents({ pageSize: 1 })` - 获取学生总数
-- `teacherPortalApi.getTeachers()` - 获取教师列表
-- `assistantPortalApi.getAssistants()` - 获取助教列表
-- `studentAdminApi.getUploadRecords({ status: 1, pageSize: 1 })` - 待处理上传数
-- `studentAdminApi.getMistakeItems({ reviewStatus: 1, size: 1 })` - 待审核错题数
-- `ossAuditApi.getRecords(1, 1, 0)` - 待处理 OSS 审计数
+**指标**（每张卡片独立加载，可点击进入对应列表）：
+
+| 分组 | 指标 | 数据来源 | 跳转 |
+|------|------|----------|------|
+| 待处理 | 待处理上传 | `getUploadRecords({ page: 1, pageSize: 1, status: 1 }).totalCount` | `/upload-records?status=1` |
+| 待处理 | 待审核错题 | `getMistakeItems({ page: 1, size: 1, reviewStatus: 1 }).total` | `/mistakes?reviewStatus=1` |
+| 待处理 | 待处置 OSS 审计记录 | `ossAuditApi.getStatus().pendingCount` | `/oss-audit?status=0` |
+| 规模 | 学生 | `getStudents({ page: 1, pageSize: 1 }).total` | `/students` |
+| 规模 | 教师 | `getTeachers({ page: 1, pageSize: 1 }).total` | `/teachers` |
+| 规模 | 助教 | `getAssistants({ page: 1, pageSize: 1 }).total` | `/assistants` |
+
+**加载与失败**：各卡片并行请求、互不影响（`Promise.allSettled`）。请求失败或响应中缺少数值时，该卡显示「—」与「加载失败」并提供单卡「重试」；**失败不得显示为 0**。页头「刷新」重新加载全部卡片。
+
+**列表页深链**（`src/utils/routeQuery.ts`）：上传记录（`status` ∈ 1–5）、错题（`reviewStatus` ∈ 1–3）、OSS 审计（`status` ∈ 0–2）从 URL 读取状态筛选，并在首次列表请求前生效；缺失、重复、非整数或不在集合中的值视为无筛选。页面存活期间 URL 中该键变化（如点击侧边栏无参链接）时重新应用筛选并回到第 1 页；页面内切换状态筛选或重置时用 `router.replace` 同步该键（其他 query 键保留），刷新后筛选与 URL 一致，且每次切换只发出一次列表请求。
 
 ---
 
