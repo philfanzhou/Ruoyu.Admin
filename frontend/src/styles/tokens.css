@@ -1,0 +1,109 @@
+/* =========================================================
+   Admin Portal design tokens
+   Single source of truth for colors, type, spacing and layout.
+   Element Plus is themed from these values in element-theme.css.
+   Contrast targets: body text >= 4.5:1, secondary text >= 3:1
+   against both --adm-surface-elevated and --adm-surface.
+   ========================================================= */
+
+:root {
+  /* ---- Typography ---- */
+  --adm-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', Arial,
+    'Noto Sans SC', sans-serif;
+  --adm-font-mono: 'SF Mono', Menlo, Consolas, monospace;
+  --adm-font-size-xs: 12px;
+  --adm-font-size-sm: 13px;
+  --adm-font-size-base: 14px;
+  --adm-font-size-md: 16px;
+  --adm-font-size-lg: 18px;
+  --adm-font-size-xl: 22px;
+
+  /* ---- Spacing (4px base) ---- */
+  --adm-space-1: 4px;
+  --adm-space-2: 8px;
+  --adm-space-3: 12px;
+  --adm-space-4: 16px;
+  --adm-space-5: 20px;
+  --adm-space-6: 24px;
+  --adm-space-8: 32px;
+
+  /* ---- Brand ---- */
+  --adm-primary: #2563eb;
+  --adm-primary-hover: #1d4ed8;
+  --adm-primary-dark: #1d4ed8;
+  --adm-primary-light: #60a5fa;
+  --adm-primary-bg: #eff6ff;
+  --adm-primary-border: #bfdbfe;
+
+  /* ---- Semantic ---- */
+  --adm-success: #15803d;
+  --adm-success-hover: #166534;
+  --adm-success-bg: #f0fdf4;
+  --adm-success-border: #bbf7d0;
+  --adm-warning: #b45309;
+  --adm-warning-hover: #92400e;
+  --adm-warning-bg: #fffbeb;
+  --adm-warning-border: #fde68a;
+  --adm-danger: #dc2626;
+  --adm-danger-hover: #b91c1c;
+  --adm-danger-bg: #fef2f2;
+  --adm-danger-border: #fecaca;
+  --adm-info: var(--adm-primary);
+  --adm-info-hover: var(--adm-primary-hover);
+  --adm-info-bg: var(--adm-primary-bg);
+  --adm-info-border: var(--adm-primary-border);
+  --adm-neutral: #64748b;
+  --adm-neutral-hover: #475569;
+  /* Legacy aliases kept for existing views; new code uses --adm-danger*. */
+  --adm-error: var(--adm-danger);
+  --adm-error-bg: var(--adm-danger-bg);
+  --adm-error-border: var(--adm-danger-border);
+
+  /* ---- Surfaces ---- */
+  --adm-surface: #f1f5f9;
+  --adm-surface-elevated: #ffffff;
+  --adm-surface-subtle: #f8fafc;
+  --adm-surface-hover: #f1f5f9;
+
+  /* ---- Borders ---- */
+  --adm-border: #e2e8f0;
+  --adm-border-light: #f1f5f9;
+  --adm-border-hover: #cbd5e1;
+
+  /* ---- Text ---- */
+  --adm-text-primary: #0f172a;
+  --adm-text-secondary: #475569;
+  --adm-text-tertiary: #64748b;
+  --adm-text-muted: #7d8ba1;
+  --adm-text-on-dark: #cbd5e1;
+  --adm-text-on-dark-muted: #94a3b8;
+
+  /* ---- Sidebar ---- */
+  --adm-sidebar: #0f172a;
+  --adm-sidebar-hover: #1e293b;
+  --adm-sidebar-active: var(--adm-primary);
+
+  /* ---- Radius ---- */
+  --adm-radius-sm: 4px;
+  --adm-radius-md: 6px;
+  --adm-radius-lg: 8px;
+
+  /* ---- Shadow ---- */
+  --adm-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
+  --adm-shadow-md: 0 4px 12px rgba(15, 23, 42, 0.08);
+  --adm-shadow-lg: 0 8px 24px rgba(15, 23, 42, 0.1);
+
+  /* ---- Z-index ---- */
+  --adm-z-header: 50;
+  --adm-z-sidebar: 100;
+
+  /* ---- Layout ---- */
+  --adm-sidebar-width: 220px;
+  --adm-sidebar-collapsed-width: 64px;
+  --adm-header-height: 56px;
+  --adm-content-max-width: 1400px;
+
+  /* ---- Motion ---- */
+  --adm-ease: cubic-bezier(0.25, 1, 0.5, 1);
+}
