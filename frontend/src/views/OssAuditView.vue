@@ -588,6 +588,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, h } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { confirmDanger } from '../utils/confirm'
 import {
@@ -598,6 +599,10 @@ import {
   type AuditStatusResponse
 } from '../services/ossAuditApi'
 import { formatDateTime } from '../utils/subject'
+import { parseEnumQuery, useEnumQueryFilter } from '../utils/routeQuery'
+
+const AUDIT_STATUS_VALUES = [0, 1, 2] as const
+const route = useRoute()
 
 const records = ref<OssAuditRecordDto[]>([])
 const loading = ref(false)
@@ -608,7 +613,8 @@ const page = ref(1)
 const pageSize = 20
 const cleanedCount = ref(0)
 
-const filterStatus = ref<number>()
+// Initialised from ?status= so the first list request already carries the deep-link filter.
+const filterStatus = ref<number | undefined>(parseEnumQuery(route.query.status, AUDIT_STATUS_VALUES))
 const filterBucket = ref<string>()
 const filterPath = ref<string>('')
 const bucketOptions = ref<string[]>([])
@@ -835,7 +841,13 @@ async function handleTriggerAudit(): Promise<void> {
   }
 }
 
+const { syncToUrl: syncStatusToUrl } = useEnumQueryFilter('status', AUDIT_STATUS_VALUES, filterStatus, () => {
+  page.value = 1
+  loadRecords()
+})
+
 function handleFilterChange(): void {
+  syncStatusToUrl()
   page.value = 1
   loadRecords()
 }
@@ -853,6 +865,7 @@ function onPageChange(p: number): void {
 
 function resetFilters(): void {
   filterStatus.value = undefined
+  syncStatusToUrl()
   filterBucket.value = undefined
   filterPath.value = ''
   page.value = 1
