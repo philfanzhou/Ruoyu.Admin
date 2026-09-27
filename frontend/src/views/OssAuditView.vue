@@ -225,7 +225,11 @@
               <th class="col-check">
                 <div
                   class="adm-checkbox"
-                  :class="{ checked: isAllSelected }"
+                  :class="{ checked: isAllSelected, disabled: selectableIds.length === 0 }"
+                  role="checkbox"
+                  :aria-checked="isAllSelected"
+                  :aria-disabled="selectableIds.length === 0"
+                  title="选择本页全部待处理记录"
                   @click="toggleSelectAll"
                 >
                   <svg
@@ -262,8 +266,12 @@
               <td>
                 <div
                   class="adm-checkbox"
-                  :class="{ checked: isSelected(r.id) }"
-                  @click="toggleSelect(r.id)"
+                  :class="{ checked: isSelected(r.id), disabled: r.status !== 0 }"
+                  role="checkbox"
+                  :aria-checked="isSelected(r.id)"
+                  :aria-disabled="r.status !== 0"
+                  :title="r.status !== 0 ? '仅待处理记录可选择' : undefined"
+                  @click="toggleSelect(r)"
                 >
                   <svg
                     v-if="isSelected(r.id)"
@@ -382,8 +390,10 @@
               <td>
                 <div class="actions-cell">
                   <template v-if="r.status === 0">
-                    <button class="adm-btn-link danger" @click="handleResolve(r)">删除</button>
-                    <button class="adm-btn-link warning" @click="handleIgnore(r)">忽略</button>
+                    <button class="adm-btn-link danger" :disabled="resolvingIds.has(r.id)" @click="handleResolve(r)">
+                      {{ resolvingIds.has(r.id) ? '删除中…' : '删除' }}
+                    </button>
+                    <button class="adm-btn-link warning" :disabled="resolvingIds.has(r.id)" @click="handleIgnore(r)">忽略</button>
                   </template>
                   <span v-else class="text-muted">—</span>
                 </div>
@@ -577,8 +587,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, h } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { confirmDanger } from '../utils/confirm'
 import {
   ossAuditApi,
   getOssAuditErrorMessage,
@@ -602,7 +613,12 @@ const filterBucket = ref<string>()
 const filterPath = ref<string>('')
 const bucketOptions = ref<string[]>([])
 
+// Invariant: selectedIds ⊆ ids of the pending (status 0) rows currently displayed.
+// Only pending rows are selectable, and the selection is cleared whenever
+// loadRecords replaces `records` (paging, filters, search, reset, refresh, polling).
 const selectedIds = ref<number[]>([])
+// Rows with a single-record delete in flight; their actions are disabled.
+const resolvingIds = ref<Set<number>>(new Set())
 
 const showIgnoreDialog = ref(false)
 const ignoreForm = ref({
@@ -651,9 +667,11 @@ const pageButtons = computed<number[]>(() => {
   return buttons
 })
 
+const selectableIds = computed(() => records.value.filter((r) => r.status === 0).map((r) => r.id))
+
 const isAllSelected = computed(() => {
-  if (records.value.length === 0) return false
-  return records.value.every((r) => selectedIds.value.includes(r.id))
+  if (selectableIds.value.length === 0) return false
+  return selectableIds.value.every((id) => selectedIds.value.includes(id))
 })
 
 // ===== Helpers =====
@@ -705,7 +723,9 @@ function isSelected(id: number): boolean {
   return selectedIds.value.includes(id)
 }
 
-function toggleSelect(id: number): void {
+function toggleSelect(record: OssAuditRecordDto): void {
+  if (record.status !== 0) return
+  const id = record.id
   const idx = selectedIds.value.indexOf(id)
   if (idx >= 0) {
     selectedIds.value.splice(idx, 1)
@@ -718,7 +738,7 @@ function toggleSelectAll(): void {
   if (isAllSelected.value) {
     selectedIds.value = []
   } else {
-    selectedIds.value = records.value.map((r) => r.id)
+    selectedIds.value = [...selectableIds.value]
   }
 }
 
@@ -774,6 +794,7 @@ async function loadRecords(): Promise<void> {
     }
     records.value = items
     total.value = result.totalCount
+    selectedIds.value = []
   } catch (error) {
     ElMessage.error(getOssAuditErrorMessage(error))
   } finally {
@@ -839,15 +860,19 @@ function resetFilters(): void {
 }
 
 async function handleResolve(record: OssAuditRecordDto): Promise<void> {
-  try {
-    await ElMessageBox.confirm(
-      `确定要删除文件 "${record.objectPath}" 吗？`,
-      '确认删除',
-      { type: 'warning' }
-    )
-  } catch {
-    return
-  }
+  if (resolvingIds.value.has(record.id)) return
+  const confirmed = await confirmDanger({
+    title: '删除存储文件',
+    // Inline styles: this VNode renders inside the message box, outside this component's scoped CSS.
+    message: h('div', [
+      h('p', { style: 'margin: 0 0 8px' }, '将从对象存储中永久删除以下文件及其缩略图：'),
+      h('p', { style: 'margin: 0 0 8px' }, h('code', { style: 'word-break: break-all' }, `${record.bucket}/${record.objectPath}`)),
+      h('p', { style: 'margin: 0' }, '删除前服务端会复核引用，文件仍被引用时会拒绝删除。'),
+    ]),
+    confirmText: '删除',
+  })
+  if (!confirmed || resolvingIds.value.has(record.id)) return
+  resolvingIds.value.add(record.id)
   try {
     const result = await ossAuditApi.resolveRecord(record.id)
     if (result.success) {
@@ -858,6 +883,8 @@ async function handleResolve(record: OssAuditRecordDto): Promise<void> {
     }
   } catch (error) {
     ElMessage.error(getOssAuditErrorMessage(error))
+  } finally {
+    resolvingIds.value.delete(record.id)
   }
 }
 
@@ -890,22 +917,26 @@ async function confirmIgnore(): Promise<void> {
 }
 
 async function handleBatchResolve(): Promise<void> {
+  if (batchLoading.value) return
   if (selectedIds.value.length === 0) {
     ElMessage.warning('请选择要删除的记录')
     return
   }
-  try {
-    await ElMessageBox.confirm(
-      `确定要删除选中的 ${selectedIds.value.length} 条记录吗？`,
-      '确认批量删除',
-      { type: 'warning' }
-    )
-  } catch {
-    return
-  }
+  // Snapshot what the user confirms; a list refresh while the dialog is open
+  // clears the live selection but must not change what gets deleted.
+  const ids = [...selectedIds.value]
+  const confirmed = await confirmDanger({
+    title: '批量删除存储文件',
+    message: h('div', [
+      h('p', { style: 'margin: 0 0 8px' }, ['将从对象存储中永久删除 ', h('strong', String(ids.length)), ' 个文件及其缩略图。']),
+      h('p', { style: 'margin: 0' }, '删除前服务端会逐条复核引用，仍被引用的文件会被跳过并计为失败。'),
+    ]),
+    confirmText: `删除 ${ids.length} 个文件`,
+  })
+  if (!confirmed) return
   batchLoading.value = true
   try {
-    const result = await ossAuditApi.batchResolve(selectedIds.value)
+    const result = await ossAuditApi.batchResolve(ids)
     if (result.resolvedCount > 0) {
       ElMessage.success(`成功删除 ${result.resolvedCount} 条记录`)
     }
@@ -1354,6 +1385,16 @@ onUnmounted(() => {
 .adm-checkbox.checked {
   background: var(--adm-primary);
   border-color: var(--adm-primary);
+}
+.adm-checkbox.disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+  background: var(--adm-surface-subtle);
+}
+.adm-checkbox.disabled:hover { border-color: var(--adm-border); }
+.adm-btn-link:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 /* ===== Pagination ===== */

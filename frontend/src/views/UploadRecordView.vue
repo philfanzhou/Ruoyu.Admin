@@ -547,6 +547,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { confirmDanger } from '../utils/confirm'
 import { studentAdminClient } from '../services/studentAdminApi'
 import type { UploadRecordDto, StudentDto, VlAnalysisResponse, GradeOption, SubjectOption, EnumOption } from '../services/studentAdminApi'
 import {
@@ -902,15 +903,12 @@ async function rotateImage(record: UploadRecordDto, imageIndex: number, rotation
 
 async function confirmDeleteImage(imageIndex: number) {
   if (!currentRecord.value) return
-  try {
-    await ElMessageBox.confirm('确定要删除这张图片吗？', '提示', {
-      confirmButtonText: '删除',
-      cancelButtonText: '取消',
-      type: 'warning'
-    })
-  } catch {
-    return
-  }
+  const confirmed = await confirmDanger({
+    title: '删除图片',
+    message: `从该上传记录中删除第 ${imageIndex + 1} 张图片；若这是最后一张，整条上传记录将一并删除。`,
+    confirmText: '删除',
+  })
+  if (!confirmed || !currentRecord.value) return
   const record = currentRecord.value
   try {
     const result = await studentAdminClient.removeImageFromRecord(record.id, record.studentId, imageIndex)
