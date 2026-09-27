@@ -84,7 +84,7 @@ npm ci
 npm run dev
 ```
 
-The dev server listens on port 8090 and proxies `/api/identity`, `/api/admin`, `/api/teacher-portal` and `/api/assistant-portal` to `http://localhost:5020`.
+The dev server listens on port 8090 and proxies every `/api/*` request (including `/api/auth/*` for login and logout) to `http://localhost:5020`.
 
 Set `USE_LOCAL_OSS=1` (and optionally `OSS_LOCAL_PATH`) to run Storage Audit against a local directory instead of S3.
 

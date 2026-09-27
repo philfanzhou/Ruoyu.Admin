@@ -38,7 +38,7 @@ npm run dev
 npm run build
 ```
 
-开发服务器监听 8090，并把 `/api/identity`、`/api/admin`、`/api/teacher-portal`、`/api/assistant-portal` 代理到 `http://localhost:5020`。
+开发服务器监听 8090，并把所有 `/api/*` 请求（包括登录/登出使用的 `/api/auth/*`）代理到 `http://localhost:5020`。
 
 ## 集成部署模式
 
