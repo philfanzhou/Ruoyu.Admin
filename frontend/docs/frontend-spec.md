@@ -38,7 +38,8 @@ frontend/src/
 │   ├── AssistantView.vue        # 助教管理页面
 │   ├── UploadRecordView.vue      # 上传记录管理页面（列表与编排：状态统计卡 + 公共列表组件）
 │   ├── upload-records/           # 上传记录子组件：详情抽屉、图片画廊、VL 分析卡/结果弹窗、指派表单、重置/遗留检查弹窗、状态映射
-│   ├── MistakeView.vue           # 错题管理页面（统计卡 + 详情 Modal）
+│   ├── MistakeView.vue           # 错题管理页面（列表与编排：统计卡 + 公共列表组件）
+│   ├── mistakes/                 # 错题子组件：详情弹窗、信息与审核信息、图片画廊（含迁移横幅）、编辑表单
 │   └── OssAuditView.vue          # OSS 审计页面（状态面板 + 浮动批量操作栏）
 ├── services/
 │   ├── httpClient.ts            # 共享 axios 实例（含 JWT 注入 + 401 重定向拦截器）
@@ -151,7 +152,7 @@ frontend/src/
 | `/teachers` | TeacherView.vue | 用户 | 教师管理 |
 | `/assistants` | AssistantView.vue | 用户 | 助教管理 |
 | `/upload-records` | UploadRecordView.vue | 内容与上传 | 上传记录管理（含状态统计卡 + 非模态详情抽屉） |
-| `/mistakes` | MistakeView.vue | 内容与上传 | 错题查询与管理（统计卡 + 详情 Modal） |
+| `/mistakes` | MistakeView.vue | 内容与上传 | 错题查询与管理（统计卡 + 详情弹窗） |
 | `/oss-audit` | OssAuditView.vue | 存储审计 | OSS 僵尸文件审计（状态面板 + 浮动批量栏） |
 
 默认重定向：`/` → `/dashboard`（已登录）/ `/login`（未登录）。
@@ -291,7 +292,7 @@ frontend/src/
 
 ### 列表页规范
 
-所有列表页（学生、教师、助教、上传记录已迁移；错题、OSS 审计由后续迁移 task 接入）统一使用 `src/components/list/` 下的公共组件，不再各写一套原生表格、手写模态框或分页器：
+所有列表页（学生、教师、助教、上传记录、错题已迁移；OSS 审计由后续迁移 task 接入）统一使用 `src/components/list/` 下的公共组件，不再各写一套原生表格、手写模态框或分页器：
 
 | 组件 | 接口 | 约定 |
 |------|------|------|
@@ -412,11 +413,14 @@ frontend/src/
 
 ### 5. 错题管理页面 (`/mistakes`)
 
+**布局**：页头（刷新）+ 4 张统计卡（总错题 / 待审核 / 已确认 / 已退回；点击按该审核状态筛选，再次点击或点「总错题」取消）+ 筛选栏（学生 `el-select filterable remote`，规则沿用原实现：去空格后为空不请求、250ms 防抖、`getStudents({ name, pageSize: 20 })`；学科、年级、审核状态）+ 数据表格（待审核行高亮）+ 服务端分页（`size` 10/20/50）。「详情」「编辑」打开同一个 700px `el-dialog`（`src/views/mistakes/MistakeDetailDialog.vue`）：信息与审核信息（只读，本页不提供审核操作）、题目图片（含 `uploads/` 路径的迁移横幅）、编辑表单（学科、年级、学生必填）。审核状态标签取自 `enum-options` 的 `reviewStatuses`，失败时回退到本地默认。
+
 **功能列表**：
 - 错题列表（学生搜索、学科/年级/审核状态筛选、分页）
 - 总记录数显示
 - 查看详情（图片、完整信息）
 - 编辑错题（修改学生、学科、年级）
+- 迁移图片（`uploads/` → `mistakes/`）
 
 **API 调用**（按需加载）：
 - `getStudents(params)` - 搜索学生
