@@ -1,251 +1,150 @@
 <template>
-  <div class="adm-fade-in user-management-view">
-    <!-- Page Header -->
-    <div class="adm-page-header">
-      <div>
-        <h1 class="adm-page-title">助教管理</h1>
-        <p class="adm-page-subtitle">管理助教账户、学科授权和权限撤销</p>
-      </div>
-      <div class="adm-page-actions">
-        <button class="adm-btn adm-btn-primary" @click="openGrantDialog">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          授予助教权限
-        </button>
-      </div>
-    </div>
+  <div class="adm-fade-in portal-user-view">
+    <PageHeader title="助教管理" description="管理助教账户、学科授权和权限撤销">
+      <template #actions>
+        <el-button type="primary" :icon="Plus" @click="openGrantDialog">授予助教权限</el-button>
+      </template>
+    </PageHeader>
 
-    <!-- Filter Bar -->
-    <div class="adm-filter-bar">
-      <div class="filter-input-wrap">
-        <svg class="filter-input-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <input v-model="searchKeyword" class="filter-input" placeholder="搜索助教姓名 / 手机号 / 用户ID" @keyup.enter="onSearch" />
-      </div>
-      <select v-model="searchSubject" class="filter-select" @change="onSearch">
-        <option :value="undefined">全部学科</option>
-        <option v-for="s in availableSubjects" :key="s.value" :value="s.value">{{ s.name }}</option>
-      </select>
-      <div class="filter-spacer"></div>
-      <button class="adm-btn adm-btn-primary adm-btn-sm" @click="onSearch">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        搜索
-      </button>
-      <button class="adm-btn adm-btn-secondary adm-btn-sm" @click="resetFilters">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
-        重置
-      </button>
-    </div>
+    <FilterBar @search="onSearch" @reset="resetFilters">
+      <el-form-item>
+        <el-input
+          v-model="searchKeyword"
+          class="filter-keyword"
+          :prefix-icon="Search"
+          placeholder="搜索助教姓名 / 手机号 / 用户ID"
+          clearable
+          @keyup.enter="onSearch"
+        />
+      </el-form-item>
+      <el-form-item>
+        <el-select v-model="searchSubject" class="filter-control" placeholder="全部学科" clearable @change="onSearch">
+          <el-option v-for="s in availableSubjects" :key="s.value" :label="s.name" :value="s.value" />
+        </el-select>
+      </el-form-item>
+    </FilterBar>
 
-    <!-- Data Table -->
-    <div class="adm-card table-card">
-      <div v-if="loading" class="loading-row">
-        <span class="spinner-lg"></span>
-        <span>加载中...</span>
-      </div>
-      <div v-else-if="assistants.length === 0" class="adm-empty">
-        <div class="adm-empty-icon">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-        </div>
-        <div class="adm-empty-text">暂无助教数据</div>
-      </div>
-      <div v-else class="table-wrap">
-        <table class="adm-table">
-          <thead>
-            <tr>
-              <th class="col-avatar">头像</th>
-              <th class="col-id">ID</th>
-              <th class="col-phone">手机号</th>
-              <th>用户名</th>
-              <th>备注</th>
-              <th>学科</th>
-              <th class="col-time">创建时间</th>
-              <th class="col-actions">操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="a in assistants"
-              :key="a.userId || a.id"
-            >
-              <td>
-                <div class="user-avatar" :style="{ background: getAvatarGradient(getDisplayName(a)) }">{{ getAvatarChar(getDisplayName(a)) }}</div>
-              </td>
-              <td><span class="mono-id">{{ a.userId || '-' }}</span></td>
-              <td><span class="phone-cell">{{ getPhone(a) }}</span></td>
-              <td><span class="user-name">{{ getDisplayName(a) }}</span></td>
-              <td>
-                <span v-if="getRemark(a)" class="note-cell" :title="getRemark(a)">{{ getRemark(a) }}</span>
-                <span v-else class="note-cell empty">-</span>
-              </td>
-              <td>
-                <div v-if="a.subjects && a.subjects.length > 0" class="subj-tags">
-                  <span v-for="subj in a.subjects" :key="subj" class="adm-subj-tag closable" :class="getSubjectCssClass(subj)">
-                    {{ getSubjectLabel(subj) }}
-                    <button class="subj-x" :title="`移除 ${getSubjectLabel(subj)}`" @click="removeSubject(a, subj)">
-                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                    </button>
-                  </span>
-                </div>
-                <span v-else class="subj-warning">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                  未分配学科
-                </span>
-              </td>
-              <td><span class="time-cell">{{ formatDate(a.createdAt) }}</span></td>
-              <td>
-                <div class="actions-cell">
-                  <button v-if="a.subjects && a.subjects.length > 0" class="adm-btn-link" @click="openSubjectsDialog(a)">学科</button>
-                  <button v-else class="adm-btn adm-btn-primary adm-btn-xs" @click="openSubjectsDialog(a)">
-                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                    分配
-                  </button>
-                  <button class="adm-btn-link danger" @click="revokeAssistant(a)">撤销权限</button>
-                </div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+    <DataTableCard
+      :data="assistants"
+      :loading="loading"
+      :error="loadError"
+      empty-text="暂无助教数据"
+      :row-key="rowKey"
+      @retry="loadAssistants"
+    >
+      <el-table-column label="头像" width="72">
+        <template #default="{ row }">
+          <div class="user-avatar" :style="{ background: getAvatarGradient(getDisplayName(row)) }">{{ getAvatarChar(getDisplayName(row)) }}</div>
+        </template>
+      </el-table-column>
+      <el-table-column label="ID" min-width="200">
+        <template #default="{ row }"><span class="mono-id">{{ row.userId || '-' }}</span></template>
+      </el-table-column>
+      <el-table-column label="手机号" width="140">
+        <template #default="{ row }"><span class="phone-cell">{{ getPhone(row) }}</span></template>
+      </el-table-column>
+      <el-table-column label="用户名" min-width="120">
+        <template #default="{ row }"><span class="user-name">{{ getDisplayName(row) }}</span></template>
+      </el-table-column>
+      <el-table-column label="备注" min-width="140">
+        <template #default="{ row }">
+          <span v-if="getRemark(row)" class="note-cell" :title="getRemark(row)">{{ getRemark(row) }}</span>
+          <span v-else class="note-cell empty">-</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="学科" min-width="200">
+        <template #default="{ row }">
+          <div v-if="row.subjects && row.subjects.length > 0" class="subj-tags">
+            <SubjectTag v-for="subj in row.subjects" :key="subj" :subject="subj" closable @close="removeSubject(row, subj)" />
+          </div>
+          <el-tag v-else type="warning" size="small"><el-icon class="tag-icon"><Warning /></el-icon>未分配学科</el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column label="创建时间" width="130">
+        <template #default="{ row }"><span class="time-cell">{{ formatDate(row.createdAt) }}</span></template>
+      </el-table-column>
+      <el-table-column label="操作" width="200" align="right" fixed="right">
+        <template #default="{ row }">
+          <el-button v-if="row.subjects && row.subjects.length > 0" link type="primary" @click="openSubjectsDialog(row)">学科</el-button>
+          <el-button v-else type="primary" size="small" :icon="Plus" @click="openSubjectsDialog(row)">分配</el-button>
+          <el-button link type="danger" @click="revokeAssistant(row)">撤销权限</el-button>
+        </template>
+      </el-table-column>
+      <template v-if="assistants.length > 0" #footer>
+        <ListPagination v-model:page="page" v-model:page-size="pageSize" :total="total" @change="onPageChange" />
+      </template>
+    </DataTableCard>
 
-      <div v-if="!loading && assistants.length > 0" class="adm-pagination-bar">
-        <span class="page-info">共 {{ total }} 条记录</span>
-        <div class="page-controls">
-          <select v-model="pageSize" class="page-size-select" @change="onPageChange(1)">
-            <option :value="10">10 / 页</option>
-            <option :value="20">20 / 页</option>
-            <option :value="50">50 / 页</option>
-          </select>
-          <button class="page-btn" :disabled="page <= 1" @click="onPageChange(page - 1)">上一页</button>
-          <span class="page-current">{{ page }} / {{ totalPages }}</span>
-          <button class="page-btn" :disabled="page >= totalPages" @click="onPageChange(page + 1)">下一页</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Grant Assistant Permission Modal -->
-    <div v-if="showGrantDialog" class="modal-mask" @click.self="closeGrantDialog">
-      <div class="modal-box" style="width: 600px;">
-        <div class="modal-header">
-          <h3>授予助教权限</h3>
-          <button class="modal-close" @click="closeGrantDialog">×</button>
-        </div>
-        <div class="modal-body">
-          <div class="form-group">
-            <label class="form-label">选择用户 <span class="required">*</span></label>
-            <div class="user-search-wrap">
-              <svg class="form-input-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-              <input
-                v-model="grantForm.keyword"
-                class="form-input has-icon"
-                placeholder="输入手机号或用户名搜索"
-                @input="searchUsers"
-              />
-              <div v-if="searchResults.length > 0" class="user-dropdown">
-                <div
-                  v-for="u in searchResults"
-                  :key="u.userId"
-                  class="user-search-option"
-                  :class="{ selected: grantForm.selectedUserId === u.userId }"
-                  @click="selectUser(u)"
-                >
-                  <div class="mini-avatar" :style="{ background: getAvatarGradient(u.username || u.userId) }">{{ getAvatarChar(u.username || u.userId) }}</div>
-                  <div class="user-search-option-info">
-                    <div class="user-search-option-name">{{ u.username || u.displayName || u.userId }}</div>
-                    <div class="user-search-option-meta">{{ u.phone || '无手机号' }}<span v-if="u.displayName && u.displayName !== u.username"> · {{ u.displayName }}</span></div>
-                  </div>
-                  <div v-if="grantForm.selectedUserId === u.userId" class="user-search-option-state">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div v-if="grantForm.selectedUserId && selectedUser" class="selected-user-banner">
-              <div class="mini-avatar" :style="{ background: getAvatarGradient(selectedUser.username || selectedUser.userId) }">{{ getAvatarChar(selectedUser.username || selectedUser.userId) }}</div>
-              <div class="sel-info">
-                <div class="sel-name">{{ selectedUser.username }}</div>
-                <div class="sel-meta">{{ selectedUser.phone || '无手机号' }}<span v-if="selectedUser.remark"> · {{ selectedUser.remark }}</span></div>
-              </div>
-              <button class="sel-clear" @click="clearSelectedUser" title="清除选择">×</button>
+    <!-- Grant Permission -->
+    <el-dialog append-to-body v-model="showGrantDialog" title="授予助教权限" width="600px" :close-on-click-modal="false" @close="closeGrantDialog">
+      <el-form label-position="top" @submit.prevent>
+        <el-form-item label="选择用户" required>
+          <el-select
+            v-model="grantForm.selectedUserId"
+            filterable
+            remote
+            clearable
+            :remote-method="onGrantUserQuery"
+            placeholder="输入手机号或用户名搜索（至少 2 个字符）"
+            no-data-text="无匹配用户"
+            class="full-width"
+            @change="onGrantUserChange"
+          >
+            <el-option v-for="u in grantUserOptions" :key="u.userId" :label="u.username || u.displayName || u.userId" :value="u.userId">
+              <span class="option-name">{{ u.username || u.displayName || u.userId }}</span>
+              <span class="option-meta">{{ u.phone || '无手机号' }}<template v-if="u.displayName && u.displayName !== u.username"> · {{ u.displayName }}</template></span>
+            </el-option>
+          </el-select>
+          <div v-if="grantForm.selectedUserId && selectedUser" class="selected-user-banner full-width">
+            <div class="mini-avatar" :style="{ background: getAvatarGradient(selectedUser.username || selectedUser.userId) }">{{ getAvatarChar(selectedUser.username || selectedUser.userId) }}</div>
+            <div class="sel-info">
+              <div class="sel-name">{{ selectedUser.username }}</div>
+              <div class="sel-meta">{{ selectedUser.phone || '无手机号' }}<span v-if="selectedUser.remark"> · {{ selectedUser.remark }}</span></div>
             </div>
           </div>
+        </el-form-item>
+        <el-form-item label="授权学科" required>
+          <el-checkbox-group v-model="grantForm.selectedSubjects" class="subject-checks">
+            <el-checkbox v-for="s in availableSubjects" :key="s.value" :value="s.value" border>{{ s.name }}</el-checkbox>
+          </el-checkbox-group>
+        </el-form-item>
+        <el-form-item v-if="selectedUser && selectedUser.remark" label="备注">
+          <div class="readonly-note full-width">{{ selectedUser.remark }}</div>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="closeGrantDialog">取消</el-button>
+        <el-button type="primary" :loading="granting" @click="grantAssistant">确认授权</el-button>
+      </template>
+    </el-dialog>
 
-          <div class="form-group">
-            <label class="form-label">授权学科 <span class="required">*</span></label>
-            <div class="subj-grid">
-              <label
-                v-for="s in availableSubjects"
-                :key="s.value"
-                class="subject-check"
-                :class="{ checked: grantForm.selectedSubjects.includes(s.value) }"
-                @click.prevent="toggleGrantSubject(s.value)"
-              >
-                <span class="chk-box">
-                  <svg v-if="grantForm.selectedSubjects.includes(s.value)" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                </span>
-                <span>{{ s.name }}</span>
-              </label>
-            </div>
-          </div>
-
-          <div v-if="selectedUser && selectedUser.remark" class="form-group">
-            <label class="form-label">备注</label>
-            <div class="readonly-note">{{ selectedUser.remark }}</div>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="adm-btn adm-btn-secondary" @click="closeGrantDialog">取消</button>
-          <button class="adm-btn adm-btn-primary" :disabled="granting" @click="grantAssistant">
-            {{ granting ? '授权中...' : '确认授权' }}
-          </button>
+    <!-- Manage Subjects -->
+    <el-dialog append-to-body v-model="showSubjectsDialogVisible" title="学科管理" width="560px" :close-on-click-modal="false">
+      <div v-if="currentAssistant" class="user-info-banner">
+        <div class="user-avatar" :style="{ background: getAvatarGradient(getDisplayName(currentAssistant)) }">{{ getAvatarChar(getDisplayName(currentAssistant)) }}</div>
+        <div>
+          <div class="info-name">{{ getDisplayName(currentAssistant) }}</div>
+          <div class="info-sub">{{ getPhone(currentAssistant) }} · 当前 {{ currentAssistant.subjects.length }} 个学科</div>
         </div>
       </div>
-    </div>
-
-    <!-- Manage Subjects Modal -->
-    <div v-if="showSubjectsDialogVisible" class="modal-mask" @click.self="showSubjectsDialogVisible = false">
-      <div class="modal-box" style="width: 560px;">
-        <div class="modal-header">
-          <h3>学科管理</h3>
-          <button class="modal-close" @click="showSubjectsDialogVisible = false">×</button>
-        </div>
-        <div class="modal-body">
-          <div v-if="currentAssistant" class="user-info-banner">
-            <div class="user-avatar" :style="{ background: getAvatarGradient(getDisplayName(currentAssistant)) }">{{ getAvatarChar(getDisplayName(currentAssistant)) }}</div>
-            <div>
-              <div class="info-name">{{ getDisplayName(currentAssistant) }}</div>
-              <div class="info-sub">{{ getPhone(currentAssistant) }} · 当前 {{ currentAssistant.subjects.length }} 个学科</div>
-            </div>
-          </div>
-          <div class="form-group">
-            <label class="form-label">授权学科</label>
-            <div class="subj-grid">
-              <label
-                v-for="s in availableSubjects"
-                :key="s.value"
-                class="subject-check"
-                :class="{ checked: selectedSubjects.includes(s.value) }"
-                @click.prevent="toggleSelectedSubject(s.value)"
-              >
-                <span class="chk-box">
-                  <svg v-if="selectedSubjects.includes(s.value)" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                </span>
-                <span>{{ s.name }}</span>
-              </label>
-            </div>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="adm-btn adm-btn-secondary" @click="showSubjectsDialogVisible = false">取消</button>
-          <button class="adm-btn adm-btn-primary" :disabled="savingSubjects" @click="saveAssistantSubjects">
-            {{ savingSubjects ? '保存中...' : '保存' }}
-          </button>
-        </div>
-      </div>
-    </div>
+      <el-form label-position="top" @submit.prevent>
+        <el-form-item label="授权学科">
+          <el-checkbox-group v-model="selectedSubjects" class="subject-checks">
+            <el-checkbox v-for="s in availableSubjects" :key="s.value" :value="s.value" border>{{ s.name }}</el-checkbox>
+          </el-checkbox-group>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showSubjectsDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="savingSubjects" @click="saveAssistantSubjects">保存</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { Plus, Search, Warning } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { confirmDanger } from '../utils/confirm'
 import {
@@ -256,12 +155,19 @@ import {
 } from '../services/assistantPortalApi'
 import { getIdentityAdminApiClient, type IdentityUser } from '../services/identityApi'
 import {
-  getSubjectLabel, getSubjectCssClass,
+  getSubjectLabel,
   getAvatarGradient, getAvatarChar, formatDate,
 } from '../utils/subject'
+import PageHeader from '../components/list/PageHeader.vue'
+import FilterBar from '../components/list/FilterBar.vue'
+import DataTableCard from '../components/list/DataTableCard.vue'
+import ListPagination from '../components/list/ListPagination.vue'
+import SubjectTag from '../components/list/SubjectTag.vue'
 
 const assistants = ref<AssistantAccountDto[]>([])
 const loading = ref(false)
+const loadError = ref<string | null>(null)
+const rowKey = (row: AssistantAccountDto) => row.userId || String(row.id)
 const identityUserMap = ref<Record<string, IdentityUser>>({})
 const availableSubjects = ref<SubjectOption[]>([])
 
@@ -270,7 +176,6 @@ const searchSubject = ref<number | undefined>(undefined)
 const total = ref(0)
 const page = ref(1)
 const pageSize = ref(20)
-const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
 
 const showGrantDialog = ref(false)
 const grantForm = ref({ keyword: '', selectedUserId: '', selectedSubjects: [] as number[] })
@@ -308,6 +213,7 @@ function getRemark(a: AssistantAccountDto): string {
 
 async function loadAssistants() {
   loading.value = true
+  loadError.value = null
   try {
     const result = await assistantPortalClient.getAssistants({
       keyword: searchKeyword.value.trim() || undefined,
@@ -321,6 +227,10 @@ async function loadAssistants() {
     pageSize.value = result.pageSize
     await loadIdentityUsers()
   } catch (error) {
+    // Drop stale rows so a failure is never mistaken for an (outdated) result.
+    assistants.value = []
+    total.value = 0
+    loadError.value = '加载助教列表失败'
     ElMessage.error('加载助教列表失败')
   } finally {
     loading.value = false
@@ -369,8 +279,8 @@ function resetFilters() {
   loadAssistants()
 }
 
-function onPageChange(nextPage: number) {
-  page.value = nextPage
+// page / pageSize are already updated by ListPagination (size changes reset to page 1).
+function onPageChange() {
   loadAssistants()
 }
 
@@ -409,6 +319,28 @@ async function searchUsers() {
   }
 }
 
+// el-select remote-method: same rules as before (>= 2 chars, digits search by phone, pageSize 20).
+function onGrantUserQuery(query: string) {
+  grantForm.value.keyword = query
+  searchUsers()
+}
+
+// Keep the selected user among the options so its label survives clearing the results.
+const grantUserOptions = computed(() => {
+  const selected = selectedUser.value
+  if (!selected) return searchResults.value
+  return [selected, ...searchResults.value.filter(u => u.userId !== selected.userId)]
+})
+
+function onGrantUserChange(userId: string) {
+  if (!userId) {
+    clearSelectedUser()
+    return
+  }
+  const user = grantUserOptions.value.find(u => u.userId === userId)
+  if (user) selectUser(user)
+}
+
 function selectUser(u: IdentityUser) {
   grantForm.value.selectedUserId = u.userId
   selectedUser.value = u
@@ -421,11 +353,6 @@ function clearSelectedUser() {
   selectedUser.value = null
 }
 
-function toggleGrantSubject(subject: number) {
-  const idx = grantForm.value.selectedSubjects.indexOf(subject)
-  if (idx >= 0) grantForm.value.selectedSubjects.splice(idx, 1)
-  else grantForm.value.selectedSubjects.push(subject)
-}
 
 async function grantAssistant() {
   if (!grantForm.value.selectedUserId) {
@@ -477,11 +404,6 @@ function openSubjectsDialog(a: AssistantAccountDto) {
   showSubjectsDialogVisible.value = true
 }
 
-function toggleSelectedSubject(subject: number) {
-  const idx = selectedSubjects.value.indexOf(subject)
-  if (idx >= 0) selectedSubjects.value.splice(idx, 1)
-  else selectedSubjects.value.push(subject)
-}
 
 async function removeSubject(a: AssistantAccountDto, subjectId: number) {
   if (!a.userId) {
@@ -527,3 +449,36 @@ onMounted(async () => {
   await loadAssistants()
 })
 </script>
+
+<style scoped>
+.filter-keyword {
+  width: 260px;
+}
+.filter-control {
+  width: 140px;
+}
+.full-width {
+  width: 100%;
+}
+.subject-checks {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  width: 100%;
+}
+.subject-checks :deep(.el-checkbox) {
+  margin-right: 0;
+}
+.option-name {
+  margin-right: 8px;
+  color: var(--adm-text-primary);
+}
+.option-meta {
+  color: var(--adm-text-tertiary);
+  font-size: 12px;
+}
+.tag-icon {
+  margin-right: 4px;
+  vertical-align: -2px;
+}
+</style>

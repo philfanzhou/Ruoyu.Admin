@@ -1,338 +1,278 @@
 <template>
-  <div class="adm-fade-in user-management-view">
-    <!-- Page Header -->
-    <div class="adm-page-header">
-      <div>
-        <h1 class="adm-page-title">学生管理</h1>
-        <p class="adm-page-subtitle">管理学生档案、关联账户与开放学科</p>
-      </div>
-      <div class="adm-page-actions">
-        <button class="adm-btn adm-btn-primary" @click="openCreateDialog">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          创建学生
-        </button>
-      </div>
-    </div>
+  <div class="adm-fade-in student-view">
+    <PageHeader title="学生管理" description="管理学生档案、关联账户与开放学科">
+      <template #actions>
+        <el-button type="primary" :icon="Plus" @click="openCreateDialog">创建学生</el-button>
+      </template>
+    </PageHeader>
 
-    <!-- Filter Bar -->
-    <div class="adm-filter-bar">
-      <div class="filter-input-wrap">
-        <svg class="filter-input-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <input v-model="searchName" class="filter-input" placeholder="搜索学生姓名或 ID" @keyup.enter="onSearch" />
-      </div>
-      <select v-model="searchGrade" class="filter-select" @change="onSearch">
-        <option :value="undefined">全部年级</option>
-        <option v-for="g in gradeOptions" :key="g.value" :value="g.value">{{ g.label }}</option>
-      </select>
-      <select v-model="searchSubject" class="filter-select" @change="onSearch">
-        <option :value="undefined">全部学科</option>
-        <option v-for="s in subjectOptions" :key="s.value" :value="s.value">{{ s.displayName || s.name }}</option>
-      </select>
-      <div class="filter-spacer"></div>
-      <button class="adm-btn adm-btn-primary adm-btn-sm" @click="onSearch">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        搜索
-      </button>
-      <button class="adm-btn adm-btn-secondary adm-btn-sm" @click="resetFilters">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
-        重置
-      </button>
-    </div>
+    <FilterBar @search="onSearch" @reset="resetFilters">
+      <el-form-item>
+        <el-input
+          v-model="searchName"
+          class="filter-keyword"
+          :prefix-icon="Search"
+          placeholder="搜索学生姓名或 ID"
+          clearable
+          @keyup.enter="onSearch"
+        />
+      </el-form-item>
+      <el-form-item>
+        <el-select v-model="searchGrade" class="filter-control" placeholder="全部年级" clearable @change="onSearch">
+          <el-option v-for="g in gradeOptions" :key="g.value" :label="g.label" :value="g.value" />
+        </el-select>
+      </el-form-item>
+      <el-form-item>
+        <el-select v-model="searchSubject" class="filter-control" placeholder="全部学科" clearable @change="onSearch">
+          <el-option v-for="s in subjectOptions" :key="s.value" :label="s.displayName || s.name" :value="s.value" />
+        </el-select>
+      </el-form-item>
+    </FilterBar>
 
-    <!-- Data Table -->
-    <div class="adm-card table-card">
-      <div v-if="loading" class="loading-row">
-        <span class="spinner-lg"></span>
-        <span>加载中...</span>
-      </div>
-      <div v-else-if="students.length === 0" class="adm-empty">
-        <div class="adm-empty-icon">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+    <el-alert
+      v-if="searchSubject !== undefined"
+      class="subject-filter-hint"
+      type="info"
+      :closable="false"
+      show-icon
+      title="学科筛选仅作用于当前页结果：服务端不支持按学科筛选，页码与总数只反映当前页。"
+    />
+
+    <DataTableCard
+      :data="students"
+      :loading="loading"
+      :error="loadError"
+      empty-text="暂无学生数据"
+      row-key="id"
+      @retry="loadStudents"
+    >
+      <el-table-column label="头像" width="72">
+        <template #default="{ row }">
+          <div class="user-avatar" :style="{ background: getAvatarGradient(row.name || row.id) }">{{ getAvatarChar(row.name || '?') }}</div>
+        </template>
+      </el-table-column>
+      <el-table-column label="ID" min-width="200">
+        <template #default="{ row }"><span class="mono-id">{{ row.id }}</span></template>
+      </el-table-column>
+      <el-table-column label="姓名" min-width="120">
+        <template #default="{ row }"><span class="user-name">{{ row.name }}</span></template>
+      </el-table-column>
+      <el-table-column label="年级" width="130">
+        <template #default="{ row }"><span class="grade-text">{{ getGradeLabel(row.grade) }}</span></template>
+      </el-table-column>
+      <el-table-column label="开放学科" min-width="200">
+        <template #default="{ row }">
+          <div v-if="getStudentSubjects(row).length > 0" class="subj-tags">
+            <SubjectTag v-for="subj in getStudentSubjects(row)" :key="subj" :subject="subj" />
+          </div>
+          <span v-else class="text-muted">未设置</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="创建时间" width="130">
+        <template #default="{ row }"><span class="time-cell">{{ formatDate(row.createdAt) }}</span></template>
+      </el-table-column>
+      <el-table-column label="操作" width="260" align="right" fixed="right">
+        <template #default="{ row }">
+          <el-button link type="primary" @click="openEditDialog(row)">编辑</el-button>
+          <el-button v-if="getStudentSubjects(row).length > 0" link type="primary" @click="openSubjectsDialog(row)">学科</el-button>
+          <el-button v-else type="primary" size="small" @click="openSubjectsDialog(row)">分配</el-button>
+          <el-button link type="primary" @click="openLinkedAccountsDialog(row)">关联账户</el-button>
+          <el-button link type="danger" @click="deleteStudent(row)">删除</el-button>
+        </template>
+      </el-table-column>
+      <template v-if="students.length > 0" #footer>
+        <ListPagination v-model:page="page" v-model:page-size="pageSize" :total="total" @change="onPageChange" />
+      </template>
+    </DataTableCard>
+
+    <!-- Create Student -->
+    <el-dialog append-to-body v-model="showCreateDialog" title="创建学生" width="520px" :close-on-click-modal="false">
+      <el-form label-position="top" @submit.prevent>
+        <el-form-item label="关联账户" required>
+          <el-select
+            v-model="createForm.identityAccountIds"
+            multiple
+            filterable
+            remote
+            :reserve-keyword="false"
+            :remote-method="onCreateAccountQuery"
+            placeholder="输入用户名或手机号搜索（至少 2 个字符）"
+            no-data-text="无匹配账户"
+            class="full-width"
+            @change="onCreateAccountsChange"
+          >
+            <el-option
+              v-for="u in createAccountOptions"
+              :key="u.userId"
+              :label="u.username || u.userId"
+              :value="u.userId"
+            >
+              <span class="option-name">{{ u.username || u.displayName || u.userId }}</span>
+              <span class="option-meta">{{ u.phone || '无手机号' }}<template v-if="u.displayName && u.displayName !== u.username"> · {{ u.displayName }}</template></span>
+            </el-option>
+          </el-select>
+        </el-form-item>
+        <el-form-item label="学生姓名" required>
+          <el-input v-model="createForm.name" placeholder="请输入学生姓名" />
+        </el-form-item>
+        <el-form-item label="年级">
+          <el-select v-model="createForm.grade" class="full-width">
+            <el-option :value="0" label="请选择年级" />
+            <el-option v-for="g in gradeOptions" :key="g.value" :label="g.label" :value="g.value" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="开放学科">
+          <el-checkbox-group v-model="createOpenSubjects" class="subject-checks">
+            <el-checkbox v-for="s in subjectOptions" :key="s.value" :value="s.value" border>{{ s.displayName || s.name }}</el-checkbox>
+          </el-checkbox-group>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="closeCreateDialog">取消</el-button>
+        <el-button type="primary" :loading="creating" @click="createStudent">创建</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- Edit Student -->
+    <el-dialog append-to-body v-model="showEditDialog" title="编辑学生" width="460px" :close-on-click-modal="false">
+      <el-form label-position="top" @submit.prevent>
+        <el-form-item label="学生姓名" required>
+          <el-input v-model="editForm.name" placeholder="请输入学生姓名" />
+        </el-form-item>
+        <el-form-item label="年级">
+          <el-select v-model="editForm.grade" class="full-width">
+            <el-option :value="0" label="请选择年级" />
+            <el-option v-for="g in gradeOptions" :key="g.value" :label="g.label" :value="g.value" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showEditDialog = false">取消</el-button>
+        <el-button type="primary" @click="saveEdit">保存</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- Linked Accounts -->
+    <el-dialog
+      append-to-body
+      v-model="showLinkedAccountsDialog"
+      title="关联账户"
+      width="640px"
+      :close-on-click-modal="false"
+      @close="closeLinkedAccountsDialog"
+    >
+      <div v-if="currentStudent" class="user-info-banner">
+        <div class="user-avatar" :style="{ background: getAvatarGradient(currentStudent.name || currentStudent.id) }">{{ getAvatarChar(currentStudent.name || '?') }}</div>
+        <div>
+          <div class="info-name">{{ currentStudent.name }}</div>
+          <div class="info-sub">{{ getGradeLabel(currentStudent.grade) }} · {{ currentStudent.id }}</div>
         </div>
-        <div class="adm-empty-text">暂无学生数据</div>
-      </div>
-      <div v-else class="table-wrap">
-        <table class="adm-table">
-          <thead>
-            <tr>
-              <th class="col-avatar">头像</th>
-              <th class="col-id">ID</th>
-              <th class="col-name">姓名</th>
-              <th class="col-grade">年级</th>
-              <th class="col-subjects">开放学科</th>
-              <th class="col-time">创建时间</th>
-              <th class="col-actions">操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="s in students" :key="s.id">
-              <td>
-                <div class="avatar-cell">
-                  <div class="user-avatar" :style="{ background: getAvatarGradient(s.name || s.id) }">{{ getAvatarChar(s.name || '?') }}</div>
-                </div>
-              </td>
-              <td><span class="mono-id">{{ s.id }}</span></td>
-              <td><span class="user-name">{{ s.name }}</span></td>
-              <td><span class="grade-text">{{ getGradeLabel(s.grade) }}</span></td>
-              <td>
-                <div v-if="getStudentSubjects(s).length > 0" class="subj-tags">
-                  <span v-for="subj in getStudentSubjects(s)" :key="subj" class="adm-subj-tag" :class="getSubjectCssClass(subj)">{{ getSubjectLabel(subj) }}</span>
-                </div>
-                <span v-else class="text-muted">未设置</span>
-              </td>
-              <td><span class="time-cell">{{ formatDate(s.createdAt) }}</span></td>
-              <td>
-                <div class="actions-cell">
-                  <button class="adm-btn-link" @click="openEditDialog(s)">编辑</button>
-                  <button v-if="getStudentSubjects(s).length > 0" class="adm-btn-link" @click="openSubjectsDialog(s)">学科</button>
-                  <button v-else class="adm-btn adm-btn-primary adm-btn-xs" @click="openSubjectsDialog(s)">分配</button>
-                  <button class="adm-btn-link" @click="openLinkedAccountsDialog(s)">关联账户</button>
-                  <button class="adm-btn-link danger" @click="deleteStudent(s)">删除</button>
-                </div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
       </div>
 
-      <!-- Pagination -->
-      <div v-if="!loading && students.length > 0" class="adm-pagination-bar">
-        <span class="page-info">共 {{ total }} 条记录</span>
-        <div class="page-controls">
-          <select v-model="pageSize" class="page-size-select" @change="onPageChange(1)">
-            <option :value="10">10 / 页</option>
-            <option :value="20">20 / 页</option>
-            <option :value="50">50 / 页</option>
-          </select>
-          <button class="page-btn" :disabled="page <= 1" @click="onPageChange(page - 1)">上一页</button>
-          <span class="page-current">{{ page }} / {{ totalPages }}</span>
-          <button class="page-btn" :disabled="page >= totalPages" @click="onPageChange(page + 1)">下一页</button>
-        </div>
-      </div>
-    </div>
+      <div v-if="linkedAccountsLoading" v-loading="true" class="drawer-loading" />
 
-    <!-- Create Student Modal -->
-    <div v-if="showCreateDialog" class="modal-mask" @click.self="closeCreateDialog">
-      <div class="modal-box" style="width: 520px;">
-        <div class="modal-header">
-          <h3>创建学生</h3>
-          <button class="modal-close" @click="closeCreateDialog">×</button>
-        </div>
-        <div class="modal-body">
-          <div class="form-group">
-            <label class="form-label">关联账户</label>
-            <div class="user-search-wrap">
-              <input v-model="createSearchKeyword" class="form-input" placeholder="输入用户名或手机号搜索" @input="searchCreateIdentityUsers" />
-              <div v-if="createIdentityUsers.length > 0" class="user-dropdown">
-                <div
-                  v-for="u in createIdentityUsers"
-                  :key="u.userId"
-                  class="user-search-option"
-                  :class="{ selected: createForm.identityAccountIds.includes(u.userId) }"
-                  @click="addCreateIdentityAccount(u.userId)"
-                >
-                  <div class="mini-avatar" :style="{ background: getAvatarGradient(u.displayName || u.username || u.userId) }">{{ getAvatarChar(u.displayName || u.username || '?') }}</div>
-                  <div class="user-search-option-info">
-                    <div class="user-search-option-name">{{ u.username || u.displayName || u.userId }}</div>
-                    <div class="user-search-option-meta">{{ u.phone || '无手机号' }}<span v-if="u.displayName && u.displayName !== u.username"> · {{ u.displayName }}</span></div>
-                  </div>
-                  <span v-if="createForm.identityAccountIds.includes(u.userId)" class="user-search-option-state">已选</span>
-                </div>
-              </div>
+      <div v-else>
+        <div class="drawer-section">
+          <div class="drawer-section-title">
+            已关联账户
+            <span class="count">{{ linkedAccountDetails.length }}</span>
+          </div>
+          <div v-if="linkedAccountDetails.length === 0" class="drawer-empty">暂无关联账户</div>
+          <div v-for="a in linkedAccountDetails" :key="a.userId" class="account-row">
+            <div class="mini-avatar" :style="{ background: getAvatarGradient(a.displayName || a.username || a.userId) }">{{ getAvatarChar(a.displayName || a.username || '?') }}</div>
+            <div class="account-row-info">
+              <div class="account-row-name">{{ a.displayName || a.username || a.userId }}</div>
+              <div class="account-row-meta">{{ a.phone || '无手机号' }}<span v-if="a.remark"> · {{ a.remark }}</span></div>
             </div>
-            <div v-if="createForm.identityAccountIds.length > 0" class="selected-accounts">
-              <span v-for="id in createForm.identityAccountIds" :key="id" class="account-chip">
-                {{ getAccountDisplayName(id) }}
-                <button class="chip-x" @click="removeCreateIdentityAccount(id)">×</button>
-              </span>
-            </div>
-          </div>
-          <div class="form-group">
-            <label class="form-label">学生姓名 <span class="required">*</span></label>
-            <input v-model="createForm.name" class="form-input" placeholder="请输入学生姓名" />
-          </div>
-          <div class="form-group">
-            <label class="form-label">年级</label>
-            <select v-model="createForm.grade" class="form-input">
-              <option :value="0">请选择年级</option>
-              <option v-for="g in gradeOptions" :key="g.value" :value="g.value">{{ g.label }}</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label class="form-label">开放学科</label>
-            <div class="subj-grid">
-              <label
-                v-for="s in subjectOptions"
-                :key="s.value"
-                class="subject-check"
-                :class="{ checked: createOpenSubjects.includes(s.value) }"
-                @click.prevent="toggleCreateSubject(s.value)"
-              >
-                <span class="chk-box">
-                  <svg v-if="createOpenSubjects.includes(s.value)" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                </span>
-                <span>{{ s.displayName || s.name }}</span>
-              </label>
-            </div>
+            <el-button
+              link
+              type="danger"
+              :icon="Close"
+              title="移除关联"
+              aria-label="移除关联"
+              :loading="busyLinkedUserId === a.userId"
+              :disabled="busyLinkedUserId === a.userId"
+              @click="runLinkAccount(a.userId, 'unlink')"
+            />
           </div>
         </div>
-        <div class="modal-footer">
-          <button class="adm-btn adm-btn-secondary" @click="closeCreateDialog">取消</button>
-          <button class="adm-btn adm-btn-primary" :disabled="creating" @click="createStudent">{{ creating ? '创建中...' : '创建' }}</button>
+
+        <div class="drawer-section">
+          <div class="drawer-section-title">添加账户</div>
+          <el-input
+            v-model="accountSearchKeyword"
+            :prefix-icon="Search"
+            placeholder="搜索用户名或手机号添加（至少 2 个字符）"
+            clearable
+            @input="searchAccountsForLink"
+          >
+            <template v-if="searchingAccounts" #suffix><el-icon class="is-loading"><Loading /></el-icon></template>
+          </el-input>
+          <div v-if="accountSearchKeyword && availableAccountsToAdd.length === 0 && !searchingAccounts" class="drawer-empty-hint">无符合条件的可添加账户</div>
+          <div v-for="u in availableAccountsToAdd" :key="u.userId" class="account-row addable">
+            <div class="mini-avatar" :style="{ background: getAvatarGradient(u.username || u.userId) }">{{ getAvatarChar(u.username || '?') }}</div>
+            <div class="account-row-info">
+              <div class="account-row-name">{{ u.username || u.userId }}</div>
+              <div class="account-row-meta">{{ u.phone || '无手机号' }}</div>
+            </div>
+            <el-button
+              link
+              type="primary"
+              :icon="Plus"
+              title="添加关联"
+              aria-label="添加关联"
+              :loading="busyLinkedUserId === u.userId"
+              :disabled="busyLinkedUserId === u.userId"
+              @click="runLinkAccount(u.userId, 'link')"
+            />
+          </div>
         </div>
       </div>
-    </div>
+      <template #footer>
+        <el-button @click="closeLinkedAccountsDialog">关闭</el-button>
+      </template>
+    </el-dialog>
 
-    <!-- Edit Student Modal -->
-    <div v-if="showEditDialog" class="modal-mask" @click.self="showEditDialog = false">
-      <div class="modal-box" style="width: 460px;">
-        <div class="modal-header">
-          <h3>编辑学生</h3>
-          <button class="modal-close" @click="showEditDialog = false">×</button>
-        </div>
-        <div class="modal-body">
-          <div class="form-group">
-            <label class="form-label">学生姓名 <span class="required">*</span></label>
-            <input v-model="editForm.name" class="form-input" placeholder="请输入学生姓名" />
-          </div>
-          <div class="form-group">
-            <label class="form-label">年级</label>
-            <select v-model="editForm.grade" class="form-input">
-              <option :value="0">请选择年级</option>
-              <option v-for="g in gradeOptions" :key="g.value" :value="g.value">{{ g.label }}</option>
-            </select>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="adm-btn adm-btn-secondary" @click="showEditDialog = false">取消</button>
-          <button class="adm-btn adm-btn-primary" @click="saveEdit">保存</button>
+    <!-- Open Subjects -->
+    <el-dialog append-to-body v-model="showOpenSubjectsDialogVisible" title="管理开放学科" width="560px" :close-on-click-modal="false">
+      <div v-if="currentStudent" class="user-info-banner">
+        <div class="user-avatar" :style="{ background: getAvatarGradient(currentStudent.name || currentStudent.id) }">{{ getAvatarChar(currentStudent.name || '?') }}</div>
+        <div>
+          <div class="info-name">{{ currentStudent.name }}</div>
+          <div class="info-sub">{{ getGradeLabel(currentStudent.grade) }}</div>
         </div>
       </div>
-    </div>
-
-    <!-- Linked Accounts Modal -->
-    <div v-if="showLinkedAccountsDialog" class="modal-mask" @click.self="closeLinkedAccountsDialog">
-      <div class="modal-box" style="width: 640px;">
-        <div class="modal-header">
-          <h3>关联账户</h3>
-          <button class="modal-close" @click="closeLinkedAccountsDialog">×</button>
-        </div>
-        <div class="modal-body">
-          <div v-if="currentStudent" class="user-info-banner">
-            <div class="user-avatar" :style="{ background: getAvatarGradient(currentStudent.name || currentStudent.id) }">{{ getAvatarChar(currentStudent.name || '?') }}</div>
-            <div>
-              <div class="info-name">{{ currentStudent.name }}</div>
-              <div class="info-sub">{{ getGradeLabel(currentStudent.grade) }} · {{ currentStudent.id }}</div>
-            </div>
-          </div>
-
-          <div v-if="linkedAccountsLoading" class="drawer-loading">
-            <span class="spinner-sm"></span>
-            <span>加载中...</span>
-          </div>
-
-          <div v-else>
-            <!-- 已关联账户 -->
-            <div class="drawer-section">
-              <div class="drawer-section-title">
-                已关联账户
-                <span class="count">{{ linkedAccountDetails.length }}</span>
-              </div>
-              <div v-if="linkedAccountDetails.length === 0" class="drawer-empty">暂无关联账户</div>
-              <div v-for="a in linkedAccountDetails" :key="a.userId" class="account-row">
-                <div class="mini-avatar" :style="{ background: getAvatarGradient(a.displayName || a.username || a.userId) }">{{ getAvatarChar(a.displayName || a.username || '?') }}</div>
-                <div class="account-row-info">
-                  <div class="account-row-name">{{ a.displayName || a.username || a.userId }}</div>
-                  <div class="account-row-meta">{{ a.phone || '无手机号' }}<span v-if="a.remark"> · {{ a.remark }}</span></div>
-                </div>
-                <button class="chip-remove" title="移除关联" :disabled="busyLinkedUserId === a.userId" @click="runLinkAccount(a.userId, 'unlink')">
-                  <svg v-if="busyLinkedUserId !== a.userId" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                  <span v-else class="spinner-sm"></span>
-                </button>
-              </div>
-            </div>
-
-            <!-- 搜索添加账户 -->
-            <div class="drawer-section">
-              <div class="drawer-section-title">添加账户</div>
-              <div class="link-search-wrap">
-                <input v-model="accountSearchKeyword" class="form-input link-search-input" placeholder="搜索用户名或手机号添加（至少 2 个字符）" @input="searchAccountsForLink" />
-                <span v-if="searchingAccounts" class="link-search-spinner"><span class="spinner-sm"></span></span>
-              </div>
-              <div v-if="accountSearchKeyword && availableAccountsToAdd.length === 0 && !searchingAccounts" class="drawer-empty-hint">无符合条件的可添加账户</div>
-              <div v-for="u in availableAccountsToAdd" :key="u.userId" class="account-row addable">
-                <div class="mini-avatar" :style="{ background: getAvatarGradient(u.username || u.userId) }">{{ getAvatarChar(u.username || '?') }}</div>
-                <div class="account-row-info">
-                  <div class="account-row-name">{{ u.username || u.userId }}</div>
-                  <div class="account-row-meta">{{ u.phone || '无手机号' }}</div>
-                </div>
-                <button class="chip-add" title="添加关联" :disabled="busyLinkedUserId === u.userId" @click="runLinkAccount(u.userId, 'link')">
-                  <svg v-if="busyLinkedUserId !== u.userId" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                  <span v-else class="spinner-sm"></span>
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="adm-btn adm-btn-secondary" @click="closeLinkedAccountsDialog">关闭</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Manage Open Subjects Modal -->
-    <div v-if="showOpenSubjectsDialogVisible" class="modal-mask" @click.self="showOpenSubjectsDialogVisible = false">
-      <div class="modal-box" style="width: 560px;">
-        <div class="modal-header">
-          <h3>管理开放学科</h3>
-          <button class="modal-close" @click="showOpenSubjectsDialogVisible = false">×</button>
-        </div>
-        <div class="modal-body">
-          <div v-if="currentStudent" class="user-info-banner">
-            <div class="user-avatar" :style="{ background: getAvatarGradient(currentStudent.name || currentStudent.id) }">{{ getAvatarChar(currentStudent.name || '?') }}</div>
-            <div>
-              <div class="info-name">{{ currentStudent.name }}</div>
-              <div class="info-sub">{{ getGradeLabel(currentStudent.grade) }}</div>
-            </div>
-          </div>
-          <div class="form-group">
-            <label class="form-label">已开放学科</label>
-            <div class="subj-grid">
-              <label
-                v-for="s in subjectOptions"
-                :key="s.value"
-                class="subject-check"
-                :class="{ checked: openSubjects.includes(s.value) }"
-                @click.prevent="toggleOpenSubject(s.value)"
-              >
-                <span class="chk-box">
-                  <svg v-if="openSubjects.includes(s.value)" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                </span>
-                <span>{{ s.displayName || s.name }}</span>
-              </label>
-            </div>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="adm-btn adm-btn-secondary" @click="showOpenSubjectsDialogVisible = false">取消</button>
-          <button class="adm-btn adm-btn-primary" :disabled="savingSubjects" @click="saveOpenSubjects">{{ savingSubjects ? '保存中...' : '保存' }}</button>
-        </div>
-      </div>
-    </div>
+      <el-form label-position="top" @submit.prevent>
+        <el-form-item label="已开放学科">
+          <el-checkbox-group v-model="openSubjects" class="subject-checks">
+            <el-checkbox v-for="s in subjectOptions" :key="s.value" :value="s.value" border>{{ s.displayName || s.name }}</el-checkbox>
+          </el-checkbox-group>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showOpenSubjectsDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="savingSubjects" @click="saveOpenSubjects">保存</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { Close, Loading, Plus, Search } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { confirmDanger } from '../utils/confirm'
 import studentAdminApi, { type IdentityAccountDto, type SubjectOption, type GradeOption } from '../services/studentAdminApi'
 import identityApi, { type IdentityUser } from '../services/identityApi'
 import { extractMsg } from '../services/apiBase'
 import {
-  getSubjectLabel, getSubjectCssClass,
   getAvatarGradient, getAvatarChar, formatDate,
 } from '../utils/subject'
+import PageHeader from '../components/list/PageHeader.vue'
+import FilterBar from '../components/list/FilterBar.vue'
+import DataTableCard from '../components/list/DataTableCard.vue'
+import ListPagination from '../components/list/ListPagination.vue'
+import SubjectTag from '../components/list/SubjectTag.vue'
 
 interface StudentRow {
   id: string
@@ -345,6 +285,7 @@ interface StudentRow {
 
 const students = ref<StudentRow[]>([])
 const loading = ref(false)
+const loadError = ref<string | null>(null)
 const total = ref(0)
 const page = ref(1)
 const pageSize = ref(20)
@@ -357,8 +298,6 @@ const gradeOptions = ref<GradeOption[]>([])
 const subjectOptions = ref<SubjectOption[]>([])
 const accountMap = ref<Map<string, IdentityAccountDto>>(new Map())
 const studentSubjectMap = ref<Map<string, number[]>>(new Map())
-
-const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
 
 const showCreateDialog = ref(false)
 const createForm = ref({ name: '', grade: 0, identityAccountIds: [] as string[] })
@@ -409,6 +348,7 @@ async function loadSubjectOptions() {
 
 async function loadStudents() {
   loading.value = true
+  loadError.value = null
   try {
     const result = await studentAdminApi.getStudents({
       page: page.value,
@@ -428,6 +368,10 @@ async function loadStudents() {
     await loadAccountMap()
     await loadOpenSubjectsForList(items)
   } catch (e) {
+    // Drop stale rows so a failure is never mistaken for an (outdated) result.
+    students.value = []
+    total.value = 0
+    loadError.value = '加载学生列表失败'
     ElMessage.error('加载学生列表失败')
   } finally {
     loading.value = false
@@ -591,8 +535,8 @@ function resetFilters() {
   loadStudents()
 }
 
-function onPageChange(p: number) {
-  page.value = p
+// page / pageSize are already updated by ListPagination (size changes reset to page 1).
+function onPageChange() {
   loadStudents()
 }
 
@@ -628,9 +572,27 @@ async function searchCreateIdentityUsers() {
   }
 }
 
-function addCreateIdentityAccount(userId: string) {
-  if (userId && !createForm.value.identityAccountIds.includes(userId)) {
-    createForm.value.identityAccountIds.push(userId)
+// el-select remote-method: same rules as before (>= 2 chars, digits search by phone, pageSize 20).
+function onCreateAccountQuery(query: string) {
+  createSearchKeyword.value = query
+  searchCreateIdentityUsers()
+}
+
+// Options = already selected accounts (so their tags keep a label) + current search results.
+const createAccountOptions = computed(() => {
+  const selected = createForm.value.identityAccountIds.map(id => ({
+    userId: id,
+    username: getAccountDisplayName(id),
+    phone: accountMap.value.get(id)?.phone || '',
+    displayName: accountMap.value.get(id)?.displayName || '',
+  }))
+  const selectedIds = new Set(createForm.value.identityAccountIds)
+  return [...selected, ...createIdentityUsers.value.filter(u => !selectedIds.has(u.userId))]
+})
+
+// Remember display info for newly selected accounts (used by the tags and getAccountDisplayName).
+function onCreateAccountsChange(ids: string[]) {
+  for (const userId of ids) {
     const user = createIdentityUsers.value.find(u => u.userId === userId)
     if (user && !accountMap.value.has(userId)) {
       const newMap = new Map(accountMap.value)
@@ -646,19 +608,6 @@ function addCreateIdentityAccount(userId: string) {
   }
   createSearchKeyword.value = ''
   createIdentityUsers.value = []
-}
-
-function removeCreateIdentityAccount(userId: string) {
-  createForm.value.identityAccountIds = createForm.value.identityAccountIds.filter(id => id !== userId)
-}
-
-function toggleCreateSubject(subject: number) {
-  const index = createOpenSubjects.value.indexOf(subject)
-  if (index >= 0) {
-    createOpenSubjects.value.splice(index, 1)
-  } else {
-    createOpenSubjects.value.push(subject)
-  }
 }
 
 async function createStudent() {
@@ -781,15 +730,6 @@ async function saveOpenSubjects() {
   }
 }
 
-function toggleOpenSubject(subject: number) {
-  const index = openSubjects.value.indexOf(subject)
-  if (index >= 0) {
-    openSubjects.value.splice(index, 1)
-  } else {
-    openSubjects.value.push(subject)
-  }
-}
-
 onMounted(async () => {
   await Promise.all([loadGradeOptions(), loadSubjectOptions()])
   await loadStudents()
@@ -797,46 +737,34 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.avatar-cell {
-  display: flex;
+.filter-keyword {
+  width: 260px;
 }
-
-.selected-accounts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin-top: 8px;
+.filter-control {
+  width: 140px;
 }
-.account-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 8px 4px 10px;
-  border: 1px solid var(--adm-info-border);
-  border-radius: 6px;
-  color: var(--adm-primary);
-  background: var(--adm-primary-bg);
+.full-width {
+  width: 100%;
+}
+.subject-filter-hint {
+  margin-bottom: 12px;
+}
+.subject-checks {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  width: 100%;
+}
+.subject-checks :deep(.el-checkbox) {
+  margin-right: 0;
+}
+.option-name {
+  margin-right: 8px;
+  color: var(--adm-text-primary);
+}
+.option-meta {
+  color: var(--adm-text-tertiary);
   font-size: 12px;
-  font-weight: 500;
-}
-.chip-x {
-  width: 14px;
-  height: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  border: none;
-  border-radius: 50%;
-  color: var(--adm-primary);
-  background: transparent;
-  cursor: pointer;
-  font-size: 14px;
-  line-height: 1;
-}
-.chip-x:hover {
-  color: #fff;
-  background: var(--adm-primary);
 }
 
 .account-row {
@@ -868,19 +796,12 @@ onMounted(async () => {
   border-color: var(--adm-primary-light);
   background: var(--adm-surface-subtle);
 }
-.account-row.addable:hover {
-  border-color: var(--adm-primary);
-  background: var(--adm-primary-bg);
+.account-row.addable:first-of-type {
+  margin-top: 8px;
 }
 
 .drawer-loading {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 16px;
-  color: var(--adm-text-muted);
-  font-size: 12px;
+  min-height: 80px;
 }
 .drawer-section {
   margin-bottom: 20px;
@@ -894,7 +815,6 @@ onMounted(async () => {
   gap: 6px;
   margin-bottom: 10px;
   color: var(--adm-text-tertiary);
-  text-transform: uppercase;
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.5px;
@@ -921,61 +841,5 @@ onMounted(async () => {
   background: var(--adm-surface-subtle);
   text-align: center;
   font-size: 12px;
-}
-
-.link-search-wrap {
-  position: relative;
-  margin: 8px 0 6px;
-}
-.link-search-input {
-  height: 32px;
-  padding-right: 30px;
-  font-size: 12px;
-}
-.link-search-spinner {
-  position: absolute;
-  top: 50%;
-  right: 8px;
-  display: inline-flex;
-  align-items: center;
-  transform: translateY(-50%);
-}
-
-.chip-remove,
-.chip-add {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  padding: 0;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-.chip-remove {
-  width: 26px;
-  height: 26px;
-  color: var(--adm-text-muted);
-  background: transparent;
-}
-.chip-remove:hover:not(:disabled) {
-  color: var(--adm-error);
-  background: var(--adm-error-bg);
-}
-.chip-add {
-  width: 28px;
-  height: 28px;
-  color: var(--adm-primary);
-  background: var(--adm-primary-bg);
-}
-.chip-add:hover:not(:disabled) {
-  color: #fff;
-  background: var(--adm-primary);
-}
-.chip-remove:disabled,
-.chip-add:disabled {
-  opacity: 0.6;
-  cursor: wait;
 }
 </style>

@@ -287,17 +287,28 @@ frontend/src/
 
 ---
 
-### 用户管理页面统一视觉约定
+### 列表页规范
 
-- 三个页面第一列表头统一为“头像”，列表头像统一为 36×36；弹窗信息横幅头像统一为 40×40
-- ID 列宽统一为 200px，创建时间列宽统一为 130px，操作列统一预留 260px 并右对齐
-- 姓名/用户名保持各自业务命名，但单元格均左对齐、`font-weight: 500`
-- 筛选栏统一使用主按钮“搜索”和次级按钮“重置”，筛选控件高度统一为 36px
-- 表单统一使用 `--adm-surface-elevated` 背景、主文本标签、18px 组间距、`9px 12px` 输入内边距和 2px 必填标记左间距
-- 列表学科标签统一使用全局 `.adm-subj-tag`；可删除标签通过统一的关闭按钮扩展样式实现
-- 学科选择网格统一使用带 16×16 自定义勾选框的结构
-- Identity 用户搜索项统一包含 30×30 头像、主名称、手机号/显示名等次要信息和选中状态
-- 表格、筛选控件、弹窗、表单、头像、用户搜索项、学科标签/网格、信息横幅等三页共用样式统一定义在 `src/style.css`；组件 `<style scoped>` 仅保留页面专属样式
+所有列表页（学生、教师、助教已迁移；上传记录、错题、OSS 审计由后续迁移 task 接入）统一使用 `src/components/list/` 下的公共组件，不再各写一套原生表格、手写模态框或分页器：
+
+| 组件 | 接口 | 约定 |
+|------|------|------|
+| `PageHeader.vue` | props `title`、`description`；插槽 `#actions` | 页面标题区，主操作按钮放在 `#actions` |
+| `FilterBar.vue` | 默认插槽放 `el-form-item`；emit `search` / `reset` | 卡片容器 + `el-form inline`，自带标准「搜索」「重置」按钮，窄屏自动换行；筛选控件需显式设置宽度 |
+| `DataTableCard.vue` | props `data`、`loading`、`error: string \| null`、`emptyText`；默认插槽放 `el-table-column`；插槽 `#footer`；emit `retry`；其余属性透传给 `el-table` | 状态由 props 唯一决定：`loading` 优先（`v-loading`），其次 `error`（显示错误信息与「重试」，**不显示空态**），最后按 `data.length` 显示空态。卡片宽度跟随容器（`contain: inline-size`），宽表在卡片内横向滚动，页面本身不出现横向滚动 |
+| `ListPagination.vue` | `v-model:page`、`v-model:page-size`、`total`；emit `change` | `el-pagination`，`layout="total, sizes, prev, pager, next"`，每页 10/20/50；改变每页条数时回到第 1 页；每次交互只触发一次 `change` |
+| `SubjectTag.vue` | props `subject`、`closable`；emit `close` | 沿用 `utils/subject.ts` 的学科色映射（全局 `.adm-subj-tag`） |
+| `StatusTag.vue` | props `label`、`type: 'success' \| 'warning' \| 'danger' \| 'info' \| 'primary'` | 基于 `el-tag` 的通用状态标签 |
+
+使用约定：
+
+- **加载失败**：列表加载失败时清空旧行并设置 `error`，由 `DataTableCard` 显示错误态与「重试」；可以同时保留 toast。失败与「暂无数据」必须可区分。
+- **弹窗**：表单与详情使用 `el-dialog`（或 `el-drawer`），设置 `append-to-body` 与 `:close-on-click-modal="false"`（避免点遮罩丢失填写内容）；Esc 可关闭，打开时焦点在弹窗内。
+- **表单**：`el-form label-position="top"`，必填项用 `el-form-item required` 标记；校验提示沿用各页现有的 `ElMessage.warning` 规则。多选学科用 `el-checkbox-group` + `el-checkbox border`。
+- **远程搜索**：选择 Identity 用户/账户用 `el-select filterable remote`，`remote-method` 调用 `identityApi.getUsers`：关键字至少 2 个字符，纯数字按手机号查询，`pageSize: 20`。已选项需保留在 options 中以显示标签。（学生「关联账户」弹窗中的添加列表每行有独立的添加按钮与进行中状态，保留 `el-input` 搜索 + 列表的形式。）
+- **行操作**：操作列 `fixed="right"`；普通操作用 `el-button link type="primary"`，删除/撤销/解除等破坏性操作用 `el-button link type="danger"` 并经过危险二次确认：调用 `src/utils/confirm.ts` 的 `confirmDanger`（约定见「设计规范 → 确认操作」），不得直接使用 `ElMessageBox.confirm`。
+- **Element Plus 语言**：`main.ts` 以 `zh-cn` locale 注册 Element Plus，分页、空态等内置文案为中文。
+- **已知限制**：学生页的「学科」筛选在客户端过滤当前页（后端 `GET /api/admin/students` 只支持 `name`、`grade`），启用时页面显示「学科筛选仅作用于当前页结果」提示；每行一次开放学科请求（N+1）为现有行为。两者需要服务端支持，不在前端范围。
 
 ---
 
