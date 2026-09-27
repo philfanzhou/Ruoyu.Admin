@@ -1,0 +1,144 @@
+{
+ "student: load": [
+  "GET /api/admin/students/grades",
+  "GET /api/admin/students/subject-options",
+  "GET /api/admin/students?page=1&pageSize=20",
+  "POST /api/admin/identity-accounts/batch [\"acc-1\"]",
+  "GET /api/admin/students/s1a/open-subjects?activeOnly=true",
+  "GET /api/admin/students/s1b/open-subjects?activeOnly=true"
+ ],
+ "student: search name + Enter": [
+  "GET /api/admin/students?page=1&pageSize=20&name=%E5%BC%A0",
+  "POST /api/admin/identity-accounts/batch [\"acc-1\"]"
+ ],
+ "student: grade filter": [
+  "GET /api/admin/students?page=1&pageSize=20&name=%E5%BC%A0&grade=7",
+  "POST /api/admin/identity-accounts/batch [\"acc-1\"]"
+ ],
+ "student: reset": [
+  "GET /api/admin/students?page=1&pageSize=20",
+  "POST /api/admin/identity-accounts/batch [\"acc-1\"]"
+ ],
+ "student: next page": [
+  "GET /api/admin/students?page=2&pageSize=20",
+  "POST /api/admin/identity-accounts/batch [\"acc-1\"]",
+  "GET /api/admin/students/s2a/open-subjects?activeOnly=true",
+  "GET /api/admin/students/s2b/open-subjects?activeOnly=true"
+ ],
+ "student: page size 50": [
+  "GET /api/admin/students?page=1&pageSize=50",
+  "POST /api/admin/identity-accounts/batch [\"acc-1\"]"
+ ],
+ "student: create": [
+  "GET /api/identity/gateway/users/search?username=newp&page=1&pageSize=20",
+  "POST /api/admin/students {\"name\":\"王五\",\"grade\":7,\"identityAccountIds\":[\"acc-9\"]}",
+  "PUT /api/admin/students/s-new/open-subjects {\"subjects\":[{\"subject\":1,\"openStartDate\":\"2026-09-27\",\"openEndDate\":null}]}",
+  "GET /api/admin/students?page=1&pageSize=50",
+  "POST /api/admin/identity-accounts/batch [\"acc-1\"]"
+ ],
+ "student: edit": [
+  "PUT /api/admin/students/s1a {\"name\":\"张三改\",\"grade\":7}",
+  "GET /api/admin/students?page=1&pageSize=50",
+  "POST /api/admin/identity-accounts/batch [\"acc-1\"]"
+ ],
+ "student: open subjects save": [
+  "GET /api/admin/students/s1a/open-subjects?activeOnly=true",
+  "PUT /api/admin/students/s1a/open-subjects {\"subjects\":[{\"subject\":1,\"openStartDate\":\"2026-09-27\",\"openEndDate\":null},{\"subject\":3,\"openStartDate\":\"2026-09-27\",\"openEndDate\":null}]}"
+ ],
+ "student: linked accounts add + remove": [
+  "GET /api/admin/students/s1a/accounts",
+  "POST /api/admin/identity-accounts/batch [\"acc-1\"]",
+  "GET /api/identity/gateway/users/search?username=newp&page=1&pageSize=20",
+  "POST /api/admin/students/s1a/accounts {\"identityAccountId\":\"acc-9\"}",
+  "GET /api/admin/students/s1a/accounts",
+  "POST /api/admin/identity-accounts/batch [\"acc-1\"]",
+  "GET /api/admin/students?page=1&pageSize=50",
+  "POST /api/admin/identity-accounts/batch [\"acc-1\"]",
+  "DELETE /api/admin/students/s1a/accounts/acc-1",
+  "GET /api/admin/students/s1a/accounts",
+  "POST /api/admin/identity-accounts/batch [\"acc-1\"]",
+  "GET /api/admin/students?page=1&pageSize=50",
+  "POST /api/admin/identity-accounts/batch [\"acc-1\"]"
+ ],
+ "student: delete (confirm)": [
+  "DELETE /api/admin/students/s1a",
+  "GET /api/admin/students?page=1&pageSize=50",
+  "POST /api/admin/identity-accounts/batch [\"acc-1\"]"
+ ],
+ "teacher: load": [
+  "GET /api/teacher-portal/admin/available-subjects",
+  "GET /api/teacher-portal/admin/teachers?page=1&pageSize=20",
+  "POST /api/identity/gateway/users/batch [\"u11\",\"u12\"]"
+ ],
+ "teacher: keyword + Enter": [
+  "GET /api/teacher-portal/admin/teachers?keyword=abc&page=1&pageSize=20",
+  "POST /api/identity/gateway/users/batch [\"u11\",\"u12\"]"
+ ],
+ "teacher: subject filter": [
+  "GET /api/teacher-portal/admin/teachers?keyword=abc&subject=3&page=1&pageSize=20",
+  "POST /api/identity/gateway/users/batch [\"u11\",\"u12\"]"
+ ],
+ "teacher: reset": [
+  "GET /api/teacher-portal/admin/teachers?page=1&pageSize=20",
+  "POST /api/identity/gateway/users/batch [\"u11\",\"u12\"]"
+ ],
+ "teacher: grant": [
+  "GET /api/identity/gateway/users/search?username=newp&page=1&pageSize=20",
+  "POST /api/teacher-portal/admin/identity-users/acc-9/grant-teacher {\"subjects\":[1]}",
+  "GET /api/teacher-portal/admin/teachers?page=1&pageSize=20",
+  "POST /api/identity/gateway/users/batch [\"u11\",\"u12\"]"
+ ],
+ "teacher: subjects save": [
+  "PUT /api/teacher-portal/admin/teachers/u11/subjects {\"subjects\":[1,3]}",
+  "GET /api/teacher-portal/admin/teachers?page=1&pageSize=20",
+  "POST /api/identity/gateway/users/batch [\"u11\",\"u12\"]"
+ ],
+ "teacher: remove subject tag (confirm)": [
+  "DELETE /api/teacher-portal/admin/teachers/u11/subjects/1",
+  "GET /api/teacher-portal/admin/teachers?page=1&pageSize=20",
+  "POST /api/identity/gateway/users/batch [\"u11\",\"u12\"]"
+ ],
+ "teacher: revoke (confirm)": [
+  "DELETE /api/teacher-portal/admin/teachers/by-user/u11",
+  "GET /api/teacher-portal/admin/teachers?page=1&pageSize=20",
+  "POST /api/identity/gateway/users/batch [\"u11\",\"u12\"]"
+ ],
+ "assistant: load": [
+  "GET /api/assistant-portal/admin/available-subjects",
+  "GET /api/assistant-portal/admin/assistants?page=1&pageSize=20",
+  "POST /api/identity/gateway/users/batch [\"u11\",\"u12\"]"
+ ],
+ "assistant: keyword + Enter": [
+  "GET /api/assistant-portal/admin/assistants?keyword=abc&page=1&pageSize=20",
+  "POST /api/identity/gateway/users/batch [\"u11\",\"u12\"]"
+ ],
+ "assistant: subject filter": [
+  "GET /api/assistant-portal/admin/assistants?keyword=abc&subject=3&page=1&pageSize=20",
+  "POST /api/identity/gateway/users/batch [\"u11\",\"u12\"]"
+ ],
+ "assistant: reset": [
+  "GET /api/assistant-portal/admin/assistants?page=1&pageSize=20",
+  "POST /api/identity/gateway/users/batch [\"u11\",\"u12\"]"
+ ],
+ "assistant: grant": [
+  "GET /api/identity/gateway/users/search?username=newp&page=1&pageSize=20",
+  "POST /api/assistant-portal/admin/identity-users/acc-9/grant-assistant {\"subjects\":[1]}",
+  "GET /api/assistant-portal/admin/assistants?page=1&pageSize=20",
+  "POST /api/identity/gateway/users/batch [\"u11\",\"u12\"]"
+ ],
+ "assistant: subjects save": [
+  "PUT /api/assistant-portal/admin/assistants/u11/subjects {\"subjects\":[1,3]}",
+  "GET /api/assistant-portal/admin/assistants?page=1&pageSize=20",
+  "POST /api/identity/gateway/users/batch [\"u11\",\"u12\"]"
+ ],
+ "assistant: remove subject tag (confirm)": [
+  "DELETE /api/assistant-portal/admin/assistants/u11/subjects/1",
+  "GET /api/assistant-portal/admin/assistants?page=1&pageSize=20",
+  "POST /api/identity/gateway/users/batch [\"u11\",\"u12\"]"
+ ],
+ "assistant: revoke (confirm)": [
+  "POST /api/assistant-portal/admin/identity-users/u11/revoke-assistant",
+  "GET /api/assistant-portal/admin/assistants?page=1&pageSize=20",
+  "POST /api/identity/gateway/users/batch [\"u11\",\"u12\"]"
+ ]
+}
