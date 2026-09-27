@@ -1,0 +1,138 @@
+{
+ "load": {
+  "calls": [
+   "GET /api/admin/enum-options",
+   "GET /api/admin/mistakes?page=1&size=20",
+   "GET /api/admin/mistakes?page=1&size=1",
+   "GET /api/admin/mistakes?page=1&size=1&reviewStatus=1",
+   "GET /api/admin/mistakes?page=1&size=1&reviewStatus=2",
+   "GET /api/admin/mistakes?page=1&size=1&reviewStatus=3"
+  ]
+ },
+ "deeplink": {
+  "calls": [
+   "GET /api/admin/enum-options",
+   "GET /api/admin/mistakes?page=1&size=20&reviewStatus=2",
+   "GET /api/admin/mistakes?page=1&size=1",
+   "GET /api/admin/mistakes?page=1&size=1&reviewStatus=1",
+   "GET /api/admin/mistakes?page=1&size=1&reviewStatus=2",
+   "GET /api/admin/mistakes?page=1&size=1&reviewStatus=3"
+  ]
+ },
+ "statCards": {
+  "calls": [
+   "GET /api/admin/enum-options",
+   "GET /api/admin/mistakes?page=1&size=20",
+   "GET /api/admin/mistakes?page=1&size=1",
+   "GET /api/admin/mistakes?page=1&size=1&reviewStatus=1",
+   "GET /api/admin/mistakes?page=1&size=1&reviewStatus=2",
+   "GET /api/admin/mistakes?page=1&size=1&reviewStatus=3",
+   "GET /api/admin/mistakes?page=1&size=20&reviewStatus=1",
+   "GET /api/admin/mistakes?page=1&size=20",
+   "GET /api/admin/mistakes?page=1&size=20&reviewStatus=2",
+   "GET /api/admin/mistakes?page=1&size=20"
+  ]
+ },
+ "filters": {
+  "calls": [
+   "GET /api/admin/enum-options",
+   "GET /api/admin/mistakes?page=1&size=20",
+   "GET /api/admin/mistakes?page=1&size=1",
+   "GET /api/admin/mistakes?page=1&size=1&reviewStatus=1",
+   "GET /api/admin/mistakes?page=1&size=1&reviewStatus=2",
+   "GET /api/admin/mistakes?page=1&size=1&reviewStatus=3",
+   "GET /api/admin/mistakes?page=1&size=20&subject=2",
+   "GET /api/admin/mistakes?page=1&size=20&subject=2&grade=8",
+   "GET /api/admin/mistakes?page=1&size=20&subject=2&grade=8&reviewStatus=3"
+  ]
+ },
+ "student": {
+  "calls": [
+   "GET /api/admin/enum-options",
+   "GET /api/admin/mistakes?page=1&size=20",
+   "GET /api/admin/mistakes?page=1&size=1",
+   "GET /api/admin/mistakes?page=1&size=1&reviewStatus=1",
+   "GET /api/admin/mistakes?page=1&size=1&reviewStatus=2",
+   "GET /api/admin/mistakes?page=1&size=1&reviewStatus=3",
+   "GET /api/admin/students?name=%E5%BC%A0&pageSize=20",
+   "GET /api/admin/mistakes?page=1&size=20&studentId=s1",
+   "GET /api/admin/mistakes?page=1&size=20"
+  ]
+ },
+ "paging": {
+  "calls": [
+   "GET /api/admin/enum-options",
+   "GET /api/admin/mistakes?page=1&size=20",
+   "GET /api/admin/mistakes?page=1&size=1",
+   "GET /api/admin/mistakes?page=1&size=1&reviewStatus=1",
+   "GET /api/admin/mistakes?page=1&size=1&reviewStatus=2",
+   "GET /api/admin/mistakes?page=1&size=1&reviewStatus=3",
+   "GET /api/admin/mistakes?page=2&size=20"
+  ]
+ },
+ "resetSearch": {
+  "calls": [
+   "GET /api/admin/enum-options",
+   "GET /api/admin/mistakes?page=1&size=20&reviewStatus=1",
+   "GET /api/admin/mistakes?page=1&size=1",
+   "GET /api/admin/mistakes?page=1&size=1&reviewStatus=1",
+   "GET /api/admin/mistakes?page=1&size=1&reviewStatus=2",
+   "GET /api/admin/mistakes?page=1&size=1&reviewStatus=3",
+   "GET /api/admin/mistakes?page=1&size=20&subject=3&reviewStatus=1",
+   "GET /api/admin/mistakes?page=1&size=20&subject=3&reviewStatus=1",
+   "GET /api/admin/mistakes?page=1&size=20"
+  ]
+ },
+ "detailMigrateEdit": {
+  "calls": [
+   "GET /api/admin/enum-options",
+   "GET /api/admin/mistakes?page=1&size=20",
+   "GET /api/admin/mistakes?page=1&size=1",
+   "GET /api/admin/mistakes?page=1&size=1&reviewStatus=1",
+   "GET /api/admin/mistakes?page=1&size=1&reviewStatus=2",
+   "GET /api/admin/mistakes?page=1&size=1&reviewStatus=3",
+   "GET /api/admin/mistakes/m-0001-abcdef0123456789",
+   "POST /api/admin/mistakes/migrate-images/m-0001-abcdef0123456789",
+   "GET /api/admin/mistakes/m-0001-abcdef0123456789",
+   "GET /api/admin/mistakes?page=1&size=20",
+   "GET /api/admin/students?name=%E6%9D%8E&pageSize=20",
+   "PUT /api/admin/mistakes/m-0001-abcdef0123456789 {\"studentId\":\"s2\",\"subject\":3,\"grade\":9}",
+   "GET /api/admin/mistakes?page=1&size=20",
+   "GET /api/admin/mistakes?page=1&size=1",
+   "GET /api/admin/mistakes?page=1&size=1&reviewStatus=1",
+   "GET /api/admin/mistakes?page=1&size=1&reviewStatus=2",
+   "GET /api/admin/mistakes?page=1&size=1&reviewStatus=3",
+   "GET /api/admin/mistakes/m-0001-abcdef0123456789"
+  ],
+  "after": {
+   "name": "学生李 李四"
+  }
+ },
+ "editValidation": {
+  "calls": [
+   "GET /api/admin/enum-options",
+   "GET /api/admin/mistakes?page=1&size=20",
+   "GET /api/admin/mistakes?page=1&size=1",
+   "GET /api/admin/mistakes?page=1&size=1&reviewStatus=1",
+   "GET /api/admin/mistakes?page=1&size=1&reviewStatus=2",
+   "GET /api/admin/mistakes?page=1&size=1&reviewStatus=3",
+   "GET /api/admin/mistakes/m-0002-abcdef0123456789"
+  ],
+  "toast": [
+   "请选择学生"
+  ]
+ },
+ "detailFailure": {
+  "calls": [
+   "GET /api/admin/enum-options",
+   "GET /api/admin/mistakes?page=1&size=20",
+   "GET /api/admin/mistakes?page=1&size=1",
+   "GET /api/admin/mistakes?page=1&size=1&reviewStatus=1",
+   "GET /api/admin/mistakes?page=1&size=1&reviewStatus=2",
+   "GET /api/admin/mistakes?page=1&size=1&reviewStatus=3",
+   "GET /api/admin/mistakes/m-0001-abcdef0123456789"
+  ],
+  "dialogOpen": false
+ },
+ "pageErrors": []
+}
