@@ -235,30 +235,28 @@ public class MistakeHttpClient : IMistakeHttpClient
     }
 
     // 1. GET /api/mistakes
+    // Unlike the methods below, this one propagates failures (transport errors, non-success
+    // envelopes) instead of degrading to an empty page: it feeds the OSS audit reference
+    // aggregation (OssAuditWorker) and the pre-delete recheck (OssAuditController), where an
+    // empty result would be indistinguishable from "no mistake references" and could let a
+    // Mistake-service outage downgrade an audit or authorize real object deletions. Callers
+    // must catch; all three current callers do.
     public async Task<MistakeItemPageResult> GetMistakeItemListAsync(string studentId, int subject, int grade, MistakeReviewStatus reviewStatus, int page, int size, CancellationToken ct = default)
     {
-        try
-        {
-            var query = $"?page={page}&size={size}&subject={subject}&grade={grade}&reviewStatus={(int)reviewStatus}";
-            if (!string.IsNullOrWhiteSpace(studentId))
-                query += $"&studentId={Uri.EscapeDataString(studentId)}";
+        var query = $"?page={page}&size={size}&subject={subject}&grade={grade}&reviewStatus={(int)reviewStatus}";
+        if (!string.IsNullOrWhiteSpace(studentId))
+            query += $"&studentId={Uri.EscapeDataString(studentId)}";
 
-            using var response = await _httpClient.GetAsync($"/api/mistakes{query}", ct);
-            var envelope = await response.Content.ReadFromJsonAsync<ApiEnvelope<MistakeItemPageResult>>(JsonOptions, ct);
-            if (!response.IsSuccessStatusCode || envelope is null || !envelope.Success)
-            {
-                var msg = envelope?.Message ?? "GetMistakeItemList failed";
-                _logger.LogWarning("GetMistakeItemList failed: {Message}, Status: {Status}", msg, response.StatusCode);
-                return new MistakeItemPageResult();
-            }
-
-            return envelope.Data ?? new MistakeItemPageResult();
-        }
-        catch (HttpRequestException ex)
+        using var response = await _httpClient.GetAsync($"/api/mistakes{query}", ct);
+        var envelope = await response.Content.ReadFromJsonAsync<ApiEnvelope<MistakeItemPageResult>>(JsonOptions, ct);
+        if (!response.IsSuccessStatusCode || envelope is null || !envelope.Success)
         {
-            _logger.LogError(ex, "GetMistakeItemList HTTP request failed");
-            return new MistakeItemPageResult();
+            var msg = envelope?.Message ?? "GetMistakeItemList failed";
+            _logger.LogWarning("GetMistakeItemList failed: {Message}, Status: {Status}", msg, response.StatusCode);
+            throw new HttpRequestException(msg, null, response.StatusCode);
         }
+
+        return envelope.Data ?? new MistakeItemPageResult();
     }
 
     // 2. GET /api/mistakes/{id}

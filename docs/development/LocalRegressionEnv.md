@@ -133,9 +133,9 @@ curl -s 'http://localhost:5009/api/admin/storage/image-references?page=1&size=20
 登录 → 触发审计（或直接使用种子插入的待处理记录）→ 按 #24 事件 × 结果表逐行执行。两条不可达分支的触发方式：
 
 1. **Student 或 Homework 不可达 → 502 / 审计中止**：直接停掉替身进程（三个来源同时不可达；Student 侧的 `HttpRequestException` 会最先触发「Student 或 Homework 服务不可用」的 502 与整轮 `Status=2` 中止，中止发生在扫描任何桶之前）。
-2. **Mistake 不可达 → 502「Mistake 服务不可用，无法安全删除。」**：以 `--mistake-outage` 启动替身——`/api/mistakes` 返回 503 + 非 JSON 文本，`MistakeHttpClient` 反序列化抛 `JsonException` 并向上传播，删除前复核与审计聚合都得到确定性的 Mistake 失败分支。
+2. **Mistake 不可达 → 502「Mistake 服务不可用，无法安全删除。」**：只停掉 5007 的 Mistake 替身（保留 5005/5009）即可——连接拒绝的 `HttpRequestException` 会从 `MistakeHttpClient.GetMistakeItemListAsync` 向上传播（[#28](https://github.com/philfanzhou/Ruoyu.Admin/issues/28) 修复后），删除前复核与审计聚合都得到确定性的 Mistake 失败分支。也可用 `--mistake-outage` 启动替身——`/api/mistakes` 返回 503 + 非 JSON 文本，走 `JsonException` 传播路径，结论相同。
 
-> **已知缺陷提示**：`MistakeHttpClient.GetMistakeItemListAsync` 会捕获 `HttpRequestException` 并返回空集（连接拒绝≠异常传播，见 [#28](https://github.com/philfanzhou/Ruoyu.Admin/issues/28)）。因此在**只停掉 Mistake 而保留 Student/Homework** 的场景下，删除前复核不会 502、审计也不会中止。正因如此，方式 2 用 `JsonException` 路径提供确定性，方式 1 依赖 Student 侧先失败。
+> **历史缺陷说明**：[#28](https://github.com/philfanzhou/Ruoyu.Admin/issues/28) 修复前，`GetMistakeItemListAsync` 会捕获 `HttpRequestException` 并返回空集，「只停 Mistake」场景不会 502 也不会中止；本节方式 2 曾因此只依赖 `JsonException` 路径。修复后连接拒绝与非 JSON 两条路径结论一致。
 
 ### OssAuditWorker 在本地运行的三个隐藏动作
 
