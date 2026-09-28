@@ -57,6 +57,7 @@ jobs:
         run: |
           npm ci
           npm run build
+          npm test
 
       # The product is a single unified image (API + built SPA in wwwroot), the
       # same one every deployment runs; building it on every push keeps the

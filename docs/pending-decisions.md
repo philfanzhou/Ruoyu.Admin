@@ -7,7 +7,7 @@
 - 不在此记录执行日志、已完成事项、普通代码卫生建议或测试结果。
 - 跨仓库契约类问题若主责在 Ruoyu.Study，记录在该仓库的 `docs/pending-decisions.md`，本文件只保留 Admin 侧的取舍。
 
-PD-001 至 PD-004 于 2026-09-24 随产品从 Ruoyu.Study monorepo 迁入，原编号分别为 PD-009、PD-010、PD-011、PD-013（见 Ruoyu.Study 仓库的 ADR-0010（extract-ruoyu-admin，该仓库未公开））。
+PD-001 至 PD-003 于 2026-09-24 随产品从 Ruoyu.Study monorepo 迁入，原编号分别为 PD-009、PD-010、PD-011（见 Ruoyu.Study 仓库的 ADR-0010（extract-ruoyu-admin，该仓库未公开））。
 
 ## PD-001 OSS 审计任务的可靠调度与互斥
 
@@ -41,14 +41,3 @@ PD-001 至 PD-004 于 2026-09-24 随产品从 Ruoyu.Study monorepo 迁入，原�
 - **C**：保留 AllowAnyOrigin 默认值。
 - **阻塞范围**：只阻塞 CORS 默认行为和部署配置。
 - **关联**：集成部署模式下 SPA 与 API 同源，浏览器不需要跨域；`AllowedOrigins` 只服务于前后端分离部署。这使方案 A 的启动失败风险可控。
-
-## PD-004 前端测试基线
-
-- **状态**：待决定
-- **影响范围**：`frontend/`（Vue 3 + Element Plus SPA）
-- **当前证据**：`frontend/package.json` 只有 `dev`/`build`/`preview` 三个脚本，没有单元、组件或 E2E 测试框架，也没有类型检查脚本（`build` 直接调用 `vite build`，不经过 `vue-tsc`）。
-- **A（推荐）**：引入 Vitest 与 Vue Test Utils，先覆盖认证、路由守卫和关键表单；跨服务流程继续由 Ruoyu.Study 仓库的 `tests/e2e/` 承担。
-- **B**：只增加 Playwright E2E，以真实页面覆盖核心管理流程。
-- **C**：暂不建立前端自动测试基线。
-- **阻塞范围**：只阻塞前端测试框架与首批测试。
-- **关联**：跨服务用例 `04-admin-bind-student.py` 保留在 Ruoyu.Study 的 `tests/e2e/`，通过 `E2E_ADMIN_URL` 访问已部署实例，因此本仓库的前端测试只需覆盖单仓内可验证的行为。
