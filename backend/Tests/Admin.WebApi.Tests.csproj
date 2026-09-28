@@ -27,6 +27,10 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Admin.WebApi\Admin.WebApi.csproj" />
+    <!-- The contract tests deserialize the local regression stub responses with the real
+         ServiceClients DTOs, so a stub drift shows up as a failing build instead of a broken
+         local regression run. The stub itself references no backend project. -->
+    <ProjectReference Include="..\Tools\LocalRegressionStubs\Ruoyu.Admin.LocalRegressionStubs.csproj" />
   </ItemGroup>
 
 </Project>
