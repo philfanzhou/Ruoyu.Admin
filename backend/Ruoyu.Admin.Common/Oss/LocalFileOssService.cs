@@ -94,23 +94,36 @@ public class LocalFileOssService : IOssService
         var fullPath = GetFullPath(objectPath);
         if (!File.Exists(fullPath))
             return Task.FromResult(false);
+
+        // Match S3OssService.DeleteAsync: deleting an original also removes its derived
+        // thumbnails, so the local implementation exercises the same audit disposal
+        // semantics as production (resolve must not leave orphaned thumbnails behind).
+        if (!ThumbnailHelper.IsThumbnailPath(objectPath))
+        {
+            foreach (var thumbnailPath in ThumbnailHelper.GetAllThumbnailPaths(objectPath))
+            {
+                var thumbnailFullPath = GetFullPath(thumbnailPath);
+                if (File.Exists(thumbnailFullPath))
+                    File.Delete(thumbnailFullPath);
+            }
+        }
+
         File.Delete(fullPath);
         return Task.FromResult(true);
     }
 
-    public Task<int> DeleteManyAsync(IEnumerable<string> objectPaths)
+    public async Task<int> DeleteManyAsync(IEnumerable<string> objectPaths)
     {
         var count = 0;
         foreach (var path in objectPaths)
         {
-            var fullPath = GetFullPath(path);
-            if (File.Exists(fullPath))
+            // Delegate to DeleteAsync (as S3OssService does) so the thumbnail cascade applies.
+            if (await DeleteAsync(path))
             {
-                File.Delete(fullPath);
                 count++;
             }
         }
-        return Task.FromResult(count);
+        return count;
     }
 
     public Task<string> GetPresignedUrlAsync(string objectPath, int expirySeconds = 3600)
