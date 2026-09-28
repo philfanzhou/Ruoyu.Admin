@@ -88,13 +88,13 @@ Admin Portal 依赖以下下游服务运行：
 | 服务 | 端口 | 必要性 | 不可用时影响 |
 |------|------|--------|-------------|
 | Student Service | 5005 | 必须 | 学生管理、上传记录、图片预签名 URL、图片迁移均不可用；审计路径聚合不可用 |
-| Mistake Service | 5007 | 必须 | 错题管理、图片预签名 URL 不可用；审计引用聚合按不变量应整轮中止（连接拒绝场景存在已知缺陷，见 [#28](https://github.com/philfanzhou/Ruoyu.Admin/issues/28)） |
+| Mistake Service | 5007 | 必须 | 错题管理、图片预签名 URL 不可用；审计引用聚合按不变量整轮中止（连接拒绝与非 JSON 失败均向上传播，见 [#28](https://github.com/philfanzhou/Ruoyu.Admin/issues/28)） |
 | Identity Service | 5002 | 可选 | 身份代理返回 502；账户批量查询返回空列表 |
 | Teacher Portal | 5004 | 可选 | 教师门户代理返回 502/503 |
 | Assistant Portal | 5021 | 可选 | 助教门户代理返回 502/503 |
 | OSS 存储 | - | 必须（审计场景） | 审计浏览、僵尸清理不可用；图片查看通过下游 HTTP 服务获取预签名 URL |
 
-> **Phase 4 变更**：Student Service 不可用时，影响范围扩大（新增图片预签名 URL、图片迁移、路径聚合）。Mistake Service 不可用时，审计按不变量应整轮中止而非继续（历史「跳过聚合」表述与当前实现的不变量冲突；连接拒绝场景的缺陷见 [#28](https://github.com/philfanzhou/Ruoyu.Admin/issues/28)）。OSS 存储仅影响审计场景，图片查看已改为通过下游 HTTP 服务获取预签名 URL，不再由 Admin 直接读取对象内容。
+> **Phase 4 变更**：Student Service 不可用时，影响范围扩大（新增图片预签名 URL、图片迁移、路径聚合）。Mistake Service 不可用时，审计按不变量整轮中止而非继续（历史「跳过聚合」表述与当前实现的不变量冲突；连接拒绝与非 JSON 失败均向上传播，见 [#28](https://github.com/philfanzhou/Ruoyu.Admin/issues/28)）。OSS 存储仅影响审计场景，图片查看已改为通过下游 HTTP 服务获取预签名 URL，不再由 Admin 直接读取对象内容。
 >
 > 需要一套可执行的本地全栈（含 Identity 与三个引用来源替身）时，见 [LocalRegressionEnv.md](./LocalRegressionEnv.md)。
 
