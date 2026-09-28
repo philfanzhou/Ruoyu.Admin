@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
-Ruoyu.Admin is the administration console for the Ruoyu.Study English-learning platform. It combines a .NET 10 BFF API with a Vue 3 / Element Plus single-page app, shipped as one container.
+Ruoyu.Admin is the administration console for the Ruoyu.Study English-learning platform. It combines a .NET BFF API with a Vue 3 / Element Plus single-page app, shipped as one container.
 
 It owns almost no business data. It authenticates administrators, aggregates and proxies the platform's downstream services, and owns exactly one domain of its own: **Storage Audit** — finding and disposing object-storage files that no business record references any more.
 
