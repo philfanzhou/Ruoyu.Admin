@@ -62,6 +62,21 @@ Admin API 启动时通过 Consul `config/ruoyu/*` 加载 PostgreSQL、OSS 和下
 
 ## 健康检查
 
+ServiceMantle 健康端点（随 #34 落地，匿名可达，不受 SPA 回退影响）：
+
+```bash
+curl -s http://localhost:5020/health/live
+# 200 {"status":"live"}
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:5020/health/ready
+# 503 —— 就绪源落地前的固定形态，不是故障
+```
+
+- **`/health/live` 是当前唯一应被部署与监控使用的探测端点**：进程存活即恒 200，用于容器存活探测与重启判定。响应携带 `x-correlation-id`。
+- **`/health/ready` 与别名 `/health` 在就绪证据源（`IServiceHealthSnapshotSource`）落地前恒返回 503**，响应体 `{"status":"not_ready","phase":null,"migrationStatus":null,"databaseStatus":null,"errorCode":"health.probe_failed"}`——这是诚实的 fail-closed 语义（Admin 尚无就绪证据来源），**不得**把这两个端点接入重启或流量门禁，否则会误杀健康实例。真实依赖（DB/OSS）连通性纳入就绪判定属后续独立增强。
+- 端点匿名访问：库映射的端点本身不带授权元数据，Admin 通过根路由组的 `AllowAnonymous` 约定豁免全局 FallbackPolicy；`/api/*` 仍要求认证（下条命令验证）。
+
+传统探测方式仍然有效：
+
 ```bash
 curl -s -o /dev/null -w "%{http_code}\n" http://localhost:5020/
 curl -s -o /dev/null -w "%{http_code}\n" http://localhost:5020/api/admin/students
