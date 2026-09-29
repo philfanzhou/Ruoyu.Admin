@@ -5,7 +5,7 @@
 ```bash
 cd backend
 
-# 运行全部测试
+# 运行全部测试（集成测试需要本机 Docker，见下）
 dotnet test Ruoyu.Admin.sln --configuration Release
 
 # 运行指定测试类
@@ -15,11 +15,23 @@ dotnet test Ruoyu.Admin.sln --filter "FullyQualifiedName~OssUploadRecordControll
 dotnet test Ruoyu.Admin.sln --filter "FullyQualifiedName~ModelTests"
 ```
 
+> **Docker 前置**：`Tests/Integration/` 下的集成测试（ServiceMantle 宿主启动、correlation 传播）通过 Testcontainers 启动一次性 PostgreSQL 容器，需要本机 Docker（CI 的 ubuntu-latest 自带）。无 Docker 时可运行其余套件：
+>
+> ```bash
+> dotnet test Ruoyu.Admin.sln --filter "FullyQualifiedName!~Admin.WebApi.Tests.Integration"
+> ```
+>
+> 集成测试归入独立的 xunit collection（`service-mantle-integration`），与其它测试类并行、collection 内串行。
+
 ## 测试项目结构
 
 ```
 test/Admin.WebApi.Tests/
 ├── Admin.WebApi.Tests.csproj
+├── Integration/
+│   ├── ServiceMantleIntegration.cs              # Testcontainers PostgreSQL fixture 与共享基类
+│   ├── ServiceMantleHostStartupTests.cs         # 宿主启动 / 服务身份 / 匿名 SPA 契约 / 401
+│   └── ServiceMantleCorrelationTests.cs         # x-correlation-id 回显与安全规则 / 日志 scope
 ├── Models/
 │   └── ModelTests.cs              # DTO 构造函数测试
 ├── Controllers/
