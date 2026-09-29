@@ -61,7 +61,7 @@ Student、Mistake、Homework、Teacher Portal、Assistant Portal 的接口由 Ru
 
 ## 验证
 
-按改动风险运行最小充分验证：
+按改动风险运行最小充分验证（后端 `dotnet test` 包含 `backend/Tests/Integration/` 的 Testcontainers 集成测试，需要本机 Docker；无 Docker 时用 `--filter "FullyQualifiedName!~Admin.WebApi.Tests.Integration"` 运行其余套件）：
 
 ```bash
 cd backend

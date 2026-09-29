@@ -1,9 +1,10 @@
+extern alias LocalRegressionStubs;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using FluentAssertions;
-using Ruoyu.Admin.LocalRegressionStubs;
+using LocalRegressionStubs::Ruoyu.Admin.LocalRegressionStubs;
 using Ruoyu.Admin.ServiceClients;
 using Xunit;
 

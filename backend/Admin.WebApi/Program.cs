@@ -9,6 +9,7 @@ using Ruoyu.Admin.Common.Database;
 using Ruoyu.Admin.Common.Oss;
 using Ruoyu.Admin.Consul;
 using Ruoyu.Admin.ServiceClients;
+using ServiceMantle;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -108,6 +109,20 @@ builder.Services.AddCors(options =>
 });
 
 builder.Services.AddControllers();
+
+// ========== ServiceMantle (service identity, correlation id, base telemetry) ==========
+// ServiceId "ruoyu-admin" is the stable deployment identity (lowercase; deliberately distinct
+// from the Serilog display name "Ruoyu.Admin"). The InstanceId is regenerated on every host
+// build and is NOT a persistent identity: it changes on each restart. No bootstrapFilePath is
+// passed: the bootstrap store stays a lazy singleton and this wiring performs zero disk writes.
+// No serviceVersion is passed: it resolves from the entry assembly informational version.
+// AddOpenTelemetryInstrumentation uses the default options (AspNetCore / HttpClient / Runtime
+// instrumentation) and registers NO exporter.
+builder.Services
+    .AddServiceMantle(
+        ServiceId.Parse("ruoyu-admin"),
+        InstanceId.Parse($"ruoyu-admin-{Guid.NewGuid():N}"))
+    .AddOpenTelemetryInstrumentation();
 
 // IOssService: 保留用于 OSS 审计和运维操作
 // 权限范围：只读（ListObjects, Download, GetPresignedUrl, ObjectExists）+ 有限写（Delete 僵尸清理, CopyObject 迁移辅助）
@@ -220,6 +235,12 @@ using (var scope = app.Services.CreateScope())
     });
 }
 
+// First middleware in the pipeline: everything registered later (CORS, static files / SPA
+// fallback, authentication, the three proxies, and every /api response) runs inside its request
+// scope and receives the x-correlation-id response header, injected via OnStarting before any
+// response starts (static file responses included).
+app.UseServiceMantleCorrelationId();
+
 app.UseCors("AdminWeb");
 
 // ========== Static files & SPA (before authentication) ==========
@@ -292,3 +313,6 @@ app.UseMiddleware<AssistantPortalProxyMiddleware>();
 app.MapControllers();
 
 app.Run();
+
+// Exposes the implicit entry class to WebApplicationFactory<Program> for integration tests.
+public partial class Program { }
