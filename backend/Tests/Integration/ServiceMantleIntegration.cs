@@ -32,9 +32,10 @@ public sealed class PostgreSqlFixture : IAsyncLifetime
         Environment.SetEnvironmentVariable("CONSUL_PORT", "1");
 
         // The password is randomly generated per container; it never leaves the test process
-        // and is not a credential of any real environment.
-        _container = new PostgreSqlBuilder()
-            .WithImage("postgres:16-alpine")
+        // and is not a credential of any real environment. The image is passed via the
+        // constructor because the parameterless PostgreSqlBuilder constructor is obsolete
+        // (CS0618); with the image pinned there, .WithImage is no longer needed.
+        _container = new PostgreSqlBuilder("postgres:16-alpine")
             .WithDatabase("ruoyu_admin")
             .WithUsername("postgres")
             .WithPassword(Guid.NewGuid().ToString("N"))

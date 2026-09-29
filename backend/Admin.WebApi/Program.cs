@@ -110,7 +110,7 @@ builder.Services.AddCors(options =>
 
 builder.Services.AddControllers();
 
-// ========== ServiceMantle (service identity, correlation id, base telemetry) ==========
+// ========== ServiceMantle (service identity, correlation id, base telemetry, health) ==========
 // ServiceId "ruoyu-admin" is the stable deployment identity (lowercase; deliberately distinct
 // from the Serilog display name "Ruoyu.Admin"). The InstanceId is regenerated on every host
 // build and is NOT a persistent identity: it changes on each restart. No bootstrapFilePath is
@@ -118,11 +118,16 @@ builder.Services.AddControllers();
 // No serviceVersion is passed: it resolves from the entry assembly informational version.
 // AddOpenTelemetryInstrumentation uses the default options (AspNetCore / HttpClient / Runtime
 // instrumentation) and registers NO exporter.
+// AddServiceMantleHealthEndpoints registers the health endpoint services ONLY (the actual
+// /health/live, /health/ready and /health routes are mapped below). No IServiceHealthSnapshotSource
+// and no readiness contributor is registered: readiness is honestly fail-closed (503
+// health.probe_failed) until Admin gains a real readiness evidence source.
 builder.Services
     .AddServiceMantle(
         ServiceId.Parse("ruoyu-admin"),
         InstanceId.Parse($"ruoyu-admin-{Guid.NewGuid():N}"))
-    .AddOpenTelemetryInstrumentation();
+    .AddOpenTelemetryInstrumentation()
+    .AddServiceMantleHealthEndpoints();
 
 // IOssService: 保留用于 OSS 审计和运维操作
 // 权限范围：只读（ListObjects, Download, GetPresignedUrl, ObjectExists）+ 有限写（Delete 僵尸清理, CopyObject 迁移辅助）
@@ -245,10 +250,12 @@ app.UseCors("AdminWeb");
 
 // ========== Static files & SPA (before authentication) ==========
 // In mode-1 integrated deployment the same container (port 5020) serves both the backend API
-// and the frontend SPA (from wwwroot). The SPA entry point ("/" and all non-/api routes) MUST
-// be reachable without a JWT, otherwise the browser can never load the login page (deadlock:
-// not logged in -> can't load login page -> can't log in). Authorization middleware and the
-// FallbackPolicy only apply to endpoints mapped later via MapControllers().
+// and the frontend SPA (from wwwroot). The SPA entry point ("/" and all non-/api and non-/health
+// routes) MUST be reachable without a JWT, otherwise the browser can never load the login page
+// (deadlock: not logged in -> can't load login page -> can't log in). Authorization middleware
+// and the FallbackPolicy only apply to endpoints mapped later via MapControllers().
+// "/health" is excluded from the SPA rewrite so the ServiceMantle health endpoints mapped below
+// stay reachable as JSON instead of being swallowed by the SPA index.html fallback.
 var wwwrootPath = Path.Combine(builder.Environment.ContentRootPath, "wwwroot");
 if (Directory.Exists(wwwrootPath))
 {
@@ -280,7 +287,8 @@ if (Directory.Exists(wwwrootPath))
     app.UseStaticFiles();
 
     app.MapWhen(
-        context => !context.Request.Path.StartsWithSegments("/api"),
+        context => !context.Request.Path.StartsWithSegments("/api")
+            && !context.Request.Path.StartsWithSegments("/health"),
         spaApp =>
         {
             spaApp.Use(async (context, next) =>
@@ -296,6 +304,19 @@ else
     // Dev fallback when wwwroot has not been built yet: anonymous health probe text.
     app.MapGet("/", () => "Student Admin WebAPI is running.").AllowAnonymous();
 }
+
+// ========== ServiceMantle health endpoints (anonymous) ==========
+// The library maps GET /health/live (always 200), GET /health/ready and GET /health (readiness
+// alias) WITHOUT any authorization metadata, so the FallbackPolicy (RequireAuthenticatedUser)
+// would 401 them. Mapping them inside an empty route group with AllowAnonymous exempts exactly
+// these endpoints while every /api endpoint keeps requiring a JWT (RuoyuJwtBearerExtensions is
+// untouched). Admin registers no IServiceHealthSnapshotSource yet, so readiness is fail-closed:
+// /health/ready and /health return 503 health.probe_failed; only /health/live reports success.
+// Deployment and monitoring must therefore use /health/live for liveness probes (see
+// docs/development/Deployment.md). Route matching is decoupled from middleware order; the
+// decisive part is the /health exclusion in the SPA fallback predicate above.
+var healthEndpoints = app.MapGroup(string.Empty).AllowAnonymous();
+healthEndpoints.MapServiceMantleHealthEndpoints();
 
 app.UseAuthentication();
 app.UseAuthorization();

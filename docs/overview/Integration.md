@@ -17,8 +17,9 @@
 - **实例身份与部署语义**：`InstanceId` 形如 `ruoyu-admin-<32 位小写 hex>`，**每次宿主构建新生成、重启即换，不是持久身份**，不得用于跨重启的关联或审计主体。
 - **Correlation ID 规则**：入站 `x-correlation-id` 仅在「单值且形状合法」（≤64 字符、ASCII 字母数字加 `.`/`_`/`-`、首字符为字母数字）时逐字回显；缺失、超长、非法字符、逗号拼接或重复头整体丢弃并生成新的 32 位小写 hex 值；请求头永不改写。
 - **日志字段交互**：现有 Serilog enricher 顺序（`FromLogContext` 在前、全局 `WithProperty("ServiceName"/"ServiceVersion"/"InstanceId")` 在后）保持不变，全局字段继续覆盖请求 scope 的同名字段，Loki 字段值与既有查询契约不变；新增的 `CorrelationId` 属性经 `FromLogContext` 进入控制台与 Loki 输出。身份字段统一归属见 #35。
+- **健康端点**（随 #34 落地）：注册链末尾的 `AddServiceMantleHealthEndpoints()` 只注册健康服务，端点由 `app.MapGroup(string.Empty).AllowAnonymous()` + `MapServiceMantleHealthEndpoints()` 映射为 `GET /health/live`（恒 200 `{"status":"live"}`）、`GET /health/ready` 与 `GET /health`（readiness 别名）。Admin 不注册 `IServiceHealthSnapshotSource` 与 readiness 贡献者，ready/别名按库语义诚实 fail-closed：恒 503 `{"status":"not_ready","phase":null,"migrationStatus":null,"databaseStatus":null,"errorCode":"health.probe_failed"}`。端点匿名访问（根组 `AllowAnonymous` 豁免 FallbackPolicy，`RuoyuJwtBearerExtensions` 零改动），SPA 回退谓词排除 `/health` 前缀保证集成部署下端点返回 JSON 而非 index.html；部署与监控当前只应使用 `/health/live`（探测约定见 `docs/development/Deployment.md`）。
 - **Bootstrap 边界**：不传 `bootstrapFilePath`，不注册任何 Bootstrap 数据库提供者、安装或管理能力；启动零磁盘写入。
-- **exporter 接入边界**：OTLP / Prometheus exporter 的接入留给后续任务（#34 健康检查、#35 共享日志迁移按各自正文扩展）。代理出站请求会新增标准 W3C `traceparent`/`tracestate` 传播头（HttpClient instrumentation 默认行为），下游按未知头忽略。
+- **exporter 接入边界**：OTLP / Prometheus exporter 的接入留给后续任务（#35 共享日志迁移按其正文扩展）。代理出站请求会新增标准 W3C `traceparent`/`tracestate` 传播头（HttpClient instrumentation 默认行为），下游按未知头忽略。
 
 ## 集成矩阵
 
