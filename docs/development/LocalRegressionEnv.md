@@ -165,3 +165,7 @@ Student、Homework 任一 `HttpRequestException`，或 Mistake 的异常传播�
 #42 增加默认 false 的 `AdminOidc:UseSessionForAdminApi`。在本地测试显式同时开启 OIDC 与它，配置管理员白名单后，真 Program 测试覆盖管理员会话/native image、401/403、任意 Authorization 拒绝、服务器 token 缺失/严格期限、GET csrf 的 Cookie/header/主体绑定、所有写方法（含 DELETE）、并发与取消、410 密码退役；三个未迁移代理新 Cookie 单独仍 401。专项命令为 `dotnet test backend/Ruoyu.Admin.sln --configuration Release --filter "FullyQualifiedName~SessionApi_"`，使用测试 Authority/虚构令牌、Testcontainers 隔离数据库与 mock OSS，不删除生产对象。单条/批量 OSS 处置在门禁失败时零 Delete，门禁成功后仍逐来源引用复核并对 Student/Homework/Mistake 不可达返回 502；审计 trigger 同样先过门禁。
 
 前端保持旧流程，不能在生产提前整体切换此开关。session 最长 8 小时绝对、state 5 分钟，均为单进程有界内存，重启失效；access token 到期独立拒绝、不按8小时续期。后续代理/关联转发、续接/登出、SPA 切换分别由 #43/#44、#45/#46、#41 推进；旧 `POST /api/auth/logout` 仍用旧 Bearer，只清旧 JWT Cookie，不负责新会话或全局登出。密码 login 在边界 true 为固定 410，false 保持旧行为；匿名 claims/OIDC callback、SPA、health 保持原协议。CSRF 的 Cookie/TLS 与当前授权响应见 [API 契约](../api.md#可选管理员会话与-csrf42)。
+
+### Identity 代理服务端会话（#43）
+
+`AdminOidc:UseSessionForIdentityProxy` 默认 false，true 必须同时启用 `Enabled` 和 `UseSessionForAdminApi`。全 `/api/identity` 前缀（大小写、根和尾斜线）在认证/授权前经过共享管理员与 CSRF 边界。拒绝任何入站 Authorization；只转发服务器票据内有效 access token，剥离浏览器 Cookie、Host、X-CSRF-TOKEN 与伪造 gateway 头后注入本服务 AppId/AppSecret。下游 Set-Cookie 不传给浏览器；401/403/结构化503和 Retry-After 原样，网络失败502，取消传递且不重放。默认 legacy 和 AppSecret 剥离仍保持；其余门户继续各自原模式。生产 audience/角色注册与 SPA 激活仍由 #41/IKJ8MO 验证。专项 `FullyQualifiedName~IdentitySession_` 使用 fake HTTP 与隔离数据库，无生产 OSS 删除。
