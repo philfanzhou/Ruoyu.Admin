@@ -2,6 +2,7 @@ using System.Data.Common;
 using Admin.WebApi;
 using Admin.WebApi.Authentication;
 using Admin.WebApi.Controllers;
+using Admin.WebApi.Database;
 using Admin.WebApi.Health;
 using Admin.WebApi.Models;
 using Admin.WebApi.Persistence;
@@ -9,12 +10,14 @@ using Admin.WebApi.Services;
 using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.EntityFrameworkCore;
 using Ruoyu.Admin.Common.Authentication;
-using Ruoyu.Admin.Common.Database;
 using Ruoyu.Admin.Common.Oss;
 using Ruoyu.Admin.Consul;
 using Ruoyu.Admin.ServiceClients;
 using ServiceMantle;
+using ServiceMantle.Bootstrap;
+using ServiceMantle.Database.PostgreSql.Migration;
 using ServiceMantle.Health;
+using ServiceMantle.Migration;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -157,10 +160,27 @@ builder.Services
         StatusCodes.Status502BadGateway,
         "downstream.unavailable",
         "A downstream service request failed.")
-    .AddSecurityResponseHeaders();
+    .AddSecurityResponseHeaders()
+    // ========== Database migration orchestration (issue #57) ==========
+    // The PostgreSQL session advisory lock that serializes multi-instance startup: it covers the
+    // orchestrator's initial inspection, the legacy takeover, the EF Core migration execution,
+    // and the final inspection (never only the Migrate call). The consuming service's executor
+    // (AuditMigrationExecutor) plus the scoped orchestrator: each scope resolves its own
+    // executor instance; the lock/state machine belongs to the shared orchestrator and is never
+    // reimplemented locally.
+    .AddMigrationLockProvider<PostgreSqlMigrationLockProvider>()
+    .AddDatabaseMigration<AuditMigrationExecutor>();
+// The orchestrator activates the executor through DI; this registration keeps the executor's
+// diagnostic logging (baseline applied / takeover / refusal reasons) on a named category logger
+// instead of silently degrading to the null logger. Without it the optional ILogger constructor
+// parameter defaults to null.
+builder.Services.AddSingleton<Microsoft.Extensions.Logging.ILogger>(
+    serviceProvider => serviceProvider.GetRequiredService<Microsoft.Extensions.Logging.ILoggerFactory>()
+        .CreateLogger(nameof(AuditMigrationExecutor)));
 
 // Readiness evidence for the snapshot source: a process-local one-way receipt that is marked
-// only after DatabaseInitializer returns below, plus a read-only zero-row probe of the
+// only after the startup migration orchestration below reports success, plus a read-only
+// zero-row probe of the
 // EF-mapped tables. Before the initializer completes (or after a failed initialization),
 // readiness fails closed with ruoyu-admin.startup_incomplete and never claims Succeeded.
 builder.Services.AddSingleton<AdminStartupReceipt>();
@@ -242,40 +262,66 @@ app.Logger.LogInformation("Downstream: Identity={Identity}, Teacher Portal={Teac
 
 using (var scope = app.Services.CreateScope())
 {
-    var db = scope.ServiceProvider.GetRequiredService<AuditDbContext>();
     var loggerFactory = scope.ServiceProvider.GetRequiredService<ILoggerFactory>();
-    await DatabaseInitializer.InitializeAsync(db, loggerFactory, tableName => tableName switch
+    // Stage 1+2 — deployment validation and target preparation (issue #57): observe the
+    // resolved connection string for server reachability/identity; an existing database is
+    // used as-is, a verifiably missing one is created only when Database:AllowCreate
+    // explicitly permits (default: refuse with RUOYU_ADMIN_DB_CREATION_NOT_ALLOWED, zero
+    // writes), and unreachable/identity failures are refused without a creation fallback.
+    // Stage 3 — the shared migration orchestrator acquires the real PostgreSQL session
+    // advisory lock for this service id and covers the initial inspection, the verified
+    // legacy takeover, the EF Core migration execution, and the final inspection under that
+    // single authority; success is reported only after the held-lock final inspection passed,
+    // which is also the only point where the startup receipt may be marked. The lock acquire
+    // budget is fixed at 30 seconds; it bounds waiting for the lock only, never the execution
+    // itself. All stages observe host shutdown through the same token. Any failure throws and
+    // stops the host before it listens: the process exits non-zero and the logs carry the
+    // ServiceMantle safe error code only (migration.* / RUOYU_ADMIN_*), never a connection
+    // string or driver detail.
+    if (string.IsNullOrWhiteSpace(connectionString))
     {
-        "OssAuditRuns" => @"
-            CREATE TABLE IF NOT EXISTS ""OssAuditRuns"" (
-                ""Id"" bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-                ""StartedAt"" bigint NOT NULL,
-                ""CompletedAt"" bigint NULL,
-                ""Status"" integer NOT NULL DEFAULT 0,
-                ""NewZombieCount"" integer NOT NULL DEFAULT 0,
-                ""TriggerType"" text NOT NULL DEFAULT 'scheduled',
-                ""ErrorMessage"" text NULL
-            );
-            CREATE INDEX IF NOT EXISTS ""IX_OssAuditRuns_StartedAt"" ON ""OssAuditRuns"" (""StartedAt"");",
-        "OssAuditRecords" => @"
-            CREATE TABLE IF NOT EXISTS ""OssAuditRecords"" (
-                ""Id"" bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-                ""ObjectPath"" text NOT NULL,
-                ""Bucket"" text NOT NULL,
-                ""Size"" bigint NOT NULL DEFAULT 0,
-                ""LastModified"" bigint NOT NULL DEFAULT 0,
-                ""Status"" integer NOT NULL DEFAULT 0,
-                ""CreatedAt"" bigint NOT NULL DEFAULT 0,
-                ""ResolvedAt"" bigint NULL,
-                ""Note"" text NULL
-            );
-            CREATE UNIQUE INDEX IF NOT EXISTS ""IX_OssAuditRecords_ObjectPath"" ON ""OssAuditRecords"" (""ObjectPath"");
-            CREATE INDEX IF NOT EXISTS ""IX_OssAuditRecords_Status"" ON ""OssAuditRecords"" (""Status"");
-            CREATE INDEX IF NOT EXISTS ""IX_OssAuditRecords_Bucket"" ON ""OssAuditRecords"" (""Bucket"");
-            CREATE INDEX IF NOT EXISTS ""IX_OssAuditRecords_CreatedAt"" ON ""OssAuditRecords"" (""CreatedAt"");",
-        _ => null
-    });
-    // The one-way startup receipt: only a successful initializer return in THIS process may
+        throw new InvalidOperationException(
+            "No AuditDb connection string could be resolved from PostgreSql:*/Database:Name or " +
+            "ConnectionStrings:AuditDb; refusing to start.");
+    }
+
+    var applicationStopping = app.Services
+        .GetRequiredService<IHostApplicationLifetime>()
+        .ApplicationStopping;
+    await AuditDatabaseTargetPreparer.PrepareAsync(
+        builder.Configuration,
+        connectionString,
+        app.Logger,
+        applicationStopping);
+
+    var migrationLogger = loggerFactory.CreateLogger("DatabaseMigration");
+    var orchestrator = scope.ServiceProvider.GetRequiredService<DatabaseMigrationOrchestrator>();
+    var migrationTarget = new BootstrapDatabaseConfiguration(
+        WellKnownDatabaseProviderIds.PostgreSql,
+        serverVersion: null,
+        connectionString);
+    migrationLogger.LogInformation(
+        "Orchestrating database migration under the PostgreSQL advisory lock (30 s acquire budget)");
+    var migration = await orchestrator.OrchestrateMigrationAsync(
+        ServiceId.Parse("ruoyu-admin"),
+        migrationTarget,
+        TimeSpan.FromSeconds(30),
+        applicationStopping);
+    if (!migration.Succeeded)
+    {
+        migrationLogger.LogError(
+            "Database migration orchestration failed: {ErrorCode}", migration.ErrorCode);
+        throw new InvalidOperationException(
+            $"Database migration orchestration failed (error {migration.ErrorCode}): " +
+            $"{migration.ErrorMessage}. Refusing to start; the shared orchestrator released " +
+            "the lock before this refusal.");
+    }
+
+    migrationLogger.LogInformation(
+        "Database migration orchestration completed (executor was called: {ExecutorWasCalled})",
+        migration.ExecutorWasCalled);
+
+    // The one-way startup receipt: only a successful orchestration return in THIS process may
     // ever let readiness publish migrationStatus=Succeeded (see AdminHealthSnapshotSource).
     scope.ServiceProvider.GetRequiredService<AdminStartupReceipt>().MarkInitializationCompleted();
 }
@@ -381,7 +427,7 @@ else
 // would 401 them. Mapping them inside an empty route group with AllowAnonymous exempts exactly
 // these endpoints while every /api endpoint keeps requiring a JWT (RuoyuJwtBearerExtensions is
 // untouched). Readiness projects the consumer-owned AdminHealthSnapshotSource: ready (200) only
-// for Completed + Succeeded + Reachable, i.e. this process finished DatabaseInitializer AND a
+// for Completed + Succeeded + Reachable, i.e. this process finished its migration orchestration AND a
 // bounded read-only AuditDb probe of the mapped tables succeeded; every failure answers 503
 // with a fixed safe errorCode and never a connection string, host, or exception text.
 // Downstream services (Student/Mistake/Identity/...) are deliberately NOT part of readiness to

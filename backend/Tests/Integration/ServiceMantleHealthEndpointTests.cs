@@ -95,7 +95,7 @@ public sealed partial class ServiceMantleHealthEndpointTests : ServiceMantleInte
     public async Task ReadinessEndpoints_UnmarkedStartupReceipt_FailClosed()
     {
         // The real snapshot source over a fresh, unmarked receipt models a host whose
-        // DatabaseInitializer never completed (failed or still starting): readiness must never
+        // migration orchestration never completed (failed or still starting): readiness must never
         // claim Succeeded/Reachable, and the fixed safe code carries no exception content.
         using var factory = CreateFactory(configureTestServices: services =>
         {

@@ -5,14 +5,14 @@ namespace Admin.WebApi.Health;
 /// </summary>
 /// <remarks>
 /// Admin keeps no installation or migration-state tables in <c>ruoyu_admin</c>: the only
-/// authoritative fact a readiness probe may rely on before touching PostgreSQL is whether
-/// <c>DatabaseInitializer.InitializeAsync</c> returned successfully in this process. The
-/// receipt starts as "not completed" and can only move forward, exactly once, when the
-/// initializer returns. It never fabricates an installation record and never borrows the
-/// ServiceMantle Bootstrap phase resolver. A successful initializer return is NOT proof of
-/// schema completeness (the shared initializer swallows some ALTER failures), which is why
-/// <see cref="AdminHealthSnapshotSource"/> still runs its read-only schema probe before
-/// publishing readiness.
+/// authoritative fact a readiness probe may rely on before touching PostgreSQL is whether the
+/// startup database migration orchestration (target preparation + the shared ServiceMantle
+/// orchestrator around <c>AuditMigrationExecutor</c>) completed successfully in this process.
+/// The receipt starts as "not completed" and can only move forward, exactly once, when the
+/// orchestration reports success. It never fabricates an installation record and never borrows
+/// the ServiceMantle Bootstrap phase resolver. A successful orchestration return is not a
+/// substitute for live verification, which is why <see cref="AdminHealthSnapshotSource"/> still
+/// runs its read-only schema probe before publishing readiness.
 /// </remarks>
 public sealed class AdminStartupReceipt
 {
