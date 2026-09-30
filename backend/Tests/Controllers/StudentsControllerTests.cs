@@ -3,7 +3,6 @@ using Admin.WebApi.Controllers;
 using Admin.WebApi.Models;
 using FluentAssertions;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Logging;
 using Moq;
 using Ruoyu.Admin.ServiceClients;
 using StudentHttpDto = Ruoyu.Admin.ServiceClients.StudentDto;
@@ -17,18 +16,12 @@ namespace Admin.WebApi.Tests.Controllers;
 public class StudentsControllerTests
 {
     private readonly Mock<IStudentHttpClient> _studentClient;
-    private readonly Mock<ILogger<StudentsController>> _logger;
     private readonly StudentsController _controller;
 
     public StudentsControllerTests()
     {
         _studentClient = new Mock<IStudentHttpClient>();
-        _logger = new Mock<ILogger<StudentsController>>();
-
-        _controller = new StudentsController(
-            _studentClient.Object,
-            _logger.Object
-        );
+        _controller = new StudentsController(_studentClient.Object);
     }
 
     // ============================================================
@@ -88,9 +81,11 @@ public class StudentsControllerTests
             .Setup(c => c.ListStudentsAsync(It.IsAny<int?>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new HttpRequestException("Invalid page", null, HttpStatusCode.BadRequest));
 
-        var result = await _controller.ListStudents(null, null, null, null);
-
-        result.Should().BeOfType<BadRequestObjectResult>();
+        // #56: the downstream relay catch is gone; the exception now reaches the Problem
+        // Details boundary (asserted end-to-end in ServiceMantleProblemDetailsTests).
+        var exception = await Assert.ThrowsAsync<HttpRequestException>(
+            () => _controller.ListStudents(null, null, null, null));
+        Assert.Equal(HttpStatusCode.BadRequest, exception.StatusCode);
     }
 
     // ============================================================
@@ -194,31 +189,23 @@ public class StudentsControllerTests
         ((Admin.WebApi.Models.StudentDto)typed).Name.Should().Be("张三");
     }
 
-    [Fact]
-    public async Task GetStudent_NotFound_Returns404()
+    // Downstream failures no longer relay as 404/400 with the downstream message: the
+    // HttpRequestException propagates to the ServiceMantle Problem Details boundary
+    // (502 downstream.unavailable). That conversion is asserted end-to-end in
+    // ServiceMantleProblemDetailsTests; here we lock that the exception escapes the action.
+    [Theory]
+    [InlineData(HttpStatusCode.NotFound)]
+    [InlineData(HttpStatusCode.BadRequest)]
+    public async Task GetStudent_DownstreamFailure_PropagatesToBoundary(HttpStatusCode status)
     {
         var studentId = Guid.NewGuid();
 
         _studentClient
             .Setup(c => c.GetStudentAsync(studentId.ToString(), It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new HttpRequestException("Student not found", null, HttpStatusCode.NotFound));
+            .ThrowsAsync(new HttpRequestException("downstream-secret-text", null, status));
 
-        var result = await _controller.GetStudent(studentId);
-
-        result.Should().BeOfType<NotFoundObjectResult>();
-    }
-
-    [Fact]
-    public async Task GetStudent_InvalidArgument_ReturnsBadRequest()
-    {
-        var studentId = Guid.NewGuid();
-
-        _studentClient
-            .Setup(c => c.GetStudentAsync(studentId.ToString(), It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new HttpRequestException("Invalid ID", null, HttpStatusCode.BadRequest));
-
-        var result = await _controller.GetStudent(studentId);
-
-        result.Should().BeOfType<BadRequestObjectResult>();
+        var exception = await Assert.ThrowsAsync<HttpRequestException>(
+            () => _controller.GetStudent(studentId));
+        Assert.Equal(status, exception.StatusCode);
     }
 }

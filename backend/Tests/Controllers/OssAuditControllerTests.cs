@@ -193,16 +193,19 @@ public class OssAuditControllerTests
     }
 
     [Fact]
-    public async Task ResolveRecord_DeleteThrows_Returns500AndKeepsRecord()
+    public async Task ResolveRecord_DeleteThrows_PropagatesAndKeepsRecord()
     {
         var f = new Fixture();
         f.Oss.Setup(s => s.DeleteAsync("uploads/orphan.jpg"))
             .ThrowsAsync(new InvalidOperationException("s3 rejected"));
         var id = await f.SeedRecordAsync("uploads/orphan.jpg");
 
-        var result = await f.Controller.ResolveRecord(id);
-
-        AssertStatus(result, 500, null);
+        // #56: the ex.Message catch is gone; the exception reaches the ServiceMantle Problem
+        // Details boundary (500 http.internal_server_error, asserted end-to-end in
+        // ServiceMantleProblemDetailsTests). The audit trail must still be kept.
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => f.Controller.ResolveRecord(id));
+        Assert.Equal("s3 rejected", exception.Message);
         (await f.Db.OssAuditRecords.AnyAsync(r => r.Id == id))
             .Should().BeTrue("a failed delete must not drop the audit trail");
     }

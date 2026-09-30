@@ -186,15 +186,10 @@ public partial class OssAuditController : ControllerBase
             }
         }
 
-        try
-        {
-            await _ossService.DeleteAsync(record.ObjectPath);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to delete OSS object");
-            return StatusCode(500, new ErrorResponse($"Failed to delete object: {ex.Message}"));
-        }
+        // A failing OSS delete propagates to the ServiceMantle Problem Details boundary
+        // (500 http.internal_server_error, fixed fields, no exception text). The record stays
+        // in place: it is only removed after a successful delete + SaveChanges below.
+        await _ossService.DeleteAsync(record.ObjectPath);
 
         _dbContext.OssAuditRecords.Remove(record);
         await _dbContext.SaveChangesAsync();
@@ -287,9 +282,13 @@ public partial class OssAuditController : ControllerBase
                 _dbContext.OssAuditRecords.Remove(record);
                 resolvedCount++;
             }
-            catch (Exception ex)
+            catch
             {
-                errors.Add($"{record.ObjectPath}: {ex.Message}");
+                // Batch semantics: one record's failure must not abort the batch (earlier
+                // deletes already happened and SaveChanges below persists them), so the
+                // failure is reported per-item with a FIXED safe text — never the exception
+                // message, which could leak storage internals.
+                errors.Add($"{record.ObjectPath}: 删除失败，已跳过");
             }
         }
 
