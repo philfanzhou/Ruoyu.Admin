@@ -3,6 +3,7 @@ namespace Admin.WebApi.Authentication;
 internal sealed record AdminOidcSettings(bool Enabled, string Authority, string ClientId, string ClientSecret,
     string RedirectUri, bool InsecureLoopback, TimeSpan ClockSkew)
 {
+    internal bool UseSessionForAdminApi { get; init; }
     public const string SessionScheme = "AdminSession";
     public const string OidcScheme = "AdminOidc";
     public const string CallbackPath = "/api/auth/oidc/callback";
@@ -10,7 +11,12 @@ internal sealed record AdminOidcSettings(bool Enabled, string Authority, string 
 
     internal static AdminOidcSettings Read(IConfiguration config, IHostEnvironment environment)
     {
-        if (!config.GetValue<bool>("AdminOidc:Enabled")) return new(false, "", "", "", "", false, TimeSpan.Zero);
+        var useSession = config.GetValue<bool>("AdminOidc:UseSessionForAdminApi");
+        if (!config.GetValue<bool>("AdminOidc:Enabled"))
+        {
+            if (useSession) throw new InvalidOperationException("AdminOidc:UseSessionForAdminApi requires AdminOidc:Enabled");
+            return new(false, "", "", "", "", false, TimeSpan.Zero);
+        }
         var dev = environment.IsDevelopment() || environment.IsEnvironment("Testing");
         var redirect = config["AdminOidc:RedirectUri"] ?? "";
         var authority = (config["IdentityService:Authority"] ?? "").TrimEnd('/');
@@ -24,7 +30,8 @@ internal sealed record AdminOidcSettings(bool Enabled, string Authority, string 
         if (string.IsNullOrWhiteSpace(secret)) throw new InvalidOperationException("IdentityService:AppSecret");
         var skew = config.GetValue<int?>("IdentityService:ClockSkewSeconds") ?? 30;
         if (skew is < 0 or > 300) throw new InvalidOperationException("IdentityService:ClockSkewSeconds");
-        return new(true, authority, clientId, secret, redirect, redirectUri.Scheme == "http", TimeSpan.FromSeconds(skew));
+        return new(true, authority, clientId, secret, redirect, redirectUri.Scheme == "http", TimeSpan.FromSeconds(skew))
+            { UseSessionForAdminApi = useSession };
     }
 
     internal static bool IsSafeUri(string value, bool allowLoopback, out Uri? uri)
