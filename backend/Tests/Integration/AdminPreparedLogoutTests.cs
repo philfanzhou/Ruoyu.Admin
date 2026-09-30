@@ -82,7 +82,7 @@ public sealed partial class AdminOidcTests
         await factory.Services.GetRequiredService<MemoryTicketStore>().RenewAsync(key, ticket);
         if (removedAdmin) admins.CurrentValue.AdminUserIds.Clear();
         if (expired) time.Advance(TimeSpan.FromMinutes(6)); // Stored ID token is now beyond its original exp, but still a valid logout hint.
-        if (expired || removedAdmin) await Rejected(await Api(client, "/api/admin/session-probe", cookie), removedAdmin ? 403 : 401, removedAdmin ? "forbidden" : "unauthorized");
+        if (expired || removedAdmin) await Rejected(await Api(client, "/api/admin/session-probe", cookie), removedAdmin ? 403 : 401, removedAdmin ? "forbidden" : "reauthentication_required");
         upstream.BeforeSend = async () => Assert.Null(await factory.Services.GetRequiredService<MemoryTicketStore>().RetrieveAsync(key));
         var csrf = await LogoutCsrf(client, cookie);
         using var response = await PostLogout(client, cookie, csrf);

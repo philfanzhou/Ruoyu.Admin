@@ -73,7 +73,7 @@ public sealed partial class AdminOidcTests
             var (key, ticket) = await Stored(factory, cookie!);
             ticket.Properties.UpdateTokenValue("expires_at", DateTimeOffset.UtcNow.AddHours(-1).ToString("o"));
             await factory.Services.GetRequiredService<MemoryTicketStore>().RenewAsync(key, ticket);
-            await Rejected(await Api(client, path, cookie), 401, "unauthorized");
+            await Rejected(await Api(client, path, cookie), 401, "reauthentication_required");
             Assert.Empty(student.Invocations); Assert.Empty(teacher.Requests); Assert.Empty(assistant.Requests);
         }
     }

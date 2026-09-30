@@ -63,7 +63,8 @@ internal static class AdminOidcRegistration
         if (settings.UseSessionForAdminApi)
         {
             authentication.AddPolicyScheme("AdminApiAuthentication", null, options =>
-                options.ForwardDefaultSelector = context => (AdminSessionBoundary.IsSessionPath(context.Request.Path, settings)
+                options.ForwardDefaultSelector = context => (AdminSessionBoundary.IsAuthPath(context.Request.Path, "/api/auth/session")
+                    || AdminSessionBoundary.IsSessionPath(context.Request.Path, settings)
                     || settings.UseSessionForLogout && (AdminSessionBoundary.IsAuthPath(context.Request.Path, "/api/auth/logout")
                         || AdminSessionBoundary.IsAuthPath(context.Request.Path, "/api/auth/logout/csrf")))
                     ? AdminOidcSettings.SessionScheme : "Bearer");
