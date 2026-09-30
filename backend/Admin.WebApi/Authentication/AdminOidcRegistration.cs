@@ -7,6 +7,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Microsoft.IdentityModel.Tokens;
 using OpenTelemetry.Instrumentation.AspNetCore;
+using OpenTelemetry.Instrumentation.Http;
 
 namespace Admin.WebApi.Authentication;
 
@@ -19,6 +20,18 @@ internal static class AdminOidcRegistration
         services.TryAddSingleton(TimeProvider.System);
         services.AddSingleton<CompactStateDataFormat>();
         services.AddSingleton<MemoryTicketStore>();
+        services.AddSingleton<AdminLogoutStateStore>();
+        services.AddScoped<AdminPreparedLogout>();
+        services.AddHttpClient(AdminPreparedLogout.ClientName, client => client.Timeout = TimeSpan.FromSeconds(10))
+            .RemoveAllLoggers()
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+            { AllowAutoRedirect = false, UseCookies = false, ActivityHeadersPropagator = null });
+        services.Configure<HttpClientTraceInstrumentationOptions>(options =>
+        {
+            var prior = options.FilterHttpRequestMessage;
+            options.FilterHttpRequestMessage = request => request.RequestUri?.AbsolutePath != "/oauth2/logout/requests"
+                && (prior?.Invoke(request) ?? true);
+        });
         services.AddHostedService<OidcStoreCleanup>();
         services.AddScoped<AdminSessionAccessor>();
         services.AddScoped<AdminSessionBoundary>();
@@ -50,7 +63,9 @@ internal static class AdminOidcRegistration
         if (settings.UseSessionForAdminApi)
         {
             authentication.AddPolicyScheme("AdminApiAuthentication", null, options =>
-                options.ForwardDefaultSelector = context => AdminSessionBoundary.IsSessionPath(context.Request.Path)
+                options.ForwardDefaultSelector = context => (AdminSessionBoundary.IsSessionPath(context.Request.Path)
+                    || settings.UseSessionForLogout && (AdminSessionBoundary.IsAuthPath(context.Request.Path, "/api/auth/logout")
+                        || AdminSessionBoundary.IsAuthPath(context.Request.Path, "/api/auth/logout/csrf")))
                     ? AdminOidcSettings.SessionScheme : "Bearer");
             services.Configure<AuthenticationOptions>(options => options.DefaultScheme = "AdminApiAuthentication");
         }

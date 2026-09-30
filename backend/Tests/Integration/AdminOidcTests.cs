@@ -33,7 +33,7 @@ public sealed partial class AdminOidcTests(PostgreSqlFixture database) : Service
 {
     private WebApplicationFactory<Program> OidcFactory(OidcTestAuthority authority, ManualOidcTime? time = null,
         Action<IServiceCollection>? configure = null, string? root = null, IDataProtectionProvider? protection = null, string? lokiUri = null,
-        bool sessionApi = false)
+        bool sessionApi = false, bool sessionLogout = false)
         => CreateFactory(root, services =>
         {
             services.Configure<OpenIdConnectOptions>(AdminOidcSettings.OidcScheme, options =>
@@ -44,7 +44,9 @@ public sealed partial class AdminOidcTests(PostgreSqlFixture database) : Service
         }, new Dictionary<string, string?>
         {
             ["AdminOidc:Enabled"] = "true", ["AdminOidc:RedirectUri"] = OidcTestAuthority.RedirectUri,
-            ["AdminOidc:UseSessionForAdminApi"] = sessionApi.ToString(), ["AdminPortal:AdminUserIds:0"] = "FAKE-SUBJECT",
+            ["AdminOidc:UseSessionForAdminApi"] = sessionApi.ToString(),
+            ["AdminOidc:UseSessionForLogout"] = sessionLogout.ToString(),
+            ["AdminOidc:PostLogoutRedirectUri"] = "https://admin.example.test/api/auth/oidc/logout-callback", ["AdminPortal:AdminUserIds:0"] = "FAKE-SUBJECT",
             ["IdentityService:Authority"] = OidcTestAuthority.Issuer, ["IdentityService:Issuer"] = OidcTestAuthority.Issuer,
             ["IdentityService:AppId"] = OidcTestAuthority.ClientId, ["IdentityService:AppSecret"] = OidcTestAuthority.Secret,
             ["IdentityService:RequireHttpsMetadata"] = "true", ["Loki:Uri"] = lokiUri ?? ""
