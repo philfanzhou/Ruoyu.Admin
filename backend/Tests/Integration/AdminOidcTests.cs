@@ -437,7 +437,9 @@ public sealed partial class AdminOidcTests(PostgreSqlFixture database) : Service
                 Assert.Equal("{\"error\":\"oidc_disabled\"}", await response.Content.ReadAsStringAsync());
             }
             foreach (var path in new[] { "/", "/students", "/health/live" }) Assert.Equal(HttpStatusCode.OK, (await client.GetAsync(path)).StatusCode);
-            Assert.Equal(HttpStatusCode.ServiceUnavailable, (await client.GetAsync("/health/ready")).StatusCode);
+            // Readiness now reports the real evidence source (#54): the fixture database is
+            // reachable and this process completed its initialization, so ready answers 200.
+            Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/health/ready")).StatusCode);
             Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync(ProtectedApiRoute)).StatusCode);
             var responseCallback = await client.PostAsJsonAsync("/api/auth/callback", new { userId = "fake-user" });
             Assert.Equal(HttpStatusCode.OK, responseCallback.StatusCode);
