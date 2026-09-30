@@ -170,6 +170,10 @@ Student、Homework 任一 `HttpRequestException`，或 Mistake 的异常传播�
 
 在 `UseSessionForAdminApi=true` 模式，有效管理员票据且严格 `expires_at` 到期时，业务门禁为 `401 {"error":"reauthentication_required"}`，零下游/OSS 删除，不清服务器 ID token、不刷新或重放写请求。`GET /api/auth/session` 为 `{authenticated,displayName,requiresReauthentication}`：有效 token true/false，仅合法 token 到期 false/true（保留显示名），匿名/撤票/8h失效/缺token/坏期限 false/false、显示名 null。当前非管理员403优先；任意 Authorization401。默认legacy状态JSON保持原两字段。浏览器仅显式进入 `/api/auth/oidc/start?returnUrl=...` 受控授权；上游会话可复用立即回跳，否则显示托管登录；取消/失败保持既有固定结果，BFF不自动挑战。fake测试验证两种回跳时序与deadline前/精确/后/8h、并发，不能证明生产SignaCore时限；真实联调仍归 #41/IKJ8MO。
 
+### 门户服务端凭据（#44）
+
+`AdminOidc:UseSessionForPortalProxies` 默认 false，启用需同时 `Enabled` 与 `UseSessionForAdminApi`。Teacher/Assistant 全代理前缀在认证/授权前共用管理员/CSRF 门禁，合法 access token 到期返回 `401 reauthentication_required` 且零出站，仅发送服务器 Bearer，剥离浏览器 Cookie、Host、CSRF 与 gateway 头、下游 Set-Cookie。保留 admin/auth/其他路径映射、query/body、503/502 和下游401/403；取消传递且不重放。关联查询只跟随 `UseSessionForAdminApi`：门户开关关闭也使用服务器 token，失败门禁在 Student/门户调用前拒绝；默认API关闭保持legacy Bearer。业务单侧失败/畸形响应继续该侧空列表，另一侧正常，此聚合不保证失败可见性或两门户一致。生产激活仍受 #41/IKJ8MO 门禁。专项 `PortalSession_`、`AssociationsSession_` 在隔离数据库/fake HTTP 上运行，不触生产。
+
 ### Identity 代理服务端会话（#43）
 
-`AdminOidc:UseSessionForIdentityProxy` 默认 false，true 必须同时启用 `Enabled` 和 `UseSessionForAdminApi`。全 `/api/identity` 前缀（大小写、根和尾斜线）在认证/授权前经过共享管理员与 CSRF 边界。拒绝任何入站 Authorization；合法 access token 到期时返回 `401 reauthentication_required` 且零出站；只转发服务器票据内有效 access token，剥离浏览器 Cookie、Host、X-CSRF-TOKEN 与伪造 gateway 头后注入本服务 AppId/AppSecret。下游 Set-Cookie 不传给浏览器；401/403/结构化503和 Retry-After 原样，网络失败502，取消传递且不重放。默认 legacy 和 AppSecret 剥离仍保持；其余门户继续各自原模式。生产 audience/角色注册与 SPA 激活仍由 #41/IKJ8MO 验证。专项 `FullyQualifiedName~IdentitySession_` 使用 fake HTTP 与隔离数据库，无生产 OSS 删除。
+`AdminOidc:UseSessionForIdentityProxy` 默认 false，true 必须同时启用 `Enabled` 和 `UseSessionForAdminApi`。全 `/api/identity` 前缀（大小写、根和尾斜线）在认证/授权前经过共享管理员与 CSRF 边界。拒绝任何入站 Authorization；合法 access token 到期时返回 `401 reauthentication_required` 且零出站；只转发服务器票据内有效 access token，剥离浏览器 Cookie、Host、X-CSRF-TOKEN 与伪造 gateway 头后注入本服务 AppId/AppSecret。下游 Set-Cookie 不传给浏览器；401/403/结构化503和 Retry-After 原样，网络失败502，取消传递且不重放。默认 legacy 和 AppSecret 剥离仍保持；门户由独立的 `UseSessionForPortalProxies` 开关控制。生产 audience/角色注册与 SPA 激活仍由 #41/IKJ8MO 验证。专项 `FullyQualifiedName~IdentitySession_` 使用 fake HTTP 与隔离数据库，无生产 OSS 删除。
