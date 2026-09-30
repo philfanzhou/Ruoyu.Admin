@@ -1,10 +1,12 @@
 using System.Data.Common;
 using Admin.WebApi;
 using Admin.WebApi.Authentication;
+using Admin.WebApi.Controllers;
 using Admin.WebApi.Health;
 using Admin.WebApi.Models;
 using Admin.WebApi.Persistence;
 using Admin.WebApi.Services;
+using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.EntityFrameworkCore;
 using Ruoyu.Admin.Common.Authentication;
 using Ruoyu.Admin.Common.Database;
@@ -128,6 +130,11 @@ builder.Services.AddControllers();
 // maps to the library's fixed health.probe_timeout). Readiness evidence comes from the
 // consumer-owned AdminHealthSnapshotSource below; no readiness contributor is registered
 // (downstream services deliberately stay OUT of readiness to avoid cascading removal).
+// AddExceptionMapping pins the single exact type downstream failures surface as: every
+// HttpRequestException escaping a JSON controller action answers 502 problem+json with the
+// fixed code downstream.unavailable and never the downstream message. Per-status relays
+// (404/400 passthrough from downstream bodies) were deliberately removed with the ex.Message
+// catches; per-status preservation would need conditional mappings (ServiceMantle.Web 0.2.1+).
 builder.Services
     .AddServiceMantle(
         ServiceId.Parse("ruoyu-admin"),
@@ -136,7 +143,11 @@ builder.Services
     .AddServiceMantleHealthEndpoints(options =>
     {
         options.ProbeTimeout = TimeSpan.FromSeconds(3);
-    });
+    })
+    .AddExceptionMapping<HttpRequestException>(
+        StatusCodes.Status502BadGateway,
+        "downstream.unavailable",
+        "A downstream service request failed.");
 
 // Readiness evidence for the snapshot source: a process-local one-way receipt that is marked
 // only after DatabaseInitializer returns below, plus a read-only zero-row probe of the
@@ -264,6 +275,24 @@ using (var scope = app.Services.CreateScope())
 // scope and receives the x-correlation-id response header, injected via OnStarting before any
 // response starts (static file responses included).
 app.UseServiceMantleCorrelationId();
+
+// ========== Safe Problem Details boundary (JSON controller endpoints only) ==========
+// Unhandled exceptions escaping a JSON controller action are converted to deterministic
+// application/problem+json (type/title/status/correlationId/errorCode; mapped
+// HttpRequestException -> 502 downstream.unavailable, everything else -> the library's fixed
+// 500 http.internal_server_error) while the response has not started; exception messages,
+// stacks and Data never reach the response. The branch predicate selects exactly the MVC
+// controller actions except ImageController: the SPA, static files, health endpoints and the
+// marker-only auth routes are minimal-API endpoints without ControllerActionDescriptor, the
+// three proxy paths have no routed endpoint at all, and the image surface keeps its own fixed
+// error responses. Route selection already happened (implicit UseRouting runs first), so the
+// predicate sees the endpoint. A UseWhen branch builds a separate IApplicationBuilder, which
+// keeps the library's PipelineComposition state of the main pipeline untouched. Caller
+// cancellation propagates; a response that already started is left exactly as sent.
+app.UseWhen(
+    context => context.GetEndpoint()?.Metadata.GetMetadata<ControllerActionDescriptor>()
+            is { ControllerTypeInfo: { } controllerType } && controllerType != typeof(ImageController),
+    branch => branch.UseServiceMantleProblemDetails());
 
 app.UseCors("AdminWeb");
 

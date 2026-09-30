@@ -1,5 +1,30 @@
 # 错误处理规范
 
+## 异常边界：ServiceMantle Problem Details（#56 起）
+
+未处理异常不再由控制器自行拼接错误文本。JSON 控制器端点（`UseWhen` 分支按「MVC 控制器动作且非 `ImageController`」选定）中逃出的异常由 `UseServiceMantleProblemDetails()` 统一转换为 `application/problem+json`：
+
+```json
+{
+  "type": "urn:servicemantle:error:downstream.unavailable",
+  "title": "A downstream service request failed.",
+  "status": 502,
+  "correlationId": "32位小写hex，与响应头 x-correlation-id 相同",
+  "errorCode": "downstream.unavailable"
+}
+```
+
+固定规则：
+
+- 字段恰为 `type/title/status/correlationId/errorCode` 五项；异常消息、堆栈、内部异常与 `Data` 永不进入响应。
+- 精确映射唯一一条：`HttpRequestException` → `502 downstream.unavailable`（下游失败，固定英文 title）。其余未映射异常（含独立抛出的 `OperationCanceledException`）→ `500 http.internal_server_error` / `An unexpected error occurred.`。
+- 调用方请求取消（`RequestAborted`）原样传播，不产生 problem 响应。
+- 响应已开始写入后发生的异常：保留已发送的状态与字节，库吞掉异常并写安全日志（既有非保证边界）。
+- 端点主动返回的业务成功/失败响应（验证 400/404/409/502 与固定文本 5xx catch）、认证 401/403、代理转发响应、SPA/图片/健康端点不进入该分支。
+- 前端归一化：`frontend/src/services/apiBase.ts` 的 `extractApiErrorMessage` 按「业务 `message` → problem+json `title`（仅 content-type 为 `application/problem+json` 时）→ 传输错误消息」取值；`detail` 永不读取。
+- 行为变化（破坏性，仅异常路径）：原先把 `ex.Message` 写入响应的 catch 已删除；学生端点原 404/400 下游中转现为 `502 problem+json`；`OssAuditController` 删除失败原 `500 Failed to delete object: <消息>` 现为固定 problem 500；批量 resolve 的单条失败文本固定为「删除失败，已跳过」；`OssUploadRecordController` 的 rotate/legacy-clean 下游失败为固定文本。
+- 已知邻近行为（本次不改）：`OssAuditWorker` 仍把异常消息写入运行日志与 `OssAuditRuns.ErrorMessage`（后台审计诊断，仅认证管理员可见，不属控制器响应路径）。
+
 ## REST API 错误响应格式
 
 所有 REST API 在返回错误时，必须使用以下 JSON 结构：

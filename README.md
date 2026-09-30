@@ -38,6 +38,10 @@ Browser ── Vue 3 SPA (Element Plus, served from wwwroot)
              └── AuditDbContext       ──►  PostgreSQL ruoyu_admin
 ```
 
+### Error responses
+
+Unhandled exceptions on JSON API endpoints answer `application/problem+json` with exactly `type`, `title`, `status`, `correlationId` and `errorCode` — never an exception message, stack or internal detail. A downstream `HttpRequestException` maps to `502 downstream.unavailable`; anything else answers the fixed `500 http.internal_server_error`. Endpoint-returned business responses (validation 400/404/409 and fixed-text catches), auth 401/403, proxied responses, the SPA, image redirects and health endpoints keep their existing bodies. Caller cancellation propagates; a response that already started is left exactly as sent. The SPA normalizes both formats through a single helper (`extractApiErrorMessage` in `frontend/src/services/apiBase.ts`: business `message` first, then the problem `title` when the content type is `application/problem+json`). Full contract: [docs/development/ErrorHandling.md](docs/development/ErrorHandling.md).
+
 ### Backend projects
 
 | Project | Purpose |

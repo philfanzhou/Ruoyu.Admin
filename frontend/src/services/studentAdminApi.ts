@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { extractApiErrorMessage } from './apiBase'
 import httpClient from './httpClient'
 
 export interface StudentPagedResponse<T> {
@@ -400,9 +401,7 @@ export const studentAdminClient = new StudentAdminApiClient()
 export default studentAdminClient
 
 export function getStudentErrorMessage(error: unknown) {
-  if (axios.isAxiosError(error)) {
-    return (error.response?.data as { message?: string } | undefined)?.message ?? error.message
-  }
-  if (error instanceof Error) return error.message
-  return 'Unknown error occurred.'
+  // Delegates to the shared extractor so problem+json titles (#56) surface like business
+  // messages everywhere; non-axios inputs keep the previous behavior.
+  return extractApiErrorMessage(error)
 }

@@ -243,32 +243,29 @@ public class OssUploadRecordController : ControllerBase
     [HttpPost("{id}/rotate")]
     public async Task<IActionResult> RotateImage(string id, [FromBody] RotateImageRequest request)
     {
+        if (!Guid.TryParse(id, out var recordId))
+        {
+            return BadRequest(new ErrorResponse("Invalid record ID"));
+        }
+
+        if (string.IsNullOrWhiteSpace(request.StudentId))
+        {
+            return BadRequest(new ErrorResponse("StudentId is required"));
+        }
+
+        // A downstream failure no longer relays its message as a 400: it answers this fixed
+        // local result. Any other unexpected failure escapes to the Problem Details boundary.
         try
         {
-            if (!Guid.TryParse(id, out var recordId))
-            {
-                return BadRequest(new ErrorResponse("Invalid record ID"));
-            }
-
-            if (string.IsNullOrWhiteSpace(request.StudentId))
-            {
-                return BadRequest(new ErrorResponse("StudentId is required"));
-            }
-
             await _studentClient.RotateUploadImageAsync(request.StudentId, id, request.ImageIndex, request.Rotation);
-
-            return Ok(new { success = true });
         }
         catch (HttpRequestException ex)
         {
             _logger.LogWarning(ex, "Failed to rotate image: RecordId={RecordId}", id);
-            return BadRequest(new ErrorResponse(ex.Message ?? "Failed to rotate image"));
+            return BadRequest(new ErrorResponse("Failed to rotate image"));
         }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to rotate image: RecordId={RecordId}", id);
-            return StatusCode(500, new ErrorResponse("Failed to rotate image"));
-        }
+
+        return Ok(new { success = true });
     }
 
     [HttpDelete("{id}/images/{imageIndex}")]
@@ -414,9 +411,9 @@ public class OssUploadRecordController : ControllerBase
             }
             catch (HttpRequestException ex)
             {
-                _logger.LogWarning("DeleteUploadRecordAfterReview failed for {RecordId}: {Message}",
-                    id, ex.Message);
-                return BadRequest(new ErrorResponse(ex.Message ?? "Failed to delete upload record"));
+                // No longer relays the downstream message: fixed local result only.
+                _logger.LogWarning(ex, "DeleteUploadRecordAfterReview failed for {RecordId}", id);
+                return BadRequest(new ErrorResponse("Failed to delete upload record"));
             }
 
             _logger.LogInformation("Legacy data cleanup completed successfully for {RecordId}", id);
