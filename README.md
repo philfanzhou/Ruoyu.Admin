@@ -103,6 +103,13 @@ IDENTITY_APP_ID=... IDENTITY_APP_SECRET=... ./start.sh
 
 `start.sh` maps host port **5020** to container port 5020 (host port equals container port, matching the platform's other APIs), and expects `CONSUL_HTTP_ADDR`, `IDENTITY_APP_ID` and `IDENTITY_APP_SECRET` from the deployment environment.
 
+### Health probes
+
+Three anonymous JSON endpoints are served alongside the SPA (never rewritten by the SPA fallback):
+
+- `GET /health/live` — always 200 while the process runs; use for liveness/restart probes.
+- `GET /health/ready` (alias `GET /health`) — ready (200) only when this process finished its database initialization **and** a bounded (3 s) read-only probe of the `ruoyu_admin` tables succeeds; every failure answers 503 with a fixed safe `errorCode` (`ruoyu-admin.startup_incomplete`, `ruoyu-admin.database_unreachable`, `ruoyu-admin.schema_unavailable`, `health.probe_timeout`, `health.probe_failed`) and never leaks connection strings or exception text. Each request re-samples, so a recovered database is ready again on the next probe. Downstream services are deliberately excluded from readiness to avoid cascading removal. Safe to wire into readiness gates and traffic gating.
+
 ## Configuration
 
 Configuration is read from `appsettings.json`, then Consul KV under `config/ruoyu` (when reachable), then environment variables. Consul results are cached locally so the host still starts when Consul is down.

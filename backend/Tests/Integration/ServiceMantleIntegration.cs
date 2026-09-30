@@ -44,6 +44,13 @@ public sealed class PostgreSqlFixture : IAsyncLifetime
 
     public Task InitializeAsync() => _container.StartAsync();
 
+    /// <summary>
+    /// The container's connection string for direct read-only Npgsql access in tests
+    /// (row-count guards for the health probe). The randomly generated password never
+    /// leaves the test process.
+    /// </summary>
+    public string ConnectionString => _container.GetConnectionString();
+
     public async Task DisposeAsync()
     {
         await _container.DisposeAsync();
