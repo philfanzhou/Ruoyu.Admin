@@ -3,6 +3,11 @@ using System.Net.Http.Json;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net;
+using System.Text.Json;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
 using Admin.WebApi.Authentication;
 using Admin.WebApi.Tests.Authentication;
 using Microsoft.AspNetCore.Authentication;
@@ -27,7 +32,7 @@ namespace Admin.WebApi.Tests.Integration;
 public sealed class AdminOidcTests(PostgreSqlFixture database) : ServiceMantleIntegrationTestBase(database)
 {
     private WebApplicationFactory<Program> OidcFactory(OidcTestAuthority authority, ManualOidcTime? time = null,
-        Action<IServiceCollection>? configure = null, string? root = null, IDataProtectionProvider? protection = null)
+        Action<IServiceCollection>? configure = null, string? root = null, IDataProtectionProvider? protection = null, string? lokiUri = null)
         => CreateFactory(root, services =>
         {
             services.Configure<OpenIdConnectOptions>(AdminOidcSettings.OidcScheme, options =>
@@ -40,7 +45,7 @@ public sealed class AdminOidcTests(PostgreSqlFixture database) : ServiceMantleIn
             ["AdminOidc:Enabled"] = "true", ["AdminOidc:RedirectUri"] = OidcTestAuthority.RedirectUri,
             ["IdentityService:Authority"] = OidcTestAuthority.Issuer, ["IdentityService:Issuer"] = OidcTestAuthority.Issuer,
             ["IdentityService:AppId"] = OidcTestAuthority.ClientId, ["IdentityService:AppSecret"] = OidcTestAuthority.Secret,
-            ["IdentityService:RequireHttpsMetadata"] = "true"
+            ["IdentityService:RequireHttpsMetadata"] = "true", ["Loki:Uri"] = lokiUri ?? ""
         });
 
     private static HttpClient Browser(WebApplicationFactory<Program> factory) => factory.CreateClient(new()
@@ -160,6 +165,99 @@ public sealed class AdminOidcTests(PostgreSqlFixture database) : ServiceMantleIn
             Assert.DoesNotContain(canary, surfaces);
         Failed(await Callback(client, handshake, code));
         Assert.Equal(1, authority.Redeems);
+    }
+
+    [Fact]
+    public async Task RealLoggingPipeline_OidcSecretsNeverReachConsoleLokiOrTraces()
+    {
+        var batches = new ConcurrentQueue<string>();
+        var lokiBuilder = WebApplication.CreateBuilder();
+        lokiBuilder.Logging.ClearProviders();
+        lokiBuilder.WebHost.UseUrls("http://127.0.0.1:0");
+        await using var loki = lokiBuilder.Build();
+        loki.MapPost("/loki/api/v1/push", async context =>
+        {
+            batches.Enqueue(await new StreamReader(context.Request.Body).ReadToEndAsync());
+            context.Response.StatusCode = 204;
+        });
+        await loki.StartAsync();
+        var address = loki.Services.GetRequiredService<IServer>().Features
+            .Get<IServerAddressesFeature>()!.Addresses.Single();
+        var original = Console.Out;
+        using var output = new StringWriter();
+        Console.SetOut(output);
+        try
+        {
+            using var authority = new OidcTestAuthority();
+            var traces = new OidcTraceCapture();
+            using var factory = OidcFactory(authority, lokiUri: address, configure: services =>
+            {
+                // Keep the real ServiceMantle ILoggerFactory and both consumers.
+                services.AddControllers().AddApplicationPart(typeof(LoggingProbeController).Assembly);
+                services.AddOpenTelemetry().WithTracing(builder => builder.AddProcessor(traces));
+            });
+            using var client = Browser(factory);
+            var handshake = await Start(client);
+            var code = authority.Code(handshake.Query);
+            using var response = await Callback(client, handshake, code);
+            Assert.Equal("/students", response.Headers.Location!.OriginalString);
+            var cookie = SessionCookie(response);
+            var status = await Status(client, cookie);
+            Assert.Contains("\"authenticated\":true", status);
+            var options = factory.Services.GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>()
+                .Get(AdminOidcSettings.SessionScheme);
+            var reference = options.TicketDataFormat.Unprotect(cookie[(cookie.IndexOf('=') + 1)..])!;
+            Assert.Empty(reference.Properties.GetTokens());
+            Assert.Single(reference.Principal.Claims);
+            Assert.Equal(1, factory.Services.GetRequiredService<MemoryTicketStore>().Count);
+
+            var firstVerifier = authority.LastVerifier!;
+            var firstIdToken = authority.LastIdToken!;
+            using var replay = await Callback(client, handshake, code);
+            Failed(replay);
+            Assert.Equal(1, authority.Redeems);
+            Assert.Equal(1, factory.Services.GetRequiredService<MemoryTicketStore>().Count);
+            var invalidHandshake = await Start(client);
+            var invalidCode = authority.Code(invalidHandshake.Query, "signature");
+            using var invalid = await Callback(client, invalidHandshake, invalidCode);
+            Failed(invalid);
+            Assert.Equal(2, authority.Redeems);
+            Assert.Equal(1, factory.Services.GetRequiredService<MemoryTicketStore>().Count);
+            // Exercise the category at Warning too, so Serilog's normal ASP.NET override
+            // cannot accidentally stand in for the OIDC-specific MEL suppression.
+            factory.Services.GetRequiredService<ILoggerFactory>()
+                .CreateLogger("Microsoft.AspNetCore.Hosting.Diagnostics")
+                .LogWarning("request.query.canary {Query}", "?code=" + code);
+            Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/logging-probe")).StatusCode);
+            factory.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Admin.OidcProbe")
+                .LogInformation("oidc.probe.completed");
+            // Wait for the marker after every protocol request to reach the real async sink.
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            while (!batches.Any(batch => batch.Contains("oidc.probe.completed")))
+                await Task.Delay(20, timeout.Token);
+            var remote = string.Join('\n', batches.SelectMany(batch => JsonDocument.Parse(batch).RootElement
+                .GetProperty("streams").EnumerateArray().SelectMany(stream => stream.GetProperty("values")
+                    .EnumerateArray().Select(value => value[1].GetString()!).ToArray())));
+            foreach (var logs in new[] { output.ToString(), remote })
+            {
+                Assert.Contains("probe.application", logs);
+                Assert.Contains("oidc.probe.completed", logs);
+                Assert.DoesNotContain("request.query.canary", logs);
+                Assert.DoesNotContain(LoggingProbeController.Canary, logs);
+            }
+            Assert.Contains(traces.Messages, trace => trace.Contains("/api/auth/session"));
+            Assert.DoesNotContain(traces.Messages, trace => trace.Contains("/api/auth/oidc"));
+            var surfaces = output + remote + string.Join('\n', traces.Messages) + status
+                + handshake.Response.Headers + response.Headers + replay.Headers + invalid.Headers
+                + await response.Content.ReadAsStringAsync() + await replay.Content.ReadAsStringAsync()
+                + await invalid.Content.ReadAsStringAsync()
+                + JsonSerializer.Serialize(reference.Properties.Items)
+                + string.Join(";", reference.Principal.Claims.Select(claim => claim.Type + "=" + claim.Value));
+            foreach (var canary in new[] { OidcTestAuthority.Secret, OidcTestAuthority.AccessToken,
+                authority.LastVerifier!, authority.LastIdToken!, firstVerifier, firstIdToken, code, invalidCode })
+                Assert.DoesNotContain(canary, surfaces);
+        }
+        finally { Console.SetOut(original); }
     }
 
     [Theory]

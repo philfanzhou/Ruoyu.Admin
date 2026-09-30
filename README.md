@@ -44,7 +44,7 @@ Browser ── Vue 3 SPA (Element Plus, served from wwwroot)
 |---------|---------|
 | `backend/Admin.WebApi` | Host, controllers, proxy middleware, audit persistence, `OssAuditWorker` |
 | `backend/Ruoyu.Admin.Common` | `IOssService` (S3 + local-file), thumbnails, JWT bearer auth, database initializer, shared constants |
-| `backend/Ruoyu.Admin.Consul` | Consul KV configuration source with local cache fallback, Serilog/Loki bootstrap, PostgreSQL connection-string factory |
+| `backend/Ruoyu.Admin.Consul` | Consul KV configuration source with local cache fallback, PostgreSQL connection-string factory |
 | `backend/Ruoyu.Admin.ServiceClients` | Hand-written HTTP clients and mirror DTOs for the Student and Mistake services |
 | `backend/Tests` | xUnit + Moq + FluentAssertions unit tests |
 

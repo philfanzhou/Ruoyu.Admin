@@ -149,6 +149,7 @@ public abstract class ServiceMantleIntegrationTestBase
                 webHostBuilder.UseSetting(key, value);
             }
 
+            webHostBuilder.UseSetting("Loki:Uri", "");
             if (settings is not null)
             {
                 foreach (var (key, value) in settings) webHostBuilder.UseSetting(key, value);
@@ -202,8 +203,7 @@ public abstract class ServiceMantleIntegrationTestBase
 /// Records the ILogger scopes opened during a request. The ServiceMantle request scope is an
 /// <c>IReadOnlyList&lt;KeyValuePair&lt;string, object?&gt;&gt;</c> of named fields; replacing the logger factory
 /// with a plain one captures that scope state directly — the same scope surface the Serilog
-/// pipeline consumes (which parallel test hosts keep reconfiguring, so a per-factory Serilog
-/// sink would be non-deterministic here).
+/// pipeline consumes. Actual Console/Loki delivery is verified separately in AdminLoggingTests.
 /// </summary>
 public sealed class RequestScopeCapture : ILoggerProvider
 {

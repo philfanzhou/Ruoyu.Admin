@@ -19,10 +19,8 @@ builder.Configuration.AddRuoyuConsulConfiguration(builder.Configuration);
 var consulOptions = RuoyuConsulOptions.Bind(builder.Configuration);
 var consulRuntimeState = RuoyuConsulRuntimeState.Instance;
 
-// ========== Serilog (Console + Grafana Loki) ==========
-builder.Configuration.AddRuoyuLokiSink();
-builder.Host.UseRuoyuSerilog("Ruoyu.Admin",
-    suppressRequestQueryLogging: builder.Configuration.GetValue<bool>("AdminOidc:Enabled"));
+// ========== ServiceMantle logging (Console + optional Grafana Loki) ==========
+builder.AddAdminLogging();
 
 // HTTP listen port is hardcoded to 5020 (not configurable).
 // nginx in the same container proxies /api/ to this port.
@@ -116,7 +114,7 @@ builder.Services.AddControllers();
 
 // ========== ServiceMantle (service identity, correlation id, base telemetry, health) ==========
 // ServiceId "ruoyu-admin" is the stable deployment identity (lowercase; deliberately distinct
-// from the Serilog display name "Ruoyu.Admin"). The InstanceId is regenerated on every host
+// from the fixed Loki stream label "Ruoyu.Admin"). The InstanceId is regenerated on every host
 // build and is NOT a persistent identity: it changes on each restart. No bootstrapFilePath is
 // passed: the bootstrap store stays a lazy singleton and this wiring performs zero disk writes.
 // No serviceVersion is passed: it resolves from the entry assembly informational version.
