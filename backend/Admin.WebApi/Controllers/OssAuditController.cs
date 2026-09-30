@@ -10,7 +10,7 @@ using Ruoyu.Admin.ServiceClients;
 namespace Admin.WebApi.Controllers;
 
 [Route("api/admin/oss-audit")]
-[ApiController]
+[ApiController, RequireSecurityResponseHeaders]
 [Authorize]
 public partial class OssAuditController : ControllerBase
 {

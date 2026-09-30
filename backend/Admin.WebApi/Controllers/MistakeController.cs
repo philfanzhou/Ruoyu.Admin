@@ -6,7 +6,7 @@ using Ruoyu.Admin.ServiceClients;
 namespace Admin.WebApi.Controllers;
 
 [Route("api/admin/mistakes")]
-[ApiController]
+[ApiController, RequireSecurityResponseHeaders]
 [Authorize]
 public class MistakeController : ControllerBase
 {

@@ -5,7 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Admin.WebApi.Controllers;
 
-[ApiController, Route("api/auth/csrf"), Authorize]
+[ApiController, Route("api/auth/csrf"), Authorize, RequireSecurityResponseHeaders]
 public sealed class AdminCsrfController(IAntiforgery antiforgery) : ControllerBase
 {
     // AdminSessionMiddleware has verified the current administrator and token before this endpoint.
@@ -13,8 +13,8 @@ public sealed class AdminCsrfController(IAntiforgery antiforgery) : ControllerBa
     public IActionResult Get()
     {
         var tokens = antiforgery.GetAndStoreTokens(HttpContext);
-        Response.Headers.CacheControl = "no-store, no-cache";
-        Response.Headers.Pragma = "no-cache";
+        // Cache suppression comes from the ServiceMantle security response-header baseline
+        // (RequireSecurityResponseHeaders on this controller), not per-action header writes.
         return Ok(new { requestToken = tokens.RequestToken });
     }
 }

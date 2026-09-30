@@ -38,6 +38,10 @@ Browser ── Vue 3 SPA (Element Plus, served from wwwroot)
              └── AuditDbContext       ──►  PostgreSQL ruoyu_admin
 ```
 
+### Security response headers
+
+JSON API responses carry the ServiceMantle six-header baseline (`Cache-Control: no-store`, `Pragma: no-cache`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, and a `default-src 'none'` CSP) on every routed response of a marked endpoint — success, business 4xx, 401/403 challenges, 5xx and middleware short-circuits alike, as long as headers have not started. Marked surface: the ten JSON controllers annotated with `[RequireSecurityResponseHeaders]` plus the middleware-owned auth routes (`/api/auth/oidc/callback`, `/api/auth/logout/csrf`, `/api/auth/oidc/logout-callback`) whose marker-only route endpoints exist to carry metadata. Deliberately unmarked: `ImageController` (browser-native image redirects), the three proxy middlewares' forwarded responses, the SPA / static files, and the health endpoints.
+
 ### Backend projects
 
 | Project | Purpose |

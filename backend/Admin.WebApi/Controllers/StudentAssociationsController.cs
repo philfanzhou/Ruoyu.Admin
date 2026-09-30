@@ -9,7 +9,7 @@ using Admin.WebApi.Models;
 namespace Admin.WebApi.Controllers;
 
 [Route("api/admin/students")]
-[ApiController]
+[ApiController, RequireSecurityResponseHeaders]
 [Authorize]
 public class StudentAssociationsController : ControllerBase
 {

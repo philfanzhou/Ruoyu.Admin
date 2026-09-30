@@ -17,7 +17,7 @@ namespace Admin.WebApi.Controllers;
 /// via <c>[Authorize(Roles = "admin")]</c>.
 /// </summary>
 [Route("api/auth")]
-[ApiController]
+[ApiController, RequireSecurityResponseHeaders]
 public class AdminAuthController : ControllerBase
 {
     private readonly AdminPortalOptions _options;

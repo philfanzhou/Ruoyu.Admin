@@ -9,7 +9,7 @@ using StudentHttpDto = Ruoyu.Admin.ServiceClients.StudentDto;
 namespace Admin.WebApi.Controllers;
 
 [Route("api/admin/students")]
-[ApiController]
+[ApiController, RequireSecurityResponseHeaders]
 [Authorize]
 public class StudentsController : ControllerBase
 {
