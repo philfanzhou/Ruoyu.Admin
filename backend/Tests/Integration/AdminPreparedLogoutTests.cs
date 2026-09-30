@@ -20,13 +20,13 @@ namespace Admin.WebApi.Tests.Integration;
 public sealed partial class AdminOidcTests
 {
     private WebApplicationFactory<Program> LogoutFactory(OidcTestAuthority authority, LogoutCapture upstream,
-        ManualOidcTime? time = null, MutableAdmins? admins = null, Action<IServiceCollection>? configure = null, bool identityProxy = false)
+        ManualOidcTime? time = null, MutableAdmins? admins = null, Action<IServiceCollection>? configure = null, bool identityProxy = false, bool portalProxies = false)
         => OidcFactory(authority, time, services =>
         {
             services.AddHttpClient(AdminPreparedLogout.ClientName).ConfigurePrimaryHttpMessageHandler(() => upstream);
             if (admins is not null) services.Replace(ServiceDescriptor.Singleton<IOptionsMonitor<AdminPortalOptions>>(admins));
             configure?.Invoke(services);
-        }, sessionApi: true, sessionLogout: true, identityProxy: identityProxy);
+        }, sessionApi: true, sessionLogout: true, identityProxy: identityProxy, portalProxies: portalProxies);
     private static async Task<(string Token, string Cookie)> LogoutCsrf(HttpClient client, string cookie)
     {
         using var response = await Api(client, "/api/auth/logout/csrf", cookie);
@@ -38,13 +38,46 @@ public sealed partial class AdminOidcTests
         CancellationToken cancellation = default) => await Api(client, "/api/auth/logout", cookie + "; " + csrf.Cookie, "POST", csrf: [csrf.Token], cancellation: cancellation);
 
     [Theory]
-    [InlineData(false, false, false)][InlineData(true, false, false)][InlineData(false, true, false)][InlineData(true, true, false)]
-    [InlineData(false, false, true)][InlineData(true, false, true)][InlineData(false, true, true)][InlineData(true, true, true)]
-    public async Task PreparedLogout_RevokesBeforeHttpWithExpiredAccessOrRemovedAdmin(bool expired, bool removedAdmin, bool identityProxy)
+    [InlineData(false, false, false, false)][InlineData(true, false, false, false)][InlineData(false, true, false, false)][InlineData(true, true, false, false)]
+    [InlineData(false, false, true, false)][InlineData(true, false, true, false)][InlineData(false, true, true, false)][InlineData(true, true, true, false)]
+    [InlineData(false, false, false, true)][InlineData(true, false, false, true)][InlineData(false, true, false, true)][InlineData(true, true, false, true)]
+    [InlineData(false, false, true, true)][InlineData(true, false, true, true)][InlineData(false, true, true, true)][InlineData(true, true, true, true)]
+    public async Task PreparedLogout_RevokesBeforeHttpWithExpiredAccessOrRemovedAdmin(bool expired, bool removedAdmin, bool identityProxy, bool portalProxies)
     {
         using var authority = new OidcTestAuthority(); var upstream = new LogoutCapture(); var admins = new MutableAdmins(); var time = new ManualOidcTime();
-        using var factory = LogoutFactory(authority, upstream, time, admins: admins, identityProxy: identityProxy); using var client = Browser(factory);
+        var probe = new SessionBusinessProbe();
+        var identity = new PortalSessionCapture(); var teacher = new PortalSessionCapture(); var assistant = new PortalSessionCapture();
+        using var factory = LogoutFactory(authority, upstream, time, admins: admins, identityProxy: identityProxy, portalProxies: portalProxies, configure: services =>
+        {
+            services.AddControllers().AddApplicationPart(typeof(SessionProbeController).Assembly);
+            services.AddSingleton(probe);
+            services.Replace(ServiceDescriptor.Singleton(probe.Student.Object));
+            services.Replace(ServiceDescriptor.Singleton(probe.Oss.Object));
+            services.AddHttpClient("IdentityService").ConfigurePrimaryHttpMessageHandler(() => identity);
+            services.AddHttpClient("TeacherPortal").ConfigurePrimaryHttpMessageHandler(() => teacher);
+            services.AddHttpClient("AssistantPortal").ConfigurePrimaryHttpMessageHandler(() => assistant);
+        });
+        using var client = Browser(factory);
         var cookie = await LoginSession(client, authority); var (key, ticket) = await Stored(factory, cookie);
+        // Prove the real migrated proxy paths and native image work before local revocation.
+        using (var image = await Api(client, "/api/admin/image?path=uploads/test.jpg&size=small", cookie))
+            Assert.Equal(HttpStatusCode.Redirect, image.StatusCode);
+        Assert.Single(probe.Student.Invocations); probe.Student.Invocations.Clear();
+        foreach (var (enabled, path, capture) in new[]
+        {
+            (identityProxy, "/api/identity/users", identity),
+            (portalProxies, "/api/teacher-portal/admin/users", teacher),
+            (portalProxies, "/api/assistant-portal/admin/users", assistant)
+        })
+        {
+            if (enabled)
+            {
+                using var reachable = await Api(client, path, cookie);
+                Assert.Equal(HttpStatusCode.OK, reachable.StatusCode);
+                Assert.Equal("Bearer " + OidcTestAuthority.AccessToken, Assert.Single(capture.Requests).Headers["Authorization"]);
+                capture.Requests.Clear();
+            }
+        }
         if (expired) ticket.Properties.UpdateTokenValue("expires_at", DateTimeOffset.UtcNow.AddHours(-1).ToString("o"));
         await factory.Services.GetRequiredService<MemoryTicketStore>().RenewAsync(key, ticket);
         if (removedAdmin) admins.CurrentValue.AdminUserIds.Clear();
@@ -71,6 +104,10 @@ public sealed partial class AdminOidcTests
             await Rejected(await Api(client, path, cookie), 401, "unauthorized");
         foreach (var path in new[] { "/api/identity/users", "/api/teacher-portal/admin/users", "/api/assistant-portal/admin/users" })
             Assert.Equal(HttpStatusCode.Unauthorized, (await Api(client, path, cookie)).StatusCode);
+        Assert.Null(await factory.Services.GetRequiredService<MemoryTicketStore>().RetrieveAsync(key));
+        Assert.Empty(probe.Student.Invocations); Assert.Empty(probe.Oss.Invocations);
+        Assert.Equal(0, probe.Reads); Assert.Equal(0, probe.Writes);
+        Assert.Empty(identity.Requests); Assert.Empty(teacher.Requests); Assert.Empty(assistant.Requests);
         await Rejected(await PostLogout(client, cookie, csrf), 401, "unauthorized"); Assert.Single(upstream.Forms);
         var state = form["state"]; var callback = AdminOidcSettings.LogoutCallbackPath + "?state=" + state;
         await Rejected(await Api(client, callback), 400, "logout_callback_invalid");

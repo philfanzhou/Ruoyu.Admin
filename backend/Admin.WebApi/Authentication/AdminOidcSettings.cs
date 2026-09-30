@@ -7,6 +7,7 @@ internal sealed record AdminOidcSettings(bool Enabled, string Authority, string 
     internal bool UseSessionForLogout { get; init; }
     internal string PostLogoutRedirectUri { get; init; } = "";
     internal const string LogoutCallbackPath = "/api/auth/oidc/logout-callback";
+    internal bool UseSessionForPortalProxies { get; init; }
     internal bool UseSessionForIdentityProxy { get; init; }
     public const string SessionScheme = "AdminSession";
     public const string OidcScheme = "AdminOidc";
@@ -19,6 +20,9 @@ internal sealed record AdminOidcSettings(bool Enabled, string Authority, string 
         var logout = config.GetValue<bool>("AdminOidc:UseSessionForLogout");
         if (logout && (!useSession || !config.GetValue<bool>("AdminOidc:Enabled")))
             throw new InvalidOperationException("AdminOidc:UseSessionForLogout requires AdminOidc:Enabled and AdminOidc:UseSessionForAdminApi");
+        var portalProxies = config.GetValue<bool>("AdminOidc:UseSessionForPortalProxies");
+        if (portalProxies && (!useSession || !config.GetValue<bool>("AdminOidc:Enabled")))
+            throw new InvalidOperationException("AdminOidc:UseSessionForPortalProxies requires AdminOidc:Enabled and AdminOidc:UseSessionForAdminApi");
         var identityProxy = config.GetValue<bool>("AdminOidc:UseSessionForIdentityProxy");
         if (identityProxy && (!useSession || !config.GetValue<bool>("AdminOidc:Enabled")))
             throw new InvalidOperationException("AdminOidc:UseSessionForIdentityProxy requires AdminOidc:Enabled and AdminOidc:UseSessionForAdminApi");
@@ -47,7 +51,7 @@ internal sealed record AdminOidcSettings(bool Enabled, string Authority, string 
         if (skew is < 0 or > 300) throw new InvalidOperationException("IdentityService:ClockSkewSeconds");
         return new(true, authority, clientId, secret, redirect, redirectUri.Scheme == "http", TimeSpan.FromSeconds(skew))
             { UseSessionForAdminApi = useSession, UseSessionForLogout = logout, PostLogoutRedirectUri = logout ? postLogout : "",
-                UseSessionForIdentityProxy = identityProxy };
+                UseSessionForPortalProxies = portalProxies, UseSessionForIdentityProxy = identityProxy };
     }
 
     internal static bool IsSafeUri(string value, bool allowLoopback, out Uri? uri)
