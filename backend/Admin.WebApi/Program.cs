@@ -322,6 +322,7 @@ healthEndpoints.MapServiceMantleHealthEndpoints();
 
 app.UseAdminOidcResponseHeaders();
 app.UseAuthentication();
+app.UseMiddleware<AdminSessionMiddleware>();
 app.UseAuthorization();
 
 if (app.Environment.IsDevelopment())

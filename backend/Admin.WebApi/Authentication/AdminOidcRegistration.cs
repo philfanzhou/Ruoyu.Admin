@@ -20,7 +20,19 @@ internal static class AdminOidcRegistration
         services.AddSingleton<CompactStateDataFormat>();
         services.AddSingleton<MemoryTicketStore>();
         services.AddHostedService<OidcStoreCleanup>();
-        // No defaults changed: the existing Bearer scheme and FallbackPolicy remain authoritative.
+        services.AddScoped<AdminSessionAccessor>();
+        services.AddScoped<AdminSessionBoundary>();
+        services.AddAntiforgery(options =>
+        {
+            options.HeaderName = AdminSessionBoundary.CsrfHeader;
+            options.Cookie.Name = "adminCsrf";
+            options.Cookie.Path = "/";
+            options.Cookie.HttpOnly = true;
+            options.Cookie.SameSite = SameSiteMode.Lax;
+            options.Cookie.SecurePolicy = settings.InsecureLoopback ? CookieSecurePolicy.SameAsRequest : CookieSecurePolicy.Always;
+        });
+        // Only explicitly migrated paths select the server session. Bare [Authorize] and
+        // FallbackPolicy must select the same scheme as UseAuthentication, never re-run Bearer.
         var authentication = services.AddAuthentication().AddCookie(AdminOidcSettings.SessionScheme, options =>
         {
             options.Cookie.Name = AdminOidcSettings.SessionCookie;
@@ -35,6 +47,13 @@ internal static class AdminOidcRegistration
         });
         services.AddOptions<CookieAuthenticationOptions>(AdminOidcSettings.SessionScheme)
             .Configure<MemoryTicketStore, TimeProvider>((options, store, time) => { options.SessionStore = store; options.TimeProvider = time; });
+        if (settings.UseSessionForAdminApi)
+        {
+            authentication.AddPolicyScheme("AdminApiAuthentication", null, options =>
+                options.ForwardDefaultSelector = context => AdminSessionBoundary.IsSessionPath(context.Request.Path)
+                    ? AdminOidcSettings.SessionScheme : "Bearer");
+            services.Configure<AuthenticationOptions>(options => options.DefaultScheme = "AdminApiAuthentication");
+        }
         if (!settings.Enabled) return services;
         // Hosting diagnostics log raw query strings outside the application middleware.
         services.AddLogging(logging => logging.AddFilter("Microsoft.AspNetCore.Hosting.Diagnostics", LogLevel.None));

@@ -18,11 +18,11 @@ Admin Portal 提供 REST API 接口，用于管理学生、错题记录、OSS �
 Admin Portal 采用 **mode-1 集成部署**：同一容器（端口 5020）既提供后端 REST API，又通过 `wwwroot` 提供前端静态文件与 SPA 路由回退。因此认证按请求路径区分：
 
 - **前端入口（匿名）**：`/` 及所有非 `/api/*` 路径由 SPA fallback 处理，无需登录即可加载登录页
-- **API（需认证）**：`/api/*` 受 `FallbackPolicy = RequireAuthenticatedUser()` 保护，必须携带有效 JWT
+- **API（需认证）**：`/api/*` 受 `FallbackPolicy = RequireAuthenticatedUser()` 保护；默认使用 JWT，显式迁移的管理路径按下文使用管理员会话。匿名协议入口按各自规则豁免。
 
 ### 可选托管登录基础（#38）
 
-此阶段**尚未切换前端和管理 API**：JWT 仍为默认认证与授权方案；新 `adminSession` Cookie 单独访问管理 API 或三个代理仍返回 401。`POST /api/auth/login`、`POST /api/auth/logout`、旧 `adminAuthToken` 与 claims callback 保留。API/代理会话授权、令牌续接/登出和 SPA 迁移分别由后续任务实现。
+默认 `AdminOidc:UseSessionForAdminApi=false`：前端和管理 API 继续使用旧 JWT，新 `adminSession` 单独访问管理 API 或三个代理仍返回 401。显式设 true 后，只有 `/api/admin/*` 与 `/api/auth/csrf` 选择 AdminSession；三个代理仍用 Bearer，新 Cookie 单独访问仍 401。前端切换、代理凭据转发、会话续接与登出由 #41、#43/#44、#45/#46 交付。
 
 `AdminOidc:Enabled=false` 默认关闭，新 start/callback/session 入口返回 `503 {"error":"oidc_disabled"}`，旧配置可继续启动。启用配置与部署门禁见 [Deployment.md](development/Deployment.md#可选-signacore-托管登录)。
 
@@ -36,13 +36,25 @@ Admin Portal 采用 **mode-1 集成部署**：同一容器（端口 5020）既�
 
 Cookie 为 HttpOnly、Path=/、SameSite=Lax，生产 Secure，只含数据保护后的不透明票据引用；access/id token、截止时间、verifier、已验证 iss+sub 只在单进程内存。请求取消不发布部分票据；存储有界并定期回收，重启/多副本不支持状态延续。展示名取 nickname/name，SMS 身份缺少它们时 null；ID Token 角色不作为本地授权。Cookie challenge/forbid 返回 401/403。此阶段不请求 offline_access、refresh 或上游 logout。
 
-### 登录（获取 JWT）
+### 可选管理员会话与 CSRF（#42）
+
+`AdminOidc:UseSessionForAdminApi=true` 必须同时 `AdminOidc:Enabled=true`，否则启动失败（仅列配置键）。它是阶段验证开关，默认关闭，不代表生产 audience/注册或前端已联调。
+
+管理路径先显式读取服务器 AdminSession 票据，要求唯一 `iss/sub` 与已验证票据 stamp 相同，issuer 与 Authority 严格相同；只按**当前** `AdminPortal:AdminUserIds`（ID 大小写不敏感）授权，不信任 ID Token role 或浏览器头。任何入站 `Authorization`（空、重复、合法或非法）固定 401，不回落新 Cookie 或旧 `adminAuthToken`。无/过期/丢失票据、缺 access token、无效/到期 `expires_at` 为 `401 {"error":"unauthorized"}`；有效身份不在白名单为 `403 {"error":"forbidden"}`；均为 JSON，不 redirect HTML。8 小时票据寿命不能延长 access token 期限，当前不 refresh。
+
+`GET /api/auth/csrf` 要求相同管理员会话与有效 token，拒绝 Authorization。关闭边界时 `503 {"error":"session_api_disabled"}`；成功 `200 {"requestToken":"..."}`，no-store/no-cache，并设置独立 `adminCsrf` Cookie（HttpOnly、Path=/、SameSite=Lax；生产 Secure，开发仅已校验的数字 loopback 可 HTTP）。request token 绑定主体与 CSRF Cookie，不输出服务器 access/id token。
+
+所有管理写方法（GET/HEAD/OPTIONS/TRACE 之外，包括 POST/PUT/PATCH/DELETE 与 OSS trigger/resolve/batch-resolve）在 Controller/业务/出站/删除前显式验证框架 antiforgery，要求单值 `X-CSRF-TOKEN`。缺/错/重复 header、错 Cookie、异主体 token、只提交 form token 为 `400 {"error":"csrf_invalid"}`；CSRF 成功只继续本次请求，不重放写请求。审计删除前引用复核与来源不可达 502 拒删继续生效；匿名 claims/OIDC callback 不套此浏览器 CSRF 边界。默认 CORS 不变，不启用跨源 Cookie。
+
+true 时 `POST /api/auth/login` 在读取密码/模型绑定前固定 `410 {"error":"legacy_login_disabled"}`，不转发 Identity、不发 JWT Cookie。旧 `/api/auth/logout` 仍按 Bearer 认证且只清旧 JWT Cookie，**不能作为新会话已退出的证明**；新会话撤销/prepared logout 属 #46。三个未迁移代理仍可接受旧 Bearer，关联查询的服务器 token 转发属 #44；不要用空聚合列表判断已完成门户迁移。SPA/非 API 继续匿名，health 语义不变。
+
+### 登录（获取 JWT，默认 legacy 模式）
 
 `POST /api/auth/login` — `[AllowAnonymous]`
 
 请求体：`{ "username": "...", "password": "..." }`
 
-后端向 Identity 服务发起 password grant 取 JWT。Identity 回调 `POST /api/auth/callback`（`[AllowAnonymous]`），对白名单 `AdminPortal:AdminUserIds` 中的用户注入 `role:admin`。
+`UseSessionForAdminApi=false` 时后端向 Identity 服务发起 password grant 取 JWT。Identity 回调 `POST /api/auth/callback`（`[AllowAnonymous]`），对白名单 `AdminPortal:AdminUserIds` 中的用户注入 `role:admin`。
 
 成功返回：
 
@@ -56,7 +68,7 @@ Cookie 为 HttpOnly、Path=/、SameSite=Lax，生产 Secure，只含数据保护
 }
 ```
 
-前端将 `accessToken` 存入 `localStorage`，后续请求通过 `Authorization: Bearer` 头发送。未携带或 token 无效的 `/api/*` 请求返回 **401 Unauthorized**。
+前端将 `accessToken` 存入 `localStorage`，后续请求通过 `Authorization: Bearer` 头发送。legacy 路径未携带或 token 无效时返回 **401 Unauthorized**；session 路径按上文拒绝入站 Bearer。
 
 > **集成部署下首次访问**：浏览器直接访问后端端口时，`/` 必须匿名返回 `index.html` 才能加载出登录页（否则陷入「未登录→无法加载登录页→无法登录」的死锁）。API 端点的 401 由前端 axios 拦截器捕获后跳转 `/login`。
 
