@@ -5,12 +5,14 @@ namespace Admin.WebApi.Authentication;
 /// <summary>Shared, explicit request boundary for this and later proxy migration slices.</summary>
 internal sealed class AdminSessionBoundary(AdminSessionAccessor sessions, IAntiforgery antiforgery)
 {
+    internal static readonly object TrustedSessionKey = new();
     internal const string CsrfHeader = "X-CSRF-TOKEN";
     // MVC accepts a trailing slash and case-insensitive literal routes. The boundary must
     // cover the same input set, especially the retired password-login action.
     internal static bool IsAuthPath(PathString path, string route) => string.Equals(path.Value?.TrimEnd('/'), route, StringComparison.OrdinalIgnoreCase);
-    internal static bool IsSessionPath(PathString path) => path.StartsWithSegments("/api/admin")
-        || IsAuthPath(path, "/api/auth/csrf");
+    internal static bool IsSessionPath(PathString path, AdminOidcSettings settings) => path.StartsWithSegments("/api/admin")
+        || IsAuthPath(path, "/api/auth/csrf")
+        || settings.UseSessionForIdentityProxy && path.StartsWithSegments("/api/identity");
 
     internal async Task<bool> ValidateAsync(HttpContext context)
     {
@@ -38,6 +40,7 @@ internal sealed class AdminSessionBoundary(AdminSessionAccessor sessions, IAntif
             }
         }
         context.RequestAborted.ThrowIfCancellationRequested();
+        context.Items[TrustedSessionKey] = session;
         return true;
     }
 
@@ -69,7 +72,7 @@ internal sealed class AdminSessionMiddleware(RequestDelegate next, AdminOidcSett
                 await AdminSessionBoundary.RejectAsync(context, 410, "legacy_login_disabled");
                 return;
             }
-            if (AdminSessionBoundary.IsSessionPath(context.Request.Path) && !await boundary.ValidateAsync(context)) return;
+            if (AdminSessionBoundary.IsSessionPath(context.Request.Path, settings) && !await boundary.ValidateAsync(context)) return;
         }
         await next(context);
     }

@@ -51,7 +51,7 @@ internal static class AdminOidcRegistration
         {
             authentication.AddPolicyScheme("AdminApiAuthentication", null, options =>
                 options.ForwardDefaultSelector = context => (AdminSessionBoundary.IsAuthPath(context.Request.Path, "/api/auth/session")
-                    || AdminSessionBoundary.IsSessionPath(context.Request.Path))
+                    || AdminSessionBoundary.IsSessionPath(context.Request.Path, settings))
                     ? AdminOidcSettings.SessionScheme : "Bearer");
             services.Configure<AuthenticationOptions>(options => options.DefaultScheme = "AdminApiAuthentication");
         }

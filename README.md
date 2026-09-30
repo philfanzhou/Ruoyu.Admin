@@ -111,6 +111,7 @@ Configuration is read from `appsettings.json`, then Consul KV under `config/ruoy
 | `AdminPortal:AdminUserIds` | Accounts granted the `admin` role via the Identity callback |
 | `AdminOidc:Enabled`, `AdminOidc:RedirectUri` | Optional hosted-login handshake (disabled by default), exact registered callback |
 | Session token expiry | Session API returns `reauthentication_required` for a valid expired token; `/api/auth/session` exposes `requiresReauthentication`; sign-in is explicit with no refresh or write replay |
+| `AdminOidc:UseSessionForIdentityProxy` | Identity proxy server-token authorization (default false, requires OIDC and session API); isolates browser cookies/CSRF and upstream Set-Cookie |
 | `AdminOidc:UseSessionForAdminApi` | Optional session authorization and CSRF for `/api/admin/*` (default false, requires OIDC); retires password login when true |
 | `AdminWeb:AllowedOrigins` | CORS origins; empty means allow any |
 | `Oss:*` | `InternalEndpoint` / `InternalSecure` for direct S3 access, `PublicBaseUrl` for presigned URLs |
