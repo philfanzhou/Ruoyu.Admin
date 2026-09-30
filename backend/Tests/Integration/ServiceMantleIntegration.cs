@@ -78,7 +78,7 @@ public sealed class PostgreSqlFixture : IAsyncLifetime
 /// <c>EnsureCreated</c>. The rest of the suite can still be run without Docker via
 /// <c>dotnet test --filter "FullyQualifiedName!~Admin.WebApi.Tests.Integration"</c>.
 /// </summary>
-[CollectionDefinition(Name)]
+[CollectionDefinition(Name, DisableParallelization = true)]
 public sealed class ServiceMantleIntegrationCollection : ICollectionFixture<PostgreSqlFixture>
 {
     public const string Name = "service-mantle-integration";
@@ -128,7 +128,8 @@ public abstract class ServiceMantleIntegrationTestBase
     /// </summary>
     protected WebApplicationFactory<Program> CreateFactory(
         string? contentRoot = null,
-        Action<IServiceCollection>? configureTestServices = null)
+        Action<IServiceCollection>? configureTestServices = null,
+        IReadOnlyDictionary<string, string?>? settings = null)
     {
         return new WebApplicationFactory<Program>().WithWebHostBuilder(webHostBuilder =>
         {
@@ -146,6 +147,12 @@ public abstract class ServiceMantleIntegrationTestBase
             foreach (var (key, value) in RequiredSettings)
             {
                 webHostBuilder.UseSetting(key, value);
+            }
+
+            webHostBuilder.UseSetting("Loki:Uri", "");
+            if (settings is not null)
+            {
+                foreach (var (key, value) in settings) webHostBuilder.UseSetting(key, value);
             }
 
             if (configureTestServices is not null)
@@ -196,8 +203,7 @@ public abstract class ServiceMantleIntegrationTestBase
 /// Records the ILogger scopes opened during a request. The ServiceMantle request scope is an
 /// <c>IReadOnlyList&lt;KeyValuePair&lt;string, object?&gt;&gt;</c> of named fields; replacing the logger factory
 /// with a plain one captures that scope state directly — the same scope surface the Serilog
-/// pipeline consumes (which parallel test hosts keep reconfiguring, so a per-factory Serilog
-/// sink would be non-deterministic here).
+/// pipeline consumes. Actual Console/Loki delivery is verified separately in AdminLoggingTests.
 /// </summary>
 public sealed class RequestScopeCapture : ILoggerProvider
 {

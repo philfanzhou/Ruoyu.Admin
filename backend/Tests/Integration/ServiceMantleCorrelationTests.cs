@@ -113,8 +113,7 @@ public sealed partial class ServiceMantleCorrelationTests : ServiceMantleIntegra
         {
             // Swap the Serilog logger factory for a plain per-factory one (see
             // RequestScopeCapture): the request scope state is recorded directly instead of
-            // going through the process-wide Serilog logger that parallel hosts keep
-            // reconfiguring.
+            // going through the real Console/Loki pipeline (covered separately by AdminLoggingTests).
             services.RemoveAll<ILoggerFactory>();
             services.AddSingleton<ILoggerFactory>(
                 _ => LoggerFactory.Create(logging => logging.AddProvider(capture)));

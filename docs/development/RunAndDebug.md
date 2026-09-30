@@ -65,7 +65,9 @@ cp -r dist/* ../backend/Admin.WebApi/wwwroot/
 
 ### 日志级别调整
 
-在 `appsettings.Development.json` 中覆盖：
+实际 Console/Loki 由 `AdminLoggingExtensions` 的 `ServiceMantle.Logging` 设置：Information 全局下限，`Microsoft.AspNetCore` 与 `Microsoft.EntityFrameworkCore.Database.Command` 两项 Warning。它们共享过滤与强制结构化脱敏，旧 `Serilog` 节已移除。
+
+以下 `appsettings.Development.json` 只覆盖框架 `Logging:LogLevel` 前置过滤，降低它不会突破上述管线下限；提高它则可以进一步抑制日志。若要调低真实输出下限，需同时改代码中的对应 ServiceMantle 选项：
 
 ```json
 {

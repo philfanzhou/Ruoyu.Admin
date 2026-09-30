@@ -12,14 +12,30 @@
 
 ### 服务标识
 
-迁出 monorepo 时服务标识从 `Ruoyu.Study.AdminPortal` 改为 `Ruoyu.Admin`，出现在两处：
+迁出 monorepo 时服务标识从 `Ruoyu.Study.AdminPortal` 改为 `Ruoyu.Admin`：
 
 | 位置 | 键 | 影响 |
 |------|-----|------|
-| `appsettings.json` | `Serilog:WriteTo:GrafanaLoki:labels[service]` | Loki 日志标签。**已有的 Grafana 查询、面板和告警若按 `service="Ruoyu.Study.AdminPortal"` 过滤，必须同步改名**，否则新日志查不到 |
+| `Program.cs` / `AdminLoggingExtensions` | 固定 `service=Ruoyu.Admin` | Loki 日志标签。**已有的 Grafana 查询、面板和告警若按 `service="Ruoyu.Study.AdminPortal"` 过滤，必须同步改名**，否则新日志查不到 |
 | `appsettings.json` | `Consul:ServiceName` | 仅作标识。Consul KV 读取只使用 `Consul:KvPrefix`（`config/ruoyu`），`RuoyuConsulKvLoader.BuildPrefixes` 不消费 `ServiceName`，因此改名不影响配置加载 |
 
-若部署环境希望保留旧标识以复用既有看板：`Consul:ServiceName` 可用环境变量 `CONSUL_SERVICE_NAME` 覆盖（见 `RuoyuConsulOptions.Bind`），Loki 标签则直接改 `appsettings.json` 或用配置覆盖，两者都不需要改代码。
+`Consul:ServiceName` 可用环境变量 `CONSUL_SERVICE_NAME` 覆盖（见 `RuoyuConsulOptions.Bind`）。Loki 标签由代码固定，旧 `Serilog` 配置覆盖已移除，不能再用它改流标签。
+
+### 日志管线与字段
+
+`ServiceMantle.Logging 0.2.1-rc.1` 提供 Console + 可选 Loki，共享 Information 最低级别和两个 Warning override：`Microsoft.AspNetCore`、`Microsoft.EntityFrameworkCore.Database.Command`。`Logging:LogLevel` 是框架 ILogger 的前置过滤；它可以进一步抑制事件，不能突破上述管线下限。
+
+`Loki:Uri` 仍由 Consul / appsettings 提供，仓库回退 `http://ruoyu-loki:3100`；空值关闭远端 sink，错误绝对 URI 启动失败且只返回固定错误代码。内网 HTTP 通过 `AllowInsecureHttp=true` 显式信任，完整日志以明文传输，仅用于可信网络；跨信任边界必须用 HTTPS。无授权头配置。Loki 不可达时异步有界重试，业务请求继续可用；有界队列、关机冲刷不保证零丢失。流标签固定 `service=Ruoyu.Admin`，sink 另加低基数 `level`，`{service="Ruoyu.Admin"}` 查询不变。
+
+| 请求日志字段 | 原管线 | 当前管线 |
+|---|---|---|
+| ServiceName | `Ruoyu.Admin` | `ruoyu-admin` |
+| ServiceVersion | 固定 `1.0.0` | 入口程序集 informational version |
+| InstanceId | MachineName | 每宿主 `ruoyu-admin-<guid>` |
+| CorrelationId | 无 | 与响应 `x-correlation-id` 相同 |
+| MachineName / ThreadId | 自动 enrich | 不再自动附加 |
+
+请求 scope 的身份字段进入真实 Console/Loki 管线；无请求 scope 的启动日志不承诺自动身份字段。结构化字段强制脱敏，启动诊断仍通过 `StartupDiagnosticsFormatter`；消息模板字面量/自由文本不保证万能 secret 检测，调用方不得直接插入凭据或个人数据。
 
 ## 配置加载
 
