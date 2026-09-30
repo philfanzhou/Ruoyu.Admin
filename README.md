@@ -107,6 +107,14 @@ IDENTITY_APP_ID=... IDENTITY_APP_SECRET=... ./start.sh
 
 `start.sh` maps host port **5020** to container port 5020 (host port equals container port, matching the platform's other APIs), and expects `CONSUL_HTTP_ADDR`, `IDENTITY_APP_ID` and `IDENTITY_APP_SECRET` from the deployment environment.
 
+### Database startup (migrations)
+
+The `ruoyu_admin` schema is managed by an EF Core baseline migration executed at startup under the shared ServiceMantle orchestrator:
+
+1. **Target preparation** — an existing database is used as-is; a verifiably missing database is created only when `Database:AllowCreate=true` (default `false` — otherwise startup refuses with the fixed code `RUOYU_ADMIN_DB_CREATION_NOT_ALLOWED` and writes nothing). Back up the database before upgrading.
+2. **Advisory-lock orchestration** — startup acquires a PostgreSQL session advisory lock (30 s acquire budget) so that when multiple instances start concurrently exactly one executes the migration; the others re-inspect under the lock and skip.
+3. **Takeover rules** — an empty database gets the baseline applied; a verified legacy database (created by the retired inline DDL, structure checked column by column) is taken over with its data preserved and only the migration history stamped; a history holding unknown migration ids or any unknown/conflicting structure fails startup with `migration.version_too_new` / `migration.inspection_failed` (executor code `RUOYU_ADMIN_DB_SCHEMA_INCOMPATIBLE`) — never auto-repaired. Every orchestration failure exits non-zero with a safe error code; logs never contain connection strings or credentials.
+
 ### Health probes
 
 Three anonymous JSON endpoints are served alongside the SPA (never rewritten by the SPA fallback):
@@ -134,6 +142,7 @@ Configuration is read from `appsettings.json`, then Consul KV under `config/ruoy
 | `Oss:*` | `InternalEndpoint` / `InternalSecure` for direct S3 access, `PublicBaseUrl` for presigned URLs |
 | `OssAudit:ScheduledHour`, `OssAudit:ScheduledMinute` | Daily audit schedule (UTC) |
 | `ConnectionStrings:AuditDb`, `Database:Name`, `PostgreSql:*` | Audit database |
+| `Database:AllowCreate` | Allow startup to create a verifiably missing `ruoyu_admin` database (default `false` = refuse) |
 | `Consul:*` | KV address, prefix, cache directory |
 
 Full details: [docs/development/Deployment.md](docs/development/Deployment.md).

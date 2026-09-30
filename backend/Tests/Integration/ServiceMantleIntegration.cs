@@ -12,8 +12,9 @@ namespace Admin.WebApi.Tests.Integration;
 
 /// <summary>
 /// One shared PostgreSQL container for the ServiceMantle integration collection. The real host
-/// startup path runs <c>DatabaseInitializer</c> (no migrations, <c>EnsureCreated</c> on first
-/// connect), so the tests exercise the actual EF/Npgsql stack instead of an in-memory fake.
+/// startup path runs the database migration orchestration (target preparation plus the
+/// shared ServiceMantle orchestrator around AuditMigrationExecutor), so the tests exercise
+/// the actual EF/Npgsql stack instead of an in-memory fake.
 /// </summary>
 public sealed class PostgreSqlFixture : IAsyncLifetime
 {
@@ -127,7 +128,7 @@ public abstract class ServiceMantleIntegrationTestBase
 
     /// <summary>
     /// Builds a factory around the real Program.cs entry point. Accessing <see cref="WebApplicationFactory{TEntryPoint}.Services"/>
-    /// or creating a client runs the full host startup, including <c>DatabaseInitializer</c>.
+    /// or creating a client runs the full host startup, including the migration orchestration.
     /// All overrides go through <c>UseSetting</c>: with the minimal-hosting replay used by
     /// WebApplicationFactory, settings registered this way take precedence over the appsettings
     /// sources, while ConfigureAppConfiguration sources added from the test host are applied

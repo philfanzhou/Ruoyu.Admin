@@ -11,7 +11,7 @@ Admin Portal 服务的本地数据库文档。本文档是数据库结构的**�
 | 数据库类型 | PostgreSQL |
 | 数据库名 | `ruoyu_admin` |
 | 连接字符串配置键 | `ConnectionStrings:AuditDb`（dev 兜底）/ Consul `PostgreSql:*` + `Database:Name`（生产合成） |
-| ORM | Entity Framework Core 8.0 |
+| ORM | Entity Framework Core（基线迁移 + ServiceMantle 迁移编排） |
 | DbContext | `AuditDbContext` |
 
 ## 数据库连接策略
@@ -33,7 +33,7 @@ Admin Portal 服务的本地数据库文档。本文档是数据库结构的**�
 
 详见 [migrations.md](migrations.md)。
 
-本项目不使用 EF Core Migrations，而是通过 `DatabaseInitializer` 在启动时执行手动 DDL 创建表结构。
+本项目自 issue #57 起使用 EF Core Migrations（单一基线迁移），由 `AuditMigrationExecutor` 接入 ServiceMantle 迁移编排（PostgreSQL advisory lock 多实例串行化）管理表结构。
 
 ## 已移除的表
 

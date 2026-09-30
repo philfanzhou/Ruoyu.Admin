@@ -73,7 +73,7 @@ internal static class RegressionSeeder
         {
             Console.Error.WriteLine($"数据库种子失败：{ex.Message}");
             Console.Error.WriteLine(
-                "请确认本地 PostgreSQL 已启动、连接串正确；若表不存在，先启动一次 Admin.WebApi 由 DatabaseInitializer 建表。");
+                "请确认本地 PostgreSQL 已启动、连接串正确；若表不存在，先启动一次 Admin.WebApi 由启动迁移建表。");
             return 2;
         }
         Console.WriteLine("种子完成。重复执行结果一致（按 ObjectPath / TriggerType 幂等覆盖）。");
@@ -217,7 +217,7 @@ internal static class RegressionSeeder
         await using var create = new NpgsqlCommand(
             $"CREATE DATABASE {QuoteIdentifier(databaseName)}", admin);
         await create.ExecuteNonQueryAsync();
-        Console.WriteLine($"已创建数据库 {databaseName}（建表仍由 Admin.WebApi 的 DatabaseInitializer 负责）。");
+        Console.WriteLine($"已创建数据库 {databaseName}（建表仍由 Admin.WebApi 的启动迁移负责）。");
     }
 
     private static string QuoteIdentifier(string name)
@@ -234,7 +234,7 @@ internal static class RegressionSeeder
             if (exists is not true)
             {
                 throw new InvalidOperationException(
-                    $"表 {table} 不存在。建表由 Admin.WebApi 的 DatabaseInitializer 负责：" +
+                    $"表 {table} 不存在。建表由 Admin.WebApi 的启动迁移负责：" +
                     "请先以本地配置启动一次 Admin.WebApi（它会执行 CREATE TABLE IF NOT EXISTS），再运行种子。");
             }
         }
