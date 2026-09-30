@@ -126,8 +126,7 @@ public sealed partial class AdminOidcTests
         Assert.Single(downstream.Requests);
     }
 
-    [Theory]
-    [InlineData(false)][InlineData(true)]
+    [Fact]
     public void IdentitySession_InvalidSwitchCombinationFailsWithoutValues()
     {
         using var invalid = CreateFactory(settings: new Dictionary<string, string?> { ["AdminOidc:UseSessionForIdentityProxy"] = "true" });
