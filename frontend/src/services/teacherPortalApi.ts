@@ -52,7 +52,7 @@ export interface TeacherPagedResponse {
   pageSize: number
 }
 
-import { checkSuccess } from './apiBase'
+import { checkSuccess, extractApiErrorMessage } from './apiBase'
 
 class TeacherPortalApiClient {
   private client = httpClient
@@ -123,9 +123,7 @@ export const teacherPortalClient = new TeacherPortalApiClient()
 export default teacherPortalClient
 
 export function getTeacherPortalErrorMessage(error: unknown) {
-  if (axios.isAxiosError(error)) {
-    return (error.response?.data as { message?: string } | undefined)?.message ?? error.message
-  }
-  if (error instanceof Error) return error.message
-  return 'Unknown error occurred.'
+  // Delegates to the shared extractor so problem+json titles (#56) surface like business
+  // messages everywhere; non-axios inputs keep the previous behavior.
+  return extractApiErrorMessage(error)
 }
