@@ -33,7 +33,7 @@ public sealed partial class AdminOidcTests(PostgreSqlFixture database) : Service
 {
     private WebApplicationFactory<Program> OidcFactory(OidcTestAuthority authority, ManualOidcTime? time = null,
         Action<IServiceCollection>? configure = null, string? root = null, IDataProtectionProvider? protection = null, string? lokiUri = null,
-        bool sessionApi = false, bool portalProxies = false, bool identityProxy = false)
+        bool sessionApi = false, bool sessionLogout = false, bool portalProxies = false, bool identityProxy = false)
         => CreateFactory(root, services =>
         {
             services.Configure<OpenIdConnectOptions>(AdminOidcSettings.OidcScheme, options =>
@@ -45,6 +45,8 @@ public sealed partial class AdminOidcTests(PostgreSqlFixture database) : Service
         {
             ["AdminOidc:Enabled"] = "true", ["AdminOidc:RedirectUri"] = OidcTestAuthority.RedirectUri,
             ["AdminOidc:UseSessionForAdminApi"] = sessionApi.ToString(),
+            ["AdminOidc:UseSessionForLogout"] = sessionLogout.ToString(),
+            ["AdminOidc:PostLogoutRedirectUri"] = "https://admin.example.test/api/auth/oidc/logout-callback",
             ["AdminOidc:UseSessionForPortalProxies"] = portalProxies.ToString(),
             ["TeacherPortal:Url"] = "https://teacher.example.test", ["AssistantPortal:Url"] = "https://assistant.example.test", ["AdminPortal:AdminUserIds:0"] = "FAKE-SUBJECT",
             ["AdminOidc:UseSessionForIdentityProxy"] = identityProxy.ToString(),

@@ -4,6 +4,9 @@ internal sealed record AdminOidcSettings(bool Enabled, string Authority, string 
     string RedirectUri, bool InsecureLoopback, TimeSpan ClockSkew)
 {
     internal bool UseSessionForAdminApi { get; init; }
+    internal bool UseSessionForLogout { get; init; }
+    internal string PostLogoutRedirectUri { get; init; } = "";
+    internal const string LogoutCallbackPath = "/api/auth/oidc/logout-callback";
     internal bool UseSessionForPortalProxies { get; init; }
     internal bool UseSessionForIdentityProxy { get; init; }
     public const string SessionScheme = "AdminSession";
@@ -14,6 +17,9 @@ internal sealed record AdminOidcSettings(bool Enabled, string Authority, string 
     internal static AdminOidcSettings Read(IConfiguration config, IHostEnvironment environment)
     {
         var useSession = config.GetValue<bool>("AdminOidc:UseSessionForAdminApi");
+        var logout = config.GetValue<bool>("AdminOidc:UseSessionForLogout");
+        if (logout && (!useSession || !config.GetValue<bool>("AdminOidc:Enabled")))
+            throw new InvalidOperationException("AdminOidc:UseSessionForLogout requires AdminOidc:Enabled and AdminOidc:UseSessionForAdminApi");
         var portalProxies = config.GetValue<bool>("AdminOidc:UseSessionForPortalProxies");
         if (portalProxies && (!useSession || !config.GetValue<bool>("AdminOidc:Enabled")))
             throw new InvalidOperationException("AdminOidc:UseSessionForPortalProxies requires AdminOidc:Enabled and AdminOidc:UseSessionForAdminApi");
@@ -32,6 +38,11 @@ internal sealed record AdminOidcSettings(bool Enabled, string Authority, string 
             || redirectUri.AbsoluteUri != redirect || redirect.Length > 500 || redirect.Any(c => c > 127))
             throw new InvalidOperationException("AdminOidc:RedirectUri");
         if (!IsSafeUri(authority, dev, out _)) throw new InvalidOperationException("IdentityService:Authority");
+        var postLogout = config["AdminOidc:PostLogoutRedirectUri"] ?? "";
+        if (logout && (!IsSafeUri(postLogout, dev, out var postLogoutUri) || postLogoutUri!.AbsolutePath != LogoutCallbackPath
+            || postLogoutUri.AbsoluteUri != postLogout || postLogout.Length > 500 || postLogout.Any(c => c > 127)
+            || postLogoutUri.GetLeftPart(UriPartial.Authority) != redirectUri.GetLeftPart(UriPartial.Authority)))
+            throw new InvalidOperationException("AdminOidc:PostLogoutRedirectUri");
         var clientId = config["IdentityService:AppId"];
         var secret = config["IdentityService:AppSecret"];
         if (string.IsNullOrWhiteSpace(clientId)) throw new InvalidOperationException("IdentityService:AppId");
@@ -39,7 +50,8 @@ internal sealed record AdminOidcSettings(bool Enabled, string Authority, string 
         var skew = config.GetValue<int?>("IdentityService:ClockSkewSeconds") ?? 30;
         if (skew is < 0 or > 300) throw new InvalidOperationException("IdentityService:ClockSkewSeconds");
         return new(true, authority, clientId, secret, redirect, redirectUri.Scheme == "http", TimeSpan.FromSeconds(skew))
-            { UseSessionForAdminApi = useSession, UseSessionForPortalProxies = portalProxies, UseSessionForIdentityProxy = identityProxy };
+            { UseSessionForAdminApi = useSession, UseSessionForLogout = logout, PostLogoutRedirectUri = logout ? postLogout : "",
+                UseSessionForPortalProxies = portalProxies, UseSessionForIdentityProxy = identityProxy };
     }
 
     internal static bool IsSafeUri(string value, bool allowLoopback, out Uri? uri)

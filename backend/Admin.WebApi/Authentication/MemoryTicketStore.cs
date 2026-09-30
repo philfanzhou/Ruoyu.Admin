@@ -63,6 +63,13 @@ internal sealed class MemoryTicketStore(TimeProvider time) : ITicketStore
         }
         return Task.CompletedTask;
     }
+    // Removal and retrieval are one transition, including requests that cached Authenticate.
+    internal AuthenticationTicket? Take(string key)
+    {
+        lock (_gate)
+            return _tickets.Remove(key, out var value) && value.Deadline > time.GetUtcNow()
+                ? TicketSerializer.Default.Deserialize(value.Ticket) : null;
+    }
     public Task RemoveAsync(string key) { lock (_gate) _tickets.Remove(key); return Task.CompletedTask; }
     internal void RemoveExpired() { lock (_gate) RemoveExpiredCore(); }
     private void RemoveExpiredCore()
@@ -72,14 +79,14 @@ internal sealed class MemoryTicketStore(TimeProvider time) : ITicketStore
     }
 }
 
-internal sealed class OidcStoreCleanup(CompactStateDataFormat state, MemoryTicketStore tickets, TimeProvider time) : BackgroundService
+internal sealed class OidcStoreCleanup(CompactStateDataFormat state, MemoryTicketStore tickets, AdminLogoutStateStore logout, TimeProvider time) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         using var timer = new PeriodicTimer(TimeSpan.FromMinutes(1), time);
         try
         {
-            while (await timer.WaitForNextTickAsync(stoppingToken)) { state.RemoveExpired(); tickets.RemoveExpired(); }
+            while (await timer.WaitForNextTickAsync(stoppingToken)) { state.RemoveExpired(); tickets.RemoveExpired(); logout.RemoveExpired(); }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
     }

@@ -110,6 +110,7 @@ Configuration is read from `appsettings.json`, then Consul KV under `config/ruoy
 | `TeacherPortal:Url`, `AssistantPortal:Url` | Proxy targets |
 | `AdminPortal:AdminUserIds` | Accounts granted the `admin` role via the Identity callback |
 | `AdminOidc:Enabled`, `AdminOidc:RedirectUri` | Optional hosted-login handshake (disabled by default), exact registered callback |
+| `AdminOidc:UseSessionForLogout`, `AdminOidc:PostLogoutRedirectUri` | Optional prepared logout (default false, requires OIDC and session API); exact registered same-origin `/api/auth/oidc/logout-callback` |
 | Session token expiry | Session API returns `reauthentication_required` for a valid expired token; `/api/auth/session` exposes `requiresReauthentication`; sign-in is explicit with no refresh or write replay |
 | `AdminOidc:UseSessionForPortalProxies` | Teacher/Assistant proxy server tokens (default false, requires OIDC and session API); association queries follow the API switch independently |
 | `AdminOidc:UseSessionForIdentityProxy` | Identity proxy server-token authorization (default false, requires OIDC and session API); isolates browser cookies/CSRF and upstream Set-Cookie |
