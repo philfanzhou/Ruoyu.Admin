@@ -219,15 +219,19 @@ internal static class AdminOidcRegistration
         return metadata;
     }
 
-    internal static void UseAdminOidcResponseHeaders(this WebApplication app)
+    /// <summary>
+    /// Gate for the OIDC-only auth surfaces: when OIDC is disabled, /api/auth/oidc/* and
+    /// /api/auth/session answer a fixed 503 oidc_disabled instead of falling through to a 404
+    /// or the SPA. The response-header half of the former middleware (no-store / no-referrer)
+    /// moved to the ServiceMantle security response-header baseline carried by the marked
+    /// endpoints of these routes (see Program.cs).
+    /// </summary>
+    internal static void UseAdminOidcGate(this WebApplication app)
     {
         app.Use(async (context, next) =>
         {
             if (context.Request.Path.StartsWithSegments("/api/auth/oidc") || context.Request.Path == "/api/auth/session")
             {
-                context.Response.Headers.CacheControl = "no-store, no-cache";
-                context.Response.Headers.Pragma = "no-cache";
-                context.Response.Headers["Referrer-Policy"] = "no-referrer";
                 if (!context.RequestServices.GetRequiredService<AdminOidcSettings>().Enabled)
                 {
                     context.Response.StatusCode = 503;

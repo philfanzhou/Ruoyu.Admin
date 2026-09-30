@@ -7,7 +7,7 @@ using Microsoft.Extensions.Options;
 
 namespace Admin.WebApi.Controllers;
 
-[ApiController, AllowAnonymous, Route("api/auth")]
+[ApiController, AllowAnonymous, Route("api/auth"), RequireSecurityResponseHeaders]
 public sealed class AdminOidcController : ControllerBase
 {
     [HttpGet("oidc/start")]

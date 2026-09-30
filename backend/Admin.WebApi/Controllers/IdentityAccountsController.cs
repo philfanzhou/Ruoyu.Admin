@@ -7,7 +7,7 @@ using Ruoyu.Admin.ServiceClients;
 namespace Admin.WebApi.Controllers;
 
 [Route("api/admin")]
-[ApiController]
+[ApiController, RequireSecurityResponseHeaders]
 [Authorize]
 public class IdentityAccountsController : ControllerBase
 {

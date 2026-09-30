@@ -47,9 +47,12 @@ internal sealed class AdminSessionBoundary(AdminSessionAccessor sessions, IAntif
 
     internal static Task RejectAsync(HttpContext context, int status, string error)
     {
+        // The cache-suppression headers previously written here come from the ServiceMantle
+        // security response-header baseline instead: rejections happen after route selection,
+        // so the marked endpoint's metadata already registered the OnStarting header write.
+        // Paths without a marked endpoint (e.g. the three proxy prefixes when session mode
+        // fronts them) intentionally carry no baseline, matching the proxy exclusion.
         context.Response.StatusCode = status;
-        context.Response.Headers.CacheControl = "no-store, no-cache";
-        context.Response.Headers.Pragma = "no-cache";
         return context.Response.WriteAsJsonAsync(new { error }, context.RequestAborted);
     }
 }

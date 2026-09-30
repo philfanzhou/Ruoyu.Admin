@@ -114,7 +114,12 @@ builder.Services.AddCors(options =>
     });
 });
 
-builder.Services.AddControllers();
+builder.Services.AddControllers(options =>
+{
+    // Marks every action of controllers carrying [RequireSecurityResponseHeaders] with the
+    // ServiceMantle security response-header metadata (see the attribute's doc comment).
+    options.Conventions.Add(new AdminSecurityResponseHeadersConvention());
+});
 
 // ========== ServiceMantle (service identity, correlation id, base telemetry, health) ==========
 // ServiceId "ruoyu-admin" is the stable deployment identity (lowercase; deliberately distinct
@@ -135,6 +140,10 @@ builder.Services.AddControllers();
 // fixed code downstream.unavailable and never the downstream message. Per-status relays
 // (404/400 passthrough from downstream bodies) were deliberately removed with the ex.Message
 // catches; per-status preservation would need conditional mappings (ServiceMantle.Web 0.2.1+).
+// AddSecurityResponseHeaders registers the six-header security response baseline services
+// (immutable Cache-Control/Pragma/X-Content-Type-Options/X-Frame-Options/Referrer-Policy/CSP);
+// the actual header writes happen in UseServiceMantleSecurityResponseHeaders below and only for
+// endpoints marked via [RequireSecurityResponseHeaders] / RequireServiceMantleSecurityResponseHeaders.
 builder.Services
     .AddServiceMantle(
         ServiceId.Parse("ruoyu-admin"),
@@ -147,7 +156,8 @@ builder.Services
     .AddExceptionMapping<HttpRequestException>(
         StatusCodes.Status502BadGateway,
         "downstream.unavailable",
-        "A downstream service request failed.");
+        "A downstream service request failed.")
+    .AddSecurityResponseHeaders();
 
 // Readiness evidence for the snapshot source: a process-local one-way receipt that is marked
 // only after DatabaseInitializer returns below, plus a read-only zero-row probe of the
@@ -296,6 +306,18 @@ app.UseWhen(
 
 app.UseCors("AdminWeb");
 
+// ========== ServiceMantle security response headers (after route selection) ==========
+// Route matching runs before any user middleware in WebApplication hosting (no explicit
+// UseRouting below), so the selected endpoint's metadata is already available here. The
+// middleware is a no-op for unmarked endpoints, which keeps static files, the SPA fallback,
+// the health endpoints, ImageController redirects and the three proxy middlewares' forwarded
+// responses on their existing header behavior. Marked endpoints (controllers carrying
+// [RequireSecurityResponseHeaders] plus the marker-only auth endpoints mapped further down)
+// receive the immutable six-header baseline on every routed response while headers are unsent
+// — including 401/403 challenges and middleware short-circuits such as the session boundary
+// rejections, because those happen after route selection.
+app.UseServiceMantleSecurityResponseHeaders();
+
 // ========== Static files & SPA (before authentication) ==========
 // In mode-1 integrated deployment the same container (port 5020) serves both the backend API
 // and the frontend SPA (from wwwroot). The SPA entry point ("/" and all non-/api and non-/health
@@ -368,7 +390,26 @@ else
 var healthEndpoints = app.MapGroup(string.Empty).AllowAnonymous();
 healthEndpoints.MapServiceMantleHealthEndpoints();
 
-app.UseAdminOidcResponseHeaders();
+// ========== Marker-only endpoints for middleware-owned auth routes ==========
+// These routes are always handled (short-circuited) by middleware that runs before endpoint
+// execution — AdminLogoutMiddleware owns /api/auth/logout/csrf and the OIDC logout callback in
+// every configuration (GET is the answered method; a mismatch answers the disabled-mode
+// 503 first), and UseAdminOidcGate /
+// the OpenIdConnect remote handler own /api/auth/oidc/callback — so their route endpoints
+// exist solely to carry the security response-header metadata: route selection happens at the
+// very start of the pipeline, which makes the headers middleware (registered above) cover the
+// middleware-written responses too. The handlers below are therefore unreachable by design;
+// they exist so the routes can never 404 and so the marker placement survives any future
+// change in middleware short-circuiting. Methods beyond GET exist only so method-mismatch
+// 405s keep the baseline as well.
+var authMarkerMethods = new[] { "GET", "HEAD", "POST", "PUT", "PATCH", "DELETE" };app.MapMethods("/api/auth/logout/csrf", authMarkerMethods, () => Results.StatusCode(StatusCodes.Status503ServiceUnavailable))
+    .RequireServiceMantleSecurityResponseHeaders();
+app.MapMethods(AdminOidcSettings.LogoutCallbackPath, authMarkerMethods, () => Results.StatusCode(StatusCodes.Status503ServiceUnavailable))
+    .RequireServiceMantleSecurityResponseHeaders();
+app.MapMethods(AdminOidcSettings.CallbackPath, authMarkerMethods, () => Results.StatusCode(StatusCodes.Status503ServiceUnavailable))
+    .RequireServiceMantleSecurityResponseHeaders();
+
+app.UseAdminOidcGate();
 // Explicit session authentication runs inside this boundary; retired password login must
 // return 410 before a caller's legacy Bearer could trigger any Identity discovery HTTP.
 app.UseMiddleware<AdminLogoutMiddleware>();

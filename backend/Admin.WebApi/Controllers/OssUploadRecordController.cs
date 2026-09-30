@@ -8,7 +8,7 @@ using Ruoyu.Admin.Common.Oss;
 namespace Admin.WebApi.Controllers;
 
 [Route("api/admin/oss-upload-records")]
-[ApiController]
+[ApiController, RequireSecurityResponseHeaders]
 [Authorize]
 public class OssUploadRecordController : ControllerBase
 {

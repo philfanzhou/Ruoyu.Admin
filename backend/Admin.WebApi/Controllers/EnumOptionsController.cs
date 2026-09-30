@@ -6,7 +6,7 @@ using Ruoyu.Admin.Common.Constants;
 namespace Admin.WebApi.Controllers;
 
 [Route("api/admin/enum-options")]
-[ApiController]
+[ApiController, RequireSecurityResponseHeaders]
 [Authorize]
 public class EnumOptionsController : ControllerBase
 {

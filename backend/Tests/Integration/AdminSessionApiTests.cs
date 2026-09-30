@@ -81,8 +81,10 @@ public sealed partial class AdminOidcTests
     {
         using var response = await Api(client, "/api/auth/csrf", session);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Contains("no-store", response.Headers.CacheControl!.ToString());
-        Assert.Contains("no-cache", response.Headers.CacheControl.ToString());
+        // #55: the six-header ServiceMantle baseline splits the two directives —
+        // Cache-Control carries exactly no-store, and no-cache moved to Pragma.
+        Assert.Equal("no-store", response.Headers.CacheControl!.ToString());
+        Assert.Equal("no-cache", string.Join(",", response.Headers.Pragma));
         var cookie = response.Headers.GetValues("Set-Cookie").Single(value => value.StartsWith("adminCsrf="));
         foreach (var flag in new[] { "httponly", "secure", "samesite=lax", "path=/" }) Assert.Contains(flag, cookie.ToLowerInvariant());
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
