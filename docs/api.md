@@ -22,7 +22,7 @@ Admin Portal 采用 **mode-1 集成部署**：同一容器（端口 5020）既�
 
 ### 可选托管登录基础（#38）
 
-默认 `AdminOidc:UseSessionForAdminApi=false`：前端和管理 API 继续使用旧 JWT，新 `adminSession` 单独访问管理 API 或三个代理仍返回 401。显式设 true 后，只有 `/api/admin/*` 与 `/api/auth/csrf` 选择 AdminSession；三个代理仍用 Bearer，新 Cookie 单独访问仍 401。前端切换、代理凭据转发、会话续接与登出由 #41、#43/#44、#45/#46 交付。
+默认 `AdminOidc:UseSessionForAdminApi=false`：前端和管理 API 继续使用旧 JWT，新 `adminSession` 单独访问管理 API 或三个代理仍返回 401。显式设 true 后，只有 `/api/admin/*` 与 `/api/auth/csrf` 选择 AdminSession；各代理默认仍用 Bearer；显式开启其迁移开关后采用同一会话边界。前端切换、门户凭据转发、会话续接与登出由 #44、#45/#46 交付，SPA 激活属 #41。
 
 `AdminOidc:Enabled=false` 默认关闭，新 start/callback/session 入口返回 `503 {"error":"oidc_disabled"}`，旧配置可继续启动。启用配置与部署门禁见 [Deployment.md](development/Deployment.md#可选-signacore-托管登录)。
 
@@ -1094,3 +1094,7 @@ true 时 `POST /api/auth/login` 在读取密码/模型绑定前固定 `410 {"err
 - `404 Not Found`: 资源不存在
 - `500 Internal Server Error`: 服务器内部错误
 - `502 Bad Gateway`: 下游服务不可用
+
+### Identity 代理服务端会话（#43）
+
+`AdminOidc:UseSessionForIdentityProxy` 默认 false，true 必须同时启用 `Enabled` 和 `UseSessionForAdminApi`。全 `/api/identity` 前缀（大小写、根和尾斜线）在认证/授权前经过共享管理员与 CSRF 边界。拒绝任何入站 Authorization；只转发服务器票据内有效 access token，剥离浏览器 Cookie、Host、X-CSRF-TOKEN 与伪造 gateway 头后注入本服务 AppId/AppSecret。下游 Set-Cookie 不传给浏览器；401/403/结构化503和 Retry-After 原样，网络失败502，取消传递且不重放。默认 legacy 和 AppSecret 剥离仍保持；其余门户继续各自原模式。生产 audience/角色注册与 SPA 激活仍由 #41/IKJ8MO 验证。专项 `FullyQualifiedName~IdentitySession_` 使用 fake HTTP 与隔离数据库，无生产 OSS 删除。
