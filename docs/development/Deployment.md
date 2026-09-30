@@ -23,7 +23,7 @@
 
 ### 日志管线与字段
 
-`ServiceMantle.Logging 0.2.1-rc.1` 提供 Console + 可选 Loki，共享 Information 最低级别和两个 Warning override：`Microsoft.AspNetCore`、`Microsoft.EntityFrameworkCore.Database.Command`。`Logging:LogLevel` 是框架 ILogger 的前置过滤；它可以进一步抑制事件，不能突破上述管线下限。
+`ServiceMantle.Logging 0.2.1`（正式版；随 #58 与 `ServiceMantle.Web`、`ServiceMantle.Diagnostics` 统一到同一发布 tag，替换原先混用的 0.2.0 与 `0.2.1-rc.1`）提供 Console + 可选 Loki，共享 Information 最低级别和两个 Warning override：`Microsoft.AspNetCore`、`Microsoft.EntityFrameworkCore.Database.Command`。`Logging:LogLevel` 是框架 ILogger 的前置过滤；它可以进一步抑制事件，不能突破上述管线下限。
 
 `Loki:Uri` 仍由 Consul / appsettings 提供，仓库回退 `http://ruoyu-loki:3100`；空值关闭远端 sink，错误绝对 URI 启动失败且只返回固定错误代码。内网 HTTP 通过 `AllowInsecureHttp=true` 显式信任，完整日志以明文传输，仅用于可信网络；跨信任边界必须用 HTTPS。无授权头配置。Loki 不可达时异步有界重试，业务请求继续可用；有界队列、关机冲刷不保证零丢失。流标签固定 `service=Ruoyu.Admin`，sink 另加低基数 `level`，`{service="Ruoyu.Admin"}` 查询不变。
 
