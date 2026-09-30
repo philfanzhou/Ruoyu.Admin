@@ -20,13 +20,13 @@ namespace Admin.WebApi.Tests.Integration;
 public sealed partial class AdminOidcTests
 {
     private WebApplicationFactory<Program> LogoutFactory(OidcTestAuthority authority, LogoutCapture upstream,
-        ManualOidcTime? time = null, MutableAdmins? admins = null, Action<IServiceCollection>? configure = null)
+        ManualOidcTime? time = null, MutableAdmins? admins = null, Action<IServiceCollection>? configure = null, bool identityProxy = false)
         => OidcFactory(authority, time, services =>
         {
             services.AddHttpClient(AdminPreparedLogout.ClientName).ConfigurePrimaryHttpMessageHandler(() => upstream);
             if (admins is not null) services.Replace(ServiceDescriptor.Singleton<IOptionsMonitor<AdminPortalOptions>>(admins));
             configure?.Invoke(services);
-        }, sessionApi: true, sessionLogout: true);
+        }, sessionApi: true, sessionLogout: true, identityProxy: identityProxy);
     private static async Task<(string Token, string Cookie)> LogoutCsrf(HttpClient client, string cookie)
     {
         using var response = await Api(client, "/api/auth/logout/csrf", cookie);
@@ -38,11 +38,12 @@ public sealed partial class AdminOidcTests
         CancellationToken cancellation = default) => await Api(client, "/api/auth/logout", cookie + "; " + csrf.Cookie, "POST", csrf: [csrf.Token], cancellation: cancellation);
 
     [Theory]
-    [InlineData(false, false)][InlineData(true, false)][InlineData(false, true)][InlineData(true, true)]
-    public async Task PreparedLogout_RevokesBeforeHttpWithExpiredAccessOrRemovedAdmin(bool expired, bool removedAdmin)
+    [InlineData(false, false, false)][InlineData(true, false, false)][InlineData(false, true, false)][InlineData(true, true, false)]
+    [InlineData(false, false, true)][InlineData(true, false, true)][InlineData(false, true, true)][InlineData(true, true, true)]
+    public async Task PreparedLogout_RevokesBeforeHttpWithExpiredAccessOrRemovedAdmin(bool expired, bool removedAdmin, bool identityProxy)
     {
         using var authority = new OidcTestAuthority(); var upstream = new LogoutCapture(); var admins = new MutableAdmins(); var time = new ManualOidcTime();
-        using var factory = LogoutFactory(authority, upstream, time, admins: admins); using var client = Browser(factory);
+        using var factory = LogoutFactory(authority, upstream, time, admins: admins, identityProxy: identityProxy); using var client = Browser(factory);
         var cookie = await LoginSession(client, authority); var (key, ticket) = await Stored(factory, cookie);
         if (expired) ticket.Properties.UpdateTokenValue("expires_at", DateTimeOffset.UtcNow.AddHours(-1).ToString("o"));
         await factory.Services.GetRequiredService<MemoryTicketStore>().RenewAsync(key, ticket);
@@ -176,10 +177,13 @@ public sealed partial class AdminOidcTests
         using var authority = new OidcTestAuthority(); var upstream = new LogoutCapture(); var gate = new CachedLogoutGate();
         using var factory = LogoutFactory(authority, upstream, configure: services => services.AddSingleton<IStartupFilter>(gate)); using var client = Browser(factory);
         var cookie = await LoginSession(client, authority); var csrf = await LogoutCsrf(client, cookie);
+        var (key, _) = await Stored(factory, cookie);
+        gate.Arm(); // Only the two concurrent requests below enter the server-controlled barrier.
         var responses = await Task.WhenAll(PostLogout(client, cookie, csrf), PostLogout(client, cookie, csrf));
         Assert.Equal(2, gate.Authenticated);
         Assert.Single(responses.Where(r => r.StatusCode == HttpStatusCode.OK)); Assert.Single(responses.Where(r => r.StatusCode == HttpStatusCode.Unauthorized));
         Assert.Single(upstream.Forms);
+        Assert.Null(await factory.Services.GetRequiredService<MemoryTicketStore>().RetrieveAsync(key));
     }
 
     [Fact]
@@ -217,15 +221,19 @@ public sealed partial class AdminOidcTests
 internal sealed class CachedLogoutGate : IStartupFilter
 {
     internal int Authenticated;
+    private int _armed;
+    internal void Arm() => Volatile.Write(ref _armed, 1);
     private readonly TaskCompletionSource _both = new(TaskCreationOptions.RunContinuationsAsynchronously);
     public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) => app =>
     {
         app.Use(async (context, onward) =>
         {
-            if (context.Request.Path == "/api/auth/logout" && context.Request.Method == "POST")
+            // Cache authentication for every request; no user-controlled path/method gates it.
+            var result = await context.AuthenticateAsync(AdminOidcSettings.SessionScheme);
+            if (Volatile.Read(ref _armed) != 0)
             {
-                var result = await context.AuthenticateAsync(AdminOidcSettings.SessionScheme);
-                if (result.Succeeded && Interlocked.Increment(ref Authenticated) == 2) _both.TrySetResult();
+                Assert.True(result.Succeeded);
+                if (Interlocked.Increment(ref Authenticated) == 2) _both.TrySetResult();
                 await _both.Task.WaitAsync(TimeSpan.FromSeconds(5));
             }
             await onward();
