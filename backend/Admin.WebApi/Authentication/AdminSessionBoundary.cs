@@ -12,7 +12,8 @@ internal sealed class AdminSessionBoundary(AdminSessionAccessor sessions, IAntif
     internal static bool IsAuthPath(PathString path, string route) => string.Equals(path.Value?.TrimEnd('/'), route, StringComparison.OrdinalIgnoreCase);
     internal static bool IsSessionPath(PathString path, AdminOidcSettings settings) => path.StartsWithSegments("/api/admin")
         || IsAuthPath(path, "/api/auth/csrf")
-        || settings.UseSessionForPortalProxies && (path.StartsWithSegments("/api/teacher-portal") || path.StartsWithSegments("/api/assistant-portal"));
+        || settings.UseSessionForPortalProxies && (path.StartsWithSegments("/api/teacher-portal") || path.StartsWithSegments("/api/assistant-portal"))
+        || settings.UseSessionForIdentityProxy && path.StartsWithSegments("/api/identity");
 
     internal async Task<bool> ValidateAsync(HttpContext context)
     {

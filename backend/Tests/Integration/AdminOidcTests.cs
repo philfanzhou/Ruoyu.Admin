@@ -33,7 +33,7 @@ public sealed partial class AdminOidcTests(PostgreSqlFixture database) : Service
 {
     private WebApplicationFactory<Program> OidcFactory(OidcTestAuthority authority, ManualOidcTime? time = null,
         Action<IServiceCollection>? configure = null, string? root = null, IDataProtectionProvider? protection = null, string? lokiUri = null,
-        bool sessionApi = false, bool portalProxies = false)
+        bool sessionApi = false, bool portalProxies = false, bool identityProxy = false)
         => CreateFactory(root, services =>
         {
             services.Configure<OpenIdConnectOptions>(AdminOidcSettings.OidcScheme, options =>
@@ -47,6 +47,7 @@ public sealed partial class AdminOidcTests(PostgreSqlFixture database) : Service
             ["AdminOidc:UseSessionForAdminApi"] = sessionApi.ToString(),
             ["AdminOidc:UseSessionForPortalProxies"] = portalProxies.ToString(),
             ["TeacherPortal:Url"] = "https://teacher.example.test", ["AssistantPortal:Url"] = "https://assistant.example.test", ["AdminPortal:AdminUserIds:0"] = "FAKE-SUBJECT",
+            ["AdminOidc:UseSessionForIdentityProxy"] = identityProxy.ToString(),
             ["IdentityService:Authority"] = OidcTestAuthority.Issuer, ["IdentityService:Issuer"] = OidcTestAuthority.Issuer,
             ["IdentityService:AppId"] = OidcTestAuthority.ClientId, ["IdentityService:AppSecret"] = OidcTestAuthority.Secret,
             ["IdentityService:RequireHttpsMetadata"] = "true", ["Loki:Uri"] = lokiUri ?? ""
