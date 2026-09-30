@@ -20,7 +20,7 @@ internal sealed class AdminSessionBoundary(AdminSessionAccessor sessions, IAntif
         var session = await sessions.AuthenticateAsync(context);
         if (session.StatusCode != 200)
         {
-            await RejectAsync(context, session.StatusCode, session.StatusCode == 403 ? "forbidden" : "unauthorized");
+            await RejectAsync(context, session.StatusCode, session.Error!);
             return false;
         }
         context.User = session.Principal!;

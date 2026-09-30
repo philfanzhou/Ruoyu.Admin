@@ -200,8 +200,8 @@ public sealed partial class AdminOidcTests
             await store.RenewAsync(key, ticket);
         }
         foreach (var path in new[] { "/api/admin/session-probe", "/api/auth/csrf" })
-            await Rejected(await Api(client, path, cookie), 401, "unauthorized");
-        await Rejected(await Api(client, "/api/admin/oss-audit/records/1/resolve", cookie, "POST"), 401, "unauthorized");
+            await Rejected(await Api(client, path, cookie), 401, defect is "deadline-exact" or "deadline-past" ? "reauthentication_required" : "unauthorized");
+        await Rejected(await Api(client, "/api/admin/oss-audit/records/1/resolve", cookie, "POST"), 401, defect is "deadline-exact" or "deadline-past" ? "reauthentication_required" : "unauthorized");
         Assert.Equal(0, probe.Reads);
         using var scope = factory.Services.CreateScope();
         var context = new Microsoft.AspNetCore.Http.DefaultHttpContext { RequestServices = scope.ServiceProvider };

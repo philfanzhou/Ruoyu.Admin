@@ -30,16 +30,18 @@ internal sealed class AdminSessionAccessor(AdminOidcSettings settings, IOptionsM
         // missing offsets, permissive parsing or session-lifetime fallback may authorize a request.
         if (string.IsNullOrWhiteSpace(token)
             || !DateTimeOffset.TryParseExact(deadline, "o", CultureInfo.InvariantCulture, DateTimeStyles.None, out var expires)
-            || deadline != expires.ToString("o", CultureInfo.InvariantCulture)
-            || time.GetUtcNow() >= expires) return new(401);
+            || deadline != expires.ToString("o", CultureInfo.InvariantCulture)) return new(401);
+        if (time.GetUtcNow() >= expires) return new(401, error: "reauthentication_required", displayName: principal.FindFirst("display_name")?.Value);
         return new(200, principal, token);
     }
 }
 
 // Keep secrets out of implicit record/diagnostic formatting.
-internal sealed class AdminSessionResult(int statusCode, ClaimsPrincipal? principal = null, string? accessToken = null)
+internal sealed class AdminSessionResult(int statusCode, ClaimsPrincipal? principal = null, string? accessToken = null, string? error = null, string? displayName = null)
 {
     internal int StatusCode { get; } = statusCode;
+    internal string? Error { get; } = error ?? (statusCode == 403 ? "forbidden" : statusCode == 401 ? "unauthorized" : null);
+    internal string? DisplayName { get; } = displayName;
     internal ClaimsPrincipal? Principal { get; } = principal;
     internal string? AccessToken { get; } = accessToken;
     public override string ToString() => $"AdminSessionResult({StatusCode})";
