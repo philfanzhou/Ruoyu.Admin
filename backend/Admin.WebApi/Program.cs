@@ -1,6 +1,7 @@
 using System.Data.Common;
 using Admin.WebApi;
 using Admin.WebApi.Authentication;
+using Admin.WebApi.Health;
 using Admin.WebApi.Models;
 using Admin.WebApi.Persistence;
 using Admin.WebApi.Services;
@@ -11,6 +12,7 @@ using Ruoyu.Admin.Common.Oss;
 using Ruoyu.Admin.Consul;
 using Ruoyu.Admin.ServiceClients;
 using ServiceMantle;
+using ServiceMantle.Health;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -121,15 +123,27 @@ builder.Services.AddControllers();
 // AddOpenTelemetryInstrumentation uses the default options (AspNetCore / HttpClient / Runtime
 // instrumentation) and registers NO exporter.
 // AddServiceMantleHealthEndpoints registers the health endpoint services ONLY (the actual
-// /health/live, /health/ready and /health routes are mapped below). No IServiceHealthSnapshotSource
-// and no readiness contributor is registered: readiness is honestly fail-closed (503
-// health.probe_failed) until Admin gains a real readiness evidence source.
+// /health/live, /health/ready and /health routes are mapped below) with a 3-second probe
+// budget: a wedged database cannot hold the readiness request forever (an exhausted budget
+// maps to the library's fixed health.probe_timeout). Readiness evidence comes from the
+// consumer-owned AdminHealthSnapshotSource below; no readiness contributor is registered
+// (downstream services deliberately stay OUT of readiness to avoid cascading removal).
 builder.Services
     .AddServiceMantle(
         ServiceId.Parse("ruoyu-admin"),
         InstanceId.Parse($"ruoyu-admin-{Guid.NewGuid():N}"))
     .AddOpenTelemetryInstrumentation()
-    .AddServiceMantleHealthEndpoints();
+    .AddServiceMantleHealthEndpoints(options =>
+    {
+        options.ProbeTimeout = TimeSpan.FromSeconds(3);
+    });
+
+// Readiness evidence for the snapshot source: a process-local one-way receipt that is marked
+// only after DatabaseInitializer returns below, plus a read-only zero-row probe of the
+// EF-mapped tables. Before the initializer completes (or after a failed initialization),
+// readiness fails closed with ruoyu-admin.startup_incomplete and never claims Succeeded.
+builder.Services.AddSingleton<AdminStartupReceipt>();
+builder.Services.AddScoped<IServiceHealthSnapshotSource, AdminHealthSnapshotSource>();
 
 // IOssService: 保留用于 OSS 审计和运维操作
 // 权限范围：只读（ListObjects, Download, GetPresignedUrl, ObjectExists）+ 有限写（Delete 僵尸清理, CopyObject 迁移辅助）
@@ -240,6 +254,9 @@ using (var scope = app.Services.CreateScope())
             CREATE INDEX IF NOT EXISTS ""IX_OssAuditRecords_CreatedAt"" ON ""OssAuditRecords"" (""CreatedAt"");",
         _ => null
     });
+    // The one-way startup receipt: only a successful initializer return in THIS process may
+    // ever let readiness publish migrationStatus=Succeeded (see AdminHealthSnapshotSource).
+    scope.ServiceProvider.GetRequiredService<AdminStartupReceipt>().MarkInitializationCompleted();
 }
 
 // First middleware in the pipeline: everything registered later (CORS, static files / SPA
@@ -312,11 +329,13 @@ else
 // alias) WITHOUT any authorization metadata, so the FallbackPolicy (RequireAuthenticatedUser)
 // would 401 them. Mapping them inside an empty route group with AllowAnonymous exempts exactly
 // these endpoints while every /api endpoint keeps requiring a JWT (RuoyuJwtBearerExtensions is
-// untouched). Admin registers no IServiceHealthSnapshotSource yet, so readiness is fail-closed:
-// /health/ready and /health return 503 health.probe_failed; only /health/live reports success.
-// Deployment and monitoring must therefore use /health/live for liveness probes (see
-// docs/development/Deployment.md). Route matching is decoupled from middleware order; the
-// decisive part is the /health exclusion in the SPA fallback predicate above.
+// untouched). Readiness projects the consumer-owned AdminHealthSnapshotSource: ready (200) only
+// for Completed + Succeeded + Reachable, i.e. this process finished DatabaseInitializer AND a
+// bounded read-only AuditDb probe of the mapped tables succeeded; every failure answers 503
+// with a fixed safe errorCode and never a connection string, host, or exception text.
+// Downstream services (Student/Mistake/Identity/...) are deliberately NOT part of readiness to
+// avoid cascading removal. Route matching is decoupled from middleware order; the decisive part
+// is the /health exclusion in the SPA fallback predicate above.
 var healthEndpoints = app.MapGroup(string.Empty).AllowAnonymous();
 healthEndpoints.MapServiceMantleHealthEndpoints();
 
