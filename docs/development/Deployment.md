@@ -23,7 +23,7 @@
 
 ### 日志管线与字段
 
-`ServiceMantle.Logging 0.2.1-rc.1` 提供 Console + 可选 Loki，共享 Information 最低级别和两个 Warning override：`Microsoft.AspNetCore`、`Microsoft.EntityFrameworkCore.Database.Command`。`Logging:LogLevel` 是框架 ILogger 的前置过滤；它可以进一步抑制事件，不能突破上述管线下限。
+`ServiceMantle.Logging 0.2.1`（正式版；随 #58 与 `ServiceMantle.Web`、`ServiceMantle.Diagnostics` 统一到同一发布 tag，替换原先混用的 0.2.0 与 `0.2.1-rc.1`）提供 Console + 可选 Loki，共享 Information 最低级别和两个 Warning override：`Microsoft.AspNetCore`、`Microsoft.EntityFrameworkCore.Database.Command`。`Logging:LogLevel` 是框架 ILogger 的前置过滤；它可以进一步抑制事件，不能突破上述管线下限。
 
 `Loki:Uri` 仍由 Consul / appsettings 提供，仓库回退 `http://ruoyu-loki:3100`；空值关闭远端 sink，错误绝对 URI 启动失败且只返回固定错误代码。内网 HTTP 通过 `AllowInsecureHttp=true` 显式信任，完整日志以明文传输，仅用于可信网络；跨信任边界必须用 HTTPS。无授权头配置。Loki 不可达时异步有界重试，业务请求继续可用；有界队列、关机冲刷不保证零丢失。流标签固定 `service=Ruoyu.Admin`，sink 另加低基数 `level`，`{service="Ruoyu.Admin"}` 查询不变。
 
@@ -96,17 +96,18 @@ Admin API 启动时通过 Consul `config/ruoyu/*` 加载 PostgreSQL、OSS 和下
 
 ## 健康检查
 
-ServiceMantle 健康端点（随 #34 落地，匿名可达，不受 SPA 回退影响）：
+ServiceMantle 健康端点（随 #34 落地，#54 起具备真实就绪证据源；匿名可达，不受 SPA 回退影响）：
 
 ```bash
 curl -s http://localhost:5020/health/live
 # 200 {"status":"live"}
-curl -s -o /dev/null -w "%{http_code}\n" http://localhost:5020/health/ready
-# 503 —— 就绪源落地前的固定形态，不是故障
+curl -s http://localhost:5020/health/ready
+# 200 {"status":"ready","phase":"completed","migrationStatus":"succeeded","databaseStatus":"reachable","errorCode":null}
 ```
 
-- **`/health/live` 是当前唯一应被部署与监控使用的探测端点**：进程存活即恒 200，用于容器存活探测与重启判定。响应携带 `x-correlation-id`。
-- **`/health/ready` 与别名 `/health` 在就绪证据源（`IServiceHealthSnapshotSource`）落地前恒返回 503**，响应体 `{"status":"not_ready","phase":null,"migrationStatus":null,"databaseStatus":null,"errorCode":"health.probe_failed"}`——这是诚实的 fail-closed 语义（Admin 尚无就绪证据来源），**不得**把这两个端点接入重启或流量门禁，否则会误杀健康实例。真实依赖（DB/OSS）连通性纳入就绪判定属后续独立增强。
+- **`/health/live`**：进程存活即恒 200，不读取任何状态，用于容器存活探测。响应携带 `x-correlation-id`。
+- **`/health/ready` 与别名 `/health`（#54 起可用于就绪探针与流量门禁）**：就绪 = 本进程 `DatabaseInitializer` 成功返回（进程内单向回执 `AdminStartupReceipt`）**且**一次 3 秒有界的只读 AuditDb 探测（对 EF 映射表执行零行 `SELECT`，不读行、不跑 DDL）成功。健康时返回上例 200；失败时 503 + 固定安全 `errorCode`：初始化未完成 `ruoyu-admin.startup_incomplete`、数据库不可达 `ruoyu-admin.database_unreachable`、映射表/列不可读 `ruoyu-admin.schema_unavailable`、探测超时 `health.probe_timeout`、探测失败 `health.probe_failed`。响应与日志不含连接串、主机或异常文本；每次请求重新采样，数据库恢复后下一个请求即恢复 ready。
+- **下游服务（Student/Mistake/Homework/Identity/代理目标）刻意不参与就绪判定**，避免下游抖动导致级联摘除。
 - 端点匿名访问：库映射的端点本身不带授权元数据，Admin 通过根路由组的 `AllowAnonymous` 约定豁免全局 FallbackPolicy；`/api/*` 仍要求认证（下条命令验证）。
 
 传统探测方式仍然有效：
