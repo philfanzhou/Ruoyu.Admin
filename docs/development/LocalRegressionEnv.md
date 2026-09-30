@@ -154,3 +154,12 @@ Student、Homework 任一 `HttpRequestException`，或 Mistake 的异常传播�
 - **登录成功但接口 403 / 无 admin 权限**：测试用户不在 `AdminPortal:AdminUserIds` 白名单。
 - **种子失败「表不存在」**：先完成步骤 3 让 `DatabaseInitializer` 建表。
 - **审计运行始终 `Status=2`**：替身未启动（步骤 5），或 `StudentService/MistakeService/HomeworkService:Url` 指向了错误端口。
+
+
+## 可选 OIDC 基础回归（#38）
+
+上述 #24 配方仍走旧密码/JWT。新握手默认关闭，显式启用与精确注册见 [LocalSetup.md](./LocalSetup.md#可选托管登录开发配置)。本地 callback 使用 `http://127.0.0.1:5020/api/auth/oidc/callback`，不要注册 localhost；生产 HTTPS/TLS 与代理 query 禁日志要求见 [Deployment.md](./Deployment.md#可选-signacore-托管登录)。Secret 仍只通过环境变量或 user-secrets 注入。
+
+真 Program 的自动化握手由 `OidcTestAuthority` 隔离提供 Discovery/JWKS/token、测试 RSA 与虚构 canary，执行 `dotnet test backend/Ruoyu.Admin.sln --configuration Release --filter "FullyQualifiedName~Oidc"`（需要 Docker）。包含严格签名与回调拒绝、取消、一次消费/并发、Cookie 引用/内存 token、过期/重启、匿名 SPA/健康以及新 Cookie 不放行 Admin API；它不表示生产 ADMIN Code 注册和下游 audience（Ruoyu.Study IKJ8MO）已就绪。
+
+本阶段尚未切前端与管理 API。session 最长 8 小时绝对、state 5 分钟，均为单进程有界内存，重启失效。后续会话授权/写请求 CSRF、续接/登出、SPA 切换分别由 #39/#40/#41 推进；旧 `POST /api/auth/logout` 只清旧 JWT Cookie，不负责新会话或全局登出。

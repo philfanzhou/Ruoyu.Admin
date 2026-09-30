@@ -109,6 +109,7 @@ Configuration is read from `appsettings.json`, then Consul KV under `config/ruoy
 | `StudentService:Url`, `MistakeService:Url`, `HomeworkService:Url` | Downstream service addresses |
 | `TeacherPortal:Url`, `AssistantPortal:Url` | Proxy targets |
 | `AdminPortal:AdminUserIds` | Accounts granted the `admin` role via the Identity callback |
+| `AdminOidc:Enabled`, `AdminOidc:RedirectUri` | Optional hosted-login handshake (disabled by default), exact registered callback |
 | `AdminWeb:AllowedOrigins` | CORS origins; empty means allow any |
 | `Oss:*` | `InternalEndpoint` / `InternalSecure` for direct S3 access, `PublicBaseUrl` for presigned URLs |
 | `OssAudit:ScheduledHour`, `OssAudit:ScheduledMinute` | Daily audit schedule (UTC) |
@@ -116,6 +117,8 @@ Configuration is read from `appsettings.json`, then Consul KV under `config/ruoy
 | `Consul:*` | KV address, prefix, cache directory |
 
 Full details: [docs/development/Deployment.md](docs/development/Deployment.md).
+
+The optional SignaCore Code + PKCE handshake stores tokens in a single-process server ticket, with an opaque HttpOnly cookie and an absolute eight-hour lifetime. This phase has not switched the SPA or API/proxy authorization: existing JWT login remains active, and the new cookie alone does not grant Admin API access. Production activation requires the exact HTTPS callback registration and downstream audience migration; restarts lose pending handshakes and sessions.
 
 ## Tests
 

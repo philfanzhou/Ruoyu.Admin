@@ -29,6 +29,14 @@
 | `TeacherPortal:Url` | `http://localhost:5004` | Teacher Portal HTTP 服务 |
 | `AssistantPortal:Url` | `http://localhost:5021` | Assistant Portal HTTP 服务 |
 
+### 可选托管登录开发配置
+
+默认 `AdminOidc:Enabled=false`，旧密码/JWT 前端与 API 保持原样。只在验证 #38 的基础握手时显式设 `AdminOidc__Enabled=true`、`AdminOidc__RedirectUri=http://127.0.0.1:5020/api/auth/oidc/callback`，并在本地 SignaCore 注册同一精确 URI 的 Confidential Code 客户端与 openid profile/S256；复用其 AppId/AppSecret，通过环境变量或 user-secrets 保存。Authority/Issuer 使用本地数字 loopback；`localhost` 不符合此 OIDC 切片的开发注册边界。生产要求 HTTPS，固定 URI 不取入站 Host/转发头。
+
+新入口是 `/api/auth/oidc/start`、框架 callback 和 `/api/auth/session`；票据/令牌只在进程内，Cookie 只含引用，8 小时绝对到期、重启失效。不以它授权管理 API、不切 SPA、不做 refresh/上游 logout；不要用新 Cookie 执行审计处置。完整配置、安全与上线门禁见 [Deployment.md](./Deployment.md#可选-signacore-托管登录)。
+
+自动化完整握手使用 `backend/Tests/Integration/OidcTestAuthority.cs` 的测试 RSA、Discovery/JWKS/token 替身与 Testcontainers PostgreSQL，`dotnet test Ruoyu.Admin.sln --configuration Release --filter "FullyQualifiedName~Oidc"`；不连接生产 Identity。
+
 ### 数据库连接策略
 
 Admin Portal 通过 `SharedPostgreSqlConnectionStringFactory.BuildOrFallback` 组装连接串，与 mistake / student 等服务保持一致：

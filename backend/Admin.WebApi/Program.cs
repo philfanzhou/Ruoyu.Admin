@@ -1,5 +1,6 @@
 using System.Data.Common;
 using Admin.WebApi;
+using Admin.WebApi.Authentication;
 using Admin.WebApi.Models;
 using Admin.WebApi.Persistence;
 using Admin.WebApi.Services;
@@ -18,7 +19,7 @@ builder.Configuration.AddRuoyuConsulConfiguration(builder.Configuration);
 var consulOptions = RuoyuConsulOptions.Bind(builder.Configuration);
 var consulRuntimeState = RuoyuConsulRuntimeState.Instance;
 
-// ========== Serilog (Console + Grafana Loki) ==========
+// ========== ServiceMantle logging (Console + optional Grafana Loki) ==========
 builder.AddAdminLogging();
 
 // HTTP listen port is hardcoded to 5020 (not configurable).
@@ -65,6 +66,8 @@ builder.Services.AddRuoyuJwtBearer(
         // The shared handler preserves header precedence and uses this cookie only as fallback.
         options.AccessTokenCookieName = "adminAuthToken";
     });
+
+builder.Services.AddAdminOidc(builder.Configuration, builder.Environment);
 
 builder.Services.Configure<IdentityServiceOptions>(
     builder.Configuration.GetSection(IdentityServiceOptions.SectionName));
@@ -317,6 +320,7 @@ else
 var healthEndpoints = app.MapGroup(string.Empty).AllowAnonymous();
 healthEndpoints.MapServiceMantleHealthEndpoints();
 
+app.UseAdminOidcResponseHeaders();
 app.UseAuthentication();
 app.UseAuthorization();
 
