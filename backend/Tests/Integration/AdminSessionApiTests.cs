@@ -43,6 +43,7 @@ public sealed partial class AdminOidcTests
             { BaseAddress = new Uri("https://homework.example.test") })));
         services.Configure<JwtBearerOptions>("Bearer", options =>
         {
+            options.Events.OnMessageReceived = context => { Interlocked.Increment(ref probe.BearerAuthentications); return Task.CompletedTask; };
             var metadata = new OpenIdConnectConfiguration { Issuer = OidcTestAuthority.Issuer };
             metadata.SigningKeys.Add(authority.SigningKey);
             options.Configuration = metadata;
@@ -320,6 +321,9 @@ public sealed partial class AdminOidcTests
                 await Rejected(await Api(client, "/api/auth/login", method: "POST", body: content), 410, "legacy_login_disabled");
             foreach (var path in new[] { "/api/auth/login/", "/API/AUTH/LOGIN", "/API/AUTH/LOGIN/" })
                 await Rejected(await Api(client, path, method: "POST", body: JsonContent.Create(new { username = "fake", password = "fake" })), 410, "legacy_login_disabled");
+            await Rejected(await Api(client, "/api/auth/login", method: "POST", authorization: ["Bearer invalid"],
+                body: JsonContent.Create(new { username = "fake", password = "fake" })), 410, "legacy_login_disabled");
+            Assert.Equal(0, probe.BearerAuthentications);
             var legacy = "adminAuthToken=" + authority.LegacyBearer();
             foreach (var path in new[] { "/api/auth/csrf/", "/API/AUTH/CSRF/", "/API/ADMIN/SESSION-PROBE/" })
                 await Rejected(await Api(client, path, legacy), 401, "unauthorized");
@@ -463,6 +467,7 @@ public sealed class SessionBusinessProbe
 {
     public int Reads;
     public int Writes;
+    internal int BearerAuthentications;
     internal readonly MutableAdmins Admins = new();
     internal readonly Mock<IOssService> Oss = new();
     internal readonly Mock<IStudentHttpClient> Student = new();

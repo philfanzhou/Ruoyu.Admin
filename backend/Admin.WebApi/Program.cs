@@ -321,8 +321,10 @@ var healthEndpoints = app.MapGroup(string.Empty).AllowAnonymous();
 healthEndpoints.MapServiceMantleHealthEndpoints();
 
 app.UseAdminOidcResponseHeaders();
-app.UseAuthentication();
+// Explicit session authentication runs inside this boundary; retired password login must
+// return 410 before a caller's legacy Bearer could trigger any Identity discovery HTTP.
 app.UseMiddleware<AdminSessionMiddleware>();
+app.UseAuthentication();
 app.UseAuthorization();
 
 if (app.Environment.IsDevelopment())
