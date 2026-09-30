@@ -17,6 +17,16 @@ internal sealed class OidcTestAuthority : HttpMessageHandler
     internal const string AccessToken = "fictitious-access-token-canary";
     internal const string RedirectUri = "https://admin.example.test/api/auth/oidc/callback";
     private readonly RSA _rsa = RSA.Create(2048);
+    // Serializes every segment of the /token branch that touches shared mutable state (the
+    // _rsa signing instance, LastVerifier, LastIdToken) and the same-family LegacyBearer
+    // signing. On darwin arm64 / .NET 10, concurrent RSA.SignData on ONE instance can
+    // intermittently produce a silently INVALID signature (no exception), which made one of
+    // two parallel callbacks fail ID-token validation and redirect to
+    // /login?authError=sign_in_failed (issue #63). The lock deliberately does NOT cover the
+    // HoldToken infinite wait, the TokenFailure early returns, or the missing-code 400:
+    // holding-, failure-, and cancellation-shaped tests must keep their exact semantics, and
+    // the guarded section never awaits so the gate is always released promptly.
+    private readonly object _tokenGate = new();
     private readonly ConcurrentDictionary<string, (string Nonce, string Challenge, string Defect)> _codes = [];
     internal readonly ConcurrentQueue<Dictionary<string, string>> TokenForms = [];
     internal readonly ConcurrentQueue<string?> AuthorizationHeaders = [];
@@ -70,13 +80,16 @@ internal sealed class OidcTestAuthority : HttpMessageHandler
         if (TokenFailure == "500") return new(HttpStatusCode.InternalServerError);
         if (TokenFailure == "json") return Json("invalid-json");
         if (TokenFailure == "timeout") throw new TaskCanceledException("fake.timeout");
-        if (!_codes.TryRemove(form["code"], out var handshake)) return new(HttpStatusCode.BadRequest);
-        LastVerifier = form["code_verifier"];
-        if (WebEncoders.Base64UrlEncode(SHA256.HashData(Encoding.ASCII.GetBytes(LastVerifier))) != handshake.Challenge)
-            throw new InvalidOperationException("fake.pkce_mismatch");
-        LastIdToken = Mint(handshake.Nonce, handshake.Defect);
-        return Json(JsonSerializer.Serialize(new { access_token = AccessToken, token_type = "Bearer", expires_in = 900,
-            id_token = LastIdToken, scope = "openid profile" }));
+        lock (_tokenGate)
+        {
+            if (!_codes.TryRemove(form["code"], out var handshake)) return new(HttpStatusCode.BadRequest);
+            LastVerifier = form["code_verifier"];
+            if (WebEncoders.Base64UrlEncode(SHA256.HashData(Encoding.ASCII.GetBytes(LastVerifier))) != handshake.Challenge)
+                throw new InvalidOperationException("fake.pkce_mismatch");
+            LastIdToken = Mint(handshake.Nonce, handshake.Defect);
+            return Json(JsonSerializer.Serialize(new { access_token = AccessToken, token_type = "Bearer", expires_in = 900,
+                id_token = LastIdToken, scope = "openid profile" }));
+        }
     }
     internal SecurityKey SigningKey => new RsaSecurityKey(_rsa) { KeyId = "test-kid" };
     internal string LegacyBearer()
@@ -85,7 +98,10 @@ internal sealed class OidcTestAuthority : HttpMessageHandler
         var payload = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new
         { iss = Issuer, aud = "PlatformAudience", sub = "fake-user", role = "admin", exp = DateTimeOffset.UtcNow.AddMinutes(5).ToUnixTimeSeconds() })));
         var input = header + "." + payload;
-        return input + "." + WebEncoders.Base64UrlEncode(_rsa.SignData(Encoding.ASCII.GetBytes(input), HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1));
+        lock (_tokenGate)
+        {
+            return input + "." + WebEncoders.Base64UrlEncode(_rsa.SignData(Encoding.ASCII.GetBytes(input), HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1));
+        }
     }
     private string Mint(string nonce, string defect)
     {
