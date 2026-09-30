@@ -4,6 +4,7 @@ internal sealed record AdminOidcSettings(bool Enabled, string Authority, string 
     string RedirectUri, bool InsecureLoopback, TimeSpan ClockSkew)
 {
     internal bool UseSessionForAdminApi { get; init; }
+    internal bool UseSessionForPortalProxies { get; init; }
     internal bool UseSessionForIdentityProxy { get; init; }
     public const string SessionScheme = "AdminSession";
     public const string OidcScheme = "AdminOidc";
@@ -13,6 +14,9 @@ internal sealed record AdminOidcSettings(bool Enabled, string Authority, string 
     internal static AdminOidcSettings Read(IConfiguration config, IHostEnvironment environment)
     {
         var useSession = config.GetValue<bool>("AdminOidc:UseSessionForAdminApi");
+        var portalProxies = config.GetValue<bool>("AdminOidc:UseSessionForPortalProxies");
+        if (portalProxies && (!useSession || !config.GetValue<bool>("AdminOidc:Enabled")))
+            throw new InvalidOperationException("AdminOidc:UseSessionForPortalProxies requires AdminOidc:Enabled and AdminOidc:UseSessionForAdminApi");
         var identityProxy = config.GetValue<bool>("AdminOidc:UseSessionForIdentityProxy");
         if (identityProxy && (!useSession || !config.GetValue<bool>("AdminOidc:Enabled")))
             throw new InvalidOperationException("AdminOidc:UseSessionForIdentityProxy requires AdminOidc:Enabled and AdminOidc:UseSessionForAdminApi");
@@ -35,7 +39,7 @@ internal sealed record AdminOidcSettings(bool Enabled, string Authority, string 
         var skew = config.GetValue<int?>("IdentityService:ClockSkewSeconds") ?? 30;
         if (skew is < 0 or > 300) throw new InvalidOperationException("IdentityService:ClockSkewSeconds");
         return new(true, authority, clientId, secret, redirect, redirectUri.Scheme == "http", TimeSpan.FromSeconds(skew))
-            { UseSessionForAdminApi = useSession, UseSessionForIdentityProxy = identityProxy };
+            { UseSessionForAdminApi = useSession, UseSessionForPortalProxies = portalProxies, UseSessionForIdentityProxy = identityProxy };
     }
 
     internal static bool IsSafeUri(string value, bool allowLoopback, out Uri? uri)

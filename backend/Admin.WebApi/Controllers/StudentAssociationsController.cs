@@ -1,3 +1,4 @@
+using Admin.WebApi.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Net.Http.Headers;
@@ -36,11 +37,24 @@ public class StudentAssociationsController : ControllerBase
     [HttpGet("{studentId:guid}/linked-accounts")]
     public async Task<IActionResult> GetLinkedAccounts(Guid studentId)
     {
+        var sessionMode = HttpContext.RequestServices.GetRequiredService<AdminOidcSettings>().UseSessionForAdminApi;
+        var authHeader = HttpContext.Request.Headers.Authorization.ToString();
+        if (sessionMode)
+        {
+            var boundary = HttpContext.RequestServices.GetRequiredService<AdminSessionBoundary>();
+            if (HttpContext.Items[AdminSessionBoundary.TrustedSessionKey] is not AdminSessionResult)
+                if (!await boundary.ValidateAsync(HttpContext)) return new EmptyResult();
+            var session = (AdminSessionResult)HttpContext.Items[AdminSessionBoundary.TrustedSessionKey]!;
+            authHeader = "Bearer " + session.AccessToken;
+        }
+        var cancellation = sessionMode ? HttpContext.RequestAborted : CancellationToken.None;
+        cancellation.ThrowIfCancellationRequested();
         List<string> accountIds;
         try
         {
-            accountIds = await _studentClient.GetIdentityAccountsByStudentIdAsync(studentId.ToString());
+            accountIds = await _studentClient.GetIdentityAccountsByStudentIdAsync(studentId.ToString(), cancellation);
         }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { throw; }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to get identity accounts for student {StudentId}", studentId);
@@ -62,42 +76,37 @@ public class StudentAssociationsController : ControllerBase
 
         if (!string.IsNullOrWhiteSpace(teacherPortalUrl))
         {
-            teachers = await FetchLinkedAccountsAsync("TeacherPortal", $"{teacherPortalUrl.TrimEnd('/')}/api/admin/teachers", "教师", accountIdSet);
+            teachers = await FetchLinkedAccountsAsync("TeacherPortal", $"{teacherPortalUrl.TrimEnd('/')}/api/admin/teachers", "教师", accountIdSet, authHeader, cancellation);
         }
 
         if (!string.IsNullOrWhiteSpace(assistantPortalUrl))
         {
-            assistants = await FetchLinkedAccountsAsync("AssistantPortal", $"{assistantPortalUrl.TrimEnd('/')}/api/admin/assistants", "助教", accountIdSet);
+            assistants = await FetchLinkedAccountsAsync("AssistantPortal", $"{assistantPortalUrl.TrimEnd('/')}/api/admin/assistants", "助教", accountIdSet, authHeader, cancellation);
         }
 
         return Ok(new LinkedAccountsResponse(teachers, assistants));
     }
 
-    private async Task<List<LinkedAccountDto>> FetchLinkedAccountsAsync(string clientName, string url, string roleLabel, HashSet<string> accountIds)
+    private async Task<List<LinkedAccountDto>> FetchLinkedAccountsAsync(string clientName, string url, string roleLabel, HashSet<string> accountIds, string authHeader, CancellationToken cancellation)
     {
         try
         {
             var client = _httpClientFactory.CreateClient(clientName);
 
-            // Forward the caller's JWT to the downstream portal. The TeacherPortal/AssistantPortal
-            // /api/admin/{role}s endpoints require [Authorize(Roles="admin")]; without the
-            // Authorization header the call returns 401 and the aggregate query silently degrades
-            // to an empty list (regression fixed on 2026-07-27).
             using var request = new HttpRequestMessage(HttpMethod.Get, url);
-            var authHeader = HttpContext.Request.Headers.Authorization.ToString();
             if (!string.IsNullOrEmpty(authHeader))
             {
                 request.Headers.Authorization = AuthenticationHeaderValue.Parse(authHeader);
             }
 
-            var response = await client.SendAsync(request);
+            using var response = await client.SendAsync(request, cancellation);
             if (!response.IsSuccessStatusCode)
             {
                 _logger.LogWarning("Failed to fetch {Role} list: {StatusCode}", roleLabel, response.StatusCode);
                 return new List<LinkedAccountDto>();
             }
 
-            using var doc = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+            using var doc = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(cancellation), cancellationToken: cancellation);
             var root = doc.RootElement;
 
             var dataElement = root.ValueKind == JsonValueKind.Array
@@ -128,6 +137,7 @@ public class StudentAssociationsController : ControllerBase
 
             return result;
         }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { throw; }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to fetch {Role} list from {Url}", roleLabel, url);
