@@ -41,7 +41,8 @@ public static class RuoyuSerilogExtensions
     public static IHostBuilder UseRuoyuSerilog(
         this IHostBuilder hostBuilder,
         string serviceName,
-        string serviceVersion = "1.0.0")
+        string serviceVersion = "1.0.0",
+        bool suppressRequestQueryLogging = false)
     {
         return hostBuilder.UseSerilog((context, services, loggerConfiguration) =>
         {
@@ -54,6 +55,12 @@ public static class RuoyuSerilogExtensions
                 .Enrich.WithProperty("InstanceId", Environment.MachineName)
                 .ReadFrom.Configuration(context.Configuration)
                 .ReadFrom.Services(services);
+            // Hosting diagnostics contain raw query strings (including one-time OIDC codes).
+            // The legacy Serilog factory bypasses MEL filters, so apply this after config.
+            if (suppressRequestQueryLogging)
+                loggerConfiguration.Filter.ByExcluding(logEvent =>
+                    logEvent.Properties.TryGetValue("SourceContext", out var source)
+                    && source is global::Serilog.Events.ScalarValue { Value: "Microsoft.AspNetCore.Hosting.Diagnostics" });
         });
     }
 }

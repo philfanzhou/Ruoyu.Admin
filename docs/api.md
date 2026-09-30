@@ -9,7 +9,7 @@ Admin Portal 提供 REST API 接口，用于管理学生、错题记录、OSS �
 - 基础路径: `/api/admin`
 - 数据格式: JSON
 - 认证: JWT Bearer（`Authorization: Bearer <token>`）。Program.cs 设置 `FallbackPolicy = RequireAuthenticatedUser()`，所有 `/api/*` 端点默认需要认证
-- 匿名入口：SPA 静态文件、`/` 首页回退、`/api/auth/login`、`/api/auth/callback` 标记 `[AllowAnonymous]`，无需 JWT（见下方"认证流程"）
+- 匿名入口：SPA 静态文件、`/` 首页回退、`/api/auth/login`、`/api/auth/callback`、`/api/auth/oidc/start`、`/api/auth/oidc/callback`、`/api/auth/session` 标记 `[AllowAnonymous]`，无需 JWT（见下方"认证流程"）
 
 ---
 
@@ -19,6 +19,22 @@ Admin Portal 采用 **mode-1 集成部署**：同一容器（端口 5020）既�
 
 - **前端入口（匿名）**：`/` 及所有非 `/api/*` 路径由 SPA fallback 处理，无需登录即可加载登录页
 - **API（需认证）**：`/api/*` 受 `FallbackPolicy = RequireAuthenticatedUser()` 保护，必须携带有效 JWT
+
+### 可选托管登录基础（#38）
+
+此阶段**尚未切换前端和管理 API**：JWT 仍为默认认证与授权方案；新 `adminSession` Cookie 单独访问管理 API 或三个代理仍返回 401。`POST /api/auth/login`、`POST /api/auth/logout`、旧 `adminAuthToken` 与 claims callback 保留。API/代理会话授权、令牌续接/登出和 SPA 迁移分别由后续任务实现。
+
+`AdminOidc:Enabled=false` 默认关闭，新 start/callback/session 入口返回 `503 {"error":"oidc_disabled"}`，旧配置可继续启动。启用配置与部署门禁见 [Deployment.md](development/Deployment.md#可选-signacore-托管登录)。
+
+| 匿名入口 | 行为 |
+|---|---|
+| `GET /api/auth/oidc/start?returnUrl=/students` | 校验 Discovery，发起 Confidential code + PKCE S256；scope 仅 `openid profile`，return 路径留服务器，默认 `/dashboard` |
+| `GET /api/auth/oidc/callback` | 框架处理单值 state/iss/code 或 error；原子消费 5 分钟 state，独立校验 correlation、nonce、严格 RS256 ID Token，再创建 8 小时绝对本地票据并快速 redirect |
+| `GET /api/auth/session` | 显式读取 AdminSession：`200 {"authenticated":true,"displayName":"..."}`；无/过期/重启失效票据：`200 {"authenticated":false,"displayName":null}`，不刷新时限；不会把 Bearer 当此会话 |
+
+返回目标只允许绝对站内路径，拒绝外部、编码外部、控制字符、反斜线与 `/api/auth/*`、`/login` 循环；错误目标回退 `/dashboard`。取消返回 `/login?authError=cancelled`；start 的 Discovery/JWKS 不可用返回 `identity_unavailable`；回调协议/兑换/签名等失败统一 `sign_in_failed`，不反射 error_description 或异常。state 无论成功/失败都不重用；失败兑换必须重新 start，不能重试旧 code。入口和 redirect 响应均 no-store/no-cache/no-referrer。
+
+Cookie 为 HttpOnly、Path=/、SameSite=Lax，生产 Secure，只含数据保护后的不透明票据引用；access/id token、截止时间、verifier、已验证 iss+sub 只在单进程内存。请求取消不发布部分票据；存储有界并定期回收，重启/多副本不支持状态延续。展示名取 nickname/name，SMS 身份缺少它们时 null；ID Token 角色不作为本地授权。Cookie challenge/forbid 返回 401/403。此阶段不请求 offline_access、refresh 或上游 logout。
 
 ### 登录（获取 JWT）
 

@@ -25,6 +25,20 @@
 
 Admin API 启动时通过 Consul `config/ruoyu/*` 加载 PostgreSQL、OSS 和下游服务共享配置。`start.sh` 注入 Consul 地址、数据库名 `ruoyu_admin` 和 Identity 应用凭据。仓库中的 `127.0.0.1` 只是占位默认值，**不是任何真实部署的地址**；部署时通过 `CONSUL_HTTP_ADDR` 指向实际 Consul 地址。
 
+### 可选 SignaCore 托管登录
+
+本阶段仅接握手和状态，**前端、管理 API、代理仍用旧 JWT**。`AdminOidc:Enabled` 默认 false，不会以 Cookie 提前授予 Admin 权限；后续 #39/#40/#41 的上线契约尚未激活。
+
+启用时复用 `IdentityService:Authority/AppId/AppSecret`，新增 `AdminOidc:RedirectUri`，精确注册 `https://admin.example.com/api/auth/oidc/callback`（占位示例）。URI 必须与配置 byte-for-byte 相同，路径固定、无 query/fragment/userinfo/wildcard；生产 HTTPS。只有 Development/Testing 允许 `http://127.0.0.1:<port>/api/auth/oidc/callback` 或 `http://[::1]:<port>/api/auth/oidc/callback`；不允许 localhost。Authority 去结尾 `/` 后与 Discovery issuer 严格相同；OIDC 不使用 JWT AdditionalValidIssuers 放宽信任。错误启用配置启动失败，消息只列配置键。
+
+按 [SignaCore HostedLogin](https://github.com/philfanzhou/SignaCore/blob/52c68c812335dd6a967cb90042ac91c21543d387/docs/integrations/HostedLogin.md) 注册 Confidential、PerApplication audience、精确 Redirect URI 和 Code + openid profile + S256，不启用 refresh。Admin 从 Discovery 取授权/token/JWKS 端点，不发送 PAR、prompt 或其他不支持字段；兑换为 client_secret_post，固定外部 RedirectUri 与原 verifier，不信任入站 Host/X-Forwarded-Host 拼地址。TLS 可在可信代理终止，回跳仍固定 HTTPS，Cookie Secure；本服务不增加任意转发头信任。
+
+反向代理必须避免 callback query（尤其 code）进入 access log/analytics，并保证原始单值 query 透传。Admin 协议 handler 禁用可能包含 token/URL/Cookie 的框架详细日志；启用 OIDC 时另外抑制会记录原始 query 的 `Microsoft.AspNetCore.Hosting.Diagnostics` 请求日志（包含其余路由的此类日志），OIDC 入口不导出 ASP.NET Core trace；应用调用方仍不得将敏感值插入自由文本。AppSecret 只通过环境变量/user-secrets/Consul 安全配置，不提交配置文件。
+
+单实例内存 state 最长 5 分钟、43 字符随机引用、单次原子消费；票据 8 小时绝对到期、不滑动，所有 token 留服务器。两类存储各最多 4096 项、每分钟回收；满载固定失败，重启丢失，不能多副本共用会话。数据保护 keys 即使还在也不会恢复已丢失 ticket；无新表/迁移。上游 token 吊销、全局登出与会话续接留后续任务；不要将本地 session 状态作为管理员授权证明。
+
+生产能力激活还依赖 Ruoyu.Study 的应用 Code 配置与下游 audience 迁移（IKJ8MO）。本项仅用测试 Authority 验证，不代表已修改生产注册或完成平台 E2E。
+
 ### OSS
 
 ```json
