@@ -110,6 +110,7 @@ Configuration is read from `appsettings.json`, then Consul KV under `config/ruoy
 | `TeacherPortal:Url`, `AssistantPortal:Url` | Proxy targets |
 | `AdminPortal:AdminUserIds` | Accounts granted the `admin` role via the Identity callback |
 | `AdminOidc:Enabled`, `AdminOidc:RedirectUri` | Optional hosted-login handshake (disabled by default), exact registered callback |
+| `AdminOidc:UseSessionForPortalProxies` | Teacher/Assistant proxy server tokens (default false, requires OIDC and session API); association queries follow the API switch independently |
 | `AdminOidc:UseSessionForAdminApi` | Optional session authorization and CSRF for `/api/admin/*` (default false, requires OIDC); retires password login when true |
 | `AdminWeb:AllowedOrigins` | CORS origins; empty means allow any |
 | `Oss:*` | `InternalEndpoint` / `InternalSecure` for direct S3 access, `PublicBaseUrl` for presigned URLs |
