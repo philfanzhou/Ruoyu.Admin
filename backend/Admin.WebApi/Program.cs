@@ -3,7 +3,6 @@ using Admin.WebApi;
 using Admin.WebApi.Authentication;
 using Admin.WebApi.Controllers;
 using Admin.WebApi.Database;
-using Admin.WebApi.Health;
 using Admin.WebApi.Models;
 using Admin.WebApi.Persistence;
 using Admin.WebApi.Services;
@@ -15,8 +14,9 @@ using Ruoyu.Admin.Consul;
 using Ruoyu.Admin.ServiceClients;
 using ServiceMantle;
 using ServiceMantle.Bootstrap;
+using ServiceMantle.Database.PostgreSql;
 using ServiceMantle.Database.PostgreSql.Migration;
-using ServiceMantle.Health;
+using ServiceMantle.Persistence.Relational;
 using ServiceMantle.Migration;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -124,6 +124,12 @@ builder.Services.AddControllers(options =>
     options.Conventions.Add(new AdminSecurityResponseHeadersConvention());
 });
 
+// Resolve and validate consumer configuration before registering the shared gate. Parsing
+// failures carry only a safe code, without the original value or driver exception.
+var startupDatabaseOptions = AuditDatabaseStartupConfiguration.Read(builder.Configuration);
+var connectionString = startupDatabaseOptions.Database.ConnectionString;
+builder.Services.AddSingleton<IDatabaseDeploymentCapabilityProvider, AuditDatabaseDeploymentCapability>();
+
 // ========== ServiceMantle (service identity, correlation id, base telemetry, health) ==========
 // ServiceId "ruoyu-admin" is the stable deployment identity (lowercase; deliberately distinct
 // from the fixed Loki stream label "Ruoyu.Admin"). The InstanceId is regenerated on every host
@@ -136,7 +142,7 @@ builder.Services.AddControllers(options =>
 // /health/live, /health/ready and /health routes are mapped below) with a 3-second probe
 // budget: a wedged database cannot hold the readiness request forever (an exhausted budget
 // maps to the library's fixed health.probe_timeout). Readiness evidence comes from the
-// consumer-owned AdminHealthSnapshotSource below; no readiness contributor is registered
+// shared EF Core snapshot source below; no readiness contributor is registered
 // (downstream services deliberately stay OUT of readiness to avoid cascading removal).
 // AddExceptionMapping pins the single exact type downstream failures surface as: every
 // HttpRequestException escaping a JSON controller action answers 502 problem+json with the
@@ -161,7 +167,7 @@ builder.Services
         "downstream.unavailable",
         "A downstream service request failed.")
     .AddSecurityResponseHeaders()
-    // ========== Database migration orchestration (issue #57) ==========
+    // ========== Shared startup database gate (issue #66) ==========
     // The PostgreSQL session advisory lock that serializes multi-instance startup: it covers the
     // orchestrator's initial inspection, the legacy takeover, the EF Core migration execution,
     // and the final inspection (never only the Migrate call). The consuming service's executor
@@ -169,7 +175,9 @@ builder.Services
     // executor instance; the lock/state machine belongs to the shared orchestrator and is never
     // reimplemented locally.
     .AddMigrationLockProvider<PostgreSqlMigrationLockProvider>()
-    .AddDatabaseMigration<AuditMigrationExecutor>();
+    .AddDatabaseTargetPreparationProvider<PostgreSqlDatabaseTargetPreparationProvider>()
+    .AddDatabaseMigration<AuditMigrationExecutor>()
+    .AddStartupDatabaseGate(startupDatabaseOptions);
 // The orchestrator activates the executor through DI; this registration keeps the executor's
 // diagnostic logging (baseline applied / takeover / refusal reasons) on a named category logger
 // instead of silently degrading to the null logger. Without it the optional ILogger constructor
@@ -178,13 +186,13 @@ builder.Services.AddSingleton<Microsoft.Extensions.Logging.ILogger>(
     serviceProvider => serviceProvider.GetRequiredService<Microsoft.Extensions.Logging.ILoggerFactory>()
         .CreateLogger(nameof(AuditMigrationExecutor)));
 
-// Readiness evidence for the snapshot source: a process-local one-way receipt that is marked
-// only after the startup migration orchestration below reports success, plus a read-only
-// zero-row probe of the
-// EF-mapped tables. Before the initializer completes (or after a failed initialization),
-// readiness fails closed with ruoyu-admin.startup_incomplete and never claims Succeeded.
-builder.Services.AddSingleton<AdminStartupReceipt>();
-builder.Services.AddScoped<IServiceHealthSnapshotSource, AdminHealthSnapshotSource>();
+// The gate's singleton receipt and a fresh scoped EF context provide readiness evidence.
+// Downstream services stay outside readiness; the schema probe only reads mapped tables/columns.
+builder.Services.AddServiceMantleEfCoreHealthSnapshotSource<AuditDbContext>(
+    ServiceId.Parse("ruoyu-admin"),
+    new PostgreSqlDatabaseProbeFailureClassifier(),
+    probeMode: EfCoreHealthSnapshotProbeMode.MappedSchema,
+    errorCodePrefix: "ruoyu-admin");
 
 // IOssService: 保留用于 OSS 审计和运维操作
 // 权限范围：只读（ListObjects, Download, GetPresignedUrl, ObjectExists）+ 有限写（Delete 僵尸清理, CopyObject 迁移辅助）
@@ -201,10 +209,6 @@ builder.Services.AddSingleton<IOssService>(sp =>
     return new S3OssService(ossOptions);
     // 不配置 allowedPrefixes：Admin Portal 需要访问所有路径前缀（审计+运维）
 });
-
-var connectionString = SharedPostgreSqlConnectionStringFactory.BuildOrFallback(
-    builder.Configuration,
-    builder.Configuration.GetConnectionString("AuditDb"));
 
 builder.Services.AddDbContext<AuditDbContext>(options =>
 {
@@ -260,71 +264,8 @@ app.Logger.LogInformation("Downstream: Identity={Identity}, Teacher Portal={Teac
     builder.Configuration["TeacherPortal:Url"] ?? "(not configured)",
     builder.Configuration["AssistantPortal:Url"] ?? "(not configured)");
 
-using (var scope = app.Services.CreateScope())
-{
-    var loggerFactory = scope.ServiceProvider.GetRequiredService<ILoggerFactory>();
-    // Stage 1+2 — deployment validation and target preparation (issue #57): observe the
-    // resolved connection string for server reachability/identity; an existing database is
-    // used as-is, a verifiably missing one is created only when Database:AllowCreate
-    // explicitly permits (default: refuse with RUOYU_ADMIN_DB_CREATION_NOT_ALLOWED, zero
-    // writes), and unreachable/identity failures are refused without a creation fallback.
-    // Stage 3 — the shared migration orchestrator acquires the real PostgreSQL session
-    // advisory lock for this service id and covers the initial inspection, the verified
-    // legacy takeover, the EF Core migration execution, and the final inspection under that
-    // single authority; success is reported only after the held-lock final inspection passed,
-    // which is also the only point where the startup receipt may be marked. The lock acquire
-    // budget is fixed at 30 seconds; it bounds waiting for the lock only, never the execution
-    // itself. All stages observe host shutdown through the same token. Any failure throws and
-    // stops the host before it listens: the process exits non-zero and the logs carry the
-    // ServiceMantle safe error code only (migration.* / RUOYU_ADMIN_*), never a connection
-    // string or driver detail.
-    if (string.IsNullOrWhiteSpace(connectionString))
-    {
-        throw new InvalidOperationException(
-            "No AuditDb connection string could be resolved from PostgreSql:*/Database:Name or " +
-            "ConnectionStrings:AuditDb; refusing to start.");
-    }
-
-    var applicationStopping = app.Services
-        .GetRequiredService<IHostApplicationLifetime>()
-        .ApplicationStopping;
-    await AuditDatabaseTargetPreparer.PrepareAsync(
-        builder.Configuration,
-        connectionString,
-        app.Logger,
-        applicationStopping);
-
-    var migrationLogger = loggerFactory.CreateLogger("DatabaseMigration");
-    var orchestrator = scope.ServiceProvider.GetRequiredService<DatabaseMigrationOrchestrator>();
-    var migrationTarget = new BootstrapDatabaseConfiguration(
-        WellKnownDatabaseProviderIds.PostgreSql,
-        serverVersion: null,
-        connectionString);
-    migrationLogger.LogInformation(
-        "Orchestrating database migration under the PostgreSQL advisory lock (30 s acquire budget)");
-    var migration = await orchestrator.OrchestrateMigrationAsync(
-        ServiceId.Parse("ruoyu-admin"),
-        migrationTarget,
-        TimeSpan.FromSeconds(30),
-        applicationStopping);
-    if (!migration.Succeeded)
-    {
-        migrationLogger.LogError(
-            "Database migration orchestration failed: {ErrorCode}", migration.ErrorCode);
-        throw new InvalidOperationException(
-            $"Database migration orchestration failed (error {migration.ErrorCode}): " +
-            $"{migration.ErrorMessage}. Refusing to start; the shared orchestrator released " +
-            "the lock before this refusal.");
-    }
-
-    migrationLogger.LogInformation(
-        "Database migration orchestration completed (executor was called: {ExecutorWasCalled})",
-        migration.ExecutorWasCalled);
-
-    // The one-way startup receipt: only a successful orchestration return in THIS process may
-    // ever let readiness publish migrationStatus=Succeeded (see AdminHealthSnapshotSource).
-    scope.ServiceProvider.GetRequiredService<AdminStartupReceipt>().MarkInitializationCompleted();
-}
+// AddStartupDatabaseGate runs once in IHostedLifecycleService.StartingAsync, before the
+// web host and OssAuditWorker StartAsync. No direct gate call or second receipt is needed.
 
 // First middleware in the pipeline: everything registered later (CORS, static files / SPA
 // fallback, authentication, the three proxies, and every /api response) runs inside its request
@@ -426,7 +367,7 @@ else
 // alias) WITHOUT any authorization metadata, so the FallbackPolicy (RequireAuthenticatedUser)
 // would 401 them. Mapping them inside an empty route group with AllowAnonymous exempts exactly
 // these endpoints while every /api endpoint keeps requiring a JWT (RuoyuJwtBearerExtensions is
-// untouched). Readiness projects the consumer-owned AdminHealthSnapshotSource: ready (200) only
+// untouched). Readiness projects the shared EF Core snapshot source: ready (200) only
 // for Completed + Succeeded + Reachable, i.e. this process finished its migration orchestration AND a
 // bounded read-only AuditDb probe of the mapped tables succeeded; every failure answers 503
 // with a fixed safe errorCode and never a connection string, host, or exception text.

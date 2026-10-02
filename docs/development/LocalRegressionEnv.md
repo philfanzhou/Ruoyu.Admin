@@ -28,7 +28,7 @@ Teacher Portal（5004）与 Assistant Portal（5021）不在本配方内：#24 �
 ## 步骤 1：PostgreSQL
 
 1. 启动本地 PostgreSQL（示例：`docker run -d --name ruoyu-admin-pg -p 5432:5432 -e POSTGRES_PASSWORD=ruoyu-dev postgres:16`）。
-2. 数据库 `ruoyu_admin` 无需手工建：**种子脚本会在缺失时自动创建**；建表由 `Program.cs` 的 `DatabaseInitializer` 负责（`CREATE TABLE IF NOT EXISTS` 幂等语义，本仓库不使用 EF Migrations）。
+2. 先手工创建数据库 `ruoyu_admin`，或在本地显式设置 `Database__AllowCreate=true` 允许共享启动门创建缺库（默认 false，拒绝码 `database_target_preparation.creation_not_allowed`）。建表由共享 `StartupDatabaseGate` 在真实 advisory lock 下调用 `AuditMigrationExecutor` 执行 EF Core 基线迁移；种子脚本只在启动门完成后写入夹具。
 3. `appsettings.json` 的兜底连接串硬编码 `Username=phil`，**必须**按机器用环境变量覆盖（Admin.WebApi 与种子脚本读同一个键）：
 
 ```bash
@@ -71,7 +71,7 @@ export OSS_LOCAL_PATH=data/oss        # 默认即此；相对 CWD（backend/）�
 dotnet run --project Admin.WebApi/Admin.WebApi.csproj
 ```
 
-首次启动由 `DatabaseInitializer` 建表（种子脚本要求表已存在）。验证：`curl http://localhost:5020/` 返回运行文案；`http://localhost:5020/swagger`（Development）可见。
+首次启动由共享启动门执行 EF Core 基线迁移建表，成功后才监听并启动 worker（种子脚本要求表已存在）。已有库只 Observe，不需要 CREATEDB；未知结构拒绝接管。readiness 使用共享单例回执与 scoped EF Core 只读映射探针；未启动/运行中/失败回执零数据库访问，正常就绪 JSON 保持。#66 错误码/回执兼容与回滚见 [迁移文档](../database/migrations.md#66-发布兼容说明)。验证：`curl http://localhost:5020/` 返回运行文案；`http://localhost:5020/swagger`（Development）可见。
 
 前端二选一：`cd frontend && npm run dev`（8090，代理 `/api/*` 到 5020），或 `npm run build` 后把 `dist/*` 拷入 `backend/Admin.WebApi/wwwroot/` 走集成模式。
 
@@ -152,7 +152,7 @@ Student、Homework 任一 `HttpRequestException`，或 Mistake 的异常传播�
 - **启动即抛 `InvalidOperationException`**：`IdentityService:AppId/AppSecret` 未注入（步骤 2）。
 - **认证校验失败提示 RequireHttpsMetadata**：Authority/Issuer 用了 `http://` 但没设 `IdentityService:RequireHttpsMetadata=false`。
 - **登录成功但接口 403 / 无 admin 权限**：测试用户不在 `AdminPortal:AdminUserIds` 白名单。
-- **种子失败「表不存在」**：先完成步骤 3 让 `DatabaseInitializer` 建表。
+- **种子失败「表不存在」**：先完成步骤 3 让共享启动门完成基线迁移建表。
 - **审计运行始终 `Status=2`**：替身未启动（步骤 5），或 `StudentService/MistakeService/HomeworkService:Url` 指向了错误端口。
 
 

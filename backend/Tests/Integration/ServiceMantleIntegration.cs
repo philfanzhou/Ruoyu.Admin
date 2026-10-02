@@ -82,8 +82,8 @@ public sealed class PostgreSqlFixture : IAsyncLifetime
 
 /// <summary>
 /// All container-backed tests live in this single collection: xunit runs collections in
-/// parallel, and grouping them keeps concurrent hosts from racing the first
-/// <c>EnsureCreated</c>. The rest of the suite can still be run without Docker via
+/// parallel, and grouping them keeps isolated schema/outage scenarios from disturbing other
+/// tests. Startup migrations also use a real advisory lock. The rest of the suite can still be run without Docker via
 /// <c>dotnet test --filter "FullyQualifiedName!~Admin.WebApi.Tests.Integration"</c>.
 /// </summary>
 [CollectionDefinition(Name, DisableParallelization = true)]

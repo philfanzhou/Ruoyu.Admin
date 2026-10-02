@@ -109,18 +109,22 @@ IDENTITY_APP_ID=... IDENTITY_APP_SECRET=... ./start.sh
 
 ### Database startup (migrations)
 
-The `ruoyu_admin` schema is managed by an EF Core baseline migration executed at startup under the shared ServiceMantle orchestrator:
+The `ruoyu_admin` schema is managed by an EF Core baseline migration executed by the ServiceMantle 0.3.0 startup database gate and shared orchestrator:
 
-1. **Target preparation** — an existing database is used as-is; a verifiably missing database is created only when `Database:AllowCreate=true` (default `false` — otherwise startup refuses with the fixed code `RUOYU_ADMIN_DB_CREATION_NOT_ALLOWED` and writes nothing). Back up the database before upgrading.
+1. **Target preparation** — an existing database is used as-is; a verifiably missing database is created only when `Database:AllowCreate=true` (default `false` — otherwise startup refuses with the fixed code `database_target_preparation.creation_not_allowed` and writes nothing). Back up the database before upgrading.
 2. **Advisory-lock orchestration** — startup acquires a PostgreSQL session advisory lock (30 s acquire budget) so that when multiple instances start concurrently exactly one executes the migration; the others re-inspect under the lock and skip.
 3. **Takeover rules** — an empty database gets the baseline applied; a verified legacy database (created by the retired inline DDL, structure checked column by column) is taken over with its data preserved and only the migration history stamped; a history holding unknown migration ids or any unknown/conflicting structure fails startup with `migration.version_too_new` / `migration.inspection_failed` (executor code `RUOYU_ADMIN_DB_SCHEMA_INCOMPATIBLE`) — never auto-repaired. Every orchestration failure exits non-zero with a safe error code; logs never contain connection strings or credentials.
+
+The shared lifecycle gate runs once before the web host or audit worker starts. Configuration is validated before database I/O; invalid creation switches or unparsable connections fail with `database_target_preparation.invalid_target`. The process-local receipt progresses from NotStarted to Running, then Succeeded or Failed; cancellation keeps Running. Readiness makes no database calls until Succeeded. The mapped-schema probe proves only readable mapped tables and columns, not constraints, indexes, or data correctness.
+
+The startup error codes changed in #66: missing-target refusal now uses `database_target_preparation.creation_not_allowed` (previously `RUOYU_ADMIN_DB_CREATION_NOT_ALLOWED`), invalid `Database:AllowCreate` uses `database_target_preparation.invalid_target` (previously `RUOYU_ADMIN_DB_ALLOW_CREATE_INVALID`), and an unconnectable target after preparation uses `database_target_preparation.not_connectable_after_preparation`. Fresh receipts now report NotStarted; failed receipts report Failed / `ruoyu-admin.startup_failed`. Running, Succeeded, normal readiness JSON and migration/schema refusal codes stay unchanged. Rolling back restores the former codes without a schema rollback and does not undo created databases or committed migrations. See [migration compatibility notes](docs/database/migrations.md#66-发布兼容说明).
 
 ### Health probes
 
 Three anonymous JSON endpoints are served alongside the SPA (never rewritten by the SPA fallback):
 
 - `GET /health/live` — always 200 while the process runs; use for liveness/restart probes.
-- `GET /health/ready` (alias `GET /health`) — ready (200) only when this process finished its database initialization **and** a bounded (3 s) read-only probe of the `ruoyu_admin` tables succeeds; every failure answers 503 with a fixed safe `errorCode` (`ruoyu-admin.startup_incomplete`, `ruoyu-admin.database_unreachable`, `ruoyu-admin.schema_unavailable`, `health.probe_timeout`, `health.probe_failed`) and never leaks connection strings or exception text. Each request re-samples, so a recovered database is ready again on the next probe. Downstream services are deliberately excluded from readiness to avoid cascading removal. Safe to wire into readiness gates and traffic gating.
+- `GET /health/ready` (alias `GET /health`) — ready (200) only when this process finished its database initialization **and** a bounded (3 s) read-only probe of the `ruoyu_admin` tables succeeds; every failure answers 503 with a fixed safe `errorCode` (`ruoyu-admin.startup_incomplete`, `ruoyu-admin.startup_failed`, `ruoyu-admin.database_unreachable`, `ruoyu-admin.schema_unavailable`, `health.probe_timeout`, `health.probe_failed`) and never leaks connection strings or exception text. Each request re-samples, so a recovered database is ready again on the next probe. Downstream services are deliberately excluded from readiness to avoid cascading removal. Safe to wire into readiness gates and traffic gating.
 
 ## Configuration
 
