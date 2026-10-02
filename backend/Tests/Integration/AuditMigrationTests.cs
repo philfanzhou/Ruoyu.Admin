@@ -4,7 +4,6 @@ using Admin.WebApi.Database;
 using Admin.WebApi.Persistence;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -504,9 +503,7 @@ public sealed class AuditMigrationTests : ServiceMantleIntegrationTestBase, IAsy
         var exception = Record.Exception(() => factory.CreateClient());
 
         exception.Should().NotBeNull();
-        var refusal = FindException<AuditDatabaseTargetPreparationException>(exception!);
-        refusal.Should().NotBeNull();
-        refusal!.ErrorCode.Should().Be(AuditDatabaseTargetPreparer.CreationNotAllowedErrorCode);
+        exception!.ToString().Should().Contain(WellKnownDatabaseTargetPreparationErrorCodes.CreationNotAllowed);
 
         // Zero writes: the missing catalog was not created.
         (await DatabaseExistsAsync(missing)).Should().BeFalse();
@@ -556,9 +553,8 @@ public sealed class AuditMigrationTests : ServiceMantleIntegrationTestBase, IAsy
         var exception = Record.Exception(() => factory.CreateClient());
 
         exception.Should().NotBeNull();
-        var refusal = FindException<AuditDatabaseTargetPreparationException>(exception!);
-        refusal.Should().NotBeNull();
-        refusal!.ErrorCode.Should().Be(AuditDatabaseTargetPreparer.InvalidConfigurationErrorCode);
+        exception!.ToString().Should().Contain(WellKnownDatabaseTargetPreparationErrorCodes.InvalidTarget);
+        exception.ToString().Should().NotContain("maybe");
     }
 
     [Fact]
@@ -626,19 +622,6 @@ public sealed class AuditMigrationTests : ServiceMantleIntegrationTestBase, IAsy
             """;
         command.Parameters.AddWithValue(database);
         return (bool)(await command.ExecuteScalarAsync())!;
-    }
-
-    private static T? FindException<T>(Exception exception) where T : Exception
-    {
-        for (var current = exception; current is not null; current = current.InnerException)
-        {
-            if (current is T matched)
-            {
-                return matched;
-            }
-        }
-
-        return null;
     }
 
     private sealed class ScriptedExecutor(

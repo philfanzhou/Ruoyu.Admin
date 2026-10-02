@@ -1,11 +1,15 @@
 using System.Data.Common;
 using System.Net;
 using System.Text.RegularExpressions;
-using Admin.WebApi.Health;
 using Admin.WebApi.Persistence;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Npgsql;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+using ServiceMantle.Database.PostgreSql;
+using ServiceMantle.Migration;
+using ServiceMantle.Persistence.Relational;
 using ServiceMantle.Health;
 using Testcontainers.PostgreSql;
 using Xunit;
@@ -16,9 +20,9 @@ namespace Admin.WebApi.Tests.Integration;
 /// ServiceMantle health endpoints on the real host: <c>/health/live</c> answers 200
 /// <c>{"status":"live"}</c> without ever touching the database; <c>/health/ready</c> and the
 /// <c>/health</c> alias project exactly the library-fixed
-/// status/phase/migrationStatus/databaseStatus/errorCode fields from the consumer-owned
+/// status/phase/migrationStatus/databaseStatus/errorCode fields from the shared EF Core
 /// snapshot source (startup receipt + read-only zero-row probe of the EF-mapped tables).
-/// Readiness fails closed on an unmarked startup receipt, a missing mapped column, an
+/// Readiness fails closed on an incomplete or failed startup receipt, a missing mapped column, an
 /// unreachable database, and a probe timeout; caller cancellation propagates instead of faking
 /// health; every request re-samples so a recovered database is observed immediately; all three
 /// endpoints stay anonymous and answer JSON (never the SPA page) while protected APIs keep
@@ -91,34 +95,42 @@ public sealed partial class ServiceMantleHealthEndpointTests : ServiceMantleInte
         Assert.Equal(countsBefore, countsAfter);
     }
 
-    [Fact]
-    public async Task ReadinessEndpoints_UnmarkedStartupReceipt_FailClosed()
+    [Theory]
+    [InlineData("notStarted")]
+    [InlineData("running")]
+    [InlineData("failed")]
+    public async Task ReadinessEndpoints_IncompleteOrFailedReceipt_FailClosedWithoutDatabaseAccess(string state)
     {
-        // The real snapshot source over a fresh, unmarked receipt models a host whose
-        // migration orchestration never completed (failed or still starting): readiness must never
-        // claim Succeeded/Reachable, and the fixed safe code carries no exception content.
+        var receipt = new StartupDatabaseReceipt();
+        if (state != "notStarted") Assert.True(receipt.TryMarkRunning());
+        if (state == "failed") Assert.True(receipt.TryCompleteFailed("migration.execution_failed"));
+        var guard = new RejectDatabaseAccess();
         using var factory = CreateFactory(configureTestServices: services =>
         {
             services.RemoveAll<IServiceHealthSnapshotSource>();
-            services.AddScoped<IServiceHealthSnapshotSource>(sp =>
-                new AdminHealthSnapshotSource(
-                    new AdminStartupReceipt(),
-                    sp.GetRequiredService<AuditDbContext>()));
+            services.AddScoped<IServiceHealthSnapshotSource>(_ =>
+                new EfCoreHealthSnapshotSource<AuditDbContext>(
+                    receipt,
+                    new AuditDbContext(new DbContextOptionsBuilder<AuditDbContext>()
+                        .UseNpgsql(Database.ConnectionString).AddInterceptors(guard).Options),
+                    new PostgreSqlDatabaseProbeFailureClassifier(), "ruoyu-admin"));
         });
         using var client = factory.CreateClient();
+        var expected = StartupIncompleteBody.Replace("running", state, StringComparison.Ordinal);
+        if (state == "failed") expected = expected.Replace("startup_incomplete", "startup_failed", StringComparison.Ordinal);
 
         foreach (var route in new[] { "/health/ready", "/health" })
         {
             using var response = await client.GetAsync(route);
             Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
             Assert.Equal("application/json", response.Content.Headers.ContentType?.MediaType);
-            Assert.Equal(StartupIncompleteBody, await response.Content.ReadAsStringAsync());
+            Assert.Equal(expected, await response.Content.ReadAsStringAsync());
         }
 
-        // Liveness never resolves the source.
         using var live = await client.GetAsync("/health/live");
         Assert.Equal(HttpStatusCode.OK, live.StatusCode);
         Assert.Equal(LiveBody, await live.Content.ReadAsStringAsync());
+        Assert.Equal(0, guard.Attempts);
     }
 
     [Fact]
@@ -137,7 +149,7 @@ public sealed partial class ServiceMantleHealthEndpointTests : ServiceMantleInte
         }
 
         // Current/legacy database: a later host start finds the existing schema (the
-        // initializer skips creation) and readiness still passes.
+        // executor skips creation) and readiness still passes.
         using var factory = CreateFactory(settings: settings);
         using var client = factory.CreateClient();
         using (var ready = await client.GetAsync("/health/ready"))
@@ -145,8 +157,7 @@ public sealed partial class ServiceMantleHealthEndpointTests : ServiceMantleInte
             Assert.Equal(HttpStatusCode.OK, ready.StatusCode);
         }
 
-        // A mapped column disappears after initialization (the shared initializer swallows
-        // some ALTER failures, so this must never be reported as ready).
+        // A mapped column disappears after startup; readiness must detect the regression.
         var (tableName, columnName, columnType) =
             await PickMappedColumnAsync(container.GetConnectionString(), "OssAuditRecords");
         await ExecuteAsync(
@@ -217,7 +228,7 @@ public sealed partial class ServiceMantleHealthEndpointTests : ServiceMantleInte
                     root.GetProperty("errorCode").GetString(),
                     new[]
                     {
-                        AdminHealthSnapshotSource.DatabaseUnreachableErrorCode,
+                        "ruoyu-admin.database_unreachable",
                         "health.probe_timeout",
                         "health.probe_failed"
                     });
@@ -483,6 +494,19 @@ public sealed partial class ServiceMantleHealthEndpointTests : ServiceMantleInte
 
     private static string Quote(string identifier) =>
         $"\"{identifier.Replace("\"", "\"\"", StringComparison.Ordinal)}\"";
+
+    private sealed class RejectDatabaseAccess : DbConnectionInterceptor
+    {
+        public int Attempts { get; private set; }
+
+        public override ValueTask<InterceptionResult> ConnectionOpeningAsync(
+            DbConnection connection, ConnectionEventData eventData, InterceptionResult result,
+            CancellationToken cancellationToken = default)
+        {
+            Attempts++;
+            throw new InvalidOperationException("Readiness accessed PostgreSQL before startup succeeded.");
+        }
+    }
 
     /// <summary>Never completes until the library's probe budget cancels the token.</summary>
     private sealed class BlockingSnapshotSource : IServiceHealthSnapshotSource
