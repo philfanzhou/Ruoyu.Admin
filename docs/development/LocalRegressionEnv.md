@@ -158,13 +158,13 @@ Student、Homework 任一 `HttpRequestException`，或 Mistake 的异常传播�
 
 ## 可选 OIDC 基础回归（#38）
 
-上述 #24 配方仍走旧密码/JWT。新握手默认关闭，显式启用与精确注册见 [LocalSetup.md](./LocalSetup.md#可选托管登录开发配置)。本地 callback 使用 `http://127.0.0.1:5020/api/auth/oidc/callback`，不要注册 localhost；生产 HTTPS/TLS 与代理 query 禁日志要求见 [Deployment.md](./Deployment.md#可选-signacore-托管登录)。Secret 仍只通过环境变量或 user-secrets 注入。
+上述 #24 stub/mock 配方描述旧后端密码/JWT，可搭配匹配的旧 SPA 回归，不是当前托管登录的联合验收。当前 SPA 须按 [LocalSetup.md](./LocalSetup.md#可选托管登录开发配置) 显式开启五项会话能力、使用官方 Provider 与实际 Identity/Teacher/Assistant 下游。Vite 的 callback 和 post-logout 必须使用浏览器 `http://127.0.0.1:8090` 原点；直接集成后端才使用 5020，均不注册 localhost。生产 HTTPS 代理必须保持 BFF 看到 HTTPS（当前无转发头信任），使用正常 CA 的 HTTPS 上游，并验证两种 CSRF 入口；OSS 公共代理保留原签名 bucket/key。完整配置与 query 禁日志要求见 [Deployment.md](./Deployment.md#可选-signacore-托管登录)。Secret 仍只通过环境变量或 user-secrets 注入。
 
 真 Program 的自动化握手由 `OidcTestAuthority` 隔离提供 Discovery/JWKS/token、测试 RSA 与虚构 canary，执行 `dotnet test backend/Ruoyu.Admin.sln --configuration Release --filter "FullyQualifiedName~Oidc"`（需要 Docker）。包含严格签名与回调拒绝、取消、一次消费/并发、Cookie 引用/内存 token、过期/重启、匿名 SPA/健康以及默认开关 false 时新 Cookie 不放行 Admin API；它不表示生产 ADMIN Code 注册和下游 audience（Ruoyu.Study IKJ8MO）已就绪。
 
 #42 增加默认 false 的 `AdminOidc:UseSessionForAdminApi`。在本地测试显式同时开启 OIDC 与它，配置管理员白名单后，真 Program 测试覆盖管理员会话/native image、401/403、任意 Authorization 拒绝、服务器 token 缺失/严格期限、GET csrf 的 Cookie/header/主体绑定、所有写方法（含 DELETE）、并发与取消、410 密码退役；三个未迁移代理新 Cookie 单独仍 401。专项命令为 `dotnet test backend/Ruoyu.Admin.sln --configuration Release --filter "FullyQualifiedName~SessionApi_"`，使用测试 Authority/虚构令牌、Testcontainers 隔离数据库与 mock OSS，不删除生产对象。单条/批量 OSS 处置在门禁失败时零 Delete，门禁成功后仍逐来源引用复核并对 Student/Homework/Mistake 不可达返回 502；审计 trigger 同样先过门禁。
 
-前端保持旧流程，不能在生产提前整体切换此开关。session 最长 8 小时绝对、state 5 分钟，均为单进程有界内存，重启失效；access token 到期独立拒绝、不按8小时续期。后续代理/关联转发、续接/登出、SPA 切换分别由 #43/#44、#45/#46、#41 推进；旧 `POST /api/auth/logout` 仍用旧 Bearer，只清旧 JWT Cookie，不负责新会话或全局登出。密码 login 在边界 true 为固定 410，false 保持旧行为；匿名 claims/OIDC callback、SPA、health 保持原协议。CSRF 的 Cookie/TLS 与当前授权响应见 [API 契约](../api.md#可选管理员会话与-csrf42)。
+当前 SPA 使用服务器会话，受控实例须显式启用 `AdminOidc:Enabled`、`UseSessionForAdminApi`、`UseSessionForIdentityProxy`、`UseSessionForPortalProxies`、`UseSessionForLogout` 五项开关（后四项同属 `AdminOidc`），配置当前管理员白名单与 ADMIN 应用 audience，并先完成实际下游信任和精确 Code/Logout 注册。五项仓库默认值均为 false，`start.sh` 不自动启用；关闭模式的旧密码/JWT API 仍供旧版本 SPA 使用，当前 SPA 对关闭能力或旧两字段 session 显示不可用，不回退密码或浏览器令牌。 session 最长 8 小时绝对、state 5 分钟，均为单进程有界内存；重启失效、token 到期不续期。当前 SPA 使用专用退出 CSRF 和 prepared logout；密码 login 在会话边界 true 时固定 410。匿名 claims/callback、SPA 与 health 保持原协议。测试 Authority/mock OSS 结果只证明相应测试边界，不能替代真实联合验证。
 
 ### Prepared logout（#46）
 

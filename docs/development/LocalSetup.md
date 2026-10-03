@@ -31,9 +31,11 @@
 
 ### 可选托管登录开发配置
 
-默认 `AdminOidc:Enabled=false`、`AdminOidc:UseSessionForAdminApi=false`，旧密码/JWT 前端与 API 保持原样。只在验证 #38 的基础握手时显式设 `AdminOidc__Enabled=true`、`AdminOidc__RedirectUri=http://127.0.0.1:5020/api/auth/oidc/callback`，并在本地 SignaCore 注册同一精确 URI 的 Confidential Code 客户端与 openid profile/S256；复用其 AppId/AppSecret，通过环境变量或 user-secrets 保存。Authority/Issuer 使用本地数字 loopback；`localhost` 不符合此 OIDC 切片的开发注册边界。生产要求 HTTPS，固定 URI 不取入站 Host/转发头。
+当前 SPA 使用服务器会话，受控实例须显式启用 `AdminOidc:Enabled`、`UseSessionForAdminApi`、`UseSessionForIdentityProxy`、`UseSessionForPortalProxies`、`UseSessionForLogout` 五项开关（后四项同属 `AdminOidc`），配置当前管理员白名单与 ADMIN 应用 audience，并先完成实际下游信任和精确 Code/Logout 注册。五项仓库默认值均为 false，`start.sh` 不自动启用；关闭模式的旧密码/JWT API 仍供旧版本 SPA 使用，当前 SPA 对关闭能力或旧两字段 session 显示不可用，不回退密码或浏览器令牌。
 
-新入口是 `/api/auth/oidc/start`、框架 callback 和 `/api/auth/session`；票据/令牌只在进程内，Cookie 只含引用，8 小时绝对到期、重启失效。默认不以它授权管理 API。要验证 #42，显式再设 `AdminOidc__UseSessionForAdminApi=true` 并配置当前 `AdminPortal:AdminUserIds`：管理 API 拒入站 Authorization、使用服务器 token 期限门禁与管理员白名单（401/403）；写请求先 GET `/api/auth/csrf`，带独立 Cookie 与单值 `X-CSRF-TOKEN`（失败 400）。仅用 mock OSS/隔离数据库回归，不做生产删除；新 Cookie 不放行三个未迁移代理。此时密码 login 为 410、零 Identity 转发；旧 logout 只清旧 JWT Cookie，不撤销新票据。不切 SPA、不做 refresh/上游 logout。完整配置、安全与上线门禁见 [Deployment.md](./Deployment.md#可选-signacore-托管登录)。
+开发 SPA 使用 `http://127.0.0.1:8090`，完整 `/api/*` 由 Vite 代理到后端硬编码 5020。注册与 BFF 配置必须使用浏览器原点的 `http://127.0.0.1:8090/api/auth/oidc/callback` 与 `/api/auth/oidc/logout-callback`，不能注册内部 5020、localhost 或通配符。集成模式改用其实际同源地址；生产仅 HTTPS 与正常 CA。复用 `IdentityService:Authority/AppId/AppSecret` 的 Confidential、PerApplication ADMIN audience、Code + openid profile + S256 客户端，不启用 refresh；Secret 只通过环境变量或 user-secrets 注入。
+
+Cookie 只含不透明引用，ticket 8 小时绝对期限、token 到期显式重新登录，重启丢失。unsafe 请求由共享客户端单飞取普通 CSRF；退出使用独立 logout CSRF，即使 token 到期或被移出白名单仍允许本人退出。三个代理和图片均依赖当前服务器授权。完整 TLS、白名单、日志、单实例限制与回退条件见 [Deployment.md](./Deployment.md#可选-signacore-托管登录)。
 
 自动化完整握手使用 `backend/Tests/Integration/OidcTestAuthority.cs` 的测试 RSA、Discovery/JWKS/token 替身与 Testcontainers PostgreSQL，`dotnet test Ruoyu.Admin.sln --configuration Release --filter "FullyQualifiedName~Oidc"`；不连接生产 Identity。
 
@@ -87,7 +89,7 @@ cd frontend
 npm install
 ```
 
-前端开发服务器默认 `http://localhost:5173`，API 请求代理到后端 5020 端口。
+前端开发服务器默认端口 8090；托管登录访问 `http://127.0.0.1:8090`，API 请求代理到后端 5020 端口。
 
 ## 下游服务依赖
 
