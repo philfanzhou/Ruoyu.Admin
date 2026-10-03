@@ -47,7 +47,17 @@ Admin API 启动时通过 Consul `config/ruoyu/*` 加载 PostgreSQL、OSS 和下
 
 启用时复用 `IdentityService:Authority/AppId/AppSecret`，新增 `AdminOidc:RedirectUri`，精确注册 `https://admin.example.com/api/auth/oidc/callback`（占位示例）。URI 必须与配置 byte-for-byte 相同，路径固定、无 query/fragment/userinfo/wildcard；生产 HTTPS。只有 Development/Testing 允许 `http://127.0.0.1:<port>/api/auth/oidc/callback` 或 `http://[::1]:<port>/api/auth/oidc/callback`；不允许 localhost。Authority 去结尾 `/` 后与 Discovery issuer 严格相同；OIDC 不使用 JWT AdditionalValidIssuers 放宽信任。错误启用配置启动失败，消息只列配置键。
 
-按 [SignaCore HostedLogin](https://github.com/philfanzhou/SignaCore/blob/52c68c812335dd6a967cb90042ac91c21543d387/docs/integrations/HostedLogin.md) 注册 Confidential、PerApplication audience、精确 Redirect URI 和 Code + openid profile + S256，不启用 refresh。Admin 从 Discovery 取授权/token/JWKS 端点，不发送 PAR、prompt 或其他不支持字段；兑换为 client_secret_post，固定外部 RedirectUri 与原 verifier，不信任入站 Host/X-Forwarded-Host 拼地址。TLS 可在可信代理终止，回跳仍固定 HTTPS，Cookie Secure；本服务不增加任意转发头信任。
+按 [SignaCore HostedLogin](https://github.com/philfanzhou/SignaCore/blob/52c68c812335dd6a967cb90042ac91c21543d387/docs/integrations/HostedLogin.md) 注册 Confidential、PerApplication audience、精确 Redirect URI 和 Code + openid profile + S256，不启用 refresh。Admin 从 Discovery 取授权/token/JWKS 端点，不发送 PAR、prompt 或其他不支持字段；兑换为 client_secret_post，固定外部 RedirectUri 与原 verifier，不信任入站 Host/X-Forwarded-Host 拼地址。浏览器原点与 BFF 处理 CSRF 的请求都必须保持 HTTPS。当前服务不处理任意转发头，不能仅由外层 TLS 终止后把 HTTP 转给 5020，再依赖 `X-Forwarded-Proto` 声称安全；生产 `CookieSecurePolicy.Always` 会拒绝这种 CSRF 配置。保留硬编码 HTTP 5020，可通过标准 `Kestrel:Endpoints` 配置增加内部 HTTPS 监听，代理以正常 CA 验证 HTTPS 上游，不改端口契约或扩大转发头信任。
+
+受控 HTTPS 联调的配置例（端口和证书路径由部署选择，密码只注入受限环境）：
+
+```text
+Kestrel__Endpoints__AdminHttps__Url=https://0.0.0.0:5022
+Kestrel__Endpoints__AdminHttps__Certificate__Path=/tls/server.pfx
+Kestrel__Endpoints__AdminHttps__Certificate__Password=<private environment value>
+```
+
+代理使用 `proxy_pass https://admin:5022`、`proxy_ssl_verify on` 与 `proxy_ssl_trusted_certificate`，并设置与证书 SAN 匹配的 `proxy_ssl_name`。证书/PFX 只挂载到本实例，CA 只信任本实例及自有浏览器，不全局导入、不跳过验证。注册 callback 仍为浏览器的 HTTPS 同源地址，5020 仍保留；上述配置不自动开启五项能力。实际联合验证还须确认普通 `/api/auth/csrf` 和退出专用 `/api/auth/logout/csrf` 都返回 200，不能把托管登录成功当成 CSRF 可用。
 
 反向代理必须避免 callback query（尤其 code）进入 access log/analytics，并保证原始单值 query 透传。Admin 协议 handler 禁用可能包含 token/URL/Cookie 的框架详细日志；启用 OIDC 时另外抑制会记录原始 query 的 `Microsoft.AspNetCore.Hosting.Diagnostics` 请求日志（包含其余路由的此类日志），OIDC 入口不导出 ASP.NET Core trace；应用调用方仍不得将敏感值插入自由文本。AppSecret 只通过环境变量/user-secrets/Consul 安全配置，不提交配置文件。
 
@@ -75,7 +85,7 @@ Admin API 启动时通过 Consul `config/ruoyu/*` 加载 PostgreSQL、OSS 和下
 ```
 
 - `InternalEndpoint/InternalSecure`：Admin 后端审计、清理、下载和迁移辅助使用的实际 S3 连接。
-- `PublicBaseUrl`：`GetPresignedUrlAsync` 使用的公共签名地址。
+- `PublicBaseUrl`：`GetPresignedUrlAsync` 使用的公共签名地址。 若地址带 `/oss` 前缀，公开代理只移除该部署前缀，保留签名 URL 中原有的 bucket/key；重复附加 bucket 会破坏 S3 签名。验证实际列表缩略图、预览图和原图，不能只看代理健康状态。
 - 浏览器访问 `/oss/` 时由 User Web Nginx 统一代理；Admin Nginx 不维护 SeaweedFS 上游地址。
 - `USE_LOCAL_OSS=1` 时使用 `LocalFileOssService`，目录由 `OSS_LOCAL_PATH` 指定，默认 `data/oss`。
 

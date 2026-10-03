@@ -158,7 +158,7 @@ Student、Homework 任一 `HttpRequestException`，或 Mistake 的异常传播�
 
 ## 可选 OIDC 基础回归（#38）
 
-上述 #24 stub/mock 配方描述旧后端密码/JWT，可搭配匹配的旧 SPA 回归，不是当前托管登录的联合验收。当前 SPA 须按 [LocalSetup.md](./LocalSetup.md#可选托管登录开发配置) 显式开启五项会话能力、使用官方 Provider 与实际 Identity/Teacher/Assistant 下游。Vite 的 callback 和 post-logout 必须使用浏览器 `http://127.0.0.1:8090` 原点；直接集成后端才使用 5020，均不注册 localhost。生产 HTTPS/TLS 与 query 禁日志要求见 [Deployment.md](./Deployment.md#可选-signacore-托管登录)。Secret 仍只通过环境变量或 user-secrets 注入。
+上述 #24 stub/mock 配方描述旧后端密码/JWT，可搭配匹配的旧 SPA 回归，不是当前托管登录的联合验收。当前 SPA 须按 [LocalSetup.md](./LocalSetup.md#可选托管登录开发配置) 显式开启五项会话能力、使用官方 Provider 与实际 Identity/Teacher/Assistant 下游。Vite 的 callback 和 post-logout 必须使用浏览器 `http://127.0.0.1:8090` 原点；直接集成后端才使用 5020，均不注册 localhost。生产 HTTPS 代理必须保持 BFF 看到 HTTPS（当前无转发头信任），使用正常 CA 的 HTTPS 上游，并验证两种 CSRF 入口；OSS 公共代理保留原签名 bucket/key。完整配置与 query 禁日志要求见 [Deployment.md](./Deployment.md#可选-signacore-托管登录)。Secret 仍只通过环境变量或 user-secrets 注入。
 
 真 Program 的自动化握手由 `OidcTestAuthority` 隔离提供 Discovery/JWKS/token、测试 RSA 与虚构 canary，执行 `dotnet test backend/Ruoyu.Admin.sln --configuration Release --filter "FullyQualifiedName~Oidc"`（需要 Docker）。包含严格签名与回调拒绝、取消、一次消费/并发、Cookie 引用/内存 token、过期/重启、匿名 SPA/健康以及默认开关 false 时新 Cookie 不放行 Admin API；它不表示生产 ADMIN Code 注册和下游 audience（Ruoyu.Study IKJ8MO）已就绪。
 
