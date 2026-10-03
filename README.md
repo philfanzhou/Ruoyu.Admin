@@ -151,7 +151,7 @@ Configuration is read from `appsettings.json`, then Consul KV under `config/ruoy
 
 Full details: [docs/development/Deployment.md](docs/development/Deployment.md).
 
-The optional SignaCore Code + PKCE handshake stores tokens in a single-process server ticket, with an opaque HttpOnly cookie and an absolute eight-hour lifetime. This phase has not switched the SPA or API/proxy authorization: existing JWT login remains active, and the new cookie alone does not grant Admin API access. Production activation requires the exact HTTPS callback registration and downstream audience migration; restarts lose pending handshakes and sessions.
+The SPA uses the server-session Code + PKCE flow: credentials stay on the hosted SignaCore page, tokens stay in a single-process ticket, and the browser carries an opaque HttpOnly cookie. Explicitly enable all five `AdminOidc` switches on the controlled instance, configure the current administrator allowlist and ADMIN audience, and register exact HTTPS login and logout callbacks before activation. All five defaults remain false and `start.sh` does not enable them. The current SPA shows an unavailable state when this capability is disabled; it never falls back to browser tokens or password login. Legacy backend endpoints remain available to an older SPA version. Rollback requires the matching older SPA and configuration; it cannot resurrect server tickets or obsolete browser tokens. Tickets expire absolutely after eight hours, access-token expiry requires explicit reauthentication, and restarts lose sessions. There is no database migration, refresh, or automatic write replay.
 
 ## Tests
 
@@ -162,6 +162,8 @@ dotnet test Ruoyu.Admin.sln --configuration Release
 
 ```bash
 cd frontend
+npm ci
+npm test
 npm run build
 ```
 

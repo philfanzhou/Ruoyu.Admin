@@ -22,7 +22,7 @@ Admin Portal 采用 **mode-1 集成部署**：同一容器（端口 5020）既�
 
 ### 可选托管登录基础（#38）
 
-默认 `AdminOidc:UseSessionForAdminApi=false`：前端和管理 API 继续使用旧 JWT，新 `adminSession` 单独访问管理 API 或三个代理仍返回 401。显式设 true 后，只有 `/api/admin/*` 与 `/api/auth/csrf` 选择 AdminSession；各代理默认仍用 Bearer；显式开启其迁移开关后采用同一会话边界。前端切换、门户凭据转发、会话续接与登出由 #44、#45/#46 交付，SPA 激活属 #41。
+当前 SPA 使用服务器会话，受控实例须显式启用 `AdminOidc:Enabled`、`UseSessionForAdminApi`、`UseSessionForIdentityProxy`、`UseSessionForPortalProxies`、`UseSessionForLogout` 五项开关（后四项同属 `AdminOidc`），配置当前管理员白名单与 ADMIN 应用 audience，并先完成实际下游信任和精确 Code/Logout 注册。五项仓库默认值均为 false，`start.sh` 不自动启用；关闭模式的旧密码/JWT API 仍供旧版本 SPA 使用，当前 SPA 对关闭能力或旧两字段 session 显示不可用，不回退密码或浏览器令牌。 各代理保持独立默认关闭边界；未启用的代理不会因新 Cookie 放行。
 
 `AdminOidc:Enabled=false` 默认关闭，新 start/callback/session 入口返回 `503 {"error":"oidc_disabled"}`，旧配置可继续启动。启用配置与部署门禁见 [Deployment.md](development/Deployment.md#可选-signacore-托管登录)。
 
@@ -34,7 +34,7 @@ Admin Portal 采用 **mode-1 集成部署**：同一容器（端口 5020）既�
 
 返回目标只允许绝对站内路径，拒绝外部、编码外部、控制字符、反斜线与 `/api/auth/*`、`/login` 循环；错误目标回退 `/dashboard`。取消返回 `/login?authError=cancelled`；start 的 Discovery/JWKS 不可用返回 `identity_unavailable`；回调协议/兑换/签名等失败统一 `sign_in_failed`，不反射 error_description 或异常。state 无论成功/失败都不重用；失败兑换必须重新 start，不能重试旧 code。入口和 redirect 响应均 no-store/no-cache/no-referrer。
 
-Cookie 为 HttpOnly、Path=/、SameSite=Lax，生产 Secure，只含数据保护后的不透明票据引用；access/id token、截止时间、verifier、已验证 iss+sub 只在单进程内存。请求取消不发布部分票据；存储有界并定期回收，重启/多副本不支持状态延续。展示名取 nickname/name，SMS 身份缺少它们时 null；ID Token 角色不作为本地授权。Cookie challenge/forbid 返回 401/403。此阶段不请求 offline_access、refresh 或上游 logout。
+Cookie 为 HttpOnly、Path=/、SameSite=Lax，生产 Secure，只含数据保护后的不透明票据引用；access/id token、截止时间、verifier、已验证 iss+sub 只在单进程内存。请求取消不发布部分票据；存储有界并定期回收，重启/多副本不支持状态延续。展示名取 nickname/name，SMS 身份缺少它们时 null；ID Token 角色不作为本地授权。Cookie challenge/forbid 返回 401/403。基础 Code 请求不包含 offline_access/refresh；当前 SPA 退出走下文的 prepared logout。
 
 ### 可选管理员会话与 CSRF（#42）
 
@@ -68,7 +68,7 @@ true 时 `POST /api/auth/login` 在读取密码/模型绑定前固定 `410 {"err
 }
 ```
 
-前端将 `accessToken` 存入 `localStorage`，后续请求通过 `Authorization: Bearer` 头发送。legacy 路径未携带或 token 无效时返回 **401 Unauthorized**；session 路径按上文拒绝入站 Bearer。
+旧版本 SPA 曾存储 `accessToken` 并发送 Bearer；legacy 后端缺失或无效 token 仍为 **401 Unauthorized**。当前 SPA 只使用同源服务器会话，不调用密码 API、不读取或存储 access/id token；session 路径按上文拒绝入站 Bearer。
 
 > **集成部署下首次访问**：浏览器直接访问后端端口时，`/` 必须匿名返回 `index.html` 才能加载出登录页（否则陷入「未登录→无法加载登录页→无法登录」的死锁）。API 端点的 401 由前端 axios 拦截器捕获后跳转 `/login`。
 

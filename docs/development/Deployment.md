@@ -43,7 +43,7 @@ Admin API 启动时通过 Consul `config/ruoyu/*` 加载 PostgreSQL、OSS 和下
 
 ### 可选 SignaCore 托管登录
 
-`AdminOidc:Enabled` 与 `AdminOidc:UseSessionForAdminApi` 均默认 false，前端、管理 API、代理继续旧 JWT。显式开启两项后，`/api/admin/*` 使用服务器会话、当前管理员白名单与写请求 CSRF；三个未迁移代理仍为旧 Bearer，新 Cookie 单独访问返回 401。默认关闭能力保留，生产激活仍依赖 IKJ8MO 与后续 #41/#43–#46。
+当前 SPA 使用服务器会话，受控实例须显式启用 `AdminOidc:Enabled`、`UseSessionForAdminApi`、`UseSessionForIdentityProxy`、`UseSessionForPortalProxies`、`UseSessionForLogout` 五项开关（后四项同属 `AdminOidc`），配置当前管理员白名单与 ADMIN 应用 audience，并先完成实际下游信任和精确 Code/Logout 注册。五项仓库默认值均为 false，`start.sh` 不自动启用；关闭模式的旧密码/JWT API 仍供旧版本 SPA 使用，当前 SPA 对关闭能力或旧两字段 session 显示不可用，不回退密码或浏览器令牌。
 
 启用时复用 `IdentityService:Authority/AppId/AppSecret`，新增 `AdminOidc:RedirectUri`，精确注册 `https://admin.example.com/api/auth/oidc/callback`（占位示例）。URI 必须与配置 byte-for-byte 相同，路径固定、无 query/fragment/userinfo/wildcard；生产 HTTPS。只有 Development/Testing 允许 `http://127.0.0.1:<port>/api/auth/oidc/callback` 或 `http://[::1]:<port>/api/auth/oidc/callback`；不允许 localhost。Authority 去结尾 `/` 后与 Discovery issuer 严格相同；OIDC 不使用 JWT AdditionalValidIssuers 放宽信任。错误启用配置启动失败，消息只列配置键。
 
@@ -51,13 +51,13 @@ Admin API 启动时通过 Consul `config/ruoyu/*` 加载 PostgreSQL、OSS 和下
 
 反向代理必须避免 callback query（尤其 code）进入 access log/analytics，并保证原始单值 query 透传。Admin 协议 handler 禁用可能包含 token/URL/Cookie 的框架详细日志；启用 OIDC 时另外抑制会记录原始 query 的 `Microsoft.AspNetCore.Hosting.Diagnostics` 请求日志（包含其余路由的此类日志），OIDC 入口不导出 ASP.NET Core trace；应用调用方仍不得将敏感值插入自由文本。AppSecret 只通过环境变量/user-secrets/Consul 安全配置，不提交配置文件。
 
-单实例内存 state 最长 5 分钟、43 字符随机引用、单次原子消费；票据 8 小时绝对到期、不滑动，所有 token 留服务器。两类存储各最多 4096 项、每分钟回收；满载固定失败，重启丢失，不能多副本共用会话。数据保护 keys 即使还在也不会恢复已丢失 ticket；无新表/迁移。上游 token 吊销、全局登出与会话续接留后续任务；不要将本地 session 状态作为管理员授权证明。
+单实例内存 state 最长 5 分钟、43 字符随机引用、单次原子消费；票据 8 小时绝对到期、不滑动，所有 token 留服务器。两类存储各最多 4096 项、每分钟回收；满载固定失败，重启丢失，不能多副本共用会话。数据保护 keys 即使还在也不会恢复已丢失 ticket；无新表/迁移。没有 refresh；prepared logout 使用现有服务器 ID token 与专用退出 CSRF，具体边界见下文。不要将前端显示状态作为管理员授权证明。
 
 阶段验证 `AdminOidc:UseSessionForAdminApi=true` 必须同时启用 OIDC；错误组合在启动期失败。新会话管理员身份为已验证 Authority 的唯一 iss/sub 与服务器 stamp，白名单为空或当前移除即 403；入站 Authorization、缺票据/服务器 token 或到期期限为 JSON 401。unsafe 管理请求必须先 GET `/api/auth/csrf`，携带其独立 `adminCsrf` Cookie 与单值 `X-CSRF-TOKEN`；错误为 JSON 400，业务/OSS 删除前拒绝。生产 CSRF Cookie 同为 Secure/HttpOnly/Path=/、SameSite=Lax，仅已验证开发数字 loopback 允许 HTTP；不更改 CORS、不增加跨域凭据。详细响应见 [API 契约](../api.md#可选管理员会话与-csrf42)。
 
-阶段开关 true 时密码 login 固定 410、不读取/转发密码；false 保持旧路径。旧 logout 只清旧 JWT Cookie、仍走旧 Bearer，并未撤销新会话；prepared logout 属 #46。前端与 Student 关联门户 token 尚未迁移，不将新会话开关直接作为全栈上线开关。关闭此开关可回到 legacy，但不会把新 Cookie 当旧 JWT，也不会恢复丢失的内存票据。
+会话 API 开关 true 时密码 login 固定 410、不读取/转发密码；false 保持旧后端路径。当前 SPA 退出使用专用 logout CSRF，服务器先撤销本地票据再准备上游退出；失败/丢失响应仅允许查询本地状态，不自动重放。仅本地退出必须向用户明确上游会话可能仍存在。回退须同时部署匹配的旧 SPA 与旧配置，不把新 Cookie 当 JWT，不恢复丢失的票据或历史浏览器 token。Student 关联请求与 Identity/Teacher/Assistant 代理均使用各已启用的现有服务器 token 转发边界。
 
-生产能力激活还依赖 Ruoyu.Study 的应用 Code 配置与下游 audience 迁移（IKJ8MO）。本项仅用测试 Authority 验证，不代表已修改生产注册或完成平台 E2E。
+生产能力激活还依赖 Ruoyu.Study 的应用 Code 配置与下游 audience 迁移（IKJ8MO）。本配置文档不代表生产注册已修改；55 联合验收必须固定官方 Provider 版本并连接实际三个下游，测试 Authority 单元结果不能代替。
 
 ### OSS
 
