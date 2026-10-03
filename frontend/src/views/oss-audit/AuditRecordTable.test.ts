@@ -5,12 +5,6 @@ import ElementPlus from 'element-plus'
 import AuditRecordTable from './AuditRecordTable.vue'
 import type { OssAuditRecordDto } from '../../services/ossAuditApi'
 
-/**
- * 非待处理行的不可处置保证（#24：checkbox disabled、操作列「—」、批量计数只统计
- * status===0 的行级一半；计数一半在 AuditBulkBar/OssAuditView 用例中）。
- * 真实渲染 Element Plus（el-table/el-checkbox），断言落在真实 DOM 属性上。
- */
-
 function makeRecord(id: number, status: number): OssAuditRecordDto {
   return {
     id,
@@ -49,59 +43,27 @@ async function mountTable(records: OssAuditRecordDto[], selectedIds: number[] = 
   return wrapper
 }
 
-function rowCheckbox(wrapper: VueWrapper, rowIndex: number) {
-  return wrapper.findAll('tbody input[type="checkbox"]')[rowIndex]
-}
-
-describe('AuditRecordTable 非待处理记录不可处置', () => {  const pending = makeRecord(1, 0)
-  const resolved = makeRecord(2, 1)
-  const ignored = makeRecord(3, 2)
-  const records = [pending, resolved, ignored]
-
-  it('非待处理（已删除/已忽略）行 checkbox disabled，待处理行可选', async () => {
-    const wrapper = await mountTable(records)
-
-    expect((rowCheckbox(wrapper, 0).element as HTMLInputElement).disabled).toBe(false)
-    expect((rowCheckbox(wrapper, 1).element as HTMLInputElement).disabled).toBe(true)
-    expect((rowCheckbox(wrapper, 2).element as HTMLInputElement).disabled).toBe(true)
-    wrapper.unmount()
-  })
-
-  it('非待处理行操作列显示「—」，无删除/忽略按钮；待处理行有删除与忽略', async () => {
-    const wrapper = await mountTable(records)
-
+describe('AuditRecordTable v1 只读引用观察', () => {
+  it('全部新旧状态均无选择框和删除按钮，保留历史待处理忽略操作', async () => {
+    const wrapper = await mountTable([0, 1, 2, 3].map((status) => makeRecord(status + 1, status)))
+    expect(wrapper.findAll('input[type="checkbox"]')).toHaveLength(0)
     const rows = wrapper.findAll('tbody tr')
-    expect(rows.length).toBe(3)
-    // The trailing status label is 已删除/已忽略, so assert on the operation cell only.
-    const actionCells = rows.map((row) => row.findAll('td')[row.findAll('td').length - 1].text())
-    expect(actionCells[0]).toContain('删除')
-    expect(actionCells[0]).toContain('忽略')
-    // Non-pending rows show only the em-dash: no delete, no ignore.
-    expect(actionCells[1].trim()).toBe('—')
-    expect(actionCells[2].trim()).toBe('—')
+    expect(rows).toHaveLength(4)
+    const actions = rows.map((row) => row.findAll('td').at(-1)!.text())
+    expect(actions[0]).toBe('忽略')
+    expect(actions.slice(1)).toEqual(['—', '—', '—'])
+    expect(rows[3].text()).toContain('未观察到引用')
+    expect(wrapper.emitted('resolve')).toBeUndefined()
     wrapper.unmount()
   })
 
-  it('当前页没有待处理记录时表头全选 checkbox disabled', async () => {
-    const wrapper = await mountTable([resolved, ignored])
-
-    const headerCheckbox = wrapper.find('thead input[type="checkbox"]').element as HTMLInputElement
-    expect(headerCheckbox.disabled).toBe(true)
-    wrapper.unmount()
-  })
-
-  it('待处理行的 checkbox change 会向上 emit toggle（选中状态的唯一事实在父组件）', async () => {
-    const wrapper = await mountTable(records)
-
-    // Drive the row checkbox's change event (its disabled state for non-pending rows is
-    // already asserted above, which is what blocks user interaction there).
-    const rows = wrapper.findAll('tbody tr')
-    ;(rows[0].findComponent({ name: 'ElCheckbox' }).vm as never as { $emit: (event: string, value: boolean) => void })
-      .$emit('change', true)
-    await settle()
-
-    expect(wrapper.emitted('toggle')?.length).toBe(1)
-    expect(wrapper.emitted('toggle')?.[0]).toEqual([pending])
+  it('历史待处理忽略操作仍发出原记录，观察记录没有忽略入口', async () => {
+    const record = makeRecord(7, 0)
+    const wrapper = await mountTable([record, makeRecord(8, 3)])
+    const button = wrapper.findAll('tbody tr')[0].findAll('button').find((item) => item.text() === '忽略')!
+    await button.trigger('click')
+    expect(wrapper.emitted('ignore')).toEqual([[record]])
+    expect(wrapper.findAll('tbody tr')[1].findAll('button').some((item) => item.text() === '忽略')).toBe(false)
     wrapper.unmount()
   })
 })

@@ -14,6 +14,7 @@ export const AUDIT_STATUSES: readonly AuditStatusMeta[] = [
   { value: 0, label: '待处理', tagType: 'warning' },
   { value: 1, label: '已删除', tagType: 'danger' },
   { value: 2, label: '已忽略', tagType: 'info' },
+  { value: 3, label: '未观察到引用', tagType: 'info' },
 ]
 
 export const AUDIT_STATUS_VALUES = AUDIT_STATUSES.map((s) => s.value)

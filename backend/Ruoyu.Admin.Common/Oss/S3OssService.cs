@@ -294,35 +294,17 @@ public class S3OssService : IOssService
 
     public async Task<List<OssObjectInfo>> ListObjectsAsync(string? prefix = null)
     {
-        var objects = new List<OssObjectInfo>();
-
-        try
+        var listArgs = new ListObjectsArgs().WithBucket(_bucketName).WithPrefix(prefix).WithRecursive(true);
+        // A failed or partial enumeration is not an empty successful observation.
+        var items = await _internalClient.ListObjectsAsync(listArgs).ToList();
+        return items.Select(item => new OssObjectInfo
         {
-            var listArgs = new ListObjectsArgs()
-                .WithBucket(_bucketName)
-                .WithPrefix(prefix)
-                .WithRecursive(true);
-
-            var observable = _internalClient.ListObjectsAsync(listArgs);
-            var items = await observable.ToList();
-
-            foreach (var item in items)
-            {
-                objects.Add(new OssObjectInfo
-                {
-                    ObjectPath = item.Key,
-                    Size = (long)item.Size,
-                    LastModified = string.IsNullOrEmpty(item.LastModified) ? null : DateTimeOffset.TryParse(item.LastModified, out var dt) ? (DateTimeOffset?)dt : null,
-                    IsZombie = false
-                });
-            }
-        }
-        catch
-        {
-            // 忽略错误，返回空列表
-        }
-
-        return objects;
+            ObjectPath = item.Key,
+            Size = (long)item.Size,
+            LastModified = !string.IsNullOrEmpty(item.LastModified) && DateTimeOffset.TryParse(item.LastModified, out var time)
+                ? time : null,
+            IsZombie = false
+        }).ToList();
     }
 
     public async Task<List<OssObjectInfo>> ListObjectsWithBucketAsync(OssBucket bucket, string? prefix = null)

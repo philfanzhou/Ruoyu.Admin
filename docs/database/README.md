@@ -22,7 +22,7 @@ Admin Portal 服务的本地数据库文档。本文档是数据库结构的**�
 
 | 表名 | 说明 | 详细文档 |
 |------|------|----------|
-| `OssAuditRecords` | OSS 僵尸对象审计记录 | [tables/oss_audit_records.md](tables/oss_audit_records.md) |
+| `OssAuditRecords` | OSS只读观察与历史审计记录 | [tables/oss_audit_records.md](tables/oss_audit_records.md) |
 | `OssAuditRuns` | OSS 审计运行记录 | [tables/oss_audit_runs.md](tables/oss_audit_runs.md) |
 
 ## 实体关系
@@ -33,7 +33,7 @@ Admin Portal 服务的本地数据库文档。本文档是数据库结构的**�
 
 详见 [migrations.md](migrations.md)。
 
-本项目自 issue #57 起使用 EF Core Migrations（单一基线迁移），由 `AuditMigrationExecutor` 接入 ServiceMantle 迁移编排（PostgreSQL advisory lock 多实例串行化）管理表结构。
+本项目自 issue #57 起使用 EF Core Migrations（exact已知迁移链），由 `AuditMigrationExecutor` 接入 ServiceMantle 迁移编排（PostgreSQL advisory lock 多实例串行化）管理表结构。
 
 ## 已移除的表
 

@@ -1,6 +1,6 @@
 # 本地非生产回归环境 (LocalRegressionEnv)
 
-本文档给出一套**在开发机上从干净 clone 到可执行 [#24](https://github.com/philfanzhou/Ruoyu.Admin/issues/24) 真实环境回归**的完整配方：本地 PostgreSQL + SignaCore 本地 Identity + 三个下游引用来源的本地替身 + `USE_LOCAL_OSS=1` 本地对象目录。全程不依赖任何 rc 发布，Storage Audit 的处置动作触发的**真实删除只作用于本地目录**。
+本文档给出一套**在开发机上从干净 clone 到可执行 [#24](https://github.com/philfanzhou/Ruoyu.Admin/issues/24) 真实环境回归**的完整配方：本地 PostgreSQL + SignaCore 本地 Identity + 三个下游引用来源的本地替身 + `USE_LOCAL_OSS=1` 本地对象目录。该配方保留登录、下游旧DTO和本地对象目录回归；当前 StorageReferences v1 的真实三方验收须另用生产Host、PG、正常TLS和专属RS256，不能由这些替身代替。所有审计resolve都拒绝删除。
 
 > **安全边界（不可放宽）**
 > - 夹具触发的任何 `DeleteAsync` 只能指向 `OSS_LOCAL_PATH`（本地目录）。种子脚本在 `USE_LOCAL_OSS` 未设置为 `1` 时拒绝执行。
@@ -93,15 +93,7 @@ dotnet run --project backend/Tools/LocalRegressionStubs -- seed
 | `ruoyu_admin` | 1 条已完成审计 run（`TriggerType=regression-seed`）+ 4 条待处理（Status=0）记录 + 1 条已忽略（Status=2）记录 |
 | 夹具 JSON | `data/regression/fixtures.json`（替身 serve 模式的数据源） |
 
-夹具与 #24 事件 × 结果表的对应：
-
-| 夹具对象 | 预期分支 |
-|----------|----------|
-| `uploads/regression/orphan-object.jpg` | 无引用孤儿 → 单条 resolve **200**，原图 + 全部缩略图真实删除，该行从列表消失 |
-| `uploads/regression/referenced-by-upload.jpg` | 被上传记录引用 → **400**「该文件仍被上传记录引用，不能删除。」 |
-| `mistakes/regression/referenced-by-mistake.jpg` | 被错题记录引用 → **400**「该文件仍被错题记录引用，不能删除。」 |
-| `uploads/regression/referenced-by-homework.jpg` | 被 Homework 引用 → **400**（归入 registered 分支，报「上传记录引用」文案） |
-| `uploads/regression/ignored-object.jpg`（Status=2） | 非待处理行：checkbox `disabled`、操作列「—」、批量计数不统计 |
+种子中的旧Status0/2保持历史；当前视图没有选择或删除操作。完整v1引用证明使单条/非空批量resolve返回409 `cleanup_not_authorized`，配置缺失或来源不全为502 `references_unavailable`，对象与审计记录原样保留。status3是新扫描的“未观察到引用”只读观察，不能ignore或转成删除许可。
 
 拒绝与失败行为：`USE_LOCAL_OSS` 未设为 `1` 时拒绝执行并提示；连接串缺失时拒绝执行；表不存在时失败并提示「先启动一次 Admin.WebApi 建表」。
 
@@ -112,7 +104,7 @@ dotnet run --project backend/Tools/LocalRegressionStubs -- serve
 # 可选：--mistake-outage（或 MISTAKE_STUB_OUTAGE=1）模拟 Mistake 不可达，见下文
 ```
 
-单进程监听 :5005 / :5007 / :5009，只实现审计引用聚合逐字依赖的三个只读查询（`OssAuditWorker` / `OssAuditController`）：
+单进程监听 :5005 / :5007 / :5009，仅实现保留的旧HTTP客户端DTO查询；实际审计worker/controller不再调用这些查询，固定使用StorageReferences共享collector：
 
 | 端口 | 端点 | 聚合方 |
 |------|------|--------|
@@ -128,24 +120,11 @@ curl -s 'http://localhost:5007/api/mistakes?page=1&size=100'      # items[].sour
 curl -s 'http://localhost:5009/api/admin/storage/image-references?page=1&size=200'
 ```
 
-## 步骤 6：执行 #24 的回归项
+## 步骤 6：当前审计回归边界
 
-登录 → 触发审计（或直接使用种子插入的待处理记录）→ 按 #24 事件 × 结果表逐行执行。两条不可达分支的触发方式：
+旧替身没有实现StorageReferences v1。仅配置旧Student/Mistake/Homework URL时，trigger可受理后Run失败为Status2，零S3列举；resolve为502。不能通过空集fallback或复用旧offset查询恢复“成功”。真实报告回归按[StorageAudit](../modules/OssAudit/StorageAudit.md)配置三个生产provider和正常TLS，显式启用专属服务信任，成功Run保存全部metadata而所有resolve仍为409。
 
-1. **Student 或 Homework 不可达 → 502 / 审计中止**：直接停掉替身进程（三个来源同时不可达；Student 侧的 `HttpRequestException` 会最先触发「Student 或 Homework 服务不可用」的 502 与整轮 `Status=2` 中止，中止发生在扫描任何桶之前）。
-2. **Mistake 不可达 → 502「Mistake 服务不可用，无法安全删除。」**：只停掉 5007 的 Mistake 替身（保留 5005/5009）即可——连接拒绝的 `HttpRequestException` 会从 `MistakeHttpClient.GetMistakeItemListAsync` 向上传播（[#28](https://github.com/philfanzhou/Ruoyu.Admin/issues/28) 修复后），删除前复核与审计聚合都得到确定性的 Mistake 失败分支。也可用 `--mistake-outage` 启动替身——`/api/mistakes` 返回 503 + 非 JSON 文本，走 `JsonException` 传播路径，结论相同。
-
-> **历史缺陷说明**：[#28](https://github.com/philfanzhou/Ruoyu.Admin/issues/28) 修复前，`GetMistakeItemListAsync` 会捕获 `HttpRequestException` 并返回空集，「只停 Mistake」场景不会 502 也不会中止；本节方式 2 曾因此只依赖 `JsonException` 路径。修复后连接拒绝与非 JSON 两条路径结论一致。
-
-### OssAuditWorker 在本地运行的三个隐藏动作
-
-1. 启动约 **2 分钟后**的 legacy 清理会**真实删除** `uploads/homework/{guid}/{guid}/reviews/{guid}.jpg` 形态的文件及同名审计记录。夹具使用 `regression/` 路径段，**不会撞上**该形态；如需验证该清理，可自行放置符合形态的文件。
-2. 同期 `CleanupUnauditedBucketAuditRecordsAsync` 会删除桶名不在 `uploads`/`mistakes` 的审计记录。种子只用这两个桶名。
-3. 每日 `OssAudit:ScheduledHour/Minute`（默认 **02:00**）会再触发全量扫描。长时间挂机的本地环境会在凌晨自触发一轮审计（结果幂等：已有记录不会重复插入）。
-
-### 审计中止不变量（不得为了跑通而降级）
-
-Student、Homework 任一 `HttpRequestException`，或 Mistake 的异常传播到聚合方，都会让整轮审计以 `Status=2` 中止，且中止发生在扫描任何桶之前。替身未启动就触发审计（`POST /api/admin/oss-audit/trigger`）即应观察到该行为（Student 分支先触发）。**不要**为了让审计"跑完"而放宽任何来源的可达性要求。
+worker不再执行startup旧Homework review图或非审计桶记录清理；符合旧路径形态的对象和原审计历史也保留。每日`OssAudit:ScheduledHour/Minute`仍触发同一报告扫描，任何来源失败都在列举之前中止；成功扫描不重复插入已有ObjectPath。
 
 ## 常见问题
 
@@ -153,7 +132,7 @@ Student、Homework 任一 `HttpRequestException`，或 Mistake 的异常传播�
 - **认证校验失败提示 RequireHttpsMetadata**：Authority/Issuer 用了 `http://` 但没设 `IdentityService:RequireHttpsMetadata=false`。
 - **登录成功但接口 403 / 无 admin 权限**：测试用户不在 `AdminPortal:AdminUserIds` 白名单。
 - **种子失败「表不存在」**：先完成步骤 3 让共享启动门完成基线迁移建表。
-- **审计运行始终 `Status=2`**：替身未启动（步骤 5），或 `StudentService/MistakeService/HomeworkService:Url` 指向了错误端口。
+- **审计运行始终 `Status=2`**：未配置/未启用StorageReferences，或三个正常TLS生产provider中任一合同、身份、分页或连接失败；旧替身不满足此合同。
 
 
 ## 可选 OIDC 基础回归（#38）
@@ -162,7 +141,7 @@ Student、Homework 任一 `HttpRequestException`，或 Mistake 的异常传播�
 
 真 Program 的自动化握手由 `OidcTestAuthority` 隔离提供 Discovery/JWKS/token、测试 RSA 与虚构 canary，执行 `dotnet test backend/Ruoyu.Admin.sln --configuration Release --filter "FullyQualifiedName~Oidc"`（需要 Docker）。包含严格签名与回调拒绝、取消、一次消费/并发、Cookie 引用/内存 token、过期/重启、匿名 SPA/健康以及默认开关 false 时新 Cookie 不放行 Admin API；它不表示生产 ADMIN Code 注册和下游 audience（Ruoyu.Study IKJ8MO）已就绪。
 
-#42 增加默认 false 的 `AdminOidc:UseSessionForAdminApi`。在本地测试显式同时开启 OIDC 与它，配置管理员白名单后，真 Program 测试覆盖管理员会话/native image、401/403、任意 Authorization 拒绝、服务器 token 缺失/严格期限、GET csrf 的 Cookie/header/主体绑定、所有写方法（含 DELETE）、并发与取消、410 密码退役；三个未迁移代理新 Cookie 单独仍 401。专项命令为 `dotnet test backend/Ruoyu.Admin.sln --configuration Release --filter "FullyQualifiedName~SessionApi_"`，使用测试 Authority/虚构令牌、Testcontainers 隔离数据库与 mock OSS，不删除生产对象。单条/批量 OSS 处置在门禁失败时零 Delete，门禁成功后仍逐来源引用复核并对 Student/Homework/Mistake 不可达返回 502；审计 trigger 同样先过门禁。
+#42 增加默认 false 的 `AdminOidc:UseSessionForAdminApi`。在本地测试显式同时开启 OIDC 与它，配置管理员白名单后，真 Program 测试覆盖管理员会话/native image、401/403、任意 Authorization 拒绝、服务器 token 缺失/严格期限、GET csrf 的 Cookie/header/主体绑定、所有写方法（含 DELETE）、并发与取消、410 密码退役；三个未迁移代理新 Cookie 单独仍 401。专项命令为 `dotnet test backend/Ruoyu.Admin.sln --configuration Release --filter "FullyQualifiedName~SessionApi_"`，使用测试 Authority/虚构令牌、Testcontainers 隔离数据库与 mock OSS，不删除生产对象。单条/批量 OSS 处置在门禁失败时零 Delete，门禁成功后使用StorageReferences共同collector，完整409/不可达502，始终零Delete；审计 trigger 同样先过门禁。
 
 前端保持旧流程，不能在生产提前整体切换此开关。session 最长 8 小时绝对、state 5 分钟，均为单进程有界内存，重启失效；access token 到期独立拒绝、不按8小时续期。后续代理/关联转发、续接/登出、SPA 切换分别由 #43/#44、#45/#46、#41 推进；旧 `POST /api/auth/logout` 仍用旧 Bearer，只清旧 JWT Cookie，不负责新会话或全局登出。密码 login 在边界 true 为固定 410，false 保持旧行为；匿名 claims/OIDC callback、SPA、health 保持原协议。CSRF 的 Cookie/TLS 与当前授权响应见 [API 契约](../api.md#可选管理员会话与-csrf42)。
 

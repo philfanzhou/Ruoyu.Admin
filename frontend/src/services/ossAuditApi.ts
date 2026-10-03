@@ -41,6 +41,8 @@ export interface AuditRunInfo {
   completedAt: number | null
   durationSeconds: number | null
   newZombieCount: number
+  referenceContractVersion?: string | null
+  referenceSnapshots?: string | null
   triggerType: string
 }
 
@@ -56,6 +58,8 @@ export interface AuditStatusResponse {
   isRunning: boolean
   lastCompleted: AuditRunInfo | null
   lastFailed: AuditFailedInfo | null
+  deletionAuthorized?: false
+  observationCount?: number
   pendingCount: number
 }
 
