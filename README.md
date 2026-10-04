@@ -229,3 +229,5 @@ Known documentation debt carried over from the monorepo is listed in [docs/READM
 ## License
 
 MIT — see [LICENSE](./LICENSE).
+
+Teacher/Assistant proxies now use only trusted server-session tokens. Disabling portal proxying returns `503 session_portal_proxy_disabled` before authentication; browser credentials cannot restore it. Both portals share path/body preservation, credential and upstream-cookie isolation, and request cancellation. Linked-account aggregation follows the API-session capability independently of the portal proxy flag; disabling the API capability returns `503 session_api_disabled`, while enabled queries use server tokens and preserve partial-result behavior.

@@ -119,8 +119,10 @@ public sealed partial class AdminOidcTests
         Assert.Equal("https://images.example.test/test.jpg", image.Headers.Location!.OriginalString);
         probe.Student.Verify(s => s.GetPresignedUrlAsync("uploads/test.jpg", 3600, "small", It.IsAny<CancellationToken>()), Times.Once);
         Assert.Equal(0, probe.Writes);
-        foreach (var path in new[] { "/api/identity/admin/users", "/api/teacher-portal/admin/users", "/api/assistant-portal/admin/users", "/api/auth/logout" })
+        foreach (var path in new[] { "/api/identity/admin/users", "/api/auth/logout" })
             Assert.Equal(HttpStatusCode.Unauthorized, (await Api(client, path, cookie, path.EndsWith("logout") ? "POST" : "GET")).StatusCode);
+        foreach (var path in new[] { "/api/teacher-portal/admin/users", "/api/assistant-portal/admin/users" })
+            await Rejected(await Api(client, path, cookie), 503, "session_portal_proxy_disabled");
         // The accessor returns the server token, without leaking it through formatting.
         using var scope = factory.Services.CreateScope();
         var context = new Microsoft.AspNetCore.Http.DefaultHttpContext { RequestServices = scope.ServiceProvider };
@@ -338,7 +340,7 @@ public sealed partial class AdminOidcTests
             var callback = await client.PostAsJsonAsync("/api/auth/callback", new { userId = "fake-subject" });
             Assert.Equal("{\"roles\":[\"admin\"]}", await callback.Content.ReadAsStringAsync());
             var selector = factory.Services.GetRequiredService<IOptionsMonitor<Microsoft.AspNetCore.Authentication.PolicySchemeOptions>>().Get("AdminApiAuthentication");
-            foreach (var path in new[] { "/api/identity/admin/users", "/api/teacher-portal/admin/users", "/api/assistant-portal/admin/users", "/api/auth/logout" })
+            foreach (var path in new[] { "/api/identity/admin/users", "/api/auth/logout" })
             {
                 var context = new Microsoft.AspNetCore.Http.DefaultHttpContext(); context.Request.Path = path;
                 Assert.Equal("Bearer", selector.ForwardDefaultSelector!(context));

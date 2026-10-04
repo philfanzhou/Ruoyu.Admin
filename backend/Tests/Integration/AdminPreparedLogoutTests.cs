@@ -102,8 +102,9 @@ public sealed partial class AdminOidcTests
         foreach (var flag in new[] { "httponly", "secure", "samesite=lax", "path=/api/auth/oidc/logout-callback", "max-age=300" }) Assert.Contains(flag, binding.ToLowerInvariant());
         foreach (var path in new[] { "/api/admin/image?path=test", "/api/admin/session-probe", "/api/auth/csrf" })
             await Rejected(await Api(client, path, cookie), 401, "unauthorized");
-        foreach (var path in new[] { "/api/identity/users", "/api/teacher-portal/admin/users", "/api/assistant-portal/admin/users" })
-            Assert.Equal(HttpStatusCode.Unauthorized, (await Api(client, path, cookie)).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await Api(client, "/api/identity/users", cookie)).StatusCode);
+        foreach (var path in new[] { "/api/teacher-portal/admin/users", "/api/assistant-portal/admin/users" })
+            Assert.Equal(portalProxies ? HttpStatusCode.Unauthorized : HttpStatusCode.ServiceUnavailable, (await Api(client, path, cookie)).StatusCode);
         Assert.Null(await factory.Services.GetRequiredService<MemoryTicketStore>().RetrieveAsync(key));
         Assert.Empty(probe.Student.Invocations); Assert.Empty(probe.Oss.Invocations);
         Assert.Equal(0, probe.Reads); Assert.Equal(0, probe.Writes);
