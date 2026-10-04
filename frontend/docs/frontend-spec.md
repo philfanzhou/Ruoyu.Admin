@@ -43,7 +43,7 @@ frontend/src/
 │   ├── OssAuditView.vue          # OSS 审计页面（列表、选择与删除/忽略编排）
 │   └── oss-audit/                # OSS 审计子组件：状态面板、记录表格、浮动批量栏、忽略弹窗、扫描状态轮询（useAuditStatus）
 ├── services/
-│   ├── httpClient.ts            # 共享 axios 实例（含 JWT 注入 + 401 重定向拦截器）
+│   ├── httpClient.ts            # 共享 axios 实例（同源会话、CSRF 与受控失效导航）
 │   ├── identityApi.ts           # Identity 用户管理 API
 │   ├── studentAdminApi.ts       # 学生管理 + 上传记录 + 错题查询 API
 │   ├── teacherPortalApi.ts      # 教师权限管理 API
