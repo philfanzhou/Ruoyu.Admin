@@ -25,7 +25,7 @@ public class OssAuditWorkerTests
     }
 
     [Fact]
-    public async Task CleanupLegacyHomeworkReviewImages_DeletesOnlyMatchingObjects()
+    public async Task CleanupLegacyHomeworkReviewImages_PreservesAllObjectsWithoutAuthorization()
     {
         const string legacyPath = "uploads/homework/8fd72e20-e093-43a0-94be-63e29fb516ea/3bf05868-ed86-4816-b022-a509b2a63965/reviews/31cd8774-7beb-4824-aab7-03294fb7454e.jpg";
         const string submissionPath = "uploads/homework/8fd72e20-e093-43a0-94be-63e29fb516ea/3bf05868-ed86-4816-b022-a509b2a63965/source.jpg";
@@ -42,13 +42,13 @@ public class OssAuditWorkerTests
             ossService.Object,
             Mock.Of<ILogger>());
 
-        deleted.Should().Be(1);
-        ossService.Verify(service => service.DeleteAsync(legacyPath), Times.Once);
+        deleted.Should().Be(0);
+        ossService.Verify(service => service.DeleteAsync(legacyPath), Times.Never);
         ossService.Verify(service => service.DeleteAsync(submissionPath), Times.Never);
     }
 
     [Fact]
-    public async Task CleanupLegacyHomeworkReviewAuditRecords_RemovesOnlyObsoletePaths()
+    public async Task CleanupLegacyHomeworkReviewAuditRecords_PreservesHistoricalRecords()
     {
         const string legacyPath = "uploads/homework/8fd72e20-e093-43a0-94be-63e29fb516ea/3bf05868-ed86-4816-b022-a509b2a63965/reviews/31cd8774-7beb-4824-aab7-03294fb7454e.jpg";
         const string submissionPath = "uploads/homework/8fd72e20-e093-43a0-94be-63e29fb516ea/3bf05868-ed86-4816-b022-a509b2a63965/source.jpg";
@@ -65,7 +65,7 @@ public class OssAuditWorkerTests
             dbContext,
             Mock.Of<ILogger>());
 
-        removed.Should().Be(1);
-        (await dbContext.OssAuditRecords.SingleAsync()).ObjectPath.Should().Be(submissionPath);
+        removed.Should().Be(0);
+        (await dbContext.OssAuditRecords.CountAsync()).Should().Be(2);
     }
 }

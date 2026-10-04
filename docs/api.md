@@ -44,7 +44,7 @@ Cookie 为 HttpOnly、Path=/、SameSite=Lax，生产 Secure，只含数据保护
 
 `GET /api/auth/csrf` 要求相同管理员会话与有效 token，拒绝 Authorization。关闭边界时 `503 {"error":"session_api_disabled"}`；成功 `200 {"requestToken":"..."}`，no-store/no-cache，并设置独立 `adminCsrf` Cookie（HttpOnly、Path=/、SameSite=Lax；生产 Secure，开发仅已校验的数字 loopback 可 HTTP）。request token 绑定主体与 CSRF Cookie，不输出服务器 access/id token。
 
-所有管理写方法（GET/HEAD/OPTIONS/TRACE 之外，包括 POST/PUT/PATCH/DELETE 与 OSS trigger/resolve/batch-resolve）在 Controller/业务/出站/删除前显式验证框架 antiforgery，要求单值 `X-CSRF-TOKEN`。缺/错/重复 header、错 Cookie、异主体 token、只提交 form token 为 `400 {"error":"csrf_invalid"}`；CSRF 成功只继续本次请求，不重放写请求。审计删除前引用复核与来源不可达 502 拒删继续生效；匿名 claims/OIDC callback 不套此浏览器 CSRF 边界。默认 CORS 不变，不启用跨源 Cookie。
+所有管理写方法（GET/HEAD/OPTIONS/TRACE 之外，包括 POST/PUT/PATCH/DELETE 与 OSS trigger/resolve/batch-resolve）在 Controller/业务/出站/删除前显式验证框架 antiforgery，要求单值 `X-CSRF-TOKEN`。缺/错/重复 header、错 Cookie、异主体 token、只提交 form token 为 `400 {"error":"csrf_invalid"}`；CSRF 成功只继续本次请求，不重放写请求。审计所有resolve状态都执行三provider共同collector，完整v1为409，来源不可达502，恒拒删；匿名 claims/OIDC callback 不套此浏览器 CSRF 边界。默认 CORS 不变，不启用跨源 Cookie。
 
 任何配置下 `POST /api/auth/login` 在读取密码/模型绑定前固定 `410 {"error":"legacy_login_disabled"}`，不转发 Identity、不发 JWT Cookie。旧 `/api/auth/logout` 仍按 Bearer 认证且只清旧 JWT Cookie，**不能作为新会话已退出的证明**；新会话撤销/prepared logout 属 #46。三个未迁移代理仍可接受旧 Bearer，关联查询的服务器 token 转发属 #44；不要用空聚合列表判断已完成门户迁移。SPA/非 API 继续匿名，health 语义不变。
 
@@ -310,132 +310,18 @@ Cookie 为 HttpOnly、Path=/、SameSite=Lax，生产 Secure，只含数据保护
 
 ## OSS 审计
 
-### 获取审计记录列表
+详细语义见[StorageAudit](./modules/OssAudit/StorageAudit.md)，上游v1字段合同由Study主责。
 
-获取 OSS 审计记录列表，支持按状态和 Bucket 筛选。
+| 方法与路径 | 当前行为 |
+|---|---|
+| GET `/api/admin/oss-audit/records` | page/pageSize/status/bucket分页；保留items/totalCount/statusCounts/bucketCounts，Status3为UnreferencedObservation；bucketCounts包含旧0和新3 |
+| GET `/api/admin/oss-audit/status` | isRunning、lastCompleted/lastFailed、pendingCount、observationCount、deletionAuthorized=false；完成Run包含referenceContractVersion/referenceSnapshots（三provider metadata JSON） |
+| POST `/api/admin/oss-audit/trigger` | 沿现认证/CSRF边界触发异步Run；运行中400，正常200 OperationResponse |
+| POST `/api/admin/oss-audit/records/{id}/resolve` | 已存在任何0/1/2/3状态先完整collector；v1恒409 cleanup_not_authorized，依赖不全502 references_unavailable；未知id404，零S3写和record删除 |
+| POST `/api/admin/oss-audit/records/batch-resolve` | 非空ids同collector与409/502，包括部分/全missing；空ids400，零S3写和record删除 |
+| POST `/api/admin/oss-audit/records/{id}/ignore` | body `{note}`；仅旧status0更新为2并记ResolvedAt/Note，其他状态400、未知404 |
 
-**接口:** `GET /api/admin/oss-audit/records`
-
-**查询参数:**
-- `page` (int, 可选, 默认: 1): 页码
-- `pageSize` (int, 可选, 默认: 20): 每页大小
-- `status` (int, 可选): 状态 (0: Pending, 1: Resolved, 2: Ignored)
-- `bucket` (string, 可选): Bucket 名称
-
-**响应示例:**
-
-```json
-{
-  "items": [
-    {
-      "id": 1,
-      "objectPath": "string",
-      "bucket": "uploads",
-      "size": 1024,
-      "lastModified": 1234567890,
-      "status": 0,
-      "statusText": "Pending",
-      "createdAt": 1234567890,
-      "resolvedAt": null,
-      "note": null
-    }
-  ],
-  "totalCount": 100,
-  "page": 1,
-  "pageSize": 20,
-  "statusCounts": {
-    "0": 50,
-    "1": 30,
-    "2": 20
-  },
-  "bucketCounts": {
-    "uploads": 50
-  }
-}
-```
-
-### 触发审计
-
-手动触发 OSS 审计。
-
-**接口:** `POST /api/admin/oss-audit/trigger`
-
-**响应示例:**
-
-```json
-{
-  "success": true,
-  "message": "Audit triggered. Results will be available shortly."
-}
-```
-
-### 解决审计记录
-
-标记审计记录为已解决并删除对应的 OSS 对象。
-
-**接口:** `POST /api/admin/oss-audit/records/{id}/resolve`
-
-**路径参数:**
-- `id` (long): 审计记录 ID
-
-**响应示例:**
-
-```json
-{
-  "success": true,
-  "message": "Record resolved and object deleted."
-}
-```
-
-### 忽略审计记录
-
-标记审计记录为已忽略。
-
-**接口:** `POST /api/admin/oss-audit/records/{id}/ignore`
-
-**路径参数:**
-- `id` (long): 审计记录 ID
-
-**请求体:**
-
-```json
-{
-  "note": "备注信息"
-}
-```
-
-**响应示例:**
-
-```json
-{
-  "success": true,
-  "message": "Record ignored."
-}
-```
-
-### 批量解决审计记录
-
-批量解决审计记录。
-
-**接口:** `POST /api/admin/oss-audit/records/batch-resolve`
-
-**请求体:**
-
-```json
-{
-  "ids": [1, 2, 3]
-}
-```
-
-**响应示例:**
-
-```json
-{
-  "resolvedCount": 2,
-  "errors": ["path/to/file: 被上传记录引用，跳过"],
-  "totalRequested": 3
-}
-```
+拒绝响应为 `{success:false,errorKind:...}`。新Run的NewZombieCount兼容字段仅表示新增只读观察数量；旧Run/version=null保留历史原意。v1不是GC或物理删除许可。
 
 ---
 

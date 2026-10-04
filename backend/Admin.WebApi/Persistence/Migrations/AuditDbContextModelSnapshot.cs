@@ -89,6 +89,9 @@ namespace Admin.WebApi.Persistence.Migrations
                     b.Property<long?>("CompletedAt")
                         .HasColumnType("bigint");
 
+                    b.Property<string>("ReferenceContractVersion").HasColumnType("text");
+                    b.Property<string>("ReferenceSnapshots").HasColumnType("text");
+
                     b.Property<string>("ErrorMessage")
                         .HasColumnType("text");
 

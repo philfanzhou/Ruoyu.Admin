@@ -1,5 +1,7 @@
 # 数据所有权
 
+当前Storage Audit事实见[StorageAudit](../modules/OssAudit/StorageAudit.md)：专属HTTP v1三方完整快照、Run metadata与只读status3观察，所有resolve409/502、零删除，startup保留旧对象/历史。下文Phase4 gRPC集成矩阵为已有历史设计，不能用作当前审计实现依据。
+
 > **Phase 4 计划变更（尚未实施）**：本文档已更新为 Phase 4 目标状态。主要变更：
 > - Admin Portal 现拥有 OSS 审计逻辑（路径聚合、僵尸检测），不再依赖下游服务专用接口
 > - `StudentManagementGrpcService` 的 10 个 Admin 专用接口被移除，改为通用 gRPC + 直接 OSS 操作
@@ -18,10 +20,10 @@ Admin Portal 作为管理聚合层，仅拥有少量自有数据，大部分数�
 | 属性 | 值 |
 |------|------|
 | 数据库表 | `OssAuditRecords` |
-| 生命周期 | 创建 → Pending → Resolved（删除）/ Ignored |
+| 生命周期 | 新记录 → UnreferencedObservation（只读）；旧Pending/Resolved/Ignored保留历史 |
 | 写入方 | Admin Portal（OssAuditWorker / OssAuditController） |
 | 读取方 | Admin Portal（OssAuditController） |
-| 说明 | OSS 僵尸对象审计记录，Resolved 时记录被删除 |
+| 说明 | 持久化观察和旧审计历史；当前resolve不删除记录或对象 |
 
 ### OssAuditRun
 
@@ -31,7 +33,7 @@ Admin Portal 作为管理聚合层，仅拥有少量自有数据，大部分数�
 | 生命周期 | 创建 → Running → Completed / Failed |
 | 写入方 | Admin Portal（OssAuditWorker） |
 | 读取方 | Admin Portal（OssAuditController） |
-| 说明 | 审计任务执行记录，用于并发控制和状态查询 |
+| 说明 | 审计任务状态与完整三方ReferenceSnapshots/ReferenceContractVersion；新v1失败不产生可用发现 |
 
 ## 引用的外部数据
 

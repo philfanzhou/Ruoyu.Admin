@@ -24,6 +24,7 @@ using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Moq;
 using Ruoyu.Admin.Common.Oss;
 using Ruoyu.Admin.ServiceClients;
+using Ruoyu.Admin.ServiceClients.StorageReferences;
 using Xunit;
 
 namespace Admin.WebApi.Tests.Integration;
@@ -38,6 +39,7 @@ public sealed partial class AdminOidcTests
         services.AddHttpClient("IdentityService").ConfigurePrimaryHttpMessageHandler(() => probe.Identity);
         services.Replace(ServiceDescriptor.Singleton<IOptionsMonitor<AdminPortalOptions>>(probe.Admins));
         services.Replace(ServiceDescriptor.Singleton(probe.Oss.Object));
+        services.Replace(ServiceDescriptor.Singleton(probe.References.Object));
         services.Replace(ServiceDescriptor.Singleton(probe.Student.Object));
         services.Replace(ServiceDescriptor.Singleton(probe.Mistake.Object));
         services.Replace(ServiceDescriptor.Singleton(new HomeworkReferenceClient(new HttpClient(probe.Homework)
@@ -351,7 +353,7 @@ public sealed partial class AdminOidcTests
     [Theory]
     [InlineData("single", "Student")][InlineData("single", "Homework")][InlineData("single", "Mistake")]
     [InlineData("batch", "Student")][InlineData("batch", "Homework")][InlineData("batch", "Mistake")]
-    public async Task SessionApi_OssDeleteStillRechecksEverySourceAndRejectsUnreachable(string mode, string source)
+    public async Task SessionApi_OssResolvePreservesCsrfAndUsesSharedReferenceGate(string mode, string source)
     {
         using var authority = new OidcTestAuthority();
         var probe = new SessionBusinessProbe();
@@ -368,7 +370,7 @@ public sealed partial class AdminOidcTests
         HttpContent? Body() => mode == "batch" ? JsonContent.Create(new { ids = new[] { record.Id } }) : null;
         try
         {
-            // Actual controller/database/object-store routes; rejected requests never touch references or DeleteAsync.
+            // Actual session/controller/database pipeline: rejected requests never collect or delete.
             await Rejected(await Api(client, route, method: "POST", body: Body()), 401, "unauthorized");
             probe.Admins.CurrentValue.AdminUserIds.Clear();
             await Rejected(await Api(client, route, session, "POST", body: Body()), 403, "forbidden");
@@ -376,13 +378,14 @@ public sealed partial class AdminOidcTests
             await Rejected(await Api(client, route, session, "POST", body: Body()), 400, "csrf_invalid");
             probe.Oss.Verify(s => s.DeleteAsync(It.IsAny<string>()), Times.Never);
             probe.Student.Verify(s => s.GetAllUploadRecordsAsync(It.IsAny<int?>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+            probe.References.Verify(c => c.CollectAsync(It.IsAny<CancellationToken>()), Times.Never);
             var cookies = session + "; " + csrf.Cookie;
             if (source == "Student") probe.StudentPaths.Add(path);
             if (source == "Homework") probe.Homework.Paths = [path];
             if (source == "Mistake") probe.MistakePaths.Add(path);
             using var referenced = await Api(client, route, cookies, "POST", csrf: [csrf.Token], body: Body());
-            Assert.Equal(mode == "single" ? HttpStatusCode.BadRequest : HttpStatusCode.OK, referenced.StatusCode);
-            if (mode == "batch") Assert.Equal(0, (await referenced.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("resolvedCount").GetInt32());
+            Assert.Equal(HttpStatusCode.Conflict, referenced.StatusCode);
+            Assert.Equal("cleanup_not_authorized", (await referenced.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("errorKind").GetString());
             probe.Oss.Verify(s => s.DeleteAsync(It.IsAny<string>()), Times.Never);
             probe.StudentPaths.Clear(); probe.Homework.Paths = []; probe.MistakePaths.Clear();
             probe.ReferenceFailure = source; probe.Homework.Unavailable = source == "Homework";
@@ -392,9 +395,10 @@ public sealed partial class AdminOidcTests
             Assert.True(await db.OssAuditRecords.AsNoTracking().AnyAsync(r => r.Id == record.Id));
             probe.ReferenceFailure = null; probe.Homework.Unavailable = false;
             using var success = await Api(client, route, cookies, "POST", csrf: [csrf.Token], body: Body());
-            Assert.Equal(HttpStatusCode.OK, success.StatusCode);
-            probe.Oss.Verify(s => s.DeleteAsync(path), Times.Once);
-            Assert.False(await db.OssAuditRecords.AsNoTracking().AnyAsync(r => r.Id == record.Id));
+            Assert.Equal(HttpStatusCode.Conflict, success.StatusCode);
+            probe.References.Verify(c => c.CollectAsync(It.IsAny<CancellationToken>()), Times.Exactly(3));
+            probe.Oss.Verify(s => s.DeleteAsync(It.IsAny<string>()), Times.Never);
+            Assert.True(await db.OssAuditRecords.AsNoTracking().AnyAsync(r => r.Id == record.Id));
         }
         finally
         {
@@ -524,6 +528,7 @@ public sealed class SessionBusinessProbe
     internal int BearerAuthentications;
     internal readonly MutableAdmins Admins = new();
     internal readonly Mock<IOssService> Oss = new();
+    internal readonly Mock<IStorageReferenceCollector> References = new();
     internal readonly Mock<IStudentHttpClient> Student = new();
     internal readonly Mock<IMistakeHttpClient> Mistake = new();
     internal readonly HomeworkStub Homework = new();
@@ -533,6 +538,20 @@ public sealed class SessionBusinessProbe
     internal readonly List<string> MistakePaths = [];
     public SessionBusinessProbe()
     {
+        References.Setup(c => c.CollectAsync(It.IsAny<CancellationToken>())).ReturnsAsync(() =>
+        {
+            if (ReferenceFailure is not null) throw new HttpRequestException("fake.unavailable");
+            var captured = DateTimeOffset.UtcNow;
+            var paths = new Dictionary<string, string[]>
+            { ["student"] = StudentPaths.ToArray(), ["mistake"] = MistakePaths.ToArray(), ["homework"] = Homework.Paths };
+            var snapshots = paths.Select(pair =>
+            {
+                var keys = StorageReferenceContract.CanonicalKeys(pair.Value);
+                return new StorageReferenceMetadata(StorageReferenceContract.Version, pair.Key, Guid.NewGuid(), captured, captured.AddMinutes(10),
+                    StorageReferenceContract.Coverage(pair.Key), keys.Length, 500, Math.Max(1, (keys.Length + 499) / 500), StorageReferenceContract.Digest(pair.Key, keys), false);
+            }).ToArray();
+            return new StorageReferenceCollection(paths.Values.SelectMany(keys => keys).ToHashSet(StringComparer.Ordinal), snapshots);
+        });
         Student.Setup(s => s.GetPresignedUrlAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new PresignedUrlResult { Url = "https://images.example.test/test.jpg" });
         Student.Setup(s => s.GetAllUploadRecordsAsync(It.IsAny<int?>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
