@@ -25,6 +25,7 @@
 | `Database:Name` | `ruoyu_admin` | 数据库名（与 Consul `PostgreSql:*` 合成连接串时使用） |
 | `StudentService:Url` | `http://localhost:5005` | Student HTTP 服务 |
 | `MistakeService:Url` | `http://localhost:5007` | Mistake HTTP 服务 |
+| `MistakeService:UseSessionToken` | `false` | 仅 Mistake 出站会话 opt-in；启用需显式正常 HTTPS 根 origin，Development/Testing 仅数字 loopback 可 HTTP |
 | `IdentityService:Authority` | （无；Development 默认 `http://localhost:5002`，见 `appsettings.Development.json`） | Identity 托管 OIDC discovery +服务器会话 HTTP 代理。`appsettings.json` 不含 `IdentityService` 节，本地必须经环境变量 / user-secrets 注入 `AppId`、`AppSecret` 等 |
 | `TeacherPortal:Url` | `http://localhost:5004` | Teacher Portal HTTP 服务 |
 | `AssistantPortal:Url` | `http://localhost:5021` | Assistant Portal HTTP 服务 |
@@ -38,6 +39,8 @@
 Cookie 只含不透明引用，ticket 8 小时绝对期限、token 到期显式重新登录，重启丢失。unsafe 请求由共享客户端单飞取普通 CSRF；退出使用独立 logout CSRF，即使 token 到期或被移出白名单仍允许本人退出。三个代理和图片均依赖当前服务器授权。完整 TLS、白名单、日志、单实例限制与回退条件见 [Deployment.md](./Deployment.md#signacore-托管登录唯一模式)。
 
 自动化完整握手使用 `backend/Tests/Integration/OidcTestAuthority.cs` 的测试 RSA、Discovery/JWKS/token 替身与 Testcontainers PostgreSQL，`dotnet test Ruoyu.Admin.sln --configuration Release --filter "FullyQualifiedName~Oidc"`；不连接生产 Identity。
+
+Mistake 出站专项用 `dotnet test Ruoyu.Admin.sln --configuration Release --filter "FullyQualifiedName~MistakeSession"`，覆盖 14 个真实 HTTP 方法、真 Program Code/PKCE 当前服务器票据、同请求换/撤票、并发、redirect/Cookie 隔离和取消。启用时先运行实际 `dotnet Admin.WebApi.dll --validate-auth-config`；不能将 localhost 改为例外、跳过 TLS 或以 AppSecret 冒充用户。`false` 保留旧匿名下游兼容，管理入站仍只接受 Session。真实官方 Provider/Mistake/Student/S3 联合验证另按 [Deployment](./Deployment.md#mistake-出站会话ikjnxa) 执行。
 
 ### 数据库连接策略
 

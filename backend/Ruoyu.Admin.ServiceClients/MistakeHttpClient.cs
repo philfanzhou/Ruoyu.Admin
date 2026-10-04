@@ -220,6 +220,7 @@ public class MistakeHttpClient : IMistakeHttpClient
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger<MistakeHttpClient> _logger;
+    private readonly bool _useSessionToken;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -228,10 +229,11 @@ public class MistakeHttpClient : IMistakeHttpClient
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
-    public MistakeHttpClient(HttpClient httpClient, ILogger<MistakeHttpClient> logger)
+    public MistakeHttpClient(HttpClient httpClient, ILogger<MistakeHttpClient> logger, MistakeClientPolicy? policy = null)
     {
         _httpClient = httpClient;
         _logger = logger;
+        _useSessionToken = policy?.UseSessionToken == true;
     }
 
     // 1. GET /api/mistakes
@@ -243,6 +245,11 @@ public class MistakeHttpClient : IMistakeHttpClient
     // must catch; all three current callers do.
     public async Task<MistakeItemPageResult> GetMistakeItemListAsync(string studentId, int subject, int grade, MistakeReviewStatus reviewStatus, int page, int size, CancellationToken ct = default)
     {
+        if (_useSessionToken)
+        {
+            return await SendStrictAsync<MistakeItemPageResult>(HttpMethod.Get, $"/api/mistakes?page={page}&size={size}&subject={subject}&grade={grade}&reviewStatus={(int)reviewStatus}&studentId={Uri.EscapeDataString(studentId)}", null, ct);
+        }
+
         var query = $"?page={page}&size={size}&subject={subject}&grade={grade}&reviewStatus={(int)reviewStatus}";
         if (!string.IsNullOrWhiteSpace(studentId))
             query += $"&studentId={Uri.EscapeDataString(studentId)}";
@@ -262,6 +269,11 @@ public class MistakeHttpClient : IMistakeHttpClient
     // 2. GET /api/mistakes/{id}
     public async Task<MistakeItemDto?> GetMistakeItemAsync(string id, CancellationToken ct = default)
     {
+        if (_useSessionToken)
+        {
+            return await SendStrictAsync<MistakeItemDto>(HttpMethod.Get, $"/api/mistakes/{Uri.EscapeDataString(id)}", null, ct, allowNotFound: true);
+        }
+
         try
         {
             using var response = await _httpClient.GetAsync($"/api/mistakes/{id}", ct);
@@ -288,6 +300,11 @@ public class MistakeHttpClient : IMistakeHttpClient
     // 3. GET /api/mistakes/by-upload/{sourceUploadId}
     public async Task<MistakeItemsByUploadResult> GetMistakeItemsByUploadAsync(string sourceUploadId, CancellationToken ct = default)
     {
+        if (_useSessionToken)
+        {
+            return await SendStrictAsync<MistakeItemsByUploadResult>(HttpMethod.Get, $"/api/mistakes/by-upload/{Uri.EscapeDataString(sourceUploadId)}", null, ct);
+        }
+
         try
         {
             using var response = await _httpClient.GetAsync($"/api/mistakes/by-upload/{Uri.EscapeDataString(sourceUploadId)}", ct);
@@ -311,6 +328,11 @@ public class MistakeHttpClient : IMistakeHttpClient
     // 4. GET /api/mistakes/pending-reviews
     public async Task<PendingReviewUploadListResult> GetPendingReviewUploadsAsync(int page, int size, IReadOnlyList<int>? subjects, CancellationToken ct = default)
     {
+        if (_useSessionToken)
+        {
+            return await SendStrictAsync<PendingReviewUploadListResult>(HttpMethod.Get, $"/api/mistakes/pending-reviews?page={page}&size={size}&subjects={Uri.EscapeDataString(string.Join(",", subjects ?? []))}", null, ct);
+        }
+
         try
         {
             var query = $"?page={page}&size={size}";
@@ -338,6 +360,11 @@ public class MistakeHttpClient : IMistakeHttpClient
     // 5. POST /api/mistakes/{id}/review
     public async Task<ReviewMistakeItemResult> ReviewMistakeItemAsync(string id, MistakeReviewStatus reviewStatus, string reviewerId, string? rootCause, int grade, int subject, string? returnReason, CancellationToken ct = default)
     {
+        if (_useSessionToken)
+        {
+            return await SendStrictAsync<ReviewMistakeItemResult>(HttpMethod.Post, $"/api/mistakes/{Uri.EscapeDataString(id)}/review", new { id, reviewStatus, reviewerId, rootCause, grade, subject, returnReason }, ct);
+        }
+
         try
         {
             var body = new
@@ -371,6 +398,12 @@ public class MistakeHttpClient : IMistakeHttpClient
     // 6. POST /api/mistakes
     public async Task<AddMistakeItemResult> AddMistakeItemAsync(string studentId, int subject, int grade, string sourceUploadId, string? rootCause, IReadOnlyList<MistakeSourceRegionDto> sourceRegions, CancellationToken ct = default)
     {
+        if (_useSessionToken)
+        {
+            var item = await SendStrictAsync<MistakeItemDto>(HttpMethod.Post, "/api/mistakes", new { studentId, subject, grade, sourceUploadId, rootCause, sourceRegions }, ct);
+            return new AddMistakeItemResult { Id = item.Id };
+        }
+
         try
         {
             var body = new
@@ -404,6 +437,12 @@ public class MistakeHttpClient : IMistakeHttpClient
     // 7. DELETE /api/mistakes/{id}
     public async Task<DeleteMistakeItemResult> DeleteMistakeItemAsync(string id, CancellationToken ct = default)
     {
+        if (_useSessionToken)
+        {
+            await SendStrictAsync<object>(HttpMethod.Delete, $"/api/mistakes/{Uri.EscapeDataString(id)}", null, ct, requireData: false);
+            return new DeleteMistakeItemResult { Success = true };
+        }
+
         try
         {
             using var response = await _httpClient.DeleteAsync($"/api/mistakes/{id}", ct);
@@ -427,6 +466,11 @@ public class MistakeHttpClient : IMistakeHttpClient
     // 8. POST /api/mistakes/{id}/reanalyze
     public async Task<ReanalyzeMistakeItemResult> ReanalyzeMistakeItemAsync(string id, string reviewerId, string studentId, string? teacherDescription, CancellationToken ct = default)
     {
+        if (_useSessionToken)
+        {
+            return await SendStrictAsync<ReanalyzeMistakeItemResult>(HttpMethod.Post, $"/api/mistakes/{Uri.EscapeDataString(id)}/reanalyze", new { id, reviewerId, studentId, teacherDescription }, ct);
+        }
+
         try
         {
             var body = new
@@ -457,6 +501,11 @@ public class MistakeHttpClient : IMistakeHttpClient
     // 9. POST /api/mistakes/reanalyze/jobs
     public async Task<GetReanalyzeJobsResult> GetReanalyzeJobsAsync(string reviewerId, IReadOnlyList<string> jobIds, CancellationToken ct = default)
     {
+        if (_useSessionToken)
+        {
+            return await SendStrictAsync<GetReanalyzeJobsResult>(HttpMethod.Post, "/api/mistakes/reanalyze/jobs", new { reviewerId, jobIds }, ct);
+        }
+
         try
         {
             var body = new { reviewerId, jobIds };
@@ -481,6 +530,11 @@ public class MistakeHttpClient : IMistakeHttpClient
     // 10. GET /api/mistakes/reanalyze/active
     public async Task<GetActiveReanalyzeJobsResult> GetActiveReanalyzeJobsAsync(string reviewerId, CancellationToken ct = default)
     {
+        if (_useSessionToken)
+        {
+            return await SendStrictAsync<GetActiveReanalyzeJobsResult>(HttpMethod.Get, $"/api/mistakes/reanalyze/active?reviewerId={Uri.EscapeDataString(reviewerId)}", null, ct);
+        }
+
         try
         {
             using var response = await _httpClient.GetAsync($"/api/mistakes/reanalyze/active?reviewerId={Uri.EscapeDataString(reviewerId)}", ct);
@@ -504,6 +558,12 @@ public class MistakeHttpClient : IMistakeHttpClient
     // 11. PUT /api/mistakes/{id}
     public async Task<UpdateMistakeItemResult> UpdateMistakeItemAsync(string id, string studentId, int subject, int grade, IReadOnlyList<MistakeSourceRegionDto>? sourceRegions, CancellationToken ct = default)
     {
+        if (_useSessionToken)
+        {
+            var item = await SendStrictAsync<MistakeItemDto>(HttpMethod.Put, $"/api/mistakes/{Uri.EscapeDataString(id)}", new { id, studentId, subject, grade, sourceRegions }, ct);
+            return new UpdateMistakeItemResult { Id = item.Id, StudentId = item.StudentId, Subject = item.Subject, Grade = item.Grade, SourceUploadId = item.SourceUploadId, ReviewStatus = item.ReviewStatus };
+        }
+
         try
         {
             var body = new
@@ -544,6 +604,11 @@ public class MistakeHttpClient : IMistakeHttpClient
     // 12. POST /api/mistakes/upload
     public async Task<SubmitMistakeUploadResult> SubmitMistakeUploadAsync(string studentId, int subject, int grade, IReadOnlyList<string> imagePaths, string? rootCause, string sourceUploadId, CancellationToken ct = default)
     {
+        if (_useSessionToken)
+        {
+            return await SendStrictAsync<SubmitMistakeUploadResult>(HttpMethod.Post, "/api/mistakes/upload", new { studentId, subject, grade, imagePaths, rootCause, sourceUploadId }, ct);
+        }
+
         try
         {
             var body = new
@@ -576,6 +641,11 @@ public class MistakeHttpClient : IMistakeHttpClient
     // 13. POST /api/mistakes/complete-review
     public async Task<CompleteUploadReviewResult> CompleteUploadReviewAsync(string sourceUploadId, string reviewerId, CancellationToken ct = default)
     {
+        if (_useSessionToken)
+        {
+            return await SendStrictAsync<CompleteUploadReviewResult>(HttpMethod.Post, "/api/mistakes/complete-review", new { sourceUploadId, reviewerId }, ct);
+        }
+
         try
         {
             var body = new { sourceUploadId, reviewerId };
@@ -600,6 +670,11 @@ public class MistakeHttpClient : IMistakeHttpClient
     // 14. POST /api/mistakes/presigned-url
     public async Task<MistakePresignedUrlResult> GetPresignedUrlAsync(string objectPath, int expirySeconds, string? size, CancellationToken ct = default)
     {
+        if (_useSessionToken)
+        {
+            return await SendStrictAsync<MistakePresignedUrlResult>(HttpMethod.Post, "/api/mistakes/presigned-url", new { objectPath, expirySeconds, size }, ct);
+        }
+
         try
         {
             var body = new { objectPath, expirySeconds, size };
@@ -620,6 +695,83 @@ public class MistakeHttpClient : IMistakeHttpClient
             return new MistakePresignedUrlResult();
         }
     }
+
+    // The opt-in path never exposes upstream messages or degrades failures to empty DTOs.
+    private async Task<T> SendStrictAsync<T>(HttpMethod method, string path, object? body, CancellationToken ct,
+        bool allowNotFound = false, bool requireData = true) where T : class
+    {
+        ct.ThrowIfCancellationRequested();
+        using var request = new HttpRequestMessage(method, path);
+        if (body is not null) request.Content = JsonContent.Create(body, options: JsonOptions);
+        try
+        {
+            using var response = await _httpClient.SendAsync(request, ct);
+            ct.ThrowIfCancellationRequested();
+            if (request.Options.TryGetValue(MistakeClientPolicy.RequestAborted, out var aborted)) aborted.ThrowIfCancellationRequested();
+            if (allowNotFound && response.StatusCode == System.Net.HttpStatusCode.NotFound) return null!;
+            // Only a structurally valid business envelope can preserve these statuses.
+            if (response.StatusCode is System.Net.HttpStatusCode.BadRequest or System.Net.HttpStatusCode.Conflict)
+            {
+                using var failure = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
+                if (failure.RootElement.ValueKind != JsonValueKind.Object
+                    || !failure.RootElement.TryGetProperty("success", out var success) || success.ValueKind != JsonValueKind.False)
+                    throw new MistakeDownstreamException();
+                if (response.StatusCode == System.Net.HttpStatusCode.Conflict) throw new MistakeConflictException();
+                throw new MistakeBadRequestException();
+            }
+            if (!response.IsSuccessStatusCode) throw new MistakeDownstreamException();
+            using var json = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
+            var root = json.RootElement;
+            if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("success", out var ok)) throw new MistakeDownstreamException();
+            if (ok.ValueKind == JsonValueKind.False) throw new MistakeBadRequestException();
+            if (ok.ValueKind != JsonValueKind.True) throw new MistakeDownstreamException();
+            if (!requireData) return null!;
+            if (!root.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Object) throw new MistakeDownstreamException();
+            if (data.TryGetProperty("success", out var resultSuccess))
+            {
+                if (resultSuccess.ValueKind == JsonValueKind.False) throw new MistakeBadRequestException();
+                if (resultSuccess.ValueKind != JsonValueKind.True) throw new MistakeDownstreamException();
+            }
+            var result = data.Deserialize<T>(JsonOptions) ?? throw new MistakeDownstreamException();
+            ValidateStrictData(result, data);
+            ct.ThrowIfCancellationRequested();
+            return result;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested
+            || request.Options.TryGetValue(MistakeClientPolicy.RequestAborted, out var aborted) && aborted.IsCancellationRequested) { throw; }
+        catch (Exception error) when (error is HttpRequestException or JsonException or OperationCanceledException or IOException or NotSupportedException)
+        {
+            // Deliberately omit inner exception, upstream content and URL from all diagnostics.
+            throw new MistakeDownstreamException();
+        }
+    }
+
+    private static void ValidateStrictData<T>(T result, JsonElement data)
+    {
+        static bool Array(JsonElement value, string name) => value.TryGetProperty(name, out var member) && member.ValueKind == JsonValueKind.Array;
+        static bool Object(JsonElement value, string name) => value.TryGetProperty(name, out var member) && member.ValueKind == JsonValueKind.Object;
+        static bool Nonempty(JsonElement value, string name) => value.TryGetProperty(name, out var member) && member.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(member.GetString());
+        static bool Success(JsonElement value) => value.TryGetProperty("success", out var member) && member.ValueKind == JsonValueKind.True;
+        var valid = result switch
+        {
+            MistakeItemPageResult page => Array(data, "items") && Object(data, "pageMeta") && page.Items is not null && page.PageMeta is not null && page.Items.All(ValidItem),
+            MistakeItemsByUploadResult items => Array(data, "items") && items.Items is not null && items.Items.All(ValidItem),
+            PendingReviewUploadListResult page => Array(data, "uploads") && Object(data, "pageMeta") && page.Uploads is not null && page.PageMeta is not null,
+            MistakeItemDto item => Nonempty(data, "id") && ValidItem(item),
+            ReviewMistakeItemResult item => Success(data) && Array(data, "removedImagePaths") && item.RemovedImagePaths is not null,
+            ReanalyzeMistakeItemResult => Success(data) && Nonempty(data, "jobId"),
+            GetReanalyzeJobsResult jobs => Success(data) && Array(data, "jobs") && jobs.Jobs is not null,
+            GetActiveReanalyzeJobsResult jobs => Success(data) && Array(data, "jobs") && jobs.Jobs is not null,
+            SubmitMistakeUploadResult item => Success(data) && Array(data, "createdItemIds") && item.CreatedItemIds is not null,
+            CompleteUploadReviewResult item => Success(data) && Array(data, "removedImagePaths") && item.RemovedImagePaths is not null,
+            MistakePresignedUrlResult => Nonempty(data, "url"),
+            _ => false
+        };
+        if (!valid) throw new MistakeDownstreamException();
+    }
+
+    private static bool ValidItem(MistakeItemDto item) => item is not null && !string.IsNullOrWhiteSpace(item.Id)
+        && item.SourceRegions is not null && item.SourceRegions.All(region => region is not null && region.SourceImagePath is not null);
 
     // ===== Envelope for deserializing { success, data, message } responses =====
 

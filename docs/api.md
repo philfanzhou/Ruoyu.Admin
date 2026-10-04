@@ -169,6 +169,10 @@ API 始终使用 AdminSession；旧键仅用于启动迁移检验，不能恢复
 
 ## 错题
 
+`MistakeService:UseSessionToken=true` 时，下列管理调用及上传分类/LegacyCheck/LegacyClean/错题图片共同使用当前服务器票据出站；任何入站 Authorization 仍 401，unsafe 仍先校验 CSRF。发送前票据/截止时间无效为 401（合法 token 到期 `reauthentication_required`），当前白名单拒绝为 403，均零 Mistake HTTP。
+
+目标 401/403/3xx、非法/缺失必需 data、JSON/TLS/网络/超时或未知写结果为安全 502。JSON controller 使用固定 ProblemDetails：`mistake.unavailable`（502）、`mistake.request_rejected`（合法业务失败 400）、`mistake.conflict`（合法业务冲突 409）；图片使用相同状态与固定安全 error，合法结果为签名 URL redirect，URL 不携带 server Bearer。真实详情 GET 404 与合法空列表保留，不把目标拒绝伪装成空 DTO。取消传播，每个 unsafe 方法应用发送最多一次，失败后不继续 Student/S3 写，无 refresh/replay；已发送写的提交状态可能未知。默认 false 保留原 Mistake 下游兼容，不改变管理入站身份。
+
 ### 获取错题列表
 
 分页获取错题记录列表，支持多种筛选条件。

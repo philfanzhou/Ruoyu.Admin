@@ -11,3 +11,9 @@
 本次没有数据库迁移、持久状态或新取消入口。快照可并发读取，每次创建相互独立。不防御签名密钥泄露，也不防御受信进程代码移除严格委托、关闭 issuer 校验或主动改写内部信任数据；调用方必须保留这些校验。代码或整版镜像回滚可能恢复 discovery 信任放大风险，不是安全保证，也不作为恢复旧登录模式的依据。
 
 验证入口是 `backend/Tests/Authentication/IdentityTokenValidationParametersFactoryTests.cs` 与 `ExplicitIssuerJwtBearerTests.cs`，后者注册独立真实 handler，使用内存合成 RSA 签名及静态 discovery metadata；不修改 Admin 宿主、不接触数据库或 OSS、不输出 token。原托管 OIDC 的错误 issuer、坏 metadata、取消及零票据回归继续由 `AdminOidcTests` 覆盖。
+
+## Mistake 出站服务器票据
+
+`MistakeService:UseSessionToken=true` 时，专用 handler 每次在当前请求 scope 调用 `AdminSessionAccessor.AuthenticateAsync`，额外读取当前 `ITicketStore` 票据。框架的同请求认证缓存、`HttpContext.User`、TrustedSessionKey 或池化 handler 都不能替代最新 ticket；换票、撤票、坏 stamp/issuer、当前白名单移除、缺/畸形 token 或到期均在发送前拒绝。只发服务器 access token 到固定 HTTPS Mistake origin 与既有 method/path，禁 Cookie/redirect/loggers/telemetry；AppSecret 不作为用户身份。`false` 仅保留原 Mistake 匿名兼容，不改变永久入站 Session-only。
+
+目标 Mistake 必须独立信任精确 Issuer/Authority、ADMIN audience 与所需 role。Admin 本地白名单通过不保证目标授权：真实目标 401/403 对 Admin 为安全 502。详情 GET 404、合法空结果和明确业务 400/409 与认证/传输失败分别处理。配置、取消/单次发送以及真实组合验收要求见 [Deployment](./Deployment.md#mistake-出站会话ikjnxa)。

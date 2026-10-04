@@ -1,24 +1,41 @@
 using System.Globalization;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.Extensions.Options;
 
 namespace Admin.WebApi.Authentication;
 
 /// <summary>Reads only the explicitly authenticated server ticket, never browser credentials or mixed User claims.</summary>
-internal sealed class AdminSessionAccessor(AdminOidcSettings settings, IOptionsMonitor<AdminPortalOptions> admins, TimeProvider time)
+internal sealed class AdminSessionAccessor(AdminOidcSettings settings, IOptionsMonitor<AdminPortalOptions> admins, TimeProvider time,
+    IOptionsMonitor<CookieAuthenticationOptions>? cookieOptions = null, MemoryTicketStore? tickets = null)
 {
-    internal async Task<AdminSessionResult> AuthenticateAsync(HttpContext context)
+    internal async Task<AdminSessionResult> AuthenticateAsync(HttpContext context, bool currentTicket = false)
     {
         context.RequestAborted.ThrowIfCancellationRequested();
         if (context.Request.Headers.ContainsKey("Authorization")) return new(401);
         var authenticated = await context.AuthenticateAsync(AdminOidcSettings.SessionScheme);
         context.RequestAborted.ThrowIfCancellationRequested();
         if (!authenticated.Succeeded || authenticated.Principal is null || authenticated.Properties is null) return new(401);
-        var principal = authenticated.Principal;
+        // CookieAuthenticationHandler caches AuthenticateAsync within a request. Outgoing sends
+        // additionally retrieve the current server ticket, so revoke/renew cannot reuse that snapshot.
+        var ticket = authenticated.Ticket;
+        if (currentTicket)
+        {
+            if (cookieOptions is null || tickets is null) return new(401);
+            var options = cookieOptions.Get(AdminOidcSettings.SessionScheme);
+            var cookie = options.CookieManager.GetRequestCookie(context, options.Cookie.Name!);
+            var reference = cookie is null ? null : options.TicketDataFormat.Unprotect(cookie);
+            var claims = reference?.Principal.Claims.ToArray();
+            if (claims is not { Length: 1 } || claims[0].Type != "Microsoft.AspNetCore.Authentication.Cookies-SessionId") return new(401);
+            ticket = await tickets.RetrieveAsync(claims[0].Value);
+            context.RequestAborted.ThrowIfCancellationRequested();
+            if (ticket is null || ticket.AuthenticationScheme != AdminOidcSettings.SessionScheme) return new(401);
+        }
+        var principal = ticket!.Principal;
         var issuers = principal.FindAll("iss").ToArray();
         var subjects = principal.FindAll("sub").ToArray();
-        var properties = authenticated.Properties;
+        var properties = ticket.Properties;
         if (principal.Identity?.IsAuthenticated != true || issuers.Length != 1 || subjects.Length != 1
             || issuers[0].Value != settings.Authority || string.IsNullOrWhiteSpace(subjects[0].Value)
             || !properties.Items.TryGetValue("oidc.issuer", out var issuer) || issuer != issuers[0].Value
@@ -29,6 +46,7 @@ internal sealed class AdminSessionAccessor(AdminOidcSettings settings, IOptionsM
         // Framework SaveTokens writes round-trip ISO timestamps. No culture-dependent dates,
         // missing offsets, permissive parsing or session-lifetime fallback may authorize a request.
         if (string.IsNullOrWhiteSpace(token)
+            || currentTicket && token.Any(character => char.IsWhiteSpace(character) || char.IsControl(character))
             || !DateTimeOffset.TryParseExact(deadline, "o", CultureInfo.InvariantCulture, DateTimeStyles.None, out var expires)
             || deadline != expires.ToString("o", CultureInfo.InvariantCulture)) return new(401);
         if (time.GetUtcNow() >= expires) return new(401, error: "reauthentication_required", displayName: principal.FindFirst("display_name")?.Value);

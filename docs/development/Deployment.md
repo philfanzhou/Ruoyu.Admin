@@ -107,6 +107,18 @@ Kestrel__Endpoints__AdminHttps__Certificate__Password=<private environment value
 
 ### 下游服务
 
+#### Mistake 出站会话（IKJNXA）
+
+`MistakeService:UseSessionToken` 缺省为 `false`；显式值必须可解析为布尔值。它只选择 Admin 到 Mistake 的出站传输，入站管理 API 永久使用 AdminSession。`false` 保留原匿名下游、DTO 与异常兼容行为，不恢复浏览器 Bearer。
+
+启用前配置 `MistakeService:Url=https://mistake.example.com`，只能是显式根 API origin，无 userinfo、query、fragment 或子路径。生产需要 HTTPS 与正常 CA/SAN；仅 Development/Testing 允许数字 loopback HTTP，禁止 localhost、LAN HTTP 和隐式回退。只读 `--validate-auth-config` 与正式启动共同验证这两个键；`start.sh` 在停止旧实例前以目标 image 的同组配置预检，不刷新 cache、不创建目录。此处沿用实际 CLI 名称，不增加 `--validate-admin-oidc-config` 别名。
+
+`true` 为全部 14 个既有 typed 方法使用专用 handler：每次发送从当前 `HttpContext.RequestServices` 重新认证并重读服务器 ticket，校验 issuer/sub/stamp、当前白名单、token 和严格截止时间，包括同请求框架认证已缓存后的换票/撤票。只向配置 origin 的既有 method/path 发送当前 server Bearer；禁止 Cookie、CSRF、入站 Authorization、AppSecret、ID/refresh token 或密码透传。无当前请求则零发送。传输禁用 redirect、Cookie 容器、客户端 logger 和出站 telemetry，不向 S3 或浏览器附加 Bearer。
+
+下游 401/403/3xx、协议/JSON 错误、TLS/网络/超时和未知写结果统一安全 502；合法业务失败为安全 400/409，真实详情 GET 404 与合法空列表保留。调用者取消直接传播，不转成普通 500；每个 unsafe 方法最多应用发送一次，无 refresh、retry、replay 或匿名回落。失败/取消后不继续 Student 或 S3 写，但不能证明已发送写未提交。LegacyClean 仍使用 `admin-legacy-cleanup`，严格 reviewer 不匹配会失败，不能因此改 reviewer 或放宽 SourceIntake/managed immutable/pins 保护。
+
+启用需先验证官方 Hosted Code/PKCE、真实 Mistake 的精确 issuer 与 ADMIN audience、真实 Student 和正常签名取图；本机替身不代替联合验收。停用此出站能力须恢复匹配配置，入站模式不变；整版回滚只能用已明确可用的完整镜像，不恢复丢失票据或撤销已提交写。
+
 | 依赖 | 仓库占位默认值 | 协议 |
 |------|----------|------|
 | Student | `http://127.0.0.1:5005` | HTTP |

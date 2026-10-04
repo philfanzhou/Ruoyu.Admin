@@ -1,3 +1,4 @@
+using Admin.WebApi.Authentication;
 using System.Net;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -65,6 +66,13 @@ public class ImageController : ControllerBase
 
             return Redirect(presignedUrl);
         }
+        catch (MistakeSessionException error)
+        {
+            return StatusCode(error.StatusCode, new { error = error.Error });
+        }
+        catch (MistakeBadRequestException) { return BadRequest(new { error = "mistake.request_rejected" }); }
+        catch (MistakeConflictException) { return Conflict(new { error = "mistake.conflict" }); }
+        catch (MistakeDownstreamException) { return StatusCode(502, new { error = "mistake.unavailable" }); }
         catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
         {
             return NotFound();
