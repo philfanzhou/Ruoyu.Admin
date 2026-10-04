@@ -11,7 +11,7 @@
 ## 补充约束
 
 1. **幂等性**：legacyfalse 兼容原入口；managed-v1 固定 revision/requestKey/payload，同组重放返回 Mistake 保存的原 IDs。
-2. **并发**：managed 由 Mistake canonical alias 与来源 lease/guard 决定；不同合法组可共享原图，不能只按来源去重。
+2. **并发**：managed 由 Mistake canonical alias 与来源 lease/guard 决定，不能只按来源去重。当前 upload wire 仅 whole-image paths；共享原图不同 crop 的原验收存在明确契约前置阻塞，见集成契约。
 3. **事务边界**：逐组 HTTP 调用，不提供整批跨请求原子性；部分/Unknown 保留原请求并由用户显式重试。
 4. **失败降级**：查询学生姓名失败时回退显示 studentId
 5. **已审核图片保护**：已审核通过的图片不能再次被分配

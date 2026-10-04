@@ -31,7 +31,9 @@ UI 仅允许精确 `type === "mistake"` 项。原 index 用于当前表单选择
 }
 ```
 
-source/student/revision/key 均为非零 GUID。1–100 组，每组唯一 key、subject 1–9、grade 1–12、1–100 个非空路径（每项最多4096字符），comments 最多4096字符。comments 转为 producer 的 rootCause，null 固定为空串。body 是提案，Mistake snapshot 才是路径、学生和分类的授权事实。共享原图的不同合法 group 不按 sourceId 粗去重。
+source/student/revision/key 均为非零 GUID。1–100 组，每组唯一 key、subject 1–9、grade 1–12、1–100 个非空路径（每项最多4096字符），comments 最多4096字符。comments 转为 producer 的 rootCause，null 固定为空串。body 是提案，Mistake snapshot 才是路径、学生和分类的授权事实。不同合法 group 不按 sourceId 粗去重；当前精确 POST upload 只能传 whole-image paths。
+
+**当前交付阻塞**：[IKJKML](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKJKML) 原范围明确要求“两 crop 组/共享原图合法”，同时固定 POST `/api/mistakes/upload` 且排除新增上游协议。固定 Study `5c84d43d` 的该路由仅把 imagePaths 映射成无 bbox 的 regions；同 atom 重叠的新 group 正确返回 grouping_conflict409。现有另一条 manual 协议和领域方法支持不同 bbox，但不能在本项偷偷切路由或增加协议。本实现及真实不相交两组/原请求重放仅可审查，不能据此宣布该 Feature 完整验收；解除需要原跟踪明确并完成上游/消费 crop 契约前置，再补原六项完整真实验收。
 
 提交和重试不再 GET 当前 Student 或按新索引重建；始终发送原 revision、paths、key 和分类。关闭能力时 managed 输入503；开启但缺字段400，均不落回 legacy Submit。
 

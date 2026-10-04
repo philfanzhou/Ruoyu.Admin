@@ -33,6 +33,10 @@ Ruoyu.Admin 是 Ruoyu.Study 平台的管理后台服务，负责学生管理、�
 
 Student、Mistake、Homework、Teacher Portal、Assistant Portal 与 Identity 的接口定义**不由本仓库主责**，均在 Ruoyu.Study 与 [SignaCore](https://github.com/philfanzhou/SignaCore) 仓库内。`backend/Ruoyu.Admin.ServiceClients` 中的 DTO 是这些 HTTP 契约的手写镜像副本：上游字段变更不会在本仓库产生编译错误，只会产生运行时反序列化偏差，因此上游变更必须同步修改 ServiceClients 并补充 Controller 单测。
 
+## 当前契约阻塞
+
+[IKJKML](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKJKML) 要求受管指派的同原图不同 crop，并同时固定 POST upload / paths-only 且排除上游协议扩展。固定 provider 的 upload wire 不表达 bbox；真实重复 atom 分组正确返回409。受管实现作为草稿保留，待明确并完成该上游/消费契约前置后再验收完整 Feature。详情及已实现边界见[受管集成契约](./Integration/ManagedAssignment.md)。
+
 ## 已知文档债（自 monorepo 继承）
 
 以下问题在迁出前就已存在，**尚未修正**，阅读时需要以代码为准：
