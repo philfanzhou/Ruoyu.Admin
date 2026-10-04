@@ -19,9 +19,11 @@ OSS 审计运行记录表，记录每次审计任务的执行状态和结果。
 | `StartedAt` | `bigint` | NOT NULL | 审计开始时间（Unix 秒） |
 | `CompletedAt` | `bigint` | NULL | 审计完成时间（Unix 秒），运行中为 null |
 | `Status` | `int` | NOT NULL, DEFAULT 0 | 运行状态，见下方枚举 |
-| `NewZombieCount` | `int` | NOT NULL, DEFAULT 0 | 本次审计发现的新僵尸对象数量 |
+| `NewZombieCount` | `int` | NOT NULL, DEFAULT 0 | v1本次新增只读观察数；旧Run保留历史含义 |
 | `TriggerType` | `text` | NOT NULL, DEFAULT 'scheduled' | 触发方式：`scheduled`（定时）/ `manual`（手动） |
-| `ErrorMessage` | `text` | NULL | 错误信息，仅在失败时填写 |
+| `ErrorMessage` | `text` | NULL | 失败时固定安全原因 |
+| `ReferenceContractVersion` | `text` | NULL | 新完整Run的storage-references-v1；旧Run为null |
+| `ReferenceSnapshots` | `text` | NULL | 三provider完整metadata JSON；旧Run为null |
 
 ## Status 枚举
 
@@ -48,7 +50,9 @@ CREATE TABLE IF NOT EXISTS "OssAuditRuns" (
     "Status"        integer NOT NULL DEFAULT 0,
     "NewZombieCount" integer NOT NULL DEFAULT 0,
     "TriggerType"   text    NOT NULL DEFAULT 'scheduled',
-    "ErrorMessage"  text    NULL
+    "ErrorMessage"  text    NULL,
+    "ReferenceContractVersion" text NULL,
+    "ReferenceSnapshots" text NULL
 );
 
 CREATE INDEX IF NOT EXISTS "IX_OssAuditRuns_StartedAt" ON "OssAuditRuns" ("StartedAt");
@@ -56,17 +60,15 @@ CREATE INDEX IF NOT EXISTS "IX_OssAuditRuns_StartedAt" ON "OssAuditRuns" ("Start
 
 ## 业务规则
 
-- **并发控制**：同一时间只允许一个审计运行。创建新运行记录时先尝试 `SaveChanges`，若失败（DbUpdateException）则认为已有并发审计在运行，直接退出
-- **双重检查**：插入记录后再查询是否存在其他 `Status == 0` 且 `Id != 当前Id` 的记录，若存在则删除当前记录并退出
-- **失败处理**：审计过程中若下游服务（Student/Mistake）不可用，将 Status 设为 2（Failed），并记录 ErrorMessage
-- **Student 服务不可用**：直接中止审计，标记为 Failed
-- **Mistake 服务不可用**：仅记录警告，审计继续执行，但结果可能存在误报（false positives）
-- `Id` 使用 `GENERATED ALWAYS AS IDENTITY`，不允许手动指定
+- 现有Run创建/双重检查是进程内触发方式的检查，不保证持久排队或进程终止恢复，边界见[未决事项](../../pending-decisions.md)。
+- 任一Student/Mistake/Homework完整snapshot验证失败，在任何S3列举前Status=2；S3列举/DB事务失败也失败。取消保存audit_cancelled，其他业务失败只存references_or_scan_unavailable。
+- 完整扫描的三份metadata/v1、新观察和完成Run一起提交；旧Run不回填假proof。新metadata非空时Down拒绝丢失历史。
+- Id保持GENERATED ALWAYS AS IDENTITY，具体链见[迁移](../migrations.md)。
 
 ## 与 OssAuditRecords 的关系
 
 `OssAuditRuns` 和 `OssAuditRecords` 之间**没有外键关系**。它们通过业务逻辑关联：
 
-- 一次审计运行（`OssAuditRun`）会向 `OssAuditRecords` 中插入新发现的僵尸对象记录
+- 一次审计运行（`OssAuditRun`）会向 `OssAuditRecords` 中插入新只读观察记录
 - 但 `OssAuditRecord` 不记录是由哪次 `OssAuditRun` 发现的
 - 这种设计意味着无法直接追溯某条审计记录是由哪次运行产生的

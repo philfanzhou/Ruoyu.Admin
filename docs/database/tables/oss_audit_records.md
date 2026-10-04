@@ -1,6 +1,6 @@
 # OssAuditRecords
 
-OSS 僵尸对象审计记录表，存储被检测到未被任何业务引用的 OSS 对象信息。
+OSS审计观察与历史处置记录表。v1新行只表示捕获时未观察到引用。
 
 ## 表信息
 
@@ -17,7 +17,7 @@ OSS 僵尸对象审计记录表，存储被检测到未被任何业务引用的 
 |------|------|------|------|
 | `Id` | `bigint` | PK | 主键，自增 |
 | `ObjectPath` | `string` | NOT NULL, UNIQUE | OSS 对象路径，如 `uploads/xxx.jpg`、`mistakes/xxx.jpg` |
-| `Bucket` | `string` | NOT NULL | 所属 Bucket 名称。新记录取值只有 `uploads`、`mistakes`（由 `OssAuditWorker.AuditedBucketNames` 决定）；`questions`、`documents` 是历史误判遗留值，会在应用启动时被 `CleanupUnauditedBucketAuditRecordsAsync` 移除 |
+| `Bucket` | `string` | NOT NULL | 所属 Bucket 名称。新记录取值只有 `uploads`、`mistakes`（由 `OssAuditWorker.AuditedBucketNames` 决定）；`questions`、`documents` 保留原历史值，startup不删除 |
 | `Size` | `bigint` | NOT NULL | 对象大小（字节） |
 | `LastModified` | `bigint` | NOT NULL | 对象最后修改时间（Unix 秒） |
 | `Status` | `int` | NOT NULL, DEFAULT 0 | 审计状态，见下方枚举 |
@@ -29,11 +29,12 @@ OSS 僵尸对象审计记录表，存储被检测到未被任何业务引用的 
 
 | 值 | 名称 | 说明 |
 |----|------|------|
-| 0 | `Pending` | 待处理，新发现的僵尸对象 |
-| 1 | `Resolved` | 已解决，OSS 对象已被删除，审计记录也随之删除 |
-| 2 | `Ignored` | 已忽略，管理员确认保留该对象 |
+| 0 | `Pending` | 历史待处理 |
+| 1 | `Resolved` | 历史已删除状态，当前不再次删除 |
+| 2 | `Ignored` | 历史已忽略 |
+| 3 | `UnreferencedObservation` | 未观察到引用，只读报告、非删除许可 |
 
-> **注意**：`Resolved` 状态的记录在实际流程中会被直接从数据库中删除（`Remove`），而非仅更新状态。因此数据库中通常只会存在 `Pending` 和 `Ignored` 状态的记录。
+旧0/1/2保持历史，不回填为新观察；任何状态都不能跳过共同collector或授予删除。
 
 ## 索引
 
@@ -66,11 +67,12 @@ CREATE INDEX IF NOT EXISTS "IX_OssAuditRecords_Bucket" ON "OssAuditRecords" ("Bu
 CREATE INDEX IF NOT EXISTS "IX_OssAuditRecords_CreatedAt" ON "OssAuditRecords" ("CreatedAt");
 ```
 
-> **注意**：`OssAuditRecords` 表由 EF Core `EnsureCreated` 自动创建，不使用 `DatabaseInitializer` 中的手动 DDL。`OssAuditRuns` 表则通过 `DatabaseInitializer` 手动创建。
+表结构由exact EF迁移链与ServiceMantle启动门管理，见[迁移](../migrations.md)。
 
 ## 业务规则
 
-- 同一 `ObjectPath` 只能存在一条记录（UNIQUE 约束）
-- 审计发现新僵尸对象时，先检查 `ObjectPath` 是否已存在，避免重复插入
-- Resolve 操作会先验证对象是否仍被 Student/Mistake 服务引用，验证通过后调用 `DeleteOssObject` 删除 OSS 文件，然后删除审计记录
-- Ignore 操作仅更新状态为 2，可选填写 Note，不删除 OSS 文件
+- ObjectPath精确UNIQUE；已有任何状态同路径不重复创建。
+- 新v1发现仅Status3，完整扫描事务提交，不产生可处置结论。
+- Resolve所有状态及非空batch均由shared collector后409或502拒删，不Delete/Copy/删除记录。
+- Ignore仅历史Status0→2，可选Note，Status3拒绝。startup不清旧review/旧桶记录。
+- 原状态语义与当前消费者保证见[StorageAudit](../../modules/OssAudit/StorageAudit.md)。

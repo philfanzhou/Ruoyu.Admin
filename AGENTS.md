@@ -23,11 +23,10 @@ Ruoyu.Admin 是 Ruoyu.Study 平台的管理后台：.NET BFF API、Vue 3 / Eleme
 - `backend/Ruoyu.Admin.Common`、`backend/Ruoyu.Admin.Consul`、`backend/Ruoyu.Admin.ServiceClients` 是类库，不得反向引用 `backend/Admin.WebApi`。
 - `backend/Admin.WebApi` 负责 HTTP、认证、配置、代理中间件和宿主组合。Controller 不得直接构造 `HttpClient`，一律通过 `Ruoyu.Admin.ServiceClients` 的接口或 `IHttpClientFactory` 命名客户端。
 - API 监听端口 **5020 是硬编码的**（`Program.cs` 中的 `const int httpPort`），不是配置项。改端口属于部署契约变更，必须同步 `start.sh`、`frontend/vite.config.js` 和部署文档。
-- 数据库只有 `ruoyu_admin`，只有 `OssAuditRuns` 和 `OssAuditRecords` 两张表，结构由单一 EF Core 基线迁移（`Persistence/Migrations`）管理，启动时由 ServiceMantle 共享 `StartupDatabaseGate`（配置边界和部署声明位于 `Admin.WebApi/Database`）调用 `AuditMigrationExecutor` 及共享迁移编排（PostgreSQL advisory lock 多实例串行化；旧库接管、结构拒绝规则见 `docs/database/migrations.md`）。新增或修改迁移必须同步 `AuditMigrationExecutor.KnownMigrationIds` 契约；「结构未知即拒绝（`RUOYU_ADMIN_DB_SCHEMA_INCOMPATIBLE`）」「缺库默认拒绝创建（`Database:AllowCreate` 默认 false）」语义不得放宽。
-- Storage Audit 的处置动作会**真实删除生产对象存储中的文件**（`IOssService.DeleteAsync` 还会连带删除缩略图）。任何触及审计判定逻辑、路径聚合或删除路径的改动都必须有测试。
-- **审计不变量：一个桶只有在存在可达的引用来源时才允许进入 `OssAuditWorker.AuditedBuckets`。** 审计记录不是报告而是待处置项，`resolve` / `batch-resolve` 会真实删除文件；删除前复核查询的是**同一批**引用来源，因此对没有来源的桶必然放行删除。要把 `Questions` 或 `Documents` 加回审计范围，必须在同一个变更里落地其引用来源，并同步 `OssAuditController` 的删除前复核。
-- **引用聚合不完整时不得产出可处置结论。** Student、Homework、Mistake 任一不可达都必须让整轮审计以 `Status=2` 中止，且中止发生在扫描任何桶之前。不得为了让审计"跑完"而降级继续——那会产出失真的 `NewZombieCount` 并把待处置队列灌满噪声。
-- 不得放宽「对象被任何已知业务记录引用即视为在用」的判定，也不得移除或删除 `OssAuditController` 中 `DeleteAsync` 之前的引用复核与「来源不可达即返回 502 拒删」分支。
+- 数据库只有 `ruoyu_admin`，只有 `OssAuditRuns` 和 `OssAuditRecords` 两张表，结构由确切 EF Core 迁移链（`Persistence/Migrations`）管理，启动时由 ServiceMantle 共享 `StartupDatabaseGate`（配置边界和部署声明位于 `Admin.WebApi/Database`）调用 `AuditMigrationExecutor` 及共享迁移编排（PostgreSQL advisory lock 多实例串行化；旧库接管、结构拒绝规则见 `docs/database/migrations.md`）。新增或修改迁移必须同步 `AuditMigrationExecutor.KnownMigrationIds` 契约；「结构未知即拒绝（`RUOYU_ADMIN_DB_SCHEMA_INCOMPATIBLE`）」「缺库默认拒绝创建（`Database:AllowCreate` 默认 false）」语义不得放宽。
+- Storage Audit v1使用三个完整持久引用快照，只产生Status3只读观察。`deletionAuthorized=false`恒定；所有single/batch resolve状态都经shared collector后拒绝（完整409、不可用502），不执行Delete/Copy/审计record删除。触及聚合、判定或任何删除路径必须有测试。
+- **审计不变量：三个provider完整验证后才允许OSS列举。** 任一不可达、不全、坏合同或取消必须整轮失败，零S3列举/删除/复制与新观察。无旧gRPC/offset/空集fallback；不把capture事实当未来删除许可。
+- 扫描只含`Uploads`、`Mistakes`。Questions/Documents没有完整引用来源不纳入。startup旧正则图片清理与旧桶record清理停止；历史pins与审计记录保持，不能因旧Status绕过共同门禁。唯一合同与消费者职责见`docs/modules/OssAudit/StorageAudit.md`。
 - `/` 与所有非 `/api` 路由必须允许匿名访问，否则 SPA 登录页无法加载（未登录 → 拿不到页面 → 无法登录的死锁）。静态文件与 SPA 回退必须注册在 `UseAuthentication()` 之前。
 
 ## 外部契约归属

@@ -26,13 +26,6 @@ import OssAuditView from './OssAuditView.vue'
 import { ossAuditApi, type OssAuditRecordDto } from '../services/ossAuditApi'
 import { confirmDanger } from '../utils/confirm'
 
-/**
- * 破坏性操作不变量（#24 准备评论「破坏性路径语义模型」两表为唯一权威）中归属
- * OssAuditView 的行：单条 resolve 成功/失败、批量快照 ids、防重复提交、未勾选警告、
- * 部分失败只报计数。confirmDanger / ossAuditApi 均 mock：组件级用例只驱动确认与
- * 取消两条路径（confirmDanger 自身的行为由 src/utils/confirm.test.ts 锁定）。
- */
-
 const AuditRecordTableStub = {
   props: ['records', 'loading', 'error', 'selectedIds', 'resolvingIds'],
   emits: ['toggle', 'toggleAll', 'resolve', 'ignore', 'copy', 'retry'],
@@ -112,228 +105,41 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-describe('OssAuditView handleResolve（#24 单条删除表）', () => {
-  it('确认删除且无引用（200）：该行从列表消失（后端 Remove，非置灰），成功 toast', async () => {
-    const first = makeRecord(1)
-    const second = makeRecord(2)
-    getRecords.mockResolvedValueOnce({
-      items: [first, second],
-      totalCount: 2,
-      page: 1,
-      pageSize: 20,
-      statusCounts: { 0: 2 },
-      bucketCounts: { uploads: 2 },
-    })
-    // Refresh after the successful delete no longer returns the resolved record.
-    getRecords.mockResolvedValueOnce({
-      items: [second],
-      totalCount: 1,
-      page: 1,
-      pageSize: 20,
-      statusCounts: { 0: 1 },
-      bucketCounts: { uploads: 1 },
-    })
-    resolveRecord.mockResolvedValue({ success: true, message: 'Record, OSS object and fingerprint deleted.' })
-
+describe('OssAuditView v1 不可处置观察', () => {
+  it.each([0, 1, 2, 3])('状态 %s 的记录没有选择或删除路径，包括陈旧子组件事件', async (status) => {
+    const record = makeRecord(7, { status })
+    getRecords.mockResolvedValue({ items: [record], totalCount: 1, page: 1, pageSize: 20,
+      statusCounts: { [status]: 1 }, bucketCounts: { uploads: 1 } })
     const wrapper = await mountView()
     const table = wrapper.findComponent(AuditRecordTableStub)
-    table.vm.$emit('resolve', first)
+    table.vm.$emit('toggle', record)
+    table.vm.$emit('toggleAll')
+    table.vm.$emit('resolve', record)
     await flushPromises()
-
-    expect(confirmDangerMock).toHaveBeenCalledWith(
-      expect.objectContaining({ title: '删除存储文件', confirmText: '删除' }),
-    )
-    expect(resolveRecord).toHaveBeenCalledWith(1)
-    expect(messageSuccess).toHaveBeenCalledWith('删除成功')
-    const refreshedRecords = wrapper.findComponent(AuditRecordTableStub).props('records') as OssAuditRecordDto[]
-    expect(refreshedRecords.map((r) => r.id)).toEqual([2])
-    wrapper.unmount()
-  })
-
-  it.each([400, 502, 500])(
-    '删除失败（%s）：toast 原样透传后端 message，记录保留且仍为待处理，不触发刷新',
-    async (status) => {
-      const backendMessage = `后端原文-${status}`
-      const record = makeRecord(7)
-      getRecords.mockResolvedValueOnce({
-        items: [record],
-        totalCount: 1,
-        page: 1,
-        pageSize: 20,
-        statusCounts: { 0: 1 },
-        bucketCounts: { uploads: 1 },
-      })
-      resolveRecord.mockRejectedValue({
-        response: { status, data: { message: backendMessage } },
-      })
-
-      const wrapper = await mountView()
-      wrapper.findComponent(AuditRecordTableStub).vm.$emit('resolve', record)
-      await flushPromises()
-
-      expect(messageError).toHaveBeenCalledWith(backendMessage)
-      const records = wrapper.findComponent(AuditRecordTableStub).props('records') as OssAuditRecordDto[]
-      expect(records.map((r) => r.id)).toEqual([7])
-      expect(records[0].status).toBe(0)
-      // Only the initial onMounted load: the failure path must not reload the list.
-      expect(getRecords).toHaveBeenCalledTimes(1)
-      wrapper.unmount()
-    },
-  )
-
-  it('确认框取消：不发请求、无 toast', async () => {
-    const record = makeRecord(3)
-    getRecords.mockResolvedValueOnce({
-      items: [record],
-      totalCount: 1,
-      page: 1,
-      pageSize: 20,
-      statusCounts: { 0: 1 },
-      bucketCounts: { uploads: 1 },
-    })
-    confirmDangerMock.mockResolvedValue(false)
-
-    const wrapper = await mountView()
-    wrapper.findComponent(AuditRecordTableStub).vm.$emit('resolve', record)
-    await flushPromises()
-
-    expect(confirmDangerMock).toHaveBeenCalledTimes(1)
+    expect(table.props('selectedIds')).toEqual([])
+    expect(table.props('records')).toEqual([record])
+    expect(wrapper.findComponent(AuditBulkBarStub).exists()).toBe(false)
     expect(resolveRecord).not.toHaveBeenCalled()
-    expect(messageError).not.toHaveBeenCalled()
-    expect(messageSuccess).not.toHaveBeenCalled()
-    wrapper.unmount()
-  })
-})
-
-describe('OssAuditView handleBatchResolve（#24 批量删除表）', () => {
-  function primeSelection(wrapper: VueWrapper, records: OssAuditRecordDto[]) {
-    const table = wrapper.findComponent(AuditRecordTableStub)
-    records.forEach((record) => table.vm.$emit('toggle', record))
-    return table
-  }
-
-  function primeList(records: OssAuditRecordDto[]) {
-    getRecords.mockResolvedValue({
-      items: records,
-      totalCount: records.length,
-      page: 1,
-      pageSize: 20,
-      statusCounts: { 0: records.length },
-      bucketCounts: { uploads: records.length },
-    })
-  }
-
-  it('勾选 N 条后确认：确认框文案为「删除 N 个文件」，请求体为确认前快照；刷新/翻页/筛选不改变 ids', async () => {
-    const selected = [makeRecord(1), makeRecord(2), makeRecord(3)]
-    primeList([...selected, makeRecord(4)])
-
-    let releaseConfirm!: (value: boolean) => void
-    confirmDangerMock.mockReturnValue(new Promise<boolean>((resolve) => (releaseConfirm = resolve)))
-
-    const wrapper = await mountView()
-    primeSelection(wrapper, selected)
-    wrapper.findComponent(AuditBulkBarStub).vm.$emit('resolve')
-
-    await flushPromises()
-    expect(confirmDangerMock).toHaveBeenCalledWith(
-      expect.objectContaining({ confirmText: '删除 3 个文件', title: '批量删除存储文件' }),
-    )
-
-    // While the confirm dialog is open, the user pages/filters/refreshes: the live
-    // selection may grow or be cleared entirely (loadRecords always clears it).
-    // Neither may change the snapshot that was confirmed for deletion.
-    wrapper.findComponent(AuditRecordTableStub).vm.$emit('toggle', makeRecord(4))
-    await (wrapper.vm as any).loadRecords()
-    await flushPromises()
-
-    releaseConfirm(true)
-    await flushPromises()
-
-    expect(batchResolve).toHaveBeenCalledTimes(1)
-    expect(batchResolve).toHaveBeenCalledWith([1, 2, 3])
-    wrapper.unmount()
-  })
-
-  it('batchLoading 期间防重复提交：快速重复点击只发一次请求', async () => {
-    primeList([makeRecord(1), makeRecord(2)])
-    let releaseBatch!: (value: { resolvedCount: number; errors: string[]; totalRequested: number }) => void
-    batchResolve.mockReturnValue(
-      new Promise((resolve) => {
-        releaseBatch = resolve
-      }),
-    )
-
-    const wrapper = await mountView()
-    primeSelection(wrapper, [makeRecord(1), makeRecord(2)])
-    const bulkBar = wrapper.findComponent(AuditBulkBarStub)
-    bulkBar.vm.$emit('resolve')
-    await flushPromises()
-    // Second click while the first request is in flight.
-    bulkBar.vm.$emit('resolve')
-    await flushPromises()
-
-    expect(batchResolve).toHaveBeenCalledTimes(1)
-    expect(bulkBar.props('loading')).toBe(true)
-
-    releaseBatch({ resolvedCount: 2, errors: [], totalRequested: 2 })
-    await flushPromises()
-    expect(bulkBar.props('loading')).toBe(false)
-    wrapper.unmount()
-  })
-
-  it('未勾选即点批量删除：前端提前 warning，不发请求也不弹确认框', async () => {
-    primeList([makeRecord(1)])
-    const wrapper = await mountView()
-
-    wrapper.findComponent(AuditBulkBarStub).vm.$emit('resolve')
-    await flushPromises()
-
-    expect(messageWarning).toHaveBeenCalledWith('请选择要删除的记录')
-    expect(confirmDangerMock).not.toHaveBeenCalled()
     expect(batchResolve).not.toHaveBeenCalled()
+    expect(confirmDangerMock).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('不能据此删除文件')
     wrapper.unmount()
   })
 
-  it('批量部分失败：成功 toast + 只提示失败计数，不渲染逐条 errors 原因', async () => {
-    primeList([makeRecord(1), makeRecord(2), makeRecord(3)])
-    batchResolve.mockResolvedValue({
-      resolvedCount: 1,
-      errors: [
-        'uploads/regression/record-2.jpg: 被上传记录引用，跳过',
-        'uploads/regression/record-3.jpg: 被错题记录引用，跳过',
-      ],
-      totalRequested: 3,
-    })
-
+  it('失败加载保留可重试错误，重试恢复观察结果', async () => {
+    getRecords.mockRejectedValueOnce({ response: { data: { message: 'references_unavailable' } } })
+    const record = makeRecord(11, { status: 3 })
+    getRecords.mockResolvedValueOnce({ items: [record], totalCount: 1, page: 1, pageSize: 20,
+      statusCounts: { 3: 1 }, bucketCounts: { uploads: 1 } })
     const wrapper = await mountView()
-    primeSelection(wrapper, [makeRecord(1), makeRecord(2), makeRecord(3)])
-    wrapper.findComponent(AuditBulkBarStub).vm.$emit('resolve')
+    const table = wrapper.findComponent(AuditRecordTableStub)
+    expect(table.props('records')).toEqual([])
+    expect(table.props('error')).toBe('references_unavailable')
+    table.vm.$emit('retry')
     await flushPromises()
-
-    expect(messageSuccess).toHaveBeenCalledWith('成功删除 1 条记录')
-    expect(messageWarning).toHaveBeenCalledWith('有 2 条记录删除失败')
-    const allMessages = [...messageSuccess.mock.calls, ...messageWarning.mock.calls, ...messageError.mock.calls]
-      .map((call) => String(call[0]))
-    expect(allMessages.some((text) => text.includes('被上传记录引用'))).toBe(false)
-    expect(allMessages.some((text) => text.includes('被错题记录引用'))).toBe(false)
-    wrapper.unmount()
-  })
-
-  it('批量全部失败：只有 warning「有 N 条记录删除失败」，无成功 toast', async () => {
-    primeList([makeRecord(1), makeRecord(2)])
-    batchResolve.mockResolvedValue({
-      resolvedCount: 0,
-      errors: ['a: 被上传记录引用，跳过', 'b: 被上传记录引用，跳过'],
-      totalRequested: 2,
-    })
-
-    const wrapper = await mountView()
-    primeSelection(wrapper, [makeRecord(1), makeRecord(2)])
-    wrapper.findComponent(AuditBulkBarStub).vm.$emit('resolve')
-    await flushPromises()
-
-    expect(messageSuccess).not.toHaveBeenCalled()
-    expect(messageWarning).toHaveBeenCalledWith('有 2 条记录删除失败')
+    expect(table.props('records')).toEqual([record])
+    expect(table.props('error')).toBeNull()
+    expect(resolveRecord).not.toHaveBeenCalled()
     wrapper.unmount()
   })
 })

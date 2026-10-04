@@ -4,6 +4,7 @@ using Admin.WebApi.Database;
 using Admin.WebApi.Persistence;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -229,7 +230,7 @@ public sealed class AuditMigrationTests : ServiceMantleIntegrationTestBase, IAsy
     // ---------- baseline structure equals the retired inline DDL ----------
 
     [Fact]
-    public async Task EmptyDatabase_AppliesBaseline_StructureMatchesLegacyDdlColumnByColumn()
+    public async Task EmptyDatabase_AppliesKnownChain_StructureMatchesLegacyPlusReferenceColumns()
     {
         using (var context = CreateContext())
         {
@@ -244,6 +245,10 @@ public sealed class AuditMigrationTests : ServiceMantleIntegrationTestBase, IAsy
         {
             var referenceConnection = WithDatabase(Database.ConnectionString, reference);
             await ExecuteAsync(referenceConnection, LegacyDdl);
+            await ExecuteAsync(referenceConnection, """
+                ALTER TABLE "OssAuditRuns" ADD COLUMN "ReferenceContractVersion" text NULL;
+                ALTER TABLE "OssAuditRuns" ADD COLUMN "ReferenceSnapshots" text NULL;
+                """);
 
             var migrated = await ReadStructureFingerprintAsync(TargetConnectionString);
             var legacy = await ReadStructureFingerprintAsync(referenceConnection);
@@ -254,7 +259,7 @@ public sealed class AuditMigrationTests : ServiceMantleIntegrationTestBase, IAsy
 
             // And the baseline is registered exactly once.
             (await ReadHistoryAsync(TargetConnectionString)).Should()
-                .Equal(AuditMigrationExecutor.InitialCreateMigrationId);
+                .Equal(AuditMigrationExecutor.KnownMigrationIds);
         }
         finally
         {
@@ -298,9 +303,9 @@ public sealed class AuditMigrationTests : ServiceMantleIntegrationTestBase, IAsy
             result.ExecutorWasCalled.Should().BeTrue();
         }
 
-        // Only the history was written; the business rows survive untouched.
+        // The old baseline is stamped then upgraded; the business rows survive untouched.
         (await ReadHistoryAsync(TargetConnectionString)).Should()
-            .Equal(AuditMigrationExecutor.InitialCreateMigrationId);
+            .Equal(AuditMigrationExecutor.KnownMigrationIds);
         (await CountRowsAsync(TargetConnectionString, "OssAuditRecords")).Should().Be(1);
         (await CountRowsAsync(TargetConnectionString, "OssAuditRuns")).Should().Be(1);
         await using (var connection = new NpgsqlConnection(TargetConnectionString))
@@ -348,7 +353,51 @@ public sealed class AuditMigrationTests : ServiceMantleIntegrationTestBase, IAsy
         result.Succeeded.Should().BeTrue();
         result.ExecutorWasCalled.Should().BeTrue();
         (await ReadHistoryAsync(TargetConnectionString)).Should()
-            .Equal(AuditMigrationExecutor.InitialCreateMigrationId);
+            .Equal(AuditMigrationExecutor.KnownMigrationIds);
+    }
+
+    [Fact]
+    public async Task ExactOldKnownPrefix_UpgradesWithoutRequiringNewColumnsAndRetainsRows()
+    {
+        using (var context = CreateContext())
+            await context.GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrator>().MigrateAsync(AuditMigrationExecutor.InitialCreateMigrationId);
+        await ExecuteAsync(TargetConnectionString, """
+            INSERT INTO "OssAuditRecords" ("ObjectPath","Bucket","Status") VALUES ('uploads/history.jpg','uploads',2);
+            INSERT INTO "OssAuditRuns" ("StartedAt","Status") VALUES (1,1);
+            """);
+        using (var context = CreateContext())
+        {
+            var executor = new AuditMigrationExecutor(context, NullLogger.Instance);
+            (await executor.InspectAsync()).Should().Be(AuditMigrationExecutor.DatabaseState.KnownUpgradeRequired);
+            await executor.ExecuteAsync();
+        }
+        (await ReadHistoryAsync(TargetConnectionString)).Should().Equal(AuditMigrationExecutor.KnownMigrationIds);
+        using (var context = CreateContext())
+        {
+            (await context.OssAuditRecords.SingleAsync()).Status.Should().Be(2);
+            var run = await context.OssAuditRuns.SingleAsync();
+            run.ReferenceSnapshots.Should().BeNull();
+            run.ReferenceContractVersion.Should().BeNull();
+        }
+    }
+
+    [Fact]
+    public async Task NewHistoryWithoutBaseline_IsRefusedAndNonemptyObservationDownCannotLoseEvidence()
+    {
+        using (var context = CreateContext()) await context.Database.MigrateAsync();
+        await ExecuteAsync(TargetConnectionString, """
+            INSERT INTO "OssAuditRuns" ("StartedAt","Status","ReferenceContractVersion","ReferenceSnapshots")
+              VALUES (1,1,'storage-references-v1','[]');
+            """);
+        using (var context = CreateContext())
+            await Assert.ThrowsAsync<PostgresException>(() => context.GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrator>()
+                .MigrateAsync(AuditMigrationExecutor.InitialCreateMigrationId));
+        (await ReadHistoryAsync(TargetConnectionString)).Should().Equal(AuditMigrationExecutor.KnownMigrationIds);
+        await ExecuteAsync(TargetConnectionString, $"DELETE FROM \"__EFMigrationsHistory\" WHERE \"MigrationId\"='{AuditMigrationExecutor.InitialCreateMigrationId}'");
+        using (var context = CreateContext())
+            (await new AuditMigrationExecutor(context, NullLogger.Instance).InspectAsync()).Should()
+                .Be(AuditMigrationExecutor.DatabaseState.InspectionFailed);
+        (await CountRowsAsync(TargetConnectionString, "OssAuditRuns")).Should().Be(1);
     }
 
     // ---------- refused states: zero writes ----------
@@ -449,7 +498,7 @@ public sealed class AuditMigrationTests : ServiceMantleIntegrationTestBase, IAsy
         (await CountRowsAsync(TargetConnectionString, "OssAuditRecords")).Should().Be(0);
         (await CountRowsAsync(TargetConnectionString, "OssAuditRuns")).Should().Be(0);
         (await ReadHistoryAsync(TargetConnectionString)).Should()
-            .Equal(AuditMigrationExecutor.InitialCreateMigrationId);
+            .Equal(AuditMigrationExecutor.KnownMigrationIds);
     }
 
     // ---------- failures and cancellation never fake success ----------
@@ -527,7 +576,7 @@ public sealed class AuditMigrationTests : ServiceMantleIntegrationTestBase, IAsy
 
             (await DatabaseExistsAsync(missing)).Should().BeTrue();
             (await ReadHistoryAsync(WithDatabase(Database.ConnectionString, missing))).Should()
-                .Equal(AuditMigrationExecutor.InitialCreateMigrationId);
+                .Equal(AuditMigrationExecutor.KnownMigrationIds);
             foreach (var table in AuditMigrationExecutor.KnownTableNames)
             {
                 (await TableExistsAsync(WithDatabase(Database.ConnectionString, missing), table))

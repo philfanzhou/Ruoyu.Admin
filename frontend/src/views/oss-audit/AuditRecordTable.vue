@@ -9,29 +9,6 @@
     :row-class-name="rowClassName"
     @retry="emit('retry')"
   >
-    <!-- Custom checkbox column rather than el-table's built-in selection column: that one keeps
-         a second, internal selection which DataTableCard gives us no handle to clear. -->
-    <el-table-column width="48" align="center">
-      <template #header>
-        <el-checkbox
-          :model-value="allSelected"
-          :indeterminate="someSelected"
-          :disabled="selectableIds.length === 0"
-          title="选择本页全部待处理记录"
-          aria-label="选择本页全部待处理记录"
-          @change="emit('toggleAll')"
-        />
-      </template>
-      <template #default="{ row }">
-        <el-checkbox
-          :model-value="selectedIds.includes(row.id)"
-          :disabled="row.status !== 0"
-          :title="row.status !== 0 ? '仅待处理记录可选择' : undefined"
-          :aria-label="`选择 ${row.objectPath}`"
-          @change="emit('toggle', row)"
-        />
-      </template>
-    </el-table-column>
     <el-table-column label="ID" width="80">
       <template #default="{ row }"><span class="mono">{{ row.id }}</span></template>
     </el-table-column>
@@ -61,7 +38,7 @@
     <el-table-column label="最后修改" width="150">
       <template #default="{ row }"><span class="time-cell">{{ formatDateTime(row.lastModified) }}</span></template>
     </el-table-column>
-    <el-table-column label="状态" width="100">
+    <el-table-column label="状态" width="145">
       <template #default="{ row }">
         <StatusTag :label="getAuditStatusMeta(row.status).label" :type="getAuditStatusMeta(row.status).tagType" />
       </template>
@@ -72,9 +49,6 @@
     <el-table-column label="操作" width="140" align="right" fixed="right">
       <template #default="{ row }">
         <template v-if="row.status === 0">
-          <el-button link type="danger" :disabled="resolvingIds.has(row.id)" @click="emit('resolve', row)">
-            {{ resolvingIds.has(row.id) ? '删除中…' : '删除' }}
-          </el-button>
           <el-button link type="warning" :disabled="resolvingIds.has(row.id)" @click="emit('ignore', row)">忽略</el-button>
         </template>
         <span v-else class="text-muted">—</span>
@@ -87,7 +61,6 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
 import { CopyDocument, Document } from '@element-plus/icons-vue'
 import { formatFileSize, type OssAuditRecordDto } from '../../services/ossAuditApi'
 import { formatDateTime } from '../../utils/subject'
@@ -104,17 +77,10 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  toggle: [record: OssAuditRecordDto]
-  toggleAll: []
-  resolve: [record: OssAuditRecordDto]
   ignore: [record: OssAuditRecordDto]
   copy: [path: string]
   retry: []
 }>()
-
-const selectableIds = computed(() => props.records.filter((r) => r.status === 0).map((r) => r.id))
-const allSelected = computed(() => selectableIds.value.length > 0 && selectableIds.value.every((id) => props.selectedIds.includes(id)))
-const someSelected = computed(() => !allSelected.value && props.selectedIds.length > 0)
 
 function rowClassName({ row }: { row: OssAuditRecordDto }) {
   return props.selectedIds.includes(row.id) ? 'selected-row' : ''

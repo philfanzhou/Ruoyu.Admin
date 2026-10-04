@@ -8,5 +8,7 @@ public class OssAuditRun
     public int Status { get; set; }
     public int NewZombieCount { get; set; }
     public string TriggerType { get; set; } = "scheduled";
+    public string? ReferenceContractVersion { get; set; }
+    public string? ReferenceSnapshots { get; set; }
     public string? ErrorMessage { get; set; }
 }

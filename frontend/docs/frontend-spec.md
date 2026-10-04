@@ -41,7 +41,7 @@ frontend/src/
 │   ├── MistakeView.vue           # 错题管理页面（列表与编排：统计卡 + 公共列表组件）
 │   ├── mistakes/                 # 错题子组件：详情弹窗、信息与审核信息、图片画廊（含迁移横幅）、编辑表单
 │   ├── OssAuditView.vue          # OSS 审计页面（列表、选择与删除/忽略编排）
-│   └── oss-audit/                # OSS 审计子组件：状态面板、记录表格、浮动批量栏、忽略弹窗、扫描状态轮询（useAuditStatus）
+│   └── oss-audit/                # OSS 审计子组件：只读观察状态面板、记录表格、历史忽略弹窗、扫描状态轮询（useAuditStatus）
 ├── services/
 │   ├── httpClient.ts            # 共享 axios 实例（同源会话、CSRF 与受控失效导航）
 │   ├── identityApi.ts           # Identity 用户管理 API
@@ -154,7 +154,7 @@ frontend/src/
 | `/assistants` | AssistantView.vue | 用户 | 助教管理 |
 | `/upload-records` | UploadRecordView.vue | 内容与上传 | 上传记录管理（含状态统计卡 + 非模态详情抽屉） |
 | `/mistakes` | MistakeView.vue | 内容与上传 | 错题查询与管理（统计卡 + 详情弹窗） |
-| `/oss-audit` | OssAuditView.vue | 存储审计 | OSS 僵尸文件审计（状态面板 + 浮动批量栏） |
+| `/oss-audit` | OssAuditView.vue | 存储审计 | OSS 引用观察审计（状态面板 + 只读记录） |
 
 默认重定向：`/` → `/dashboard`（已登录）/ `/login`（未登录）。
 
@@ -435,39 +435,13 @@ frontend/src/
 
 ### 6. OSS 审计页面 (`/oss-audit`)
 
-**所属分组**：存储审计
+**所属分组**：存储审计。行为权威见 [StorageAudit](../../docs/modules/OssAudit/StorageAudit.md)，消费同一版本StorageReferences合同。
 
-**布局**：页头（「触发全量扫描」，经普通确认；运行中或触发中禁用）+ 状态面板 + 筛选栏（状态、Bucket、路径）+ 记录表格 + 服务端分页（`pageSize` 10/20/50）+ 浮动批量操作栏 + 忽略弹窗（`el-dialog`）。子组件位于 `src/views/oss-audit/`。
+**布局**：触发全量扫描（普通确认；运行/触发中禁用）+ 状态面板 + 状态/Bucket/当前页路径筛选 + 记录表格 + 服务端分页（10/20/50）+ 旧Pending忽略弹窗。当前视图无选择列、删除按钮、批量操作栏或resolve事件处理；不能通过旧status或伪造组件事件触发删除。
 
-**状态面板**：区分三种状态——运行中「扫描进行中...」、从未完成过扫描「尚无完成的扫描」、否则「上次完成于 …」（附耗时、发现数、触发方式）；存在 `lastFailed` 时始终显示上次失败信息。统计为「上次完成」「上次失败」「待处理」（`getStatus().pendingCount`）「已忽略」（记录响应的 `statusCounts[2]`）。不展示「已清理」：处置成功后记录被删除而不是置为已删除，该计数没有真实数据源。页面每 10 秒轮询状态，检测到扫描从运行中变为完成时刷新列表。
+**状态**：0待处理、1已删除、2已忽略保留历史；3“未观察到引用”只读观察。只有旧0显示ignore，其余操作为—。状态面板区分历史待处理和observationCount；新v1 Run显示“未观察到引用”，旧Run显示“历史发现”，不编造版本证据。只有完整且恰三份student/mistake/homework metadata才展示各provider条数和capture时间；损坏/缺失proof不显示虚假完整状态。恒定deletionAuthorized=false不作为前端可配置开关。
 
-**状态标签**：统一使用中文（0 待处理 / 1 已删除 / 2 已忽略，`src/views/oss-audit/ossAudit.ts`），不显示后端 `statusText`。
-
-**路径搜索**：接口不支持路径参数，路径关键字只在客户端过滤当前页；启用时列表上方提示「路径搜索仅作用于当前页结果：本页匹配 X 条（共 N 条）」，分页总数仍为服务端总数。
-
-**功能列表**：
-- 审计记录列表（状态筛选、Bucket 筛选、分页）
-- 总记录数显示
-- 触发审计（全量 OSS 扫描）
-- 单条处理（删除僵尸文件/忽略）
-- 批量处理（勾选多条后批量删除）
-
-**API 调用**（按需加载）：
-- `getRecords(params)` - 查询审计记录
-- `triggerAudit()` - 触发审计
-- `resolveRecord(id)` - 处理单条
-- `ignoreRecord(id, note)` - 忽略单条
-- `batchResolve(ids)` - 批量处理
-
-**状态**：待处理(0) / 已删除(1) / 已忽略(2)
-
-**批量选择与删除（删除会真实删除生产对象存储文件）**：
-- 只有待处理（status=0）的行可以勾选，其他行复选框禁用；全选只选当前显示的待处理行。
-- 不变量：选择集合 ⊆ 当前显示的待处理行。`loadRecords` 成功替换列表时清空选择，覆盖翻页、改每页条数、筛选、路径搜索、重置、处置后刷新、轮询刷新与重试；`loadRecords` 失败时清空列表（显示错误态与「重试」）并同时清空选择。
-- 选择列是自定义的 `el-checkbox` 列，`selectedIds` 是唯一数据源；不使用 `el-table` 自带的选择列（它在表格内部另存一份选择状态）。
-- 批量删除在打开确认框时对选中 id 做快照，确认框显示快照数量，确认后只发送该快照；确认框打开期间列表刷新（或刷新失败）不改变要删除的集合。取消/关闭/Esc 不发任何请求。
-- 单条删除请求进行中，该行的「删除/忽略」禁用。
-- 服务端仍对每条记录做引用复核（被引用则拒绝，来源不可达返回 502），前端确认不替代服务端复核。
+GET status支持isRunning、lastCompleted/lastFailed、pendingCount、observationCount；lastCompleted保留NewZombieCount兼容字段并新增referenceContractVersion/referenceSnapshots。每10秒轮询，运行转完成刷新列表。API错误清空列表显示错误态与重试；路径搜索仅过滤当前页并提示匹配数，总数仍服务端总数。页面仅调用getRecords/getStatus/triggerAudit/ignoreRecord；兼容resolve API仍存在但后端统一409或502拒绝，页面不调用。
 
 ---
 
@@ -547,9 +521,9 @@ frontend/src/
 |------|------|------|------|
 | `getRecords(params)` | GET | `/api/admin/oss-audit/records` | 查询审计记录 |
 | `triggerAudit()` | POST | `/api/admin/oss-audit/trigger` | 触发审计 |
-| `resolveRecord(id)` | POST | `/api/admin/oss-audit/records/:id/resolve` | 处理单条 |
+| `resolveRecord(id)` | POST | `/api/admin/oss-audit/records/:id/resolve` | v1拒绝清理 |
 | `ignoreRecord(id, note)` | POST | `/api/admin/oss-audit/records/:id/ignore` | 忽略单条 |
-| `batchResolve(ids)` | POST | `/api/admin/oss-audit/records/batch-resolve` | 批量处理 |
+| `batchResolve(ids)` | POST | `/api/admin/oss-audit/records/batch-resolve` | v1拒绝批量清理 |
 
 ---
 

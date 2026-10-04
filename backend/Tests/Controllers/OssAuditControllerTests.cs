@@ -43,174 +43,35 @@ public class OssAuditControllerTests
         f.Oss.Verify(s => s.DeleteAsync(It.IsAny<string>()), Times.Never);
     }
 
-    // ===== ResolveRecord: the guard must block deletion =====
-
-    [Fact]
-    public async Task ResolveRecord_ReferencedByStudentUpload_Returns400AndDoesNotDelete()
+    [Theory]
+    [InlineData(0)] [InlineData(1)] [InlineData(2)] [InlineData(3)]
+    public async Task ResolveRecord_AllStatesRequireCompleteCollectionButNeverDelete(int state)
     {
         var f = new Fixture();
-        f.StudentPaths.Add("uploads/a.jpg");
-        var id = await f.SeedRecordAsync("uploads/a.jpg");
-
-        var result = await f.Controller.ResolveRecord(id);
-
-        AssertBadRequest(result, "该文件仍被上传记录引用，不能删除。");
+        var id = await f.SeedRecordAsync("uploads/a.jpg", status: state);
+        var result = Assert.IsType<ObjectResult>(await f.Controller.ResolveRecord(id));
+        Assert.Equal(409, result.StatusCode);
+        Assert.Equal("cleanup_not_authorized", ReadJson(result.Value).GetProperty("errorKind").GetString());
+        f.References.Verify(collector => collector.CollectAsync(It.IsAny<CancellationToken>()), Times.Once);
         await f.AssertNotDeletedAsync(id, "uploads/a.jpg");
+        Assert.Equal(state, (await f.Db.OssAuditRecords.SingleAsync()).Status);
+        f.Student.VerifyNoOtherCalls(); f.Mistake.VerifyNoOtherCalls();
     }
 
-    [Fact]
-    public async Task ResolveRecord_ReferencedByHomework_Returns400AndDoesNotDelete()
+    [Theory]
+    [InlineData(0)] [InlineData(1)] [InlineData(2)] [InlineData(3)]
+    public async Task ResolveRecord_IncompleteCollectionRejectsEveryStateWith502(int state)
     {
         var f = new Fixture();
-        f.HomeworkPaths.Add("uploads/homework/x.jpg");
-        var id = await f.SeedRecordAsync("uploads/homework/x.jpg");
-
-        var result = await f.Controller.ResolveRecord(id);
-
-        AssertBadRequest(result, "该文件仍被上传记录引用，不能删除。");
-        await f.AssertNotDeletedAsync(id, "uploads/homework/x.jpg");
-    }
-
-    [Fact]
-    public async Task ResolveRecord_ReferencedByMistake_Returns400AndDoesNotDelete()
-    {
-        var f = new Fixture();
-        f.MistakePaths.Add("mistakes/m.jpg");
-        var id = await f.SeedRecordAsync("mistakes/m.jpg");
-
-        var result = await f.Controller.ResolveRecord(id);
-
-        AssertBadRequest(result, "该文件仍被错题记录引用，不能删除。");
-        await f.AssertNotDeletedAsync(id, "mistakes/m.jpg");
-    }
-
-    [Fact]
-    public async Task ResolveRecord_ReferenceMatchIsCaseInsensitive()
-    {
-        // The aggregation uses StringComparer.OrdinalIgnoreCase; a case-only difference
-        // must still block the delete, or the guard leaks on case-variant paths.
-        var f = new Fixture();
-        f.StudentPaths.Add("uploads/ABC.JPG");
-        var id = await f.SeedRecordAsync("uploads/abc.jpg");
-
-        var result = await f.Controller.ResolveRecord(id);
-
-        AssertBadRequest(result, "该文件仍被上传记录引用，不能删除。");
-        await f.AssertNotDeletedAsync(id, "uploads/abc.jpg");
-    }
-
-    [Fact]
-    public async Task ResolveRecord_StudentUnavailable_Returns502AndDoesNotDelete()
-    {
-        var f = new Fixture();
-        f.StudentThrows = new HttpRequestException("connection refused");
-        var id = await f.SeedRecordAsync("uploads/a.jpg");
-
-        var result = await f.Controller.ResolveRecord(id);
-
-        AssertStatus(result, 502, "Student 或 Homework 服务不可用，无法安全删除。");
+        f.References.Setup(collector => collector.CollectAsync(It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("Injected provider failure."));
+        var id = await f.SeedRecordAsync("uploads/a.jpg", status: state);
+        var result = Assert.IsType<ObjectResult>(await f.Controller.ResolveRecord(id));
+        Assert.Equal(502, result.StatusCode);
+        Assert.Equal("references_unavailable", ReadJson(result.Value).GetProperty("errorKind").GetString());
         await f.AssertNotDeletedAsync(id, "uploads/a.jpg");
+        f.Student.VerifyNoOtherCalls(); f.Mistake.VerifyNoOtherCalls();
     }
-
-    [Fact]
-    public async Task ResolveRecord_HomeworkUnavailable_Returns502AndDoesNotDelete()
-    {
-        // HomeworkReferenceClient is aggregated inside the same try as Student, so its
-        // failure must surface as the same refusal rather than a partial reference set.
-        var f = new Fixture(homeworkStatus: HttpStatusCode.ServiceUnavailable);
-        var id = await f.SeedRecordAsync("uploads/a.jpg");
-
-        var result = await f.Controller.ResolveRecord(id);
-
-        AssertStatus(result, 502, "Student 或 Homework 服务不可用，无法安全删除。");
-        await f.AssertNotDeletedAsync(id, "uploads/a.jpg");
-    }
-
-    [Fact]
-    public async Task ResolveRecord_MistakeUnavailable_Returns502AndDoesNotDelete()
-    {
-        var f = new Fixture();
-        f.MistakeThrows = new HttpRequestException("connection refused");
-        var id = await f.SeedRecordAsync("mistakes/m.jpg");
-
-        var result = await f.Controller.ResolveRecord(id);
-
-        AssertStatus(result, 502, "Mistake 服务不可用，无法安全删除。");
-        await f.AssertNotDeletedAsync(id, "mistakes/m.jpg");
-    }
-
-    [Fact]
-    public async Task ResolveRecord_NoHomeworkClientConfigured_StillValidatesStudentAndMistake()
-    {
-        // _homeworkClient is optional in the constructor; a null client must narrow the
-        // reference set, not disable validation.
-        var f = new Fixture(withHomeworkClient: false);
-        f.StudentPaths.Add("uploads/a.jpg");
-        var id = await f.SeedRecordAsync("uploads/a.jpg");
-
-        var result = await f.Controller.ResolveRecord(id);
-
-        AssertBadRequest(result, "该文件仍被上传记录引用，不能删除。");
-        await f.AssertNotDeletedAsync(id, "uploads/a.jpg");
-    }
-
-    // ===== ResolveRecord: the delete path =====
-
-    [Fact]
-    public async Task ResolveRecord_Unreferenced_DeletesObjectAndRemovesRecord()
-    {
-        var f = new Fixture();
-        f.Oss.Setup(s => s.DeleteAsync("uploads/orphan.jpg")).ReturnsAsync(true);
-        var id = await f.SeedRecordAsync("uploads/orphan.jpg");
-
-        var result = await f.Controller.ResolveRecord(id);
-
-        var ok = Assert.IsType<OkObjectResult>(result);
-        ReadJson(ok.Value).GetProperty("Success").GetBoolean().Should().BeTrue();
-        f.Oss.Verify(s => s.DeleteAsync("uploads/orphan.jpg"), Times.Once);
-        (await f.Db.OssAuditRecords.AnyAsync(r => r.Id == id)).Should().BeFalse();
-    }
-
-    [Fact]
-    public async Task ResolveRecord_NonPendingRecord_SkipsRevalidationAndDeletes()
-    {
-        // A record that is not Pending is treated as already-deleted and is not revalidated.
-        var f = new Fixture();
-        f.StudentPaths.Add("uploads/resolved.jpg");
-        f.Oss.Setup(s => s.DeleteAsync("uploads/resolved.jpg")).ReturnsAsync(true);
-        var id = await f.SeedRecordAsync("uploads/resolved.jpg", status: 1);
-
-        var result = await f.Controller.ResolveRecord(id);
-
-        Assert.IsType<OkObjectResult>(result);
-        f.Oss.Verify(s => s.DeleteAsync("uploads/resolved.jpg"), Times.Once);
-        f.Student.Verify(
-            s => s.GetAllUploadRecordsAsync(
-                It.IsAny<int?>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<string?>(),
-                It.IsAny<CancellationToken>()),
-            Times.Never,
-            "non-pending records must not trigger a reference sweep");
-    }
-
-    [Fact]
-    public async Task ResolveRecord_DeleteThrows_PropagatesAndKeepsRecord()
-    {
-        var f = new Fixture();
-        f.Oss.Setup(s => s.DeleteAsync("uploads/orphan.jpg"))
-            .ThrowsAsync(new InvalidOperationException("s3 rejected"));
-        var id = await f.SeedRecordAsync("uploads/orphan.jpg");
-
-        // #56: the ex.Message catch is gone; the exception reaches the ServiceMantle Problem
-        // Details boundary (500 http.internal_server_error, asserted end-to-end in
-        // ServiceMantleProblemDetailsTests). The audit trail must still be kept.
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => f.Controller.ResolveRecord(id));
-        Assert.Equal("s3 rejected", exception.Message);
-        (await f.Db.OssAuditRecords.AnyAsync(r => r.Id == id))
-            .Should().BeTrue("a failed delete must not drop the audit trail");
-    }
-
-    // ===== IgnoreRecord =====
 
     [Fact]
     public async Task IgnoreRecord_NotFound_Returns404()
@@ -286,143 +147,33 @@ public class OssAuditControllerTests
         f.Oss.Verify(s => s.DeleteAsync(It.IsAny<string>()), Times.Never);
     }
 
-    [Fact]
-    public async Task BatchResolve_NoMatchingRecords_ReturnsZeroResolved()
+    [Theory]
+    [InlineData(false)] [InlineData(true)]
+    public async Task BatchResolve_AllStatesAndMissingIdsCannotAuthorizeDeletion(bool unavailable)
     {
         var f = new Fixture();
-
-        var result = await f.Controller.BatchResolve(new BatchResolveRequest { Ids = new List<long> { 999 } });
-
-        var json = ReadJson(Assert.IsType<OkObjectResult>(result).Value);
-        json.GetProperty("resolvedCount").GetInt32().Should().Be(0);
-        json.GetProperty("totalRequested").GetInt32().Should().Be(1);
-        f.Oss.Verify(s => s.DeleteAsync(It.IsAny<string>()), Times.Never);
+        var ids = new List<long>();
+        for (var state = 0; state <= 3; state++) ids.Add(await f.SeedRecordAsync($"uploads/{state}.jpg", status: state));
+        ids.Add(long.MaxValue);
+        if (unavailable) f.References.Setup(collector => collector.CollectAsync(It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("Injected provider failure."));
+        var result = Assert.IsType<ObjectResult>(await f.Controller.BatchResolve(new() { Ids = ids }));
+        Assert.Equal(unavailable ? 502 : 409, result.StatusCode);
+        Assert.Equal(4, await f.Db.OssAuditRecords.CountAsync());
+        f.References.Verify(collector => collector.CollectAsync(It.IsAny<CancellationToken>()), Times.Once);
+        f.Oss.Verify(service => service.DeleteAsync(It.IsAny<string>()), Times.Never);
+        f.Student.VerifyNoOtherCalls(); f.Mistake.VerifyNoOtherCalls();
     }
 
     [Fact]
-    public async Task BatchResolve_ExcludesIgnoredRecords()
+    public async Task BatchResolve_NoMatchingIdsStillUsesTheSameAuthorizationGate()
     {
         var f = new Fixture();
-        f.Oss.Setup(s => s.DeleteAsync(It.IsAny<string>())).ReturnsAsync(true);
-        var pendingId = await f.SeedRecordAsync("uploads/orphan.jpg");
-        var ignoredId = await f.SeedRecordAsync("uploads/ignored.jpg", status: 2);
-
-        var result = await f.Controller.BatchResolve(
-            new BatchResolveRequest { Ids = new List<long> { pendingId, ignoredId } });
-
-        var json = ReadJson(Assert.IsType<OkObjectResult>(result).Value);
-        json.GetProperty("resolvedCount").GetInt32().Should().Be(1);
-        f.Oss.Verify(s => s.DeleteAsync("uploads/orphan.jpg"), Times.Once);
-        f.Oss.Verify(s => s.DeleteAsync("uploads/ignored.jpg"), Times.Never);
-        (await f.Db.OssAuditRecords.AnyAsync(r => r.Id == ignoredId))
-            .Should().BeTrue("ignored records are kept for traceability");
+        var result = Assert.IsType<ObjectResult>(await f.Controller.BatchResolve(new() { Ids = [999] }));
+        Assert.Equal(409, result.StatusCode);
+        f.References.Verify(collector => collector.CollectAsync(It.IsAny<CancellationToken>()), Times.Once);
+        f.Oss.Verify(service => service.DeleteAsync(It.IsAny<string>()), Times.Never);
     }
-
-    [Fact]
-    public async Task BatchResolve_SomeReferenced_SkipsThemAndResolvesTheRest()
-    {
-        var f = new Fixture();
-        f.StudentPaths.Add("uploads/referenced.jpg");
-        f.MistakePaths.Add("mistakes/referenced.jpg");
-        f.Oss.Setup(s => s.DeleteAsync(It.IsAny<string>())).ReturnsAsync(true);
-        var byStudent = await f.SeedRecordAsync("uploads/referenced.jpg");
-        var byMistake = await f.SeedRecordAsync("mistakes/referenced.jpg");
-        var orphan = await f.SeedRecordAsync("uploads/orphan.jpg");
-
-        var result = await f.Controller.BatchResolve(
-            new BatchResolveRequest { Ids = new List<long> { byStudent, byMistake, orphan } });
-
-        var json = ReadJson(Assert.IsType<OkObjectResult>(result).Value);
-        json.GetProperty("resolvedCount").GetInt32().Should().Be(1);
-        json.GetProperty("totalRequested").GetInt32().Should().Be(3);
-        var errors = json.GetProperty("errors").EnumerateArray().Select(e => e.GetString()).ToList();
-        errors.Should().HaveCount(2);
-        errors.Should().Contain(e => e!.Contains("uploads/referenced.jpg") && e.Contains("被上传记录引用"));
-        errors.Should().Contain(e => e!.Contains("mistakes/referenced.jpg") && e.Contains("被错题记录引用"));
-
-        f.Oss.Verify(s => s.DeleteAsync("uploads/orphan.jpg"), Times.Once);
-        f.Oss.Verify(s => s.DeleteAsync("uploads/referenced.jpg"), Times.Never);
-        f.Oss.Verify(s => s.DeleteAsync("mistakes/referenced.jpg"), Times.Never);
-        (await f.Db.OssAuditRecords.CountAsync()).Should().Be(2);
-    }
-
-    [Fact]
-    public async Task BatchResolve_StudentUnavailable_Returns502AndDeletesNothing()
-    {
-        var f = new Fixture();
-        f.StudentThrows = new HttpRequestException("connection refused");
-        f.Oss.Setup(s => s.DeleteAsync(It.IsAny<string>())).ReturnsAsync(true);
-        var a = await f.SeedRecordAsync("uploads/a.jpg");
-        var b = await f.SeedRecordAsync("uploads/b.jpg");
-
-        var result = await f.Controller.BatchResolve(new BatchResolveRequest { Ids = new List<long> { a, b } });
-
-        AssertStatus(result, 502, "Student 或 Homework 服务不可用，无法安全删除。");
-        f.Oss.Verify(s => s.DeleteAsync(It.IsAny<string>()), Times.Never);
-        (await f.Db.OssAuditRecords.CountAsync()).Should().Be(2);
-    }
-
-    [Fact]
-    public async Task BatchResolve_MistakeUnavailable_Returns502AndDeletesNothing()
-    {
-        var f = new Fixture();
-        f.MistakeThrows = new HttpRequestException("connection refused");
-        f.Oss.Setup(s => s.DeleteAsync(It.IsAny<string>())).ReturnsAsync(true);
-        var a = await f.SeedRecordAsync("uploads/a.jpg");
-
-        var result = await f.Controller.BatchResolve(new BatchResolveRequest { Ids = new List<long> { a } });
-
-        AssertStatus(result, 502, "Mistake 服务不可用，无法安全删除。");
-        f.Oss.Verify(s => s.DeleteAsync(It.IsAny<string>()), Times.Never);
-        (await f.Db.OssAuditRecords.CountAsync()).Should().Be(1);
-    }
-
-    [Fact]
-    public async Task BatchResolve_OnlyNonPendingRecords_SkipsTheReferenceSweepEntirely()
-    {
-        var f = new Fixture();
-        f.Oss.Setup(s => s.DeleteAsync(It.IsAny<string>())).ReturnsAsync(true);
-        var id = await f.SeedRecordAsync("uploads/resolved.jpg", status: 1);
-
-        var result = await f.Controller.BatchResolve(new BatchResolveRequest { Ids = new List<long> { id } });
-
-        ReadJson(Assert.IsType<OkObjectResult>(result).Value).GetProperty("resolvedCount").GetInt32().Should().Be(1);
-        f.Student.Verify(
-            s => s.GetAllUploadRecordsAsync(
-                It.IsAny<int?>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<string?>(),
-                It.IsAny<CancellationToken>()),
-            Times.Never);
-        f.Mistake.Verify(
-            s => s.GetMistakeItemListAsync(
-                It.IsAny<string>(), It.IsAny<int>(), It.IsAny<int>(),
-                It.IsAny<MistakeReviewStatus>(), It.IsAny<int>(), It.IsAny<int>(),
-                It.IsAny<CancellationToken>()),
-            Times.Never);
-    }
-
-    [Fact]
-    public async Task BatchResolve_OneDeleteFails_ReportsErrorAndContinuesWithTheOthers()
-    {
-        var f = new Fixture();
-        f.Oss.Setup(s => s.DeleteAsync("uploads/bad.jpg"))
-            .ThrowsAsync(new InvalidOperationException("s3 rejected"));
-        f.Oss.Setup(s => s.DeleteAsync("uploads/good.jpg")).ReturnsAsync(true);
-        var bad = await f.SeedRecordAsync("uploads/bad.jpg");
-        var good = await f.SeedRecordAsync("uploads/good.jpg");
-
-        var result = await f.Controller.BatchResolve(
-            new BatchResolveRequest { Ids = new List<long> { bad, good } });
-
-        var json = ReadJson(Assert.IsType<OkObjectResult>(result).Value);
-        json.GetProperty("resolvedCount").GetInt32().Should().Be(1);
-        json.GetProperty("errors").EnumerateArray()
-            .Select(e => e.GetString()).Should().Contain(e => e!.Contains("uploads/bad.jpg"));
-        (await f.Db.OssAuditRecords.AnyAsync(r => r.Id == bad))
-            .Should().BeTrue("the failed record stays for retry");
-        (await f.Db.OssAuditRecords.AnyAsync(r => r.Id == good)).Should().BeFalse();
-    }
-
-    // ===== GetRecords =====
 
     [Fact]
     public async Task GetRecords_PaginatesFiltersAndReportsCounts()
@@ -655,6 +406,8 @@ public class OssAuditControllerTests
                 { BaseAddress = new Uri("http://homework.test") });
             }
 
+            References.Setup(collector => collector.CollectAsync(It.IsAny<CancellationToken>()))
+                .ReturnsAsync(() => new StorageReferenceCollection(new HashSet<string>(StudentPaths.Concat(MistakePaths).Concat(HomeworkPaths), StringComparer.Ordinal), []));
             Controller = new OssAuditController(
                 Db,
                 Student.Object,
@@ -662,9 +415,10 @@ public class OssAuditControllerTests
                 Oss.Object,
                 BuildWorker(homework),
                 Mock.Of<ILogger<OssAuditController>>(),
-                homework);
+                homework, References.Object);
         }
 
+        public Mock<IStorageReferenceCollector> References { get; } = new();
         public AuditDbContext Db { get; }
         public OssAuditController Controller { get; }
         public Mock<IOssService> Oss { get; }
@@ -709,6 +463,7 @@ public class OssAuditControllerTests
         {
             var services = new ServiceCollection();
             services.AddLogging();
+            services.AddSingleton(References.Object);
             services.AddScoped(_ => Db);
             services.AddSingleton(Oss.Object);
             services.AddSingleton(Student.Object);
