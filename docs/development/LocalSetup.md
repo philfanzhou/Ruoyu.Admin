@@ -31,9 +31,9 @@
 
 ### 可选托管登录开发配置
 
-默认 `AdminOidc:Enabled=false`、`AdminOidc:UseSessionForAdminApi=false`，旧密码/JWT 前端与 API 保持原样。只在验证 #38 的基础握手时显式设 `AdminOidc__Enabled=true`、`AdminOidc__RedirectUri=http://127.0.0.1:5020/api/auth/oidc/callback`，并在本地 SignaCore 注册同一精确 URI 的 Confidential Code 客户端与 openid profile/S256；复用其 AppId/AppSecret，通过环境变量或 user-secrets 保存。Authority/Issuer 使用本地数字 loopback；`localhost` 不符合此 OIDC 切片的开发注册边界。生产要求 HTTPS，固定 URI 不取入站 Host/转发头。
+默认 `AdminOidc:Enabled=false`、`AdminOidc:UseSessionForAdminApi=false`，管理 API 的旧兼容模式暂时保留；密码入口永久 410，不能通过开关恢复。只在验证 #38 的基础握手时显式设 `AdminOidc__Enabled=true`、`AdminOidc__RedirectUri=http://127.0.0.1:5020/api/auth/oidc/callback`，并在本地 SignaCore 注册同一精确 URI 的 Confidential Code 客户端与 openid profile/S256；复用其 AppId/AppSecret，通过环境变量或 user-secrets 保存。Authority/Issuer 使用本地数字 loopback；`localhost` 不符合此 OIDC 切片的开发注册边界。生产要求 HTTPS，固定 URI 不取入站 Host/转发头。
 
-新入口是 `/api/auth/oidc/start`、框架 callback 和 `/api/auth/session`；票据/令牌只在进程内，Cookie 只含引用，8 小时绝对到期、重启失效。默认不以它授权管理 API。要验证 #42，显式再设 `AdminOidc__UseSessionForAdminApi=true` 并配置当前 `AdminPortal:AdminUserIds`：管理 API 拒入站 Authorization、使用服务器 token 期限门禁与管理员白名单（401/403）；写请求先 GET `/api/auth/csrf`，带独立 Cookie 与单值 `X-CSRF-TOKEN`（失败 400）。仅用 mock OSS/隔离数据库回归，不做生产删除；新 Cookie 不放行三个未迁移代理。此时密码 login 为 410、零 Identity 转发；旧 logout 只清旧 JWT Cookie，不撤销新票据。不切 SPA、不做 refresh/上游 logout。完整配置、安全与上线门禁见 [Deployment.md](./Deployment.md#可选-signacore-托管登录)。
+新入口是 `/api/auth/oidc/start`、框架 callback 和 `/api/auth/session`；票据/令牌只在进程内，Cookie 只含引用，8 小时绝对到期、重启失效。默认不以它授权管理 API。要验证 #42，显式再设 `AdminOidc__UseSessionForAdminApi=true` 并配置当前 `AdminPortal:AdminUserIds`：管理 API 拒入站 Authorization、使用服务器 token 期限门禁与管理员白名单（401/403）；写请求先 GET `/api/auth/csrf`，带独立 Cookie 与单值 `X-CSRF-TOKEN`（失败 400）。仅用 mock OSS/隔离数据库回归，不做生产删除；新 Cookie 不放行三个未迁移代理。所有配置下密码 login 均为 410、零 Identity 转发；旧 logout 只清旧 JWT Cookie，不撤销新票据。不切 SPA、不做 refresh/上游 logout。完整配置、安全与上线门禁见 [Deployment.md](./Deployment.md#可选-signacore-托管登录)。
 
 自动化完整握手使用 `backend/Tests/Integration/OidcTestAuthority.cs` 的测试 RSA、Discovery/JWKS/token 替身与 Testcontainers PostgreSQL，`dotnet test Ruoyu.Admin.sln --configuration Release --filter "FullyQualifiedName~Oidc"`；不连接生产 Identity。
 
