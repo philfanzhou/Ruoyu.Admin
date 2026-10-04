@@ -80,15 +80,14 @@ internal sealed class AdminSessionMiddleware(RequestDelegate next, AdminOidcSett
             await AdminSessionBoundary.RejectAsync(context, 503, "session_api_disabled");
             return;
         }
+        // Retire password input in every configuration before authentication or model binding.
+        if (HttpMethods.IsPost(context.Request.Method) && AdminSessionBoundary.IsAuthPath(context.Request.Path, "/api/auth/login"))
+        {
+            await AdminSessionBoundary.RejectAsync(context, 410, "legacy_login_disabled");
+            return;
+        }
         if (settings.UseSessionForAdminApi)
         {
-            // Run before model binding: retired password input is never accepted or forwarded,
-            // including invalid JSON, missing body or invalid credentials.
-            if (HttpMethods.IsPost(context.Request.Method) && AdminSessionBoundary.IsAuthPath(context.Request.Path, "/api/auth/login"))
-            {
-                await AdminSessionBoundary.RejectAsync(context, 410, "legacy_login_disabled");
-                return;
-            }
             if (AdminSessionBoundary.IsSessionPath(context.Request.Path, settings) && !await boundary.ValidateAsync(context)) return;
         }
         await next(context);
