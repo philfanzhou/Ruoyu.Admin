@@ -37,6 +37,29 @@ public sealed partial class AdminOidcTests
     private static async Task<HttpResponseMessage> PostLogout(HttpClient client, string cookie, (string Token, string Cookie) csrf,
         CancellationToken cancellation = default) => await Api(client, "/api/auth/logout", cookie + "; " + csrf.Cookie, "POST", csrf: [csrf.Token], cancellation: cancellation);
 
+    [Fact]
+    public async Task PreparedLogout_NonPostNeverRevokesOrPreparesAndKeepsHeaderMetadata()
+    {
+        using var authority = new OidcTestAuthority(); var upstream = new LogoutCapture();
+        using var factory = LogoutFactory(authority, upstream); using var client = Browser(factory);
+        var cookie = await LoginSession(client, authority); var (key, _) = await Stored(factory, cookie);
+        foreach (var method in new[] { "GET", "HEAD", "PUT", "PATCH", "DELETE", "OPTIONS", "TRACE" })
+        {
+            using var response = await Api(client, "/API/AUTH/LOGOUT/", cookie, method);
+            Assert.Equal(HttpStatusCode.MethodNotAllowed, response.StatusCode);
+            Assert.Equal("no-store", response.Headers.CacheControl?.ToString());
+            Assert.Equal("no-referrer", response.Headers.GetValues("Referrer-Policy").Single());
+            Assert.False(response.Headers.TryGetValues("Set-Cookie", out _));
+            Assert.NotNull(await factory.Services.GetRequiredService<MemoryTicketStore>().RetrieveAsync(key));
+            Assert.Empty(upstream.Forms);
+        }
+        using var missingCsrf = await Api(client, "/api/auth/logout", cookie, "POST");
+        Assert.Equal(HttpStatusCode.BadRequest, missingCsrf.StatusCode);
+        Assert.Equal("no-store", missingCsrf.Headers.CacheControl?.ToString());
+        Assert.NotNull(await factory.Services.GetRequiredService<MemoryTicketStore>().RetrieveAsync(key));
+        Assert.Empty(upstream.Forms);
+    }
+
     [Theory]
     [InlineData(false, false, false, false)][InlineData(true, false, false, false)][InlineData(false, true, false, false)][InlineData(true, true, false, false)]
     [InlineData(false, false, true, false)][InlineData(true, false, true, false)][InlineData(false, true, true, false)][InlineData(true, true, true, false)]
@@ -102,8 +125,9 @@ public sealed partial class AdminOidcTests
         foreach (var flag in new[] { "httponly", "secure", "samesite=lax", "path=/api/auth/oidc/logout-callback", "max-age=300" }) Assert.Contains(flag, binding.ToLowerInvariant());
         foreach (var path in new[] { "/api/admin/image?path=test", "/api/admin/session-probe", "/api/auth/csrf" })
             await Rejected(await Api(client, path, cookie), 401, "unauthorized");
-        foreach (var path in new[] { "/api/identity/users", "/api/teacher-portal/admin/users", "/api/assistant-portal/admin/users" })
-            Assert.Equal(HttpStatusCode.Unauthorized, (await Api(client, path, cookie)).StatusCode);
+        Assert.Equal(identityProxy ? HttpStatusCode.Unauthorized : HttpStatusCode.ServiceUnavailable, (await Api(client, "/api/identity/users", cookie)).StatusCode);
+        foreach (var path in new[] { "/api/teacher-portal/admin/users", "/api/assistant-portal/admin/users" })
+            Assert.Equal(portalProxies ? HttpStatusCode.Unauthorized : HttpStatusCode.ServiceUnavailable, (await Api(client, path, cookie)).StatusCode);
         Assert.Null(await factory.Services.GetRequiredService<MemoryTicketStore>().RetrieveAsync(key));
         Assert.Empty(probe.Student.Invocations); Assert.Empty(probe.Oss.Invocations);
         Assert.Equal(0, probe.Reads); Assert.Equal(0, probe.Writes);

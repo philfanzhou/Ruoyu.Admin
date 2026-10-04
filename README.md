@@ -140,8 +140,8 @@ Configuration is read from `appsettings.json`, then Consul KV under `config/ruoy
 | `AdminOidc:UseSessionForLogout`, `AdminOidc:PostLogoutRedirectUri` | Optional prepared logout (default false, requires OIDC and session API); exact registered same-origin `/api/auth/oidc/logout-callback` |
 | Session token expiry | Session API returns `reauthentication_required` for a valid expired token; `/api/auth/session` exposes `requiresReauthentication`; sign-in is explicit with no refresh or write replay |
 | `AdminOidc:UseSessionForPortalProxies` | Teacher/Assistant proxy server tokens (default false, requires OIDC and session API); association queries follow the API switch independently |
-| `AdminOidc:UseSessionForIdentityProxy` | Identity proxy server-token authorization (default false, requires OIDC and session API); isolates browser cookies/CSRF and upstream Set-Cookie |
-| `AdminOidc:UseSessionForAdminApi` | Optional session authorization and CSRF for `/api/admin/*` (default false, requires OIDC); retires password login when true |
+| `AdminOidc:UseSessionForIdentityProxy` | Identity proxy server-token authorization (default false returns 503; true requires OIDC and session API); isolates browser cookies/CSRF and upstream Set-Cookie |
+| `AdminOidc:UseSessionForAdminApi` | Optional session authorization and CSRF for `/api/admin/*` (default false, requires OIDC) |
 | `AdminWeb:AllowedOrigins` | CORS origins; empty means allow any |
 | `Oss:*` | `InternalEndpoint` / `InternalSecure` for direct S3 access, `PublicBaseUrl` for presigned URLs |
 | `StorageReferences:*` | Default-off dedicated RS256 signing key and three mandatory HTTPS provider roots; see [StorageAudit](docs/modules/OssAudit/StorageAudit.md) |
@@ -152,7 +152,7 @@ Configuration is read from `appsettings.json`, then Consul KV under `config/ruoy
 
 Full details: [docs/development/Deployment.md](docs/development/Deployment.md).
 
-The optional SignaCore Code + PKCE handshake stores tokens in a single-process server ticket, with an opaque HttpOnly cookie and an absolute eight-hour lifetime. This phase has not switched the SPA or API/proxy authorization: existing JWT login remains active, and the new cookie alone does not grant Admin API access. Production activation requires the exact HTTPS callback registration and downstream audience migration; restarts lose pending handshakes and sessions.
+The SPA uses the server-session Code + PKCE flow: credentials stay on the hosted SignaCore page, tokens stay in a single-process ticket, and the browser carries an opaque HttpOnly cookie. Explicitly enable all five `AdminOidc` switches on the controlled instance, configure the current administrator allowlist and ADMIN audience, and register exact HTTPS login and logout callbacks before activation. All five defaults remain false and `start.sh` does not enable them. The current SPA shows an unavailable state when this capability is disabled; it never falls back to browser tokens or password login. Legacy backend endpoints remain available to an older SPA version. Rollback requires the matching older SPA and configuration; it cannot resurrect server tickets or obsolete browser tokens. For production session mode, HTTPS must reach the BFF as well as the browser. The host does not trust arbitrary forwarded scheme headers: an outer TLS proxy forwarding plain HTTP to 5020 cannot satisfy secure antiforgery cookies. Keep port 5020 and add a Kestrel HTTPS endpoint if needed; verify its certificate with the normal CA at the proxy. See [Deployment](docs/development/Deployment.md#可选-signacore-托管登录) for configuration and both CSRF probes. Tickets expire absolutely after eight hours, access-token expiry requires explicit reauthentication, and restarts lose sessions. There is no database migration, refresh, or automatic write replay.
 
 ## Tests
 
@@ -163,6 +163,8 @@ dotnet test Ruoyu.Admin.sln --configuration Release
 
 ```bash
 cd frontend
+npm ci
+npm test
 npm run build
 ```
 
@@ -226,3 +228,11 @@ Known documentation debt carried over from the monorepo is listed in [docs/READM
 ## License
 
 MIT — see [LICENSE](./LICENSE).
+
+Password login (`POST /api/auth/login`) is permanently retired with `410 legacy_login_disabled`, before authentication or body binding in every configuration. Use SignaCore hosted login through `/api/auth/oidc/start`; disabling OIDC makes login unavailable. The role callback is retained. Deploy the final combined version with the hosted-login SPA (#41); intermediate images containing the old password form are not release candidates.
+
+Teacher/Assistant proxies now use only trusted server-session tokens. Disabling portal proxying returns `503 session_portal_proxy_disabled` before authentication; browser credentials cannot restore it. Both portals share path/body preservation, credential and upstream-cookie isolation, and request cancellation. Linked-account aggregation follows the API-session capability independently of the portal proxy flag; disabling the API capability returns `503 session_api_disabled`, while enabled queries use server tokens and preserve partial-result behavior.
+
+The Identity proxy accepts only a trusted server-session access token. Disabling its capability returns `503 session_identity_proxy_disabled` before authentication; browser Authorization/Cookie credentials cannot restore it. It always strips browser CSRF/Host and forged gateway headers, injects owned AppId/AppSecret, suppresses upstream Set-Cookie, and propagates request cancellation without application retries.
+
+Management APIs (including native images), ordinary CSRF and session status now require the enabled server-session capability: disabling it returns `503 session_api_disabled` before authentication. OIDC-disabled session status returns `503 oidc_disabled`. Logout is owned by prepared-logout middleware; disabling it returns `503 session_logout_disabled`, and enabled non-POST logout returns 405. Browser JWTs cannot restore these local capabilities. Deploy only the final combination with the hosted-login SPA (#41/#75).

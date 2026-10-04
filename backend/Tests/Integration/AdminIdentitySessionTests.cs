@@ -126,6 +126,27 @@ public sealed partial class AdminOidcTests
         Assert.Single(downstream.Requests);
     }
 
+    [Theory]
+    [InlineData(false, false)][InlineData(true, false)][InlineData(true, true)]
+    public async Task IdentitySession_DisabledStopsBeforeBearerAndHttp(bool enabled, bool api)
+    {
+        using var authority = new OidcTestAuthority(); var downstream = new SessionProxyCapture(); var bearers = 0;
+        void Configure(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
+        {
+            services.AddHttpClient("IdentityService").ConfigurePrimaryHttpMessageHandler(() => downstream);
+            services.Configure<Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerOptions>("Bearer", options =>
+                options.Events.OnMessageReceived = _ => { Interlocked.Increment(ref bearers); return Task.CompletedTask; });
+        }
+        using var factory = enabled ? OidcFactory(authority, configure: Configure, sessionApi: api)
+            : CreateFactory(configureTestServices: Configure);
+        using var client = Browser(factory);
+        foreach (var path in new[] { "/api/identity", "/API/IDENTITY/", "/api/identity/users?size=2" })
+        foreach (var auth in new string[]?[] { null, ["Bearer " + authority.LegacyBearer()], ["a", "b"] })
+            await Rejected(await Api(client, path, "adminAuthToken=" + authority.LegacyBearer(), "POST", authorization: auth,
+                body: new StringContent("invalid json")), 503, "session_identity_proxy_disabled");
+        Assert.Equal(0, bearers); Assert.Equal(0, authority.Redeems); Assert.Empty(downstream.Requests);
+    }
+
     [Fact]
     public void IdentitySession_InvalidSwitchCombinationFailsWithoutValues()
     {

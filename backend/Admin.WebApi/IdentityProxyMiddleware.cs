@@ -15,12 +15,12 @@ internal sealed class IdentityProxyMiddleware
     private readonly RequestDelegate _next;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IdentityServiceOptions _options;
-    private readonly AdminOidcSettings? _sessionSettings;
+    private readonly AdminOidcSettings _sessionSettings;
 
     public IdentityProxyMiddleware(
         RequestDelegate next,
         IHttpClientFactory httpClientFactory,
-        IOptions<IdentityServiceOptions> options, AdminOidcSettings? sessionSettings = null)
+        IOptions<IdentityServiceOptions> options, AdminOidcSettings sessionSettings)
     {
         _next = next;
         _httpClientFactory = httpClientFactory;
@@ -36,15 +36,16 @@ internal sealed class IdentityProxyMiddleware
             return;
         }
 
-        var sessionMode = _sessionSettings?.UseSessionForIdentityProxy == true;
+        if (!_sessionSettings.UseSessionForIdentityProxy)
+        { await AdminSessionBoundary.RejectAsync(context, 503, "session_identity_proxy_disabled"); return; }
         var session = context.Items[AdminSessionBoundary.TrustedSessionKey] as AdminSessionResult;
-        if (sessionMode && (session?.StatusCode != 200 || string.IsNullOrWhiteSpace(session.AccessToken)))
+        if (session?.StatusCode != 200 || string.IsNullOrWhiteSpace(session.AccessToken))
         { await AdminSessionBoundary.RejectAsync(context, 401, "unauthorized"); return; }
-        var cancellation = sessionMode ? context.RequestAborted : CancellationToken.None;
+        var cancellation = context.RequestAborted;
         cancellation.ThrowIfCancellationRequested();
         var client = _httpClientFactory.CreateClient("IdentityService");
 
-        var targetPath = sessionMode ? "/api" + remaining : context.Request.Path.Value!.Replace("/api/identity", "/api");
+        var targetPath = "/api" + remaining;
         var targetUri = $"{_options.Authority.TrimEnd('/')}{targetPath}{context.Request.QueryString}";
 
         using var requestMessage = new HttpRequestMessage(new HttpMethod(context.Request.Method), targetUri);
@@ -63,10 +64,10 @@ internal sealed class IdentityProxyMiddleware
 
         foreach (var header in context.Request.Headers)
         {
-            if (sessionMode && (header.Key.Equals("Authorization", StringComparison.OrdinalIgnoreCase)
+            if (header.Key.Equals("Authorization", StringComparison.OrdinalIgnoreCase)
                 || header.Key.Equals("Cookie", StringComparison.OrdinalIgnoreCase)
                 || header.Key.Equals("Host", StringComparison.OrdinalIgnoreCase)
-                || header.Key.Equals(AdminSessionBoundary.CsrfHeader, StringComparison.OrdinalIgnoreCase))) continue;
+                || header.Key.Equals(AdminSessionBoundary.CsrfHeader, StringComparison.OrdinalIgnoreCase)) continue;
             if (header.Key.StartsWith("Content-", StringComparison.OrdinalIgnoreCase))
                 continue;
             if (string.Equals(header.Key, "X-Admin-AppId", StringComparison.OrdinalIgnoreCase))
@@ -76,7 +77,7 @@ internal sealed class IdentityProxyMiddleware
             requestMessage.Headers.TryAddWithoutValidation(header.Key, header.Value.ToArray());
         }
 
-        if (sessionMode) requestMessage.Headers.Authorization = new AuthenticationHeaderValue("Bearer", session!.AccessToken);
+        requestMessage.Headers.Authorization = new AuthenticationHeaderValue("Bearer", session!.AccessToken);
 
         if (!string.IsNullOrEmpty(_options.AppId))
             requestMessage.Headers.TryAddWithoutValidation("X-Admin-AppId", _options.AppId);
@@ -93,7 +94,7 @@ internal sealed class IdentityProxyMiddleware
         {
             context.Response.StatusCode = 502;
             context.Response.ContentType = "application/json; charset=utf-8";
-            await context.Response.WriteAsync("{\"message\":\"Identity service unreachable\"}").ConfigureAwait(false);
+            await context.Response.WriteAsync("{\"message\":\"Identity service unreachable\"}", cancellation).ConfigureAwait(false);
             return;
         }
 
@@ -107,12 +108,12 @@ internal sealed class IdentityProxyMiddleware
 
             foreach (var header in response.Headers)
             {
-                if (ExcludedResponseHeaders.Contains(header.Key) || sessionMode && header.Key.Equals("Set-Cookie", StringComparison.OrdinalIgnoreCase)) continue;
+                if (ExcludedResponseHeaders.Contains(header.Key) || header.Key.Equals("Set-Cookie", StringComparison.OrdinalIgnoreCase)) continue;
                 context.Response.Headers[header.Key] = header.Value.ToArray();
             }
             foreach (var header in response.Content.Headers)
             {
-                if (ExcludedResponseHeaders.Contains(header.Key) || sessionMode && header.Key.Equals("Set-Cookie", StringComparison.OrdinalIgnoreCase)) continue;
+                if (ExcludedResponseHeaders.Contains(header.Key) || header.Key.Equals("Set-Cookie", StringComparison.OrdinalIgnoreCase)) continue;
                 context.Response.Headers[header.Key] = header.Value.ToArray();
             }
 
