@@ -46,31 +46,13 @@ Cookie 为 HttpOnly、Path=/、SameSite=Lax，生产 Secure，只含数据保护
 
 所有管理写方法（GET/HEAD/OPTIONS/TRACE 之外，包括 POST/PUT/PATCH/DELETE 与 OSS trigger/resolve/batch-resolve）在 Controller/业务/出站/删除前显式验证框架 antiforgery，要求单值 `X-CSRF-TOKEN`。缺/错/重复 header、错 Cookie、异主体 token、只提交 form token 为 `400 {"error":"csrf_invalid"}`；CSRF 成功只继续本次请求，不重放写请求。审计删除前引用复核与来源不可达 502 拒删继续生效；匿名 claims/OIDC callback 不套此浏览器 CSRF 边界。默认 CORS 不变，不启用跨源 Cookie。
 
-true 时 `POST /api/auth/login` 在读取密码/模型绑定前固定 `410 {"error":"legacy_login_disabled"}`，不转发 Identity、不发 JWT Cookie。`POST /api/auth/logout` 仅由 prepared logout middleware 处理，关闭时固定 `503 session_logout_disabled`，不落旧 Bearer action；启用时非 POST 固定 405（含安全响应头），不撤票或 prepare。新会话撤销/prepared logout 按下文既有 #46 协议。三个未迁移代理仍可接受旧 Bearer，关联查询的服务器 token 转发属 #44；不要用空聚合列表判断已完成门户迁移。SPA/非 API 继续匿名，health 语义不变。
+任何配置下 `POST /api/auth/login` 在读取密码/模型绑定前固定 `410 {"error":"legacy_login_disabled"}`，不转发 Identity、不发 JWT Cookie。`POST /api/auth/logout` 仅由 prepared logout middleware 处理，关闭时固定 `503 session_logout_disabled`，不落旧 Bearer action；启用时非 POST 固定 405（含安全响应头），不撤票或 prepare。新会话撤销/prepared logout 按下文既有 #46 协议。三个未迁移代理仍可接受旧 Bearer，关联查询的服务器 token 转发属 #44；不要用空聚合列表判断已完成门户迁移。SPA/非 API 继续匿名，health 语义不变。
 
-### 登录（获取 JWT，默认 legacy 模式）
+### 已退役的密码登录
 
-`POST /api/auth/login` — `[AllowAnonymous]`
+`POST /api/auth/login` 永久返回 `410 {"error":"legacy_login_disabled"}`。所有 Enabled/API-session 的有效开关组合以及大小写/尾斜线、空或畸形请求体、任意 Cookie/Authorization 都在认证和模型绑定前拒绝；不读取密码、不兑换 Identity token、不签发 Cookie，也不返回 access/refresh token。开关不能恢复密码入口。请使用 `/api/auth/oidc/start` 的 SignaCore 托管登录；关闭 OIDC 时该能力明确不可用。
 
-请求体：`{ "username": "...", "password": "..." }`
-
-`UseSessionForAdminApi=false` 时后端向 Identity 服务发起 password grant 取 JWT。Identity 回调 `POST /api/auth/callback`（`[AllowAnonymous]`），对白名单 `AdminPortal:AdminUserIds` 中的用户注入 `role:admin`。
-
-成功返回：
-
-```json
-{
-  "success": true,
-  "accessToken": "...",
-  "refreshToken": "...",
-  "expiresIn": 3600,
-  "expiresAt": 1710000000
-}
-```
-
-前端将 `accessToken` 存入 `localStorage`，后续请求通过 `Authorization: Bearer` 头发送。legacy 路径未携带或 token 无效时返回 **401 Unauthorized**；session 路径按上文拒绝入站 Bearer。
-
-> **集成部署下首次访问**：浏览器直接访问后端端口时，`/` 必须匿名返回 `index.html` 才能加载出登录页（否则陷入「未登录→无法加载登录页→无法登录」的死锁）。API 端点的 401 由前端 axios 拦截器捕获后跳转 `/login`。
+`POST /api/auth/callback` 的 `{ "userId": "..." }` → `{ "roles": ["admin"] }` 白名单契约保持；非白名单返回空 roles。SPA 和非 API 路径保持匿名。旧完整镜像回滚属于独立部署动作，本版不能复活密码登录或已撤票据。最终发布必须包含 #41 的托管登录 SPA，不部署仍含旧密码表单的中间镜像。
 
 ---
 
