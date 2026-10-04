@@ -289,6 +289,15 @@ public sealed class ServiceMantleSecurityResponseHeadersTests : ServiceMantleInt
             Assert.Equal("{\"error\":\"oidc_disabled\"}", await response.Content.ReadAsStringAsync());
             AssertBaseline(response);
         }
+        // Logout owns its callback in every configuration, including Enabled=false.
+        foreach (var path in new[] { "/api/auth/logout", "/api/auth/logout/csrf", AdminOidcSettings.LogoutCallbackPath, "/API/AUTH/OIDC/LOGOUT-CALLBACK/" })
+        {
+            using var response = await SendAsync(client, path, path == "/api/auth/logout" ? "POST" : "GET");
+            Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+            Assert.Equal("{\"error\":\"session_logout_disabled\"}", await response.Content.ReadAsStringAsync());
+            AssertBaseline(response);
+        }
+
     }
 
     // ===== Unmarked surfaces keep their existing header behavior =====

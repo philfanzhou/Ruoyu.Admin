@@ -227,7 +227,9 @@ internal static class AdminOidcRegistration
     {
         app.Use(async (context, next) =>
         {
-            if (context.Request.Path.StartsWithSegments("/api/auth/oidc") || AdminSessionBoundary.IsAuthPath(context.Request.Path, "/api/auth/session"))
+            if ((context.Request.Path.StartsWithSegments("/api/auth/oidc")
+                    && !AdminSessionBoundary.IsAuthPath(context.Request.Path, AdminOidcSettings.LogoutCallbackPath))
+                || AdminSessionBoundary.IsAuthPath(context.Request.Path, "/api/auth/session"))
             {
                 if (!context.RequestServices.GetRequiredService<AdminOidcSettings>().Enabled)
                 {
