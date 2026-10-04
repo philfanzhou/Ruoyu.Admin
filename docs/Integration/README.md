@@ -4,3 +4,4 @@
 |----------|------------|
 | IdentityService | [IdentityProxy](./IdentityService/IdentityProxy/01-FEATURE.md) |
 | TeacherPortal | [TeacherPortalProxy](./TeacherPortal/TeacherPortalProxy/01-FEATURE.md) |
+| Student / Mistake | [受管指派与专用 HTTP client](./ManagedAssignment.md) |

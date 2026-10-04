@@ -10,12 +10,12 @@
 
 ## 补充约束
 
-1. **幂等性**：分配操作非幂等，同一上传记录可被多次分配，每次创建新的 `mistake_item`
-2. **并发**：无显式并发控制，多次同时分配同一上传记录会产生多条 `mistake_item`
-3. **事务边界**：单次分配在单次 gRPC 调用内完成，跨服务操作无分布式事务
+1. **幂等性**：legacyfalse 兼容原入口；managed-v1 固定 revision/requestKey/payload，同组重放返回 Mistake 保存的原 IDs。
+2. **并发**：managed 由 Mistake canonical alias 与来源 lease/guard 决定；不同合法组可共享原图，不能只按来源去重。
+3. **事务边界**：逐组 HTTP 调用，不提供整批跨请求原子性；部分/Unknown 保留原请求并由用户显式重试。
 4. **失败降级**：查询学生姓名失败时回退显示 studentId
 5. **已审核图片保护**：已审核通过的图片不能再次被分配
-6. **图片索引**：`imageIndices` 基于上传记录的原始索引，不受移除操作影响
+6. **图片索引**：legacy 取当前记录索引；managed 的索引仅用于可信详情选择，发送精确固定 sourcePaths，后续不按 current 重映射。
 7. **跨学科分配**：多个 assignment 可分别指定不同的 subject/grade
 
 ## 关键验收条件摘要
@@ -37,6 +37,8 @@
 - 上传记录的批量导出
 
 ## 文档索引
+
+- [受管指派集成契约](../../../Integration/ManagedAssignment.md) — 配置、可信 metadata、managed HTTP、结果与恢复边界
 
 - [02-SPEC.md](./02-SPEC.md) — 详细需求与验收标准清单
 - [03-DESIGN.md](./03-DESIGN.md) — 架构设计、接口签名与数据流

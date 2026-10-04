@@ -112,6 +112,9 @@ export interface EnumOptionsResponse {
 
 // Upload Record Types
 export interface UploadRecordDto {
+    contentRevision?: string | null
+    imageEntries?: { path: string; type: string }[]
+    assignmentProtocol?: string
     id: string
     studentId: string
     studentName: string
@@ -128,6 +131,21 @@ export interface ImageAssignmentPayload {
     subject: number
     grade: number
     comments?: string
+}
+
+export interface ManagedImageAssignment {
+    requestKey: string
+    sourcePaths: string[]
+    subject: number
+    grade: number
+    comments: string
+}
+
+export interface ManagedAssignRequest {
+    mode: 'managed-v1'
+    studentId: string
+    expectedContentRevision: string
+    assignments: ManagedImageAssignment[]
 }
 
 export interface AssignUploadRecordRequest {
@@ -314,6 +332,11 @@ class StudentAdminApiClient {
             `/api/admin/oss-upload-records/${recordId}/assign`,
             payload
         )
+        return response.data
+    }
+
+    async assignManagedUploadRecord(recordId: string, payload: ManagedAssignRequest, signal?: AbortSignal): Promise<unknown> {
+        const response = await this.client.post(`/api/admin/oss-upload-records/${recordId}/assign`, payload, { signal })
         return response.data
     }
 

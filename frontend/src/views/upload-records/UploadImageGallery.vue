@@ -30,19 +30,20 @@
           type="button"
           class="img-check"
           :class="{ checked: assignIndices.includes(idx) }"
+          :disabled="selectionDisabled || (assignableIndices !== undefined && !assignableIndices.includes(idx))"
           :title="assignIndices.includes(idx) ? '从指派中移除' : '加入指派'"
           @click.stop="emit('toggleAssign', idx)"
         >
           <el-icon v-if="assignIndices.includes(idx)" :size="10"><Check /></el-icon>
         </button>
         <div class="img-thumb-actions">
-          <button type="button" class="img-action-btn" title="向左旋转" @click.stop="emit('rotate', idx, -90)">
+          <button type="button" class="img-action-btn" :disabled="mutationsDisabled" title="向左旋转" @click.stop="emit('rotate', idx, -90)">
             <el-icon :size="11"><RefreshLeft /></el-icon>
           </button>
-          <button type="button" class="img-action-btn" title="向右旋转" @click.stop="emit('rotate', idx, 90)">
+          <button type="button" class="img-action-btn" :disabled="mutationsDisabled" title="向右旋转" @click.stop="emit('rotate', idx, 90)">
             <el-icon :size="11"><RefreshRight /></el-icon>
           </button>
-          <button type="button" class="img-action-btn danger" title="删除图片" @click.stop="emit('delete', idx)">
+          <button type="button" class="img-action-btn danger" :disabled="mutationsDisabled" title="删除图片" @click.stop="emit('delete', idx)">
             <el-icon :size="11"><Delete /></el-icon>
           </button>
         </div>
@@ -64,6 +65,9 @@ const props = defineProps<{
   rotations: number[]
   selectedIndex: number
   assignIndices: number[]
+  assignableIndices?: number[]
+  selectionDisabled?: boolean
+  mutationsDisabled?: boolean
 }>()
 
 const emit = defineEmits<{

@@ -58,6 +58,8 @@ JSON API responses carry the ServiceMantle six-header baseline (`Cache-Control: 
 
 `Ruoyu.Admin.ServiceClients` holds **copies** of the downstream DTO shapes, not shared definitions. The Student and Mistake HTTP contracts are owned by Ruoyu.Study; an upstream change surfaces here as a deserialization mismatch, not a compile error.
 
+Managed mistake assignment is opt-in (`Mistake:ManagedAssignmentEnabled=false` by default). It fixes the displayed source revision, group request keys and exact paths before sending through a dedicated authenticated HTTPS client. Partial or unknown results retain the original request and known item IDs for explicit retry; Mistake remains the only durable idempotency authority. See [the integration contract](docs/Integration/ManagedAssignment.md) for enablement, response states, verification and the page-memory recovery boundary.
+
 ## Dependencies
 
 | Dependency | Why |
