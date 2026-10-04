@@ -140,8 +140,8 @@ Configuration is read from `appsettings.json`, then Consul KV under `config/ruoy
 | `AdminOidc:UseSessionForLogout`, `AdminOidc:PostLogoutRedirectUri` | Optional prepared logout (default false, requires OIDC and session API); exact registered same-origin `/api/auth/oidc/logout-callback` |
 | Session token expiry | Session API returns `reauthentication_required` for a valid expired token; `/api/auth/session` exposes `requiresReauthentication`; sign-in is explicit with no refresh or write replay |
 | `AdminOidc:UseSessionForPortalProxies` | Teacher/Assistant proxy server tokens (default false, requires OIDC and session API); association queries follow the API switch independently |
-| `AdminOidc:UseSessionForIdentityProxy` | Identity proxy server-token authorization (default false, requires OIDC and session API); isolates browser cookies/CSRF and upstream Set-Cookie |
-| `AdminOidc:UseSessionForAdminApi` | Optional session authorization and CSRF for `/api/admin/*` (default false, requires OIDC); retires password login when true |
+| `AdminOidc:UseSessionForIdentityProxy` | Identity proxy server-token authorization (default false returns 503; true requires OIDC and session API); isolates browser cookies/CSRF and upstream Set-Cookie |
+| `AdminOidc:UseSessionForAdminApi` | Optional session authorization and CSRF for `/api/admin/*` (default false, requires OIDC) |
 | `AdminWeb:AllowedOrigins` | CORS origins; empty means allow any |
 | `Oss:*` | `InternalEndpoint` / `InternalSecure` for direct S3 access, `PublicBaseUrl` for presigned URLs |
 | `OssAudit:ScheduledHour`, `OssAudit:ScheduledMinute` | Daily audit schedule (UTC) |
@@ -231,3 +231,11 @@ Known documentation debt carried over from the monorepo is listed in [docs/READM
 ## License
 
 MIT — see [LICENSE](./LICENSE).
+
+Password login (`POST /api/auth/login`) is permanently retired with `410 legacy_login_disabled`, before authentication or body binding in every configuration. Use SignaCore hosted login through `/api/auth/oidc/start`; disabling OIDC makes login unavailable. The role callback is retained. Deploy the final combined version with the hosted-login SPA (#41); intermediate images containing the old password form are not release candidates.
+
+Teacher/Assistant proxies now use only trusted server-session tokens. Disabling portal proxying returns `503 session_portal_proxy_disabled` before authentication; browser credentials cannot restore it. Both portals share path/body preservation, credential and upstream-cookie isolation, and request cancellation. Linked-account aggregation follows the API-session capability independently of the portal proxy flag; disabling the API capability returns `503 session_api_disabled`, while enabled queries use server tokens and preserve partial-result behavior.
+
+The Identity proxy accepts only a trusted server-session access token. Disabling its capability returns `503 session_identity_proxy_disabled` before authentication; browser Authorization/Cookie credentials cannot restore it. It always strips browser CSRF/Host and forged gateway headers, injects owned AppId/AppSecret, suppresses upstream Set-Cookie, and propagates request cancellation without application retries.
+
+Management APIs (including native images), ordinary CSRF and session status now require the enabled server-session capability: disabling it returns `503 session_api_disabled` before authentication. OIDC-disabled session status returns `503 oidc_disabled`. Logout is owned by prepared-logout middleware; disabling it returns `503 session_logout_disabled`, and enabled non-POST logout returns 405. Browser JWTs cannot restore these local capabilities. Deploy only the final combination with the hosted-login SPA (#41/#75).

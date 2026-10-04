@@ -8,8 +8,8 @@ Admin Portal 提供 REST API 接口，用于管理学生、错题记录、OSS �
 
 - 基础路径: `/api/admin`
 - 数据格式: JSON
-- 认证: JWT Bearer（`Authorization: Bearer <token>`）。Program.cs 设置 `FallbackPolicy = RequireAuthenticatedUser()`，所有 `/api/*` 端点默认需要认证
-- 匿名入口：SPA 静态文件、`/` 首页回退、`/api/auth/login`、`/api/auth/callback`、`/api/auth/oidc/start`、`/api/auth/oidc/callback`、`/api/auth/session` 标记 `[AllowAnonymous]`，无需 JWT（见下方"认证流程"）
+- 认证: 管理 API 使用已启用的服务器 AdminSession；任何入站 `Authorization` 固定401。关闭会话能力固定503，不采用浏览器 JWT。
+- 匿名入口：SPA 静态文件、`/` 首页回退、`/api/auth/login`、`/api/auth/callback`、`/api/auth/oidc/start`、`/api/auth/oidc/callback`、`/api/auth/session` 标记 `[AllowAnonymous]`，按各自协议匿名处理（见下方"认证流程"）
 
 ---
 
@@ -18,11 +18,11 @@ Admin Portal 提供 REST API 接口，用于管理学生、错题记录、OSS �
 Admin Portal 采用 **mode-1 集成部署**：同一容器（端口 5020）既提供后端 REST API，又通过 `wwwroot` 提供前端静态文件与 SPA 路由回退。因此认证按请求路径区分：
 
 - **前端入口（匿名）**：`/` 及所有非 `/api/*` 路径由 SPA fallback 处理，无需登录即可加载登录页
-- **API（需认证）**：`/api/*` 受 `FallbackPolicy = RequireAuthenticatedUser()` 保护；默认使用 JWT，显式迁移的管理路径按下文使用管理员会话。匿名协议入口按各自规则豁免。
+- **API（需认证）**：`/api/*` 受 `FallbackPolicy = RequireAuthenticatedUser()` 保护；管理路径与代理按下文使用管理员会话。匿名协议入口按各自规则豁免。
 
 ### 可选托管登录基础（#38）
 
-当前 SPA 使用服务器会话，受控实例须显式启用 `AdminOidc:Enabled`、`UseSessionForAdminApi`、`UseSessionForIdentityProxy`、`UseSessionForPortalProxies`、`UseSessionForLogout` 五项开关（后四项同属 `AdminOidc`），配置当前管理员白名单与 ADMIN 应用 audience，并先完成实际下游信任和精确 Code/Logout 注册。五项仓库默认值均为 false，`start.sh` 不自动启用；关闭模式的旧密码/JWT API 仍供旧版本 SPA 使用，当前 SPA 对关闭能力或旧两字段 session 显示不可用，不回退密码或浏览器令牌。 各代理保持独立默认关闭边界；未启用的代理不会因新 Cookie 放行。
+当前 SPA 使用服务器会话，受控实例须显式启用 `AdminOidc:Enabled`、`UseSessionForAdminApi`、`UseSessionForIdentityProxy`、`UseSessionForPortalProxies`、`UseSessionForLogout` 五项开关（后四项同属 `AdminOidc`），配置当前管理员白名单与 ADMIN 应用 audience，并完成实际下游信任及精确 Code/Logout 注册。五项默认均为 false，`start.sh` 不自动启用。密码入口在任何配置下永久 `410 legacy_login_disabled`；管理 API/图片/普通 CSRF 关闭时固定 `503 session_api_disabled`，代理关闭时分别固定 `503 session_identity_proxy_disabled` / `503 session_portal_proxy_disabled`，退出关闭时固定 `503 session_logout_disabled`，不能通过旧 Cookie 或 Authorization 恢复。当前 SPA 对关闭能力显示不可用，不回退密码或浏览器令牌。
 
 `AdminOidc:Enabled=false` 默认关闭，新 start/callback/session 入口返回 `503 {"error":"oidc_disabled"}`，旧配置可继续启动。启用配置与部署门禁见 [Deployment.md](development/Deployment.md#可选-signacore-托管登录)。
 
@@ -30,7 +30,7 @@ Admin Portal 采用 **mode-1 集成部署**：同一容器（端口 5020）既�
 |---|---|
 | `GET /api/auth/oidc/start?returnUrl=/students` | 校验 Discovery，发起 Confidential code + PKCE S256；scope 仅 `openid profile`，return 路径留服务器，默认 `/dashboard` |
 | `GET /api/auth/oidc/callback` | 框架处理单值 state/iss/code 或 error；原子消费 5 分钟 state，独立校验 correlation、nonce、严格 RS256 ID Token，再创建 8 小时绝对本地票据并快速 redirect |
-| `GET /api/auth/session` | 显式读取 AdminSession：`200 {"authenticated":true,"displayName":"..."}`；无/过期/重启失效票据：`200 {"authenticated":false,"displayName":null}`，不刷新时限；不会把 Bearer 当此会话 |
+| `GET /api/auth/session` | API-session 启用时只返回三字段 `authenticated/displayName/requiresReauthentication`；匿名/坏票据 false/null/false，合法 token 到期 false/展示名/true，不刷新时限；不会把 Bearer 当此会话 |
 
 返回目标只允许绝对站内路径，拒绝外部、编码外部、控制字符、反斜线与 `/api/auth/*`、`/login` 循环；错误目标回退 `/dashboard`。取消返回 `/login?authError=cancelled`；start 的 Discovery/JWKS 不可用返回 `identity_unavailable`；回调协议/兑换/签名等失败统一 `sign_in_failed`，不反射 error_description 或异常。state 无论成功/失败都不重用；失败兑换必须重新 start，不能重试旧 code。入口和 redirect 响应均 no-store/no-cache/no-referrer。
 
@@ -46,31 +46,13 @@ Cookie 为 HttpOnly、Path=/、SameSite=Lax，生产 Secure，只含数据保护
 
 所有管理写方法（GET/HEAD/OPTIONS/TRACE 之外，包括 POST/PUT/PATCH/DELETE 与 OSS trigger/resolve/batch-resolve）在 Controller/业务/出站/删除前显式验证框架 antiforgery，要求单值 `X-CSRF-TOKEN`。缺/错/重复 header、错 Cookie、异主体 token、只提交 form token 为 `400 {"error":"csrf_invalid"}`；CSRF 成功只继续本次请求，不重放写请求。审计删除前引用复核与来源不可达 502 拒删继续生效；匿名 claims/OIDC callback 不套此浏览器 CSRF 边界。默认 CORS 不变，不启用跨源 Cookie。
 
-true 时 `POST /api/auth/login` 在读取密码/模型绑定前固定 `410 {"error":"legacy_login_disabled"}`，不转发 Identity、不发 JWT Cookie。旧 `/api/auth/logout` 仍按 Bearer 认证且只清旧 JWT Cookie，**不能作为新会话已退出的证明**；新会话撤销/prepared logout 属 #46。三个未迁移代理仍可接受旧 Bearer，关联查询的服务器 token 转发属 #44；不要用空聚合列表判断已完成门户迁移。SPA/非 API 继续匿名，health 语义不变。
+任何配置下 `POST /api/auth/login` 在读取密码/模型绑定前固定 `410 {"error":"legacy_login_disabled"}`，不转发 Identity、不发 JWT Cookie。`POST /api/auth/logout` 仅由 prepared logout middleware 处理，关闭时固定 `503 session_logout_disabled`，不落旧 Bearer action；启用时非 POST 固定 405（含安全响应头），不撤票或 prepare。新会话撤销/prepared logout 按下文既有 #46 协议。三个代理与关联查询已只使用服务器会话 token，关闭代理能力分别固定503、不能回退旧 Bearer；不要用空聚合列表判断已完成门户迁移。SPA/非 API 继续匿名，health 语义不变。
 
-### 登录（获取 JWT，默认 legacy 模式）
+### 已退役的密码登录
 
-`POST /api/auth/login` — `[AllowAnonymous]`
+`POST /api/auth/login` 永久返回 `410 {"error":"legacy_login_disabled"}`。所有 Enabled/API-session 的有效开关组合以及大小写/尾斜线、空或畸形请求体、任意 Cookie/Authorization 都在认证和模型绑定前拒绝；不读取密码、不兑换 Identity token、不签发 Cookie，也不返回 access/refresh token。开关不能恢复密码入口。请使用 `/api/auth/oidc/start` 的 SignaCore 托管登录；关闭 OIDC 时该能力明确不可用。
 
-请求体：`{ "username": "...", "password": "..." }`
-
-`UseSessionForAdminApi=false` 时后端向 Identity 服务发起 password grant 取 JWT。Identity 回调 `POST /api/auth/callback`（`[AllowAnonymous]`），对白名单 `AdminPortal:AdminUserIds` 中的用户注入 `role:admin`。
-
-成功返回：
-
-```json
-{
-  "success": true,
-  "accessToken": "...",
-  "refreshToken": "...",
-  "expiresIn": 3600,
-  "expiresAt": 1710000000
-}
-```
-
-旧版本 SPA 曾存储 `accessToken` 并发送 Bearer；legacy 后端缺失或无效 token 仍为 **401 Unauthorized**。当前 SPA 只使用同源服务器会话，不调用密码 API、不读取或存储 access/id token；session 路径按上文拒绝入站 Bearer。
-
-> **集成部署下首次访问**：浏览器直接访问后端端口时，`/` 必须匿名返回 `index.html` 才能加载出登录页（否则陷入「未登录→无法加载登录页→无法登录」的死锁）。API 端点的 401 由前端 axios 拦截器捕获后跳转 `/login`。
+`POST /api/auth/callback` 的 `{ "userId": "..." }` → `{ "roles": ["admin"] }` 白名单契约保持；非白名单返回空 roles。SPA 和非 API 路径保持匿名。旧完整镜像回滚属于独立部署动作，本版不能复活密码登录或已撤票据。最终发布必须包含 #41 的托管登录 SPA，不部署仍含旧密码表单的中间镜像。
 
 ---
 
@@ -1097,7 +1079,7 @@ true 时 `POST /api/auth/login` 在读取密码/模型绑定前固定 `410 {"err
 
 ### Prepared logout（#46）
 
-`AdminOidc:UseSessionForLogout` 默认 false；true 必须 Enabled 与 UseSessionForAdminApi 同开，并精确注册/配置同 Admin RedirectUri origin 的 `AdminOidc:PostLogoutRedirectUri`，路径固定 `/api/auth/oidc/logout-callback`、生产 HTTPS、无 query/fragment/userinfo。数字 loopback 开发例外沿 OIDC；关闭时保持旧 Bearer logout，不撤新票据。
+`AdminOidc:UseSessionForLogout` 默认 false；true 必须 Enabled 与 UseSessionForAdminApi 同开，并精确注册/配置同 Admin RedirectUri origin 的 `AdminOidc:PostLogoutRedirectUri`，路径固定 `/api/auth/oidc/logout-callback`、生产 HTTPS、无 query/fragment/userinfo。数字 loopback 开发例外沿 OIDC；关闭时固定 `503 session_logout_disabled`，不落旧 Bearer action，也不撤新票据。
 
 本人先 GET `/api/auth/logout/csrf` 取得 adminCsrf Cookie 与单值 X-CSRF-TOKEN，再 POST `/api/auth/logout`。专用入口只验证服务器 8h 有效身份票据/唯一 Authority iss/sub/stamp，允许 access token 到期或移出管理员白名单后退出本人，不授业务权限；普通 `/api/auth/csrf` 与管理 API 仍要求有效管理员 token。任何 Authorization 401，CSRF 缺/错/重复/异主体 400、零撤票/HTTP。受保护 Cookie 引用由服务器 TicketDataFormat 读取，锁内 Take 只允许一个并发 winner、Renew 不能复活；先清新 adminSession 和旧 adminAuthToken，再向固定 Authority `/oauth2/logout/requests` 发服务端 client_secret_post、服务器 id_token_hint、精确 PostLogout URI 及随机 state，不自动重试/跟随 redirect，不向浏览器发 ID token/secret。
 
@@ -1107,12 +1089,22 @@ true 时 `POST /api/auth/login` 在读取密码/模型绑定前固定 `410 {"err
 
 ### 令牌过期与显式重认证（#45）
 
-在 `UseSessionForAdminApi=true` 模式，有效管理员票据且严格 `expires_at` 到期时，业务门禁为 `401 {"error":"reauthentication_required"}`，零下游/OSS 删除，不清服务器 ID token、不刷新或重放写请求。`GET /api/auth/session` 为 `{authenticated,displayName,requiresReauthentication}`：有效 token true/false，仅合法 token 到期 false/true（保留显示名），匿名/撤票/8h失效/缺token/坏期限 false/false、显示名 null。当前非管理员403优先；任意 Authorization401。默认legacy状态JSON保持原两字段。浏览器仅显式进入 `/api/auth/oidc/start?returnUrl=...` 受控授权；上游会话可复用立即回跳，否则显示托管登录；取消/失败保持既有固定结果，BFF不自动挑战。fake测试验证两种回跳时序与deadline前/精确/后/8h、并发，不能证明生产SignaCore时限；真实联调仍归 #41/IKJ8MO。
+在 `UseSessionForAdminApi=true` 模式，有效管理员票据且严格 `expires_at` 到期时，业务门禁为 `401 {"error":"reauthentication_required"}`，零下游/OSS 删除，不清服务器 ID token、不刷新或重放写请求。`GET /api/auth/session` 为 `{authenticated,displayName,requiresReauthentication}`：有效 token true/false，仅合法 token 到期 false/true（保留显示名），匿名/撤票/8h失效/缺token/坏期限 false/false、显示名 null。当前非管理员403优先；任意 Authorization401。关闭会话能力时固定503，不返回旧两字段状态JSON。浏览器仅显式进入 `/api/auth/oidc/start?returnUrl=...` 受控授权；上游会话可复用立即回跳，否则显示托管登录；取消/失败保持既有固定结果，BFF不自动挑战。fake测试验证两种回跳时序与deadline前/精确/后/8h、并发，不能证明生产SignaCore时限；真实联调仍归 #41/IKJ8MO。
 
 ### 门户服务端凭据（#44）
 
-`AdminOidc:UseSessionForPortalProxies` 默认 false，启用需同时 `Enabled` 与 `UseSessionForAdminApi`。Teacher/Assistant 全代理前缀在认证/授权前共用管理员/CSRF 门禁，合法 access token 到期返回 `401 reauthentication_required` 且零出站，仅发送服务器 Bearer，剥离浏览器 Cookie、Host、CSRF 与 gateway 头、下游 Set-Cookie。保留 admin/auth/其他路径映射、query/body、503/502 和下游401/403；取消传递且不重放。关联查询只跟随 `UseSessionForAdminApi`：门户开关关闭也使用服务器 token，失败门禁在 Student/门户调用前拒绝；默认API关闭保持legacy Bearer。业务单侧失败/畸形响应继续该侧空列表，另一侧正常，此聚合不保证失败可见性或两门户一致。生产激活仍受 #41/IKJ8MO 门禁。专项 `PortalSession_`、`AssociationsSession_` 在隔离数据库/fake HTTP 上运行，不触生产。
+`AdminOidc:UseSessionForPortalProxies` 默认 false，启用需同时 `Enabled` 与 `UseSessionForAdminApi`。Teacher/Assistant 全代理前缀关闭时在认证前固定 `503 session_portal_proxy_disabled`，零出站；开启时在认证/授权前共用管理员/CSRF 门禁，合法 access token 到期返回 `401 reauthentication_required` 且零出站，仅发送服务器 Bearer，剥离浏览器 Cookie、Host、CSRF 与 gateway 头、下游 Set-Cookie。保留 admin/auth/其他路径映射、query/body、503/502 和下游401/403；取消传递且不重放。关联查询只跟随 `UseSessionForAdminApi`：门户开关关闭也使用服务器 token，失败门禁在 Student/门户调用前拒绝；API开关关闭在任何Student/门户调用与认证之前固定 `503 session_api_disabled`，不采用browser Bearer。业务单侧失败/畸形响应继续该侧空列表，另一侧正常，此聚合不保证失败可见性或两门户一致。生产激活仍受 #41/IKJ8MO 门禁。专项 `PortalSession_`、`AssociationsSession_` 在隔离数据库/fake HTTP 上运行，不触生产。
 
 ### Identity 代理服务端会话（#43）
 
-`AdminOidc:UseSessionForIdentityProxy` 默认 false，true 必须同时启用 `Enabled` 和 `UseSessionForAdminApi`。全 `/api/identity` 前缀（大小写、根和尾斜线）在认证/授权前经过共享管理员与 CSRF 边界。拒绝任何入站 Authorization；合法 access token 到期时返回 `401 reauthentication_required` 且零出站；只转发服务器票据内有效 access token，剥离浏览器 Cookie、Host、X-CSRF-TOKEN 与伪造 gateway 头后注入本服务 AppId/AppSecret。下游 Set-Cookie 不传给浏览器；401/403/结构化503和 Retry-After 原样，网络失败502，取消传递且不重放。默认 legacy 和 AppSecret 剥离仍保持；门户由独立的 `UseSessionForPortalProxies` 开关控制。生产 audience/角色注册与 SPA 激活仍由 #41/IKJ8MO 验证。专项 `FullyQualifiedName~IdentitySession_` 使用 fake HTTP 与隔离数据库，无生产 OSS 删除。
+`AdminOidc:UseSessionForIdentityProxy` 默认 false，true 必须同时启用 `Enabled` 和 `UseSessionForAdminApi`。全 `/api/identity` 前缀（大小写、根和尾斜线）在认证/授权前经过共享管理员与 CSRF 边界。拒绝任何入站 Authorization；合法 access token 到期时返回 `401 reauthentication_required` 且零出站；只转发服务器票据内有效 access token，剥离浏览器 Cookie、Host、X-CSRF-TOKEN 与伪造 gateway 头后注入本服务 AppId/AppSecret。下游 Set-Cookie 不传给浏览器；401/403/结构化503和 Retry-After 原样，网络失败502，取消传递且不重放。关闭开关在认证前固定 `503 session_identity_proxy_disabled`，零 discovery/代理出站；旧 JWT Cookie/Bearer 无法恢复传输。AppSecret 剥离始终保持；门户由独立的 `UseSessionForPortalProxies` 开关控制。生产 audience/角色注册与 SPA 激活仍由 #41/IKJ8MO 验证。专项 `FullyQualifiedName~IdentitySession_` 使用 fake HTTP 与隔离数据库，无生产 OSS 删除。
+
+Identity 代理退役浏览器凭据兼容（#73）：middleware 的 settings 为必需依赖，直接调用缺 TrustedSessionKey/有效服务器 token 也401拒绝。所有路径使用 StartsWithSegments remaining 映射 `/api`，根/尾斜线/大小写/query/body 保持；始终 RequestAborted，预取消/发送中取消传播且无应用层重试。非代理的 IdentityAccountsController 不在此切片范围。中间镜像不部署，最终须包含 #41/#75；回滚只选择明确旧完整镜像，不复活票据。
+
+门户传输退役浏览器凭据兼容（#74）：两 middleware 只接受 TrustedSessionKey 的有效 server token，settings 为必需依赖，直接调用缺可信项也401。统一 remaining 的 admin/auth/其他三类映射，始终 RequestAborted、剥离浏览器Authorization/Cookie/Host/CSRF/gateway，隔离Set-Cookie；取消传播且无应用层重试。关联查询只随API-session，即使门户proxy开关false也用server token；当前账户筛选、单侧失败保另一侧、无关联短路与Student失败响应保持。此中间镜像不部署，最终须组合#41/#75；整版回滚不恢复本版浏览器凭据路径或复活撤票。
+
+### 管理本地会话组收敛（#72）
+
+`/api/admin/*`（含 native image）与普通 CSRF 在 API-session=false 时于认证/业务前固定 `503 session_api_disabled`，旧 JWT Cookie/Bearer 不能恢复能力。`/api/auth/session` 在 Enabled=false 固定 `503 oidc_disabled`；Enabled=true/API-session=false 固定 `503 session_api_disabled`，不返回旧两字段状态。启用时 selector 只选 AdminSession，保持任何 Authorization401、白名单403、期限401、普通 unsafe CSRF400 与三字段状态。
+
+logout/csrf/callback 关闭时固定 `503 session_logout_disabled`，POST logout 不再有旧 MVC action；启用时只 POST 发起原子撤票→prepare，非 POST405。marker-only endpoint 保留 503/401/400/405 安全响应头；退出身份不以 access 期限或管理员白名单阻止本人退出，成功/失败/取消与一次性 state 按既有协议。旧 adminAuthToken 仅删除清理。SPA/health 匿名，不更改业务/OSS/三个代理。此中间版本不部署，最终须组合 #41/#75；回滚只选择明确旧完整镜像，不复活撤票状态。
