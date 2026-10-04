@@ -17,8 +17,11 @@ internal sealed record AdminOidcSettings(string Authority, string ClientId, stri
             "UseSessionForIdentityProxy", "UseSessionForPortalProxies" })
         {
             var section = config.GetSection("AdminOidc:" + key);
+            // JsonConfigurationProvider normalizes the JSON boolean true to "True".
+            // Accept that representation and the canonical environment/cache string only.
             if ((section.Exists() || config.AsEnumerable().Any(entry =>
-                    string.Equals(entry.Key, section.Path, StringComparison.OrdinalIgnoreCase))) && section.Value != "true")
+                    string.Equals(entry.Key, section.Path, StringComparison.OrdinalIgnoreCase)))
+                && section.Value is not ("true" or "True"))
                 throw new InvalidOperationException("AdminOidc:" + key);
         }
         var dev = environment.IsDevelopment() || environment.IsEnvironment("Testing");

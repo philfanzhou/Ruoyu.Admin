@@ -26,6 +26,31 @@ public sealed class AdminAuthConfigCliTests
         Assert.False(Directory.Exists(Path.Combine(fixture.Root, "data")));
     }
 
+    public static IEnumerable<object[]> JsonBooleanMigrationValues()
+    {
+        foreach (var key in new[] { "Enabled", "UseSessionForAdminApi", "UseSessionForLogout",
+            "UseSessionForIdentityProxy", "UseSessionForPortalProxies" })
+        foreach (var value in new[] { true, false })
+            yield return ["AdminOidc:" + key, value];
+    }
+
+    [Theory]
+    [MemberData(nameof(JsonBooleanMigrationValues))]
+    public async Task ActualJsonBooleanTrueMigratesAndFalseRejectsBeforeHost(string key, bool value)
+    {
+        using var fixture = new CliFixture();
+        var settings = AdminSessionDisabledTests.ValidConfiguration()
+            .ToDictionary(entry => entry.Key, entry => (object?)entry.Value);
+        settings["ConnectionStrings:AuditDb"] = "deliberately-unparsable-secret-canary";
+        settings[key] = value;
+        await File.WriteAllTextAsync(Path.Combine(fixture.Root, "appsettings.json"), JsonSerializer.Serialize(settings));
+        var result = await fixture.Run();
+        Assert.Equal(value ? 0 : 2, result.Exit);
+        Assert.Equal(value ? "RUOYU_ADMIN_AUTH_CONFIG_VALID\n" : "", result.Out);
+        Assert.Equal(value ? "" : "RUOYU_ADMIN_AUTH_CONFIG_INVALID\n", result.Error);
+        Assert.False(Directory.Exists(Path.Combine(fixture.Root, "data")));
+    }
+
     [Fact]
     public async Task ConsulPrecedenceMatchesFormalStartupWhilePreflightNeverRefreshesCache()
     {
