@@ -725,7 +725,19 @@ public class MistakeHttpClient : IMistakeHttpClient
             if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("success", out var ok)) throw new MistakeDownstreamException();
             if (ok.ValueKind == JsonValueKind.False) throw new MistakeBadRequestException();
             if (ok.ValueKind != JsonValueKind.True) throw new MistakeDownstreamException();
-            if (!requireData) return null!;
+            if (!requireData)
+            {
+                // DELETE also publishes {success:true,data:{success:false}} for a
+                // business rejection. Optional data must never hide that result.
+                if (root.TryGetProperty("data", out var optional))
+                {
+                    if (optional.ValueKind != JsonValueKind.Object || !optional.TryGetProperty("success", out var deleted))
+                        throw new MistakeDownstreamException();
+                    if (deleted.ValueKind == JsonValueKind.False) throw new MistakeBadRequestException();
+                    if (deleted.ValueKind != JsonValueKind.True) throw new MistakeDownstreamException();
+                }
+                return null!;
+            }
             if (!root.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Object) throw new MistakeDownstreamException();
             if (data.TryGetProperty("success", out var resultSuccess))
             {

@@ -43,7 +43,7 @@ public sealed class MistakeSessionClientTests
         2 => new { items = Array.Empty<object>() },
         3 => new { uploads = Array.Empty<object>(), pageMeta = new { page = 1, size = 10 } },
         4 or 12 => new { success = true, removedImagePaths = Array.Empty<string>() },
-        6 => new { },
+        6 => new { success = true },
         7 => new { success = true, jobId = "job" },
         8 or 9 => new { success = true, jobs = Array.Empty<object>() },
         11 => new { success = true, createdItemIds = new[] { "item" } },
@@ -81,19 +81,19 @@ public sealed class MistakeSessionClientTests
         receiver.Status = 200;
         foreach (var body in new[] { "", "not-json", "null", "[]", "{}", "{\"success\":true,\"data\":null}", "{\"success\":true,\"data\":[]}" })
         {
-            // DELETE's published success envelope intentionally has no required data.
-            if (method == 6 && body.StartsWith("{\"success\":true")) continue;
             receiver.Body = body;
             await Assert.ThrowsAsync<MistakeDownstreamException>(() => Call(client, method));
         }
         receiver.Body = "{\"success\":false,\"message\":\"secret-canary\"}";
         await Assert.ThrowsAsync<MistakeBadRequestException>(() => Call(client, method));
-        if (method != 6)
+        receiver.Body = "{\"success\":true,\"data\":{}}";
+        await Assert.ThrowsAsync<MistakeDownstreamException>(() => Call(client, method));
+        receiver.Body = "{\"success\":true,\"data\":{\"success\":false,\"errorMessage\":\"secret-canary\"}}";
+        await Assert.ThrowsAsync<MistakeBadRequestException>(() => Call(client, method));
+        if (method == 6)
         {
-            receiver.Body = "{\"success\":true,\"data\":{}}";
-            await Assert.ThrowsAsync<MistakeDownstreamException>(() => Call(client, method));
-            receiver.Body = "{\"success\":true,\"data\":{\"success\":false,\"errorMessage\":\"secret-canary\"}}";
-            await Assert.ThrowsAsync<MistakeBadRequestException>(() => Call(client, method));
+            receiver.Body = "{\"success\":true}";
+            Assert.NotNull(await Call(client, method));
         }
         receiver.Status = 404; receiver.Body = "not-json";
         if (method == 1) Assert.Null(await Call(client, method));
