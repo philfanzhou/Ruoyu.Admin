@@ -33,7 +33,7 @@ public sealed partial class AdminOidcTests(PostgreSqlFixture database) : Service
 {
     private WebApplicationFactory<Program> OidcFactory(OidcTestAuthority authority, ManualOidcTime? time = null,
         Action<IServiceCollection>? configure = null, string? root = null, IDataProtectionProvider? protection = null, string? lokiUri = null,
-        bool sessionApi = false, bool sessionLogout = false, bool portalProxies = false, bool identityProxy = false)
+        bool sessionApi = true, bool sessionLogout = false, bool portalProxies = false, bool identityProxy = false)
         => CreateFactory(root, services =>
         {
             services.Configure<OpenIdConnectOptions>(AdminOidcSettings.OidcScheme, options =>
@@ -160,8 +160,9 @@ public sealed partial class AdminOidcTests(PostgreSqlFixture database) : Service
         var status = await Status(client, cookieValue);
         Assert.Contains("\"authenticated\":true", status);
         Assert.Contains(display is null ? "\"displayName\":null" : "\"displayName\":\"fake-display\"", status);
-        Assert.Contains("\"authenticated\":false", await Status(client, bearer: OidcTestAuthority.AccessToken));
-        foreach (var path in new[] { ProtectedApiRoute, "/api/teacher-portal/admin/users", "/api/assistant-portal/admin/users" })
+        await Rejected(await Api(client, "/api/auth/session", authorization: ["Bearer " + OidcTestAuthority.AccessToken]), 401, "unauthorized");
+        Assert.Equal(HttpStatusCode.OK, (await Api(client, ProtectedApiRoute, cookieValue)).StatusCode);
+        foreach (var path in new[] { "/api/teacher-portal/admin/users", "/api/assistant-portal/admin/users" })
         {
             using var apiRequest = new HttpRequestMessage(HttpMethod.Get, path);
             apiRequest.Headers.Add("Cookie", cookieValue);
@@ -441,7 +442,7 @@ public sealed partial class AdminOidcTests(PostgreSqlFixture database) : Service
             // Readiness now reports the real evidence source (#54): the fixture database is
             // reachable and this process completed its initialization, so ready answers 200.
             Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/health/ready")).StatusCode);
-            Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync(ProtectedApiRoute)).StatusCode);
+            Assert.Equal(HttpStatusCode.ServiceUnavailable, (await client.GetAsync(ProtectedApiRoute)).StatusCode);
             var responseCallback = await client.PostAsJsonAsync("/api/auth/callback", new { userId = "fake-user" });
             Assert.Equal(HttpStatusCode.OK, responseCallback.StatusCode);
             Assert.Equal("{\"roles\":[]}", await responseCallback.Content.ReadAsStringAsync());
@@ -481,10 +482,10 @@ public sealed partial class AdminOidcTests(PostgreSqlFixture database) : Service
     }
 
     [Fact]
-    public async Task ExistingJwtAndLegacyClaimsCallbackStillWork()
+    public async Task DisabledApiAndLogoutRejectLegacyJwtButClaimsCallbackStillWorks()
     {
         using var authority = new OidcTestAuthority();
-        using var factory = OidcFactory(authority, configure: services => services.Configure<JwtBearerOptions>("Bearer", options =>
+        using var factory = OidcFactory(authority, sessionApi: false, configure: services => services.Configure<JwtBearerOptions>("Bearer", options =>
         {
             var metadata = new OpenIdConnectConfiguration { Issuer = OidcTestAuthority.Issuer };
             metadata.SigningKeys.Add(authority.SigningKey);
@@ -492,11 +493,11 @@ public sealed partial class AdminOidcTests(PostgreSqlFixture database) : Service
         }));
         using var client = Browser(factory);
         client.DefaultRequestHeaders.Add("Authorization", "Bearer " + authority.LegacyBearer());
-        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync(ProtectedApiRoute)).StatusCode);
-        Assert.Equal(HttpStatusCode.OK, (await client.PostAsync("/api/auth/logout", null)).StatusCode);
-        Assert.Contains("\"authenticated\":false", await Status(client));
+        await Rejected(await client.GetAsync(ProtectedApiRoute), 503, "session_api_disabled");
+        await Rejected(await client.PostAsync("/api/auth/logout", null), 503, "session_logout_disabled");
+        await Rejected(await client.GetAsync("/api/auth/session"), 503, "session_api_disabled");
         var authentication = factory.Services.GetRequiredService<IOptions<AuthenticationOptions>>().Value;
-        Assert.Equal("Bearer", authentication.DefaultScheme);
+        Assert.Equal("AdminApiAuthentication", authentication.DefaultScheme);
         var callback = await client.PostAsJsonAsync("/api/auth/callback", new { userId = "fake-user" });
         Assert.Equal(HttpStatusCode.OK, callback.StatusCode);
     }

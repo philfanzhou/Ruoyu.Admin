@@ -60,16 +60,13 @@ internal static class AdminOidcRegistration
         });
         services.AddOptions<CookieAuthenticationOptions>(AdminOidcSettings.SessionScheme)
             .Configure<MemoryTicketStore, TimeProvider>((options, store, time) => { options.SessionStore = store; options.TimeProvider = time; });
-        if (settings.UseSessionForAdminApi)
-        {
-            authentication.AddPolicyScheme("AdminApiAuthentication", null, options =>
-                options.ForwardDefaultSelector = context => (AdminSessionBoundary.IsAuthPath(context.Request.Path, "/api/auth/session")
-                    || AdminSessionBoundary.IsSessionPath(context.Request.Path, settings)
-                    || settings.UseSessionForLogout && (AdminSessionBoundary.IsAuthPath(context.Request.Path, "/api/auth/logout")
-                        || AdminSessionBoundary.IsAuthPath(context.Request.Path, "/api/auth/logout/csrf")))
-                    ? AdminOidcSettings.SessionScheme : "Bearer");
-            services.Configure<AuthenticationOptions>(options => options.DefaultScheme = "AdminApiAuthentication");
-        }
+        authentication.AddPolicyScheme("AdminApiAuthentication", null, options =>
+            options.ForwardDefaultSelector = context => (AdminSessionBoundary.IsAuthPath(context.Request.Path, "/api/auth/session")
+                || AdminSessionBoundary.IsSessionPath(context.Request.Path, settings)
+                || settings.UseSessionForLogout && (AdminSessionBoundary.IsAuthPath(context.Request.Path, "/api/auth/logout")
+                    || AdminSessionBoundary.IsAuthPath(context.Request.Path, "/api/auth/logout/csrf")))
+                ? AdminOidcSettings.SessionScheme : "Bearer");
+        services.Configure<AuthenticationOptions>(options => options.DefaultScheme = "AdminApiAuthentication");
         if (!settings.Enabled) return services;
         // Hosting diagnostics log raw query strings outside the application middleware.
         services.AddLogging(logging => logging.AddFilter("Microsoft.AspNetCore.Hosting.Diagnostics", LogLevel.None));
@@ -230,7 +227,9 @@ internal static class AdminOidcRegistration
     {
         app.Use(async (context, next) =>
         {
-            if (context.Request.Path.StartsWithSegments("/api/auth/oidc") || context.Request.Path == "/api/auth/session")
+            if ((context.Request.Path.StartsWithSegments("/api/auth/oidc")
+                    && !AdminSessionBoundary.IsAuthPath(context.Request.Path, AdminOidcSettings.LogoutCallbackPath))
+                || AdminSessionBoundary.IsAuthPath(context.Request.Path, "/api/auth/session"))
             {
                 if (!context.RequestServices.GetRequiredService<AdminOidcSettings>().Enabled)
                 {
