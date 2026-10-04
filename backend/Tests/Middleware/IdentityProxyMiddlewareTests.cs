@@ -1,4 +1,5 @@
 using System.Net;
+using Admin.WebApi.Authentication;
 using System.Text;
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
@@ -11,6 +12,16 @@ namespace Admin.WebApi.Tests.Middleware;
 
 public class IdentityProxyMiddlewareTests
 {
+    private static readonly AdminOidcSettings SessionSettings = new(true, "", "", "", "", false, TimeSpan.Zero)
+        { UseSessionForAdminApi = true, UseSessionForIdentityProxy = true };
+    private static DefaultHttpContext TrustedContext()
+    {
+        var context = new DefaultHttpContext();
+        context.Items[AdminSessionBoundary.TrustedSessionKey] = new AdminSessionResult(200, accessToken: "server-token");
+        context.Response.Body = new MemoryStream();
+        return context;
+    }
+
     private static (Mock<HttpMessageHandler> handlerMock, HttpClient client) CreateHttpClient(
         HttpStatusCode statusCode = HttpStatusCode.OK, string responseBody = "response")
     {
@@ -43,7 +54,7 @@ public class IdentityProxyMiddlewareTests
     {
         var optionsMock = new Mock<IOptions<IdentityServiceOptions>>();
         optionsMock.Setup(o => o.Value).Returns(options ?? new IdentityServiceOptions());
-        return new IdentityProxyMiddleware(next, factory, optionsMock.Object);
+        return new IdentityProxyMiddleware(next, factory, optionsMock.Object, SessionSettings);
     }
 
     [Fact]
@@ -55,7 +66,7 @@ public class IdentityProxyMiddlewareTests
         var (factoryMock, _) = SetupFactory(client);
         var middleware = CreateMiddleware(nextMock.Object, factoryMock.Object);
 
-        var context = new DefaultHttpContext();
+        var context = TrustedContext();
         context.Request.Path = "/api/other";
         context.Request.Method = "GET";
 
@@ -84,9 +95,9 @@ public class IdentityProxyMiddlewareTests
         var optionsMock = new Mock<IOptions<IdentityServiceOptions>>();
         optionsMock.Setup(o => o.Value).Returns(options);
 
-        var middleware = new IdentityProxyMiddleware(nextMock.Object, factoryMock.Object, optionsMock.Object);
+        var middleware = new IdentityProxyMiddleware(nextMock.Object, factoryMock.Object, optionsMock.Object, SessionSettings);
 
-        var context = new DefaultHttpContext();
+        var context = TrustedContext();
         context.Request.Path = "/api/identity/users";
         context.Request.Method = "GET";
 
@@ -124,9 +135,9 @@ public class IdentityProxyMiddlewareTests
         var optionsMock = new Mock<IOptions<IdentityServiceOptions>>();
         optionsMock.Setup(o => o.Value).Returns(options);
 
-        var middleware = new IdentityProxyMiddleware(nextMock.Object, factoryMock.Object, optionsMock.Object);
+        var middleware = new IdentityProxyMiddleware(nextMock.Object, factoryMock.Object, optionsMock.Object, SessionSettings);
 
-        var context = new DefaultHttpContext();
+        var context = TrustedContext();
         context.Request.Path = "/api/identity/accounts";
         context.Request.Method = "POST";
         context.Request.ContentType = "application/json";
@@ -170,9 +181,9 @@ public class IdentityProxyMiddlewareTests
         var optionsMock = new Mock<IOptions<IdentityServiceOptions>>();
         optionsMock.Setup(o => o.Value).Returns(options);
 
-        var middleware = new IdentityProxyMiddleware(nextMock.Object, factoryMock.Object, optionsMock.Object);
+        var middleware = new IdentityProxyMiddleware(nextMock.Object, factoryMock.Object, optionsMock.Object, SessionSettings);
 
-        var context = new DefaultHttpContext();
+        var context = TrustedContext();
         context.Request.Path = "/api/identity/users";
         context.Request.Method = "GET";
         var responseBody = new MemoryStream();
@@ -215,7 +226,7 @@ public class IdentityProxyMiddlewareTests
             _ => Task.CompletedTask,
             factoryMock.Object,
             new IdentityServiceOptions { Authority = "http://localhost:5002" });
-        var context = new DefaultHttpContext();
+        var context = TrustedContext();
         context.Request.Path = "/api/identity/users";
         context.Request.Method = HttpMethods.Get;
         context.Response.Body = new MemoryStream();
@@ -247,9 +258,9 @@ public class IdentityProxyMiddlewareTests
         var optionsMock = new Mock<IOptions<IdentityServiceOptions>>();
         optionsMock.Setup(o => o.Value).Returns(options);
 
-        var middleware = new IdentityProxyMiddleware(nextMock.Object, factoryMock.Object, optionsMock.Object);
+        var middleware = new IdentityProxyMiddleware(nextMock.Object, factoryMock.Object, optionsMock.Object, SessionSettings);
 
-        var context = new DefaultHttpContext();
+        var context = TrustedContext();
         context.Request.Path = "/api/identity/users";
         context.Request.QueryString = new QueryString("?page=1&size=10");
         context.Request.Method = "GET";
@@ -263,4 +274,84 @@ public class IdentityProxyMiddlewareTests
                 req.RequestUri!.ToString() == "http://localhost:5002/api/users?page=1&size=10"),
             ItExpr.IsAny<CancellationToken>());
     }
+    [Theory]
+    [InlineData(false, false, 503)][InlineData(true, false, 401)][InlineData(true, true, 401)]
+    public async Task MissingTrustedSessionOrDisabledNeverForwards(bool enabled, bool invalidTrusted, int status)
+    {
+        var factory = new Mock<IHttpClientFactory>(MockBehavior.Strict);
+        var settings = SessionSettings with { UseSessionForIdentityProxy = enabled };
+        var middleware = new IdentityProxyMiddleware(_ => throw new InvalidOperationException("No fallthrough"), factory.Object,
+            Options.Create(new IdentityServiceOptions()), settings);
+        var context = new DefaultHttpContext(); context.Request.Path = "/API/IDENTITY/users/";
+        context.Request.Headers.Authorization = "Bearer browser-token"; context.Request.Headers.Cookie = "adminAuthToken=browser-token";
+        context.Response.Body = new MemoryStream();
+        if (invalidTrusted) context.Items[AdminSessionBoundary.TrustedSessionKey] = new AdminSessionResult(200, accessToken: " ");
+        await middleware.InvokeAsync(context);
+        Assert.Equal(status, context.Response.StatusCode); factory.VerifyNoOtherCalls();
+    }
+
+    [Theory]
+    [InlineData("/api/identity", "/api")][InlineData("/API/IDENTITY/", "/api/")]
+    [InlineData("/API/IDENTITY/users/", "/api/users/")]
+    public async Task TrustedSessionUsesOnlyServerCredentialsAndIsolatesCookies(string path, string target)
+    {
+        var downstream = new Integration.SessionProxyCapture(); using var client = new HttpClient(downstream);
+        var factory = new Mock<IHttpClientFactory>(); factory.Setup(f => f.CreateClient("IdentityService")).Returns(client);
+        var middleware = CreateMiddleware(_ => Task.CompletedTask, factory.Object,
+            new IdentityServiceOptions { Authority = "https://identity.example.test", AppId = "owned-app", AppSecret = "owned-secret" });
+        var context = TrustedContext(); context.Request.Path = path; context.Request.Method = "POST";
+        context.Request.QueryString = new("?size=2"); context.Request.ContentType = "application/json";
+        context.Request.Body = new MemoryStream(Encoding.UTF8.GetBytes("{\"test\":true}"));
+        foreach (var header in new[] { "Authorization", "Cookie", "Host", "X-CSRF-TOKEN", "X-Admin-AppId", "X-Admin-AppSecret" })
+            context.Request.Headers[header] = "browser-input";
+        await middleware.InvokeAsync(context);
+        var forwarded = Assert.Single(downstream.Requests);
+        Assert.Equal(target + "?size=2", forwarded.Path); Assert.Equal("{\"test\":true}", forwarded.Body);
+        Assert.Equal("Bearer server-token", forwarded.Headers["Authorization"]);
+        Assert.Equal("owned-app", forwarded.Headers["X-Admin-AppId"]); Assert.Equal("owned-secret", forwarded.Headers["X-Admin-AppSecret"]);
+        foreach (var header in new[] { "Cookie", "Host", "X-CSRF-TOKEN" }) Assert.False(forwarded.Headers.ContainsKey(header));
+        Assert.False(context.Response.Headers.ContainsKey("Set-Cookie"));
+    }
+
+    [Fact]
+    public async Task CancellationFlowsWithoutRetry()
+    {
+        var downstream = new Integration.SessionProxyCapture { Wait = true }; using var client = new HttpClient(downstream);
+        var factory = new Mock<IHttpClientFactory>(); factory.Setup(f => f.CreateClient("IdentityService")).Returns(client);
+        var middleware = CreateMiddleware(_ => Task.CompletedTask, factory.Object, new IdentityServiceOptions { Authority = "https://identity.example.test" });
+        var context = TrustedContext(); context.Request.Path = "/api/identity/users"; context.Request.Method = "GET";
+        using var cancellation = new CancellationTokenSource(); context.RequestAborted = cancellation.Token;
+        var pending = middleware.InvokeAsync(context); await downstream.Started.Task.WaitAsync(TimeSpan.FromSeconds(5)); cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending);
+        await downstream.Cancelled.Task.WaitAsync(TimeSpan.FromSeconds(5)); Assert.Single(downstream.Requests);
+        using var pre = new CancellationTokenSource(); pre.Cancel(); context.RequestAborted = pre.Token;
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => middleware.InvokeAsync(context)); Assert.Single(downstream.Requests);
+    }
+
+    [Fact]
+    public async Task DisabledBoundaryRejectsBeforeAuthentication()
+    {
+        var middleware = new AdminSessionMiddleware(_ => throw new InvalidOperationException("No authentication"), SessionSettings with { UseSessionForIdentityProxy = false });
+        var context = new DefaultHttpContext(); context.Request.Path = "/API/IDENTITY/";
+        context.Request.Headers.Authorization = "Bearer browser-token"; context.Response.Body = new MemoryStream();
+        await middleware.InvokeAsync(context, null!); Assert.Equal(503, context.Response.StatusCode);
+    }
+
+    [Fact]
+    public async Task ConcurrentTrustedSessionsNeverMixServerTokens()
+    {
+        var downstream = new Integration.SessionProxyCapture(); using var client = new HttpClient(downstream);
+        var factory = new Mock<IHttpClientFactory>(); factory.Setup(f => f.CreateClient("IdentityService")).Returns(client);
+        var middleware = CreateMiddleware(_ => Task.CompletedTask, factory.Object, new IdentityServiceOptions { Authority = "https://identity.example.test" });
+        await Task.WhenAll(Enumerable.Range(0, 8).Select(async index =>
+        {
+            var context = TrustedContext(); context.Request.Method = "GET"; context.Request.Path = "/api/identity/users/" + index;
+            context.Items[AdminSessionBoundary.TrustedSessionKey] = new AdminSessionResult(200, accessToken: "server-" + index);
+            await middleware.InvokeAsync(context);
+        }));
+        Assert.Equal(8, downstream.Requests.Count);
+        foreach (var request in downstream.Requests)
+            Assert.Equal("Bearer server-" + request.Path.Split('/').Last(), request.Headers["Authorization"]);
+    }
+
 }

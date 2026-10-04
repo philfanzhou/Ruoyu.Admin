@@ -46,7 +46,7 @@ Cookie 为 HttpOnly、Path=/、SameSite=Lax，生产 Secure，只含数据保护
 
 所有管理写方法（GET/HEAD/OPTIONS/TRACE 之外，包括 POST/PUT/PATCH/DELETE 与 OSS trigger/resolve/batch-resolve）在 Controller/业务/出站/删除前显式验证框架 antiforgery，要求单值 `X-CSRF-TOKEN`。缺/错/重复 header、错 Cookie、异主体 token、只提交 form token 为 `400 {"error":"csrf_invalid"}`；CSRF 成功只继续本次请求，不重放写请求。审计删除前引用复核与来源不可达 502 拒删继续生效；匿名 claims/OIDC callback 不套此浏览器 CSRF 边界。默认 CORS 不变，不启用跨源 Cookie。
 
-任何配置下 `POST /api/auth/login` 在读取密码/模型绑定前固定 `410 {"error":"legacy_login_disabled"}`，不转发 Identity、不发 JWT Cookie。`POST /api/auth/logout` 仅由 prepared logout middleware 处理，关闭时固定 `503 session_logout_disabled`，不落旧 Bearer action；启用时非 POST 固定 405（含安全响应头），不撤票或 prepare。新会话撤销/prepared logout 按下文既有 #46 协议。三个未迁移代理仍可接受旧 Bearer，关联查询的服务器 token 转发属 #44；不要用空聚合列表判断已完成门户迁移。SPA/非 API 继续匿名，health 语义不变。
+任何配置下 `POST /api/auth/login` 在读取密码/模型绑定前固定 `410 {"error":"legacy_login_disabled"}`，不转发 Identity、不发 JWT Cookie。`POST /api/auth/logout` 仅由 prepared logout middleware 处理，关闭时固定 `503 session_logout_disabled`，不落旧 Bearer action；启用时非 POST 固定 405（含安全响应头），不撤票或 prepare。新会话撤销/prepared logout 按下文既有 #46 协议。Identity 代理已只接受服务器会话 token；两个未迁移门户代理仍可接受旧 Bearer，关联查询的服务器 token 转发属 #44；不要用空聚合列表判断已完成门户迁移。SPA/非 API 继续匿名，health 语义不变。
 
 ### 已退役的密码登录
 
@@ -1089,7 +1089,7 @@ Cookie 为 HttpOnly、Path=/、SameSite=Lax，生产 Secure，只含数据保护
 
 ### 令牌过期与显式重认证（#45）
 
-在 `UseSessionForAdminApi=true` 模式，有效管理员票据且严格 `expires_at` 到期时，业务门禁为 `401 {"error":"reauthentication_required"}`，零下游/OSS 删除，不清服务器 ID token、不刷新或重放写请求。`GET /api/auth/session` 为 `{authenticated,displayName,requiresReauthentication}`：有效 token true/false，仅合法 token 到期 false/true（保留显示名），匿名/撤票/8h失效/缺token/坏期限 false/false、显示名 null。当前非管理员403优先；任意 Authorization401。默认legacy状态JSON保持原两字段。浏览器仅显式进入 `/api/auth/oidc/start?returnUrl=...` 受控授权；上游会话可复用立即回跳，否则显示托管登录；取消/失败保持既有固定结果，BFF不自动挑战。fake测试验证两种回跳时序与deadline前/精确/后/8h、并发，不能证明生产SignaCore时限；真实联调仍归 #41/IKJ8MO。
+在 `UseSessionForAdminApi=true` 模式，有效管理员票据且严格 `expires_at` 到期时，业务门禁为 `401 {"error":"reauthentication_required"}`，零下游/OSS 删除，不清服务器 ID token、不刷新或重放写请求。`GET /api/auth/session` 为 `{authenticated,displayName,requiresReauthentication}`：有效 token true/false，仅合法 token 到期 false/true（保留显示名），匿名/撤票/8h失效/缺token/坏期限 false/false、显示名 null。当前非管理员403优先；任意 Authorization401。关闭会话能力时固定503，不返回旧两字段状态JSON。浏览器仅显式进入 `/api/auth/oidc/start?returnUrl=...` 受控授权；上游会话可复用立即回跳，否则显示托管登录；取消/失败保持既有固定结果，BFF不自动挑战。fake测试验证两种回跳时序与deadline前/精确/后/8h、并发，不能证明生产SignaCore时限；真实联调仍归 #41/IKJ8MO。
 
 ### 门户服务端凭据（#44）
 
@@ -1097,7 +1097,9 @@ Cookie 为 HttpOnly、Path=/、SameSite=Lax，生产 Secure，只含数据保护
 
 ### Identity 代理服务端会话（#43）
 
-`AdminOidc:UseSessionForIdentityProxy` 默认 false，true 必须同时启用 `Enabled` 和 `UseSessionForAdminApi`。全 `/api/identity` 前缀（大小写、根和尾斜线）在认证/授权前经过共享管理员与 CSRF 边界。拒绝任何入站 Authorization；合法 access token 到期时返回 `401 reauthentication_required` 且零出站；只转发服务器票据内有效 access token，剥离浏览器 Cookie、Host、X-CSRF-TOKEN 与伪造 gateway 头后注入本服务 AppId/AppSecret。下游 Set-Cookie 不传给浏览器；401/403/结构化503和 Retry-After 原样，网络失败502，取消传递且不重放。默认 legacy 和 AppSecret 剥离仍保持；门户由独立的 `UseSessionForPortalProxies` 开关控制。生产 audience/角色注册与 SPA 激活仍由 #41/IKJ8MO 验证。专项 `FullyQualifiedName~IdentitySession_` 使用 fake HTTP 与隔离数据库，无生产 OSS 删除。
+`AdminOidc:UseSessionForIdentityProxy` 默认 false，true 必须同时启用 `Enabled` 和 `UseSessionForAdminApi`。全 `/api/identity` 前缀（大小写、根和尾斜线）在认证/授权前经过共享管理员与 CSRF 边界。拒绝任何入站 Authorization；合法 access token 到期时返回 `401 reauthentication_required` 且零出站；只转发服务器票据内有效 access token，剥离浏览器 Cookie、Host、X-CSRF-TOKEN 与伪造 gateway 头后注入本服务 AppId/AppSecret。下游 Set-Cookie 不传给浏览器；401/403/结构化503和 Retry-After 原样，网络失败502，取消传递且不重放。关闭开关在认证前固定 `503 session_identity_proxy_disabled`，零 discovery/代理出站；旧 JWT Cookie/Bearer 无法恢复传输。AppSecret 剥离始终保持；门户由独立的 `UseSessionForPortalProxies` 开关控制。生产 audience/角色注册与 SPA 激活仍由 #41/IKJ8MO 验证。专项 `FullyQualifiedName~IdentitySession_` 使用 fake HTTP 与隔离数据库，无生产 OSS 删除。
+
+Identity 代理退役浏览器凭据兼容（#73）：middleware 的 settings 为必需依赖，直接调用缺 TrustedSessionKey/有效服务器 token 也401拒绝。所有路径使用 StartsWithSegments remaining 映射 `/api`，根/尾斜线/大小写/query/body 保持；始终 RequestAborted，预取消/发送中取消传播且无应用层重试。非代理的 IdentityAccountsController 不在此切片范围。中间镜像不部署，最终须包含 #41/#75；回滚只选择明确旧完整镜像，不复活票据。
 
 ### 管理本地会话组收敛（#72）
 

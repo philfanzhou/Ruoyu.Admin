@@ -162,12 +162,13 @@ public sealed partial class AdminOidcTests(PostgreSqlFixture database) : Service
         Assert.Contains(display is null ? "\"displayName\":null" : "\"displayName\":\"fake-display\"", status);
         await Rejected(await Api(client, "/api/auth/session", authorization: ["Bearer " + OidcTestAuthority.AccessToken]), 401, "unauthorized");
         Assert.Equal(HttpStatusCode.OK, (await Api(client, ProtectedApiRoute, cookieValue)).StatusCode);
-        foreach (var path in new[] { "/api/identity/admin/users", "/api/teacher-portal/admin/users", "/api/assistant-portal/admin/users" })
+        foreach (var path in new[] { "/api/teacher-portal/admin/users", "/api/assistant-portal/admin/users" })
         {
             using var apiRequest = new HttpRequestMessage(HttpMethod.Get, path);
             apiRequest.Headers.Add("Cookie", cookieValue);
             Assert.Equal(HttpStatusCode.Unauthorized, (await client.SendAsync(apiRequest)).StatusCode);
         }
+        await Rejected(await Api(client, "/api/identity/admin/users", cookieValue), 503, "session_identity_proxy_disabled");
         var surfaces = cookieValue + status + response.Headers.Location + string.Join('\n', logs.Messages) + string.Join('\n', traces.Messages);
         foreach (var canary in new[] { OidcTestAuthority.Secret, OidcTestAuthority.AccessToken, authority.LastVerifier!, authority.LastIdToken!, code })
             Assert.DoesNotContain(canary, surfaces);

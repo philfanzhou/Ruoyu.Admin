@@ -61,6 +61,11 @@ internal sealed class AdminSessionMiddleware(RequestDelegate next, AdminOidcSett
 {
     public async Task InvokeAsync(HttpContext context, AdminSessionBoundary boundary)
     {
+        if (context.Request.Path.StartsWithSegments("/api/identity") && !settings.UseSessionForIdentityProxy)
+        {
+            await AdminSessionBoundary.RejectAsync(context, 503, "session_identity_proxy_disabled");
+            return;
+        }
         var csrf = AdminSessionBoundary.IsAuthPath(context.Request.Path, "/api/auth/csrf");
         if ((csrf || context.Request.Path.StartsWithSegments("/api/admin")
             || AdminSessionBoundary.IsAuthPath(context.Request.Path, "/api/auth/session")) && !settings.UseSessionForAdminApi)
