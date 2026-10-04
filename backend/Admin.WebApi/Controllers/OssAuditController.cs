@@ -21,6 +21,7 @@ public partial class OssAuditController : ControllerBase
     private readonly OssAuditWorker _auditWorker;
     private readonly ILogger<OssAuditController> _logger;
     private readonly HomeworkReferenceClient? _homeworkClient;
+    private readonly IStorageReferenceCollector? _references;
 
     public OssAuditController(
         AuditDbContext dbContext,
@@ -29,7 +30,8 @@ public partial class OssAuditController : ControllerBase
         IOssService ossService,
         OssAuditWorker auditWorker,
         ILogger<OssAuditController> logger,
-        HomeworkReferenceClient? homeworkClient = null)
+        HomeworkReferenceClient? homeworkClient = null,
+        IStorageReferenceCollector? references = null)
     {
         _dbContext = dbContext;
         _studentClient = studentClient;
@@ -38,6 +40,7 @@ public partial class OssAuditController : ControllerBase
         _auditWorker = auditWorker;
         _logger = logger;
         _homeworkClient = homeworkClient;
+        _references = references;
     }
 
     [HttpGet("records")]
@@ -68,7 +71,7 @@ public partial class OssAuditController : ControllerBase
             .ToDictionaryAsync(x => x.Status, x => x.Count);
 
         var bucketCounts = await _dbContext.OssAuditRecords
-            .Where(r => r.Status == 0)
+            .Where(r => r.Status == 0 || r.Status == 3)
             .GroupBy(r => r.Bucket)
             .Select(g => new { Bucket = g.Key, Count = g.Count() })
             .ToDictionaryAsync(x => x.Bucket, x => x.Count);
@@ -83,7 +86,7 @@ public partial class OssAuditController : ControllerBase
                 r.Size,
                 r.LastModified,
                 Status = r.Status,
-                StatusText = r.Status switch { 0 => "Pending", 1 => "Resolved", 2 => "Ignored", _ => "Unknown" },
+                StatusText = r.Status switch { 0 => "Pending", 1 => "Resolved", 2 => "Ignored", 3 => "UnreferencedObservation", _ => "Unknown" },
                 r.CreatedAt,
                 r.ResolvedAt,
                 r.Note,
@@ -137,6 +140,9 @@ public partial class OssAuditController : ControllerBase
                     : (long?)null,
                 lastCompleted.NewZombieCount,
                 lastCompleted.TriggerType,
+                lastCompleted.ReferenceContractVersion,
+                lastCompleted.ReferenceSnapshots,
+                deletionAuthorized = false,
             },
             lastFailed = lastFailed == null ? null : new
             {
@@ -147,6 +153,8 @@ public partial class OssAuditController : ControllerBase
                 lastFailed.TriggerType,
             },
             pendingCount,
+            observationCount = await _dbContext.OssAuditRecords.CountAsync(r => r.Status == 3),
+            deletionAuthorized = false,
         });
     }
 
@@ -157,44 +165,7 @@ public partial class OssAuditController : ControllerBase
         if (record == null)
             return NotFound(new ErrorResponse("Record not found."));
 
-        // Only validate references for Pending records;
-        // Resolved records already had their OSS files deleted, skip re-validation
-        if (record.Status == 0)
-        {
-            try
-            {
-                var registeredPaths = await GetRegisteredOssPathsAsync();
-                if (registeredPaths.Contains(record.ObjectPath))
-                    return BadRequest(new ErrorResponse("该文件仍被上传记录引用，不能删除。"));
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "删除前无法验证 Student/Homework 服务引用");
-                return StatusCode(502, new ErrorResponse("Student 或 Homework 服务不可用，无法安全删除。"));
-            }
-
-            try
-            {
-                var mistakePaths = await GetMistakeImagePathsAsync();
-                if (mistakePaths.Contains(record.ObjectPath))
-                    return BadRequest(new ErrorResponse("该文件仍被错题记录引用，不能删除。"));
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "删除前无法验证 Mistake 服务引用");
-                return StatusCode(502, new ErrorResponse("Mistake 服务不可用，无法安全删除。"));
-            }
-        }
-
-        // A failing OSS delete propagates to the ServiceMantle Problem Details boundary
-        // (500 http.internal_server_error, fixed fields, no exception text). The record stays
-        // in place: it is only removed after a successful delete + SaveChanges below.
-        await _ossService.DeleteAsync(record.ObjectPath);
-
-        _dbContext.OssAuditRecords.Remove(record);
-        await _dbContext.SaveChangesAsync();
-
-        return Ok(new OperationResponse(true, "Record, OSS object and fingerprint deleted."));
+        return await CleanupGateAsync();
     }
 
     [HttpPost("records/{id}/ignore")]
@@ -221,81 +192,24 @@ public partial class OssAuditController : ControllerBase
         if (request.Ids == null || request.Ids.Count == 0)
             return BadRequest(new ErrorResponse("At least one record ID is required."));
 
-        var records = await _dbContext.OssAuditRecords
-            .Where(r => request.Ids.Contains(r.Id) && r.Status != 2)
-            .ToListAsync();
-
-        if (records.Count == 0)
-            return Ok(new { resolvedCount = 0, errors = new List<string>(), totalRequested = request.Ids.Count });
-
-        // Only fetch reference paths for Pending records that need validation
-        var pendingRecords = records.Where(r => r.Status == 0).ToList();
-        HashSet<string> registeredPaths = new(StringComparer.OrdinalIgnoreCase);
-        HashSet<string> mistakePaths = new(StringComparer.OrdinalIgnoreCase);
-
-        if (pendingRecords.Count > 0)
-        {
-            try
-            {
-                registeredPaths = await GetRegisteredOssPathsAsync();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "批量删除前无法验证 Student/Homework 服务引用");
-                return StatusCode(502, new ErrorResponse("Student 或 Homework 服务不可用，无法安全删除。"));
-            }
-
-            try
-            {
-                mistakePaths = await GetMistakeImagePathsAsync();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "批量删除前无法验证 Mistake 服务引用");
-                return StatusCode(502, new ErrorResponse("Mistake 服务不可用，无法安全删除。"));
-            }
-        }
-
-        int resolvedCount = 0;
-        var errors = new List<string>();
-
-        foreach (var record in records)
-        {
-            // Only check references for Pending records; Resolved records already had files deleted
-            if (record.Status == 0)
-            {
-                if (registeredPaths.Contains(record.ObjectPath))
-                {
-                    errors.Add($"{record.ObjectPath}: 被上传记录引用，跳过");
-                    continue;
-                }
-                if (mistakePaths.Contains(record.ObjectPath))
-                {
-                    errors.Add($"{record.ObjectPath}: 被错题记录引用，跳过");
-                    continue;
-                }
-            }
-
-            try
-            {
-                await _ossService.DeleteAsync(record.ObjectPath);
-                _dbContext.OssAuditRecords.Remove(record);
-                resolvedCount++;
-            }
-            catch
-            {
-                // Batch semantics: one record's failure must not abort the batch (earlier
-                // deletes already happened and SaveChanges below persists them), so the
-                // failure is reported per-item with a FIXED safe text — never the exception
-                // message, which could leak storage internals.
-                errors.Add($"{record.ObjectPath}: 删除失败，已跳过");
-            }
-        }
-
-        await _dbContext.SaveChangesAsync();
-
-        return Ok(new { resolvedCount, errors, totalRequested = request.Ids.Count });
+        return await CleanupGateAsync();
     }
+
+    private async Task<IActionResult> CleanupGateAsync()
+    {
+        try
+        {
+            if (_references is null) throw new InvalidOperationException("Reference collector missing.");
+            await _references.CollectAsync(HttpContext?.RequestAborted ?? CancellationToken.None);
+        }
+        catch (OperationCanceledException) when (HttpContext?.RequestAborted.IsCancellationRequested == true) { throw; }
+        catch (Exception)
+        {
+            return StatusCode(502, new { success = false, errorKind = "references_unavailable" });
+        }
+        return StatusCode(409, new { success = false, errorKind = "cleanup_not_authorized" });
+    }
+
 }
 
 public class IgnoreRecordRequest
@@ -306,74 +220,4 @@ public class IgnoreRecordRequest
 public class BatchResolveRequest
 {
     public List<long> Ids { get; set; } = new();
-}
-
-// Partial class extension for OssAuditController helper methods
-public partial class OssAuditController
-{
-    /// <summary>
-    /// 通过分页获取所有上传记录，本地聚合 image_paths，替代原 GetRegisteredOssPaths 专用接口。
-    /// </summary>
-    private async Task<HashSet<string>> GetRegisteredOssPathsAsync()
-    {
-        var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        int page = 1;
-        const int pageSize = 100;
-
-        while (true)
-        {
-            var response = await _studentClient.GetAllUploadRecordsAsync(null, page, pageSize, null);
-
-            foreach (var record in response.Items)
-            {
-                foreach (var entry in record.ImageEntries)
-                {
-                    paths.Add(entry.Path);
-                }
-            }
-
-            if (page * pageSize >= response.TotalCount)
-                break;
-
-            page++;
-        }
-
-        if (_homeworkClient != null)
-            paths.UnionWith(await _homeworkClient.GetAllImagePathsAsync());
-
-        return paths;
-    }
-
-    /// <summary>
-    /// 通过分页获取所有错题条目，本地聚合 source_regions.source_image_path，替代原 GetAllReferencedImagePaths 专用接口。
-    /// </summary>
-    private async Task<HashSet<string>> GetMistakeImagePathsAsync()
-    {
-        var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        int page = 1;
-        const int pageSize = 100;
-
-        while (true)
-        {
-            var response = await _mistakeClient.GetMistakeItemListAsync(
-                string.Empty, 0, 0, MistakeReviewStatus.Unspecified, page, pageSize);
-
-            foreach (var item in response.Items)
-            {
-                foreach (var region in item.SourceRegions)
-                {
-                    if (!string.IsNullOrWhiteSpace(region.SourceImagePath))
-                        paths.Add(region.SourceImagePath);
-                }
-            }
-
-            var totalCount = response.PageMeta?.TotalCount ?? 0;
-            if (page * pageSize >= totalCount)
-                break;
-
-            page++;
-        }
-
-        return paths;
-    }
 }

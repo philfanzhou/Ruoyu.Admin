@@ -2,7 +2,7 @@
 
 ## 迁移策略
 
-本项目使用 **EF Core Migrations**（单一基线迁移 `20260930190608_InitialCreate`），由消费方自有的 `AuditMigrationExecutor`（`backend/Admin.WebApi/Database/AuditMigrationExecutor.cs`）实现 ServiceMantle 的 `IDatabaseMigrationExecutor` SPI，在启动时由 ServiceMantle 0.3.0 的 `StartupDatabaseGate` 调用共享的 `DatabaseMigrationOrchestrator`（PostgreSQL advisory lock 串行化多实例启动）执行。旧的共享 `DatabaseInitializer` + 内联 `CREATE TABLE IF NOT EXISTS` DDL 路径已于 issue #57 移除。
+本项目使用 **EF Core Migrations**（exact链 `20260930190608_InitialCreate` → `20261003030002_AddReferenceObservations`），由消费方自有的 `AuditMigrationExecutor`（`backend/Admin.WebApi/Database/AuditMigrationExecutor.cs`）实现 ServiceMantle 的 `IDatabaseMigrationExecutor` SPI，在启动时由 ServiceMantle 0.3.0 的 `StartupDatabaseGate` 调用共享的 `DatabaseMigrationOrchestrator`（PostgreSQL advisory lock 串行化多实例启动）执行。旧的共享 `DatabaseInitializer` + 内联 `CREATE TABLE IF NOT EXISTS` DDL 路径已于 issue #57 移除。
 
 ## 启动流程
 
@@ -11,8 +11,8 @@
 1. **共享启动门**（`StartupDatabaseGate`）：观察解析出的连接串——已有数据库原样使用（不建 maintenance 连接、不需要 CREATEDB 权限）；**可证实缺失**的数据库仅当 `Database:AllowCreate=true`（默认 `false`）时创建，否则以固定错误码 `database_target_preparation.creation_not_allowed` 拒绝启动且零写入；服务器不可达 / 认证 / 权限 / 身份冲突一律拒绝，绝不回退为建库。maintenance 由共享 `PostgreSqlMaintenanceConnection` 派生，只把数据库名改为 `postgres`，沿用同一凭据；准备预算固定 30 秒，成功后重新 Observe，仅可连接时才继续。
 2. **迁移编排**（ServiceMantle）：以 ServiceId `ruoyu-admin` 派生的 advisory lock（30 秒获取预算）覆盖初始检查、执行与持锁终检；失败以安全错误码（`migration.lock_*` / `migration.inspection_failed` / `migration.version_too_new` / `migration.execution_failed` / `migration.final_state_invalid`）非零码退出。
 3. **执行器**（`AuditMigrationExecutor`）的接管规则：
-   - **空库**（无业务表、无历史）→ 执行基线迁移建表；
-   - **完整旧库**（两张表齐全、无 `__EFMigrationsHistory`、结构逐列验证通过）→ 仅补安全 backfill（缺失索引的 `CREATE INDEX IF NOT EXISTS`）并在事务中写入基线历史，**数据保留**；
+   - **空库**（无业务表、无历史）→ 执行已知迁移链建表；
+   - **完整旧库**（两张表齐全、无 `__EFMigrationsHistory`、结构逐列验证通过）→ 仅补安全 backfill（缺失索引的 `CREATE INDEX IF NOT EXISTS`）并在事务中写入基线历史，再执行新观察迁移，**数据保留**；
    - **版本过新**（历史含未知迁移 id）或 **结构未知/冲突**（多列、类型/可空性/identity 形态不符、主键/索引不符、部分表）→ 以固定错误码 `RUOYU_ADMIN_DB_SCHEMA_INCOMPATIBLE` 拒绝接管，零写入，不自动修复；
    - 基线结构（列、类型、`GENERATED ALWAYS AS IDENTITY`、默认值、`<表名>_pkey` 主键名、`IX_*` 索引）与旧内联 DDL 逐项一致，由 `AuditMigrationTests` 的黄金对照测试保证。
 
@@ -45,3 +45,7 @@
 | 取消运行 | 不记成功 | Running，不记成功 |
 
 正常 Succeeded/ready JSON、迁移 `migration.*` 与 `RUOYU_ADMIN_DB_SCHEMA_INCOMPATIBLE`、端口和认证不变。探针由 PostgreSQL classifier 分类；不可分类异常仍安全 fail-closed 为 `health.probe_failed`，不伪造连接状态。回滚上一版本恢复旧启动/探针码，无 schema 回滚；不会撤销已创建数据库或已提交迁移。
+
+## StorageReferences v1 观察升级
+
+旧exact baseline history及旧合法无history结构只按旧baseline检查；后者stamp之后才执行追加迁移。新链给OssAuditRuns新增ReferenceContractVersion/ReferenceSnapshots nullable text。原业务/审计事实不改写、不回填假proof。history必须exact known prefix，缺baseline/unknown/结构冲突拒绝；executor的KnownMigrationIds同步维护。新metadata或Status3非空时Down拒绝丢失历史，恢复使用整个数据库pg_dump。唯一语义见[StorageAudit](../modules/OssAudit/StorageAudit.md)。

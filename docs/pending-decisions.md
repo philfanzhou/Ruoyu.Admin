@@ -18,18 +18,18 @@ PD-001 至 PD-003 于 2026-09-24 随产品从 Ruoyu.Study monorepo 迁入，原�
 - **B**：使用持久化作业表或专用任务框架，支持重试和恢复。
 - **C**：保留当前进程内触发方式。
 - **阻塞范围**：只阻塞手动 OSS 审计触发和任务恢复模型。
-- **关联**：`OssAuditWorker` 的并发互斥路径目前没有测试覆盖（见 `docs/modules/OssAudit/OssAudit/05-TESTS.md` 的未覆盖清单），决定落地时需同时补齐。
+- **关联**：`OssAuditWorker` 的并发互斥路径目前没有测试覆盖（见 `docs/modules/OssAudit/StorageAudit.md` 的触发边界），决定落地时需同时补齐。
 
 ## PD-002 OSS 审计全量扫描的扩展策略
 
 - **状态**：待决定
 - **影响范围**：Storage Audit；跨仓库依赖 Learner、Mistake Learning、Homework 与对象存储
-- **当前证据**：`OssAuditWorker` 分页读取全部上传记录（`GetAllUploadRecordsAsync`，每页 100）和全部错题条目（`GetMistakeItemListAsync`，每页 100），在内存聚合全部路径，再对每个桶逐对象比对。`OssAuditController` 的删除前复核在**每次** resolve 时重新执行同一套全量聚合，批量处置时为每条记录重复查询。
+- **当前证据**：当前v1 collector读取三份最多100000 keys/32MiB canonical的不可变快照，在内存形成集合，再对S3列举结果比对；每次非空single/batch resolve执行一次collector后固定拒删。超出v1预算的引用集明确失败。后续超预算的扩展、流式集合运算和S3列举规模仍需独立取舍。
 - **A（推荐）**：数据主责服务提供游标式引用路径流，Storage Audit 使用分块集合运算和批量 upsert。
 - **B**：保留现有 API，但增加分页并发、超时、缓存和批量数据库查询。
 - **C**：接受当前全量内存聚合。
 - **阻塞范围**：只阻塞大数据量 OSS 审计的扩展性改造。
-- **跨仓库说明**：方案 A 需要 Student、Mistake、Homework 三个服务新增或改造端点，属 Ruoyu.Study 的实施范围；本仓库只能选择消费方式，不能单方面落地 A。方案 B、C 可独立实施。
+- **跨仓库说明**：超出当前v1固定预算的方案 A 需要 Student、Mistake、Homework 三个服务另行改造合同，属 Ruoyu.Study 的实施范围；本仓库只能选择消费方式，不能单方面落地 A。方案 B、C 可独立实施。
 
 ## PD-003 未配置 CORS 时的默认策略
 

@@ -2,6 +2,7 @@ using Admin.WebApi.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Ruoyu.Admin.Common.Oss;
 using Ruoyu.Admin.ServiceClients;
+using System.Text.Json;
 
 namespace Admin.WebApi.Services;
 
@@ -26,15 +27,13 @@ public class OssAuditWorker : BackgroundService
     /// </summary>
     /// <remarks>
     /// <para>
-    /// A bucket may appear here only if some reference source aggregates the paths stored under
-    /// it. Any bucket scanned without a reference source has every one of its objects flagged as
-    /// an orphan by construction, and an orphan record can be resolved into a real
-    /// <see cref="IOssService.DeleteAsync"/> against production storage.
+    /// Only buckets covered by all required reference providers may produce observations.
+    /// An observation never authorizes deletion, including historical pending records.
     /// </para>
     /// <para>
     /// <see cref="OssBucket.Questions"/> is deliberately excluded: QuestionBank owns
     /// <c>questions/</c> but publishes no reference query, so scanning it flagged every question
-    /// image as deletable. <see cref="OssBucket.Documents"/> is excluded because DocLibrary
+    /// image as unreferenced. <see cref="OssBucket.Documents"/> is excluded because DocLibrary
     /// delegates original and artifact storage to StructaDoc. Re-adding either requires landing
     /// its reference source in the same change.
     /// </para>
@@ -58,15 +57,6 @@ public class OssAuditWorker : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         await Task.Delay(TimeSpan.FromMinutes(2), stoppingToken);
-
-        using (var scope = _serviceProvider.CreateScope())
-        {
-            var ossService = scope.ServiceProvider.GetRequiredService<IOssService>();
-            await CleanupLegacyHomeworkReviewImagesAsync(ossService, _logger, stoppingToken);
-            var dbContext = scope.ServiceProvider.GetRequiredService<AuditDbContext>();
-            await CleanupLegacyHomeworkReviewAuditRecordsAsync(dbContext, _logger, stoppingToken);
-            await CleanupUnauditedBucketAuditRecordsAsync(dbContext, _logger, stoppingToken);
-        }
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -93,34 +83,14 @@ public class OssAuditWorker : BackgroundService
         }
     }
 
-    internal static async Task<int> CleanupLegacyHomeworkReviewImagesAsync(
+    internal static Task<int> CleanupLegacyHomeworkReviewImagesAsync(
         IOssService ossService,
         ILogger logger,
         CancellationToken cancellationToken = default)
     {
-        var objects = await ossService.ListObjectsWithBucketAsync(OssBucket.Uploads, "homework");
-        var deletedCount = 0;
-        foreach (var obj in objects)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (!IsLegacyHomeworkReviewImagePath(obj.ObjectPath))
-                continue;
-
-            if (await ossService.DeleteAsync(obj.ObjectPath))
-            {
-                deletedCount++;
-            }
-            else
-            {
-                logger.LogWarning(
-                    "Failed to delete obsolete homework review image {ObjectPath}", obj.ObjectPath);
-            }
-        }
-
-        logger.LogInformation(
-            "Obsolete homework review image cleanup completed. Deleted {Count} objects",
-            deletedCount);
-        return deletedCount;
+        cancellationToken.ThrowIfCancellationRequested();
+        // Snapshot observations never authorize deletion of objects or audit history.
+        return Task.FromResult(0);
     }
 
     internal static bool IsLegacyHomeworkReviewImagePath(string path)
@@ -139,57 +109,31 @@ public class OssAuditWorker : BackgroundService
             && revisionId != Guid.Empty;
     }
 
-    internal static async Task<int> CleanupLegacyHomeworkReviewAuditRecordsAsync(
+    internal static Task<int> CleanupLegacyHomeworkReviewAuditRecordsAsync(
         AuditDbContext dbContext,
         ILogger logger,
         CancellationToken cancellationToken = default)
     {
-        var records = await dbContext.OssAuditRecords.ToListAsync(cancellationToken);
-        var obsoleteRecords = records
-            .Where(record => IsLegacyHomeworkReviewImagePath(record.ObjectPath))
-            .ToList();
-        if (obsoleteRecords.Count == 0)
-            return 0;
-
-        dbContext.OssAuditRecords.RemoveRange(obsoleteRecords);
-        await dbContext.SaveChangesAsync(cancellationToken);
-        logger.LogInformation(
-            "Removed {Count} obsolete homework review image audit records",
-            obsoleteRecords.Count);
-        return obsoleteRecords.Count;
+        cancellationToken.ThrowIfCancellationRequested();
+        // Snapshot observations never authorize deletion of objects or audit history.
+        return Task.FromResult(0);
     }
 
     /// <summary>
-    /// Removes audit records whose bucket is no longer audited.
+    /// Preserves historical audit records whose bucket is no longer audited.
     /// </summary>
     /// <remarks>
-    /// Earlier revisions scanned <c>questions/</c> without any QuestionBank reference source, so
-    /// every question image was recorded as an orphan. Those records stay resolvable into a real
-    /// delete, so they are purged on startup rather than left for an operator to act on. Records
-    /// with an unrecognised or empty bucket are kept: their origin cannot be established, so they
-    /// cannot be classified as false positives.
+    /// Startup cannot infer deletion permission from a bucket or an old observation.
+    /// The common collector and fixed v1 authorization gate reject all resolve requests.
     /// </remarks>
-    internal static async Task<int> CleanupUnauditedBucketAuditRecordsAsync(
+    internal static Task<int> CleanupUnauditedBucketAuditRecordsAsync(
         AuditDbContext dbContext,
         ILogger logger,
         CancellationToken cancellationToken = default)
     {
-        var auditedBucketNames = AuditedBucketNames.Values.ToHashSet(StringComparer.Ordinal);
-        var records = await dbContext.OssAuditRecords.ToListAsync(cancellationToken);
-        var obsoleteRecords = records
-            .Where(record =>
-                !string.IsNullOrWhiteSpace(record.Bucket)
-                && !auditedBucketNames.Contains(record.Bucket))
-            .ToList();
-        if (obsoleteRecords.Count == 0)
-            return 0;
-
-        dbContext.OssAuditRecords.RemoveRange(obsoleteRecords);
-        await dbContext.SaveChangesAsync(cancellationToken);
-        logger.LogWarning(
-            "Removed {Count} audit records in buckets that have no reference source and are no longer audited",
-            obsoleteRecords.Count);
-        return obsoleteRecords.Count;
+        cancellationToken.ThrowIfCancellationRequested();
+        // Snapshot observations never authorize deletion of objects or audit history.
+        return Task.FromResult(0);
     }
 
     public async Task RunAuditAsync(string triggerType = "manual", CancellationToken cancellationToken = default)
@@ -219,84 +163,29 @@ public class OssAuditWorker : BackgroundService
             return;
         }
 
-        // Double-check: if there's another running record (Id != ours), abort
-        var otherRunning = await dbContext.OssAuditRuns
-            .AnyAsync(r => r.Status == 0 && r.Id != auditRun.Id, cancellationToken);
-        if (otherRunning)
-        {
-            _logger.LogWarning("Another audit is already running, removing this record");
-            dbContext.OssAuditRuns.Remove(auditRun);
-            await dbContext.SaveChangesAsync(cancellationToken);
-            return;
-        }
-
         try
         {
+            // Once the run is durable, cancellation during the concurrency check must
+            // reach the same terminal-state handler as collection or object listing.
+            var otherRunning = await dbContext.OssAuditRuns
+                .AnyAsync(r => r.Status == 0 && r.Id != auditRun.Id, cancellationToken);
+            if (otherRunning)
+            {
+                _logger.LogWarning("Another audit is already running, removing this record");
+                dbContext.OssAuditRuns.Remove(auditRun);
+                await dbContext.SaveChangesAsync(cancellationToken);
+                return;
+            }
+
             var ossService = scope.ServiceProvider.GetRequiredService<IOssService>();
-            var studentClient = scope.ServiceProvider
-                .GetRequiredService<IStudentHttpClient>();
-            var mistakeClient = scope.ServiceProvider
-                .GetRequiredService<IMistakeHttpClient>();
-            var homeworkClient = scope.ServiceProvider.GetRequiredService<HomeworkReferenceClient>();
-
-            HashSet<string> registeredPaths;
-            try
-            {
-                registeredPaths = await GetRegisteredOssPathsAsync(studentClient, cancellationToken);
-                _logger.LogInformation("Got {Count} registered paths from Student service (aggregated from upload records)", registeredPaths.Count);
-            }
-            catch (HttpRequestException ex)
-            {
-                _logger.LogError("Student service unavailable, aborting audit: {Message}", ex.Message);
-                auditRun.Status = 2;
-                auditRun.CompletedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-                auditRun.ErrorMessage = "Student service unavailable";
-                await dbContext.SaveChangesAsync(cancellationToken);
-                return;
-            }
-
-            try
-            {
-                var homeworkPaths = await homeworkClient.GetAllImagePathsAsync(cancellationToken);
-                registeredPaths.UnionWith(homeworkPaths);
-                _logger.LogInformation("Got {Count} referenced paths from Homework service", homeworkPaths.Count);
-            }
-            catch (HttpRequestException ex)
-            {
-                _logger.LogError("Homework service unavailable, aborting audit: {Message}", ex.Message);
-                auditRun.Status = 2;
-                auditRun.CompletedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-                auditRun.ErrorMessage = "Homework service unavailable";
-                await dbContext.SaveChangesAsync(cancellationToken);
-                return;
-            }
-
-            HashSet<string> mistakePaths;
-            try
-            {
-                mistakePaths = await GetMistakeImagePathsAsync(mistakeClient, cancellationToken);
-                _logger.LogInformation("Got {Count} referenced paths from Mistake service (aggregated from mistake items)", mistakePaths.Count);
-            }
-            catch (Exception ex)
-            {
-                // Abort rather than degrade, matching Student and Homework. Every mistakes/ object
-                // was migrated out of uploads/, so none of them appear in the Student upload
-                // records: with an empty mistakePaths set every one of them is recorded as an
-                // orphan while the run still reports success and a bogus NewZombieCount.
-                //
-                // This is not by itself a delete path — OssAuditController re-aggregates the same
-                // reference sources before DeleteAsync and refuses with 502 when any of them is
-                // unreachable, so a genuinely referenced file stays protected once Mistake
-                // recovers. But that guard is only as good as the sweep that feeds it, and an
-                // audit whose pending queue is entirely noise is worse than no audit: it trains
-                // operators to batch-resolve. An explicit failure is cheap to retry.
-                _logger.LogError("Mistake service unavailable, aborting audit: {Message}", ex.Message);
-                auditRun.Status = 2;
-                auditRun.CompletedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-                auditRun.ErrorMessage = "Mistake service unavailable";
-                await dbContext.SaveChangesAsync(cancellationToken);
-                return;
-            }
+            var references = await scope.ServiceProvider.GetRequiredService<IStorageReferenceCollector>()
+                .CollectAsync(cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            auditRun.ReferenceSnapshots = JsonSerializer.Serialize(references.Snapshots, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+            auditRun.ReferenceContractVersion = "storage-references-v1";
+            var registeredPaths = references.Keys;
+            // Persist all new observations and completion together; no partial scan is published.
+            await using var scanTransaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
 
             int totalNewZombies = 0;
 
@@ -305,7 +194,7 @@ public class OssAuditWorker : BackgroundService
                 var bucketName = AuditedBucketNames[bucket];
                 _logger.LogInformation("Auditing bucket: {Bucket}", bucketName);
 
-                var objects = await ossService.ListObjectsWithBucketAsync(bucket);
+                var objects = await ossService.ListObjectsWithBucketAsync(bucket).WaitAsync(cancellationToken);
 
                 foreach (var obj in objects)
                 {
@@ -316,9 +205,8 @@ public class OssAuditWorker : BackgroundService
                         continue;
 
                     var isInRegistered = registeredPaths.Contains(path);
-                    var isInMistake = mistakePaths.Contains(path);
 
-                    if (!isInRegistered && !isInMistake)
+                    if (!isInRegistered)
                     {
                         var existing = await dbContext.OssAuditRecords
                             .AnyAsync(r => r.ObjectPath == path, cancellationToken);
@@ -333,7 +221,7 @@ public class OssAuditWorker : BackgroundService
                                 LastModified = obj.LastModified.HasValue
                                     ? obj.LastModified.Value.ToUnixTimeSeconds()
                                     : 0,
-                                Status = 0,
+                                Status = 3,
                                 CreatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
                             });
                             totalNewZombies++;
@@ -348,83 +236,20 @@ public class OssAuditWorker : BackgroundService
             auditRun.CompletedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             auditRun.NewZombieCount = totalNewZombies;
             await dbContext.SaveChangesAsync(cancellationToken);
+            await scanTransaction.CommitAsync(cancellationToken);
 
-            _logger.LogInformation("OSS audit completed. New zombie objects found: {Count}", totalNewZombies);
+            _logger.LogInformation("OSS audit completed. New unreferenced observations: {Count}", totalNewZombies);
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            _logger.LogError(ex, "OSS audit failed with unexpected error");
+            _logger.LogError("OSS audit failed before a complete observation was committed");
+            dbContext.ChangeTracker.Clear();
+            dbContext.Attach(auditRun);
             auditRun.Status = 2;
             auditRun.CompletedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-            auditRun.ErrorMessage = ex.Message;
-            await dbContext.SaveChangesAsync(cancellationToken);
+            auditRun.ErrorMessage = cancellationToken.IsCancellationRequested ? "audit_cancelled" : "references_or_scan_unavailable";
+            await dbContext.SaveChangesAsync(CancellationToken.None);
         }
     }
 
-    /// <summary>
-    /// 通过分页获取所有上传记录，本地聚合 image_paths，替代原 GetRegisteredOssPaths 专用接口。
-    /// </summary>
-    private static async Task<HashSet<string>> GetRegisteredOssPathsAsync(
-        IStudentHttpClient client,
-        CancellationToken cancellationToken)
-    {
-        var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        int page = 1;
-        const int pageSize = 100;
-
-        while (true)
-        {
-            var response = await client.GetAllUploadRecordsAsync(null, page, pageSize, null, cancellationToken);
-
-            foreach (var record in response.Items)
-            {
-                foreach (var entry in record.ImageEntries)
-                {
-                    paths.Add(entry.Path);
-                }
-            }
-
-            if (page * pageSize >= response.TotalCount)
-                break;
-
-            page++;
-        }
-
-        return paths;
-    }
-
-    /// <summary>
-    /// 通过分页获取所有错题条目，本地聚合 source_regions.source_image_path，替代原 GetAllReferencedImagePaths 专用接口。
-    /// </summary>
-    private static async Task<HashSet<string>> GetMistakeImagePathsAsync(
-        IMistakeHttpClient client,
-        CancellationToken cancellationToken)
-    {
-        var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        int page = 1;
-        const int pageSize = 100;
-
-        while (true)
-        {
-            var response = await client.GetMistakeItemListAsync(
-                string.Empty, 0, 0, MistakeReviewStatus.Unspecified, page, pageSize, cancellationToken);
-
-            foreach (var item in response.Items)
-            {
-                foreach (var region in item.SourceRegions)
-                {
-                    if (!string.IsNullOrWhiteSpace(region.SourceImagePath))
-                        paths.Add(region.SourceImagePath);
-                }
-            }
-
-            var totalCount = response.PageMeta?.TotalCount ?? 0;
-            if (page * pageSize >= totalCount)
-                break;
-
-            page++;
-        }
-
-        return paths;
-    }
 }

@@ -4,7 +4,7 @@
 
 Ruoyu.Admin is the administration console for the Ruoyu.Study English-learning platform. It combines a .NET BFF API with a Vue 3 / Element Plus single-page app, shipped as one container.
 
-It owns almost no business data. It authenticates administrators, aggregates and proxies the platform's downstream services, and owns exactly one domain of its own: **Storage Audit** — finding and disposing object-storage files that no business record references any more.
+It owns almost no business data. It authenticates administrators, aggregates and proxies the platform's downstream services, and owns exactly one domain of its own: **Storage Audit** — collecting complete immutable reference snapshots and reporting objects not observed in those captures. StorageReferences v1 never authorizes deletion.
 
 > **Not a standalone product.** Ruoyu.Admin is an administration layer. It requires a running Identity provider and the Ruoyu.Study Student / Mistake / Homework / Teacher Portal / Assistant Portal services to do anything useful. See [Dependencies](#dependencies).
 
@@ -14,7 +14,7 @@ It owns almost no business data. It authenticates administrators, aggregates and
 - **Account linking** — bind and unbind Identity accounts to student records, with batch account lookup.
 - **Upload record review** — browse all learning-image upload records, rotate or remove images, reset status, delete after review.
 - **Mistake management** — query, edit and submit mistake items; manually trigger visual-language analysis.
-- **Storage Audit** — scheduled and on-demand runs that enumerate the object store, aggregate every path referenced by Student, Mistake and Homework, and raise orphan objects as audit records for delete / ignore / keep resolution.
+- **Storage Audit** — scheduled and on-demand runs that validate all three complete Student / Mistake / Homework reference snapshots before enumerating the object store and persist read-only unreferenced observations. Every resolve path refuses cleanup.
 - **Console proxying** — reverse-proxies Identity, Teacher Portal and Assistant Portal APIs so the SPA has a single origin.
 - **Teacher and assistant administration** — reached through the Teacher Portal and Assistant Portal proxies.
 
@@ -33,7 +33,7 @@ Browser ── Vue 3 SPA (Element Plus, served from wwwroot)
              │
              ├── IStudentHttpClient ──►  Student             :5005
              ├── IMistakeHttpClient ──►  Mistake             :5007
-             ├── HomeworkReferenceClient ► Homework           :5009
+             ├── StorageReferenceCollector ► Student / Mistake / Homework (HTTPS + dedicated RS256)
              ├── IOssService (S3)     ──►  SeaweedFS          :8333
              └── AuditDbContext       ──►  PostgreSQL ruoyu_admin
 ```
@@ -70,7 +70,7 @@ Managed mistake assignment is opt-in (`Mistake:ManagedAssignmentEnabled=false` b
 | Ruoyu.Study Homework service | Image-reference aggregation for Storage Audit |
 | Ruoyu.Study Teacher Portal / Assistant Portal | Teacher and assistant administration, reached through the proxies |
 | PostgreSQL | `ruoyu_admin` database — `OssAuditRuns`, `OssAuditRecords` |
-| S3-compatible object store (SeaweedFS in the reference deployment) | Storage Audit browsing, orphan cleanup, migration assistance |
+| S3-compatible object store (SeaweedFS in the reference deployment) | Storage Audit read-only object browsing |
 | Consul (optional) | KV-backed configuration with local cache fallback |
 | Grafana Loki (optional) | Log aggregation |
 
@@ -146,6 +146,7 @@ Configuration is read from `appsettings.json`, then Consul KV under `config/ruoy
 | `AdminOidc:UseSessionForAdminApi` | Optional session authorization and CSRF for `/api/admin/*` (default false, requires OIDC) |
 | `AdminWeb:AllowedOrigins` | CORS origins; empty means allow any |
 | `Oss:*` | `InternalEndpoint` / `InternalSecure` for direct S3 access, `PublicBaseUrl` for presigned URLs |
+| `StorageReferences:*` | Default-off dedicated RS256 signing key and three mandatory HTTPS provider roots; see [StorageAudit](docs/modules/OssAudit/StorageAudit.md) |
 | `OssAudit:ScheduledHour`, `OssAudit:ScheduledMinute` | Daily audit schedule (UTC) |
 | `ConnectionStrings:AuditDb`, `Database:Name`, `PostgreSql:*` | Audit database |
 | `Database:AllowCreate` | Allow startup to create a verifiably missing `ruoyu_admin` database (default `false` = refuse) |
@@ -206,13 +207,9 @@ deletion are blocked.
 
 ## Known issues
 
-**Storage Audit used to misclassify every QuestionBank image as an orphan — fixed during the extraction.** `OssAuditWorker` scanned `uploads/`, `mistakes/` and `questions/` but only aggregated referenced paths from Student, Homework and Mistake. Nothing covered `questions/`, so every object there was recorded as unreferenced; the pre-delete revalidation queries the same sources and therefore could not object, and resolving those records called `IOssService.DeleteAsync` — permanently deleting question images along with their thumbnails.
+StorageReferences v1 requires complete immutable snapshots from Student, Mistake and Homework. Any failed or incomplete source fails the run before S3 listing. Successful runs record three snapshot proofs and read-only `UnreferencedObservation` records. All single and nonempty batch resolve requests use the same collector and return 409 when complete or 502 when unavailable; neither deletes objects or records. Startup preserves legacy review images and historical `questions` / `documents` records. Questions and Documents remain outside the audited bucket set because they lack complete reference providers.
 
-The audit scope is now `OssAuditWorker.AuditedBuckets` (`Uploads`, `Mistakes`) under the invariant that a bucket may only be scanned when a reference source covers it, and stale `questions` / `documents` records are purged on startup. `Mistake` unavailability now aborts the run instead of degrading, matching Student and Homework.
-
-`OssAuditController` also had **no test coverage at all** — the monorepo documentation listed twenty-two such tests as implemented, and they did not exist there either. `OssAuditControllerTests` now covers every refusal branch of the pre-delete revalidation (31 cases), including case-insensitive matching, the null `HomeworkReferenceClient` path, and whole-batch refusal when a reference source is unreachable. The two 502-guard cases were A/B verified against the guard removed. Writing them surfaced a second defect: `BatchResolve`'s empty-result early return omitted `totalRequested`, which `docs/api.md` and the frontend's `BatchResolveResponse` both declare as required; the two paths now agree.
-
-> **Upgrade note:** the purge runs at application startup. If your database already holds records with `Bucket = 'questions'`, do not resolve or batch-resolve them on the old version — upgrade first and let the startup cleanup remove them.
+The original parent work still owns physical garbage collection and any future writer/collector deletion fence. Snapshots describe capture-time facts and cannot prove that a later writer has not created a reference. Deployment, migration and rollback boundaries: [StorageAudit](docs/modules/OssAudit/StorageAudit.md).
 
 **`Steeltoe.Discovery.Consul` 4.2.0 carries a known high-severity advisory** (GHSA-67c9-f6v2-qv86: malformed `secure` metadata aborts service instance lookup — a denial of service; patched in 4.3.0). Inherited from the monorepo; `dotnet restore` surfaces it as NU1903. The CI image scans run report-only (`exit-code: '0'`) until the bump lands: the advisory has a patched release, so `--ignore-unfixed` would not skip it and a blocking scan would fail every pull request today. The bump needs its own verification of Consul KV loading and service registration, and promoting the scans to blocking rides with that change.
 

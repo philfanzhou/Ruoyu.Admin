@@ -65,7 +65,7 @@ public sealed class AuditMigrationExecutor : IDatabaseMigrationExecutor
     internal const string IncompatibleErrorCode = "RUOYU_ADMIN_DB_SCHEMA_INCOMPATIBLE";
 
     /// <summary>The ordered migration contract this executor supports; frozen by the issue.</summary>
-    internal static readonly IReadOnlyList<string> KnownMigrationIds = [InitialCreateMigrationId];
+    internal static readonly IReadOnlyList<string> KnownMigrationIds = [InitialCreateMigrationId, "20261003030002_AddReferenceObservations"];
 
     /// <summary>The two business tables of the baseline.</summary>
     internal static readonly IReadOnlyList<string> KnownTableNames = ["OssAuditRecords", "OssAuditRuns"];
@@ -114,6 +114,7 @@ public sealed class AuditMigrationExecutor : IDatabaseMigrationExecutor
         DatabaseState.Empty => MigrationObservationState.Empty,
         DatabaseState.CurrentVersionCompatible => MigrationObservationState.CurrentVersionCompatible,
         DatabaseState.LegacyTakeoverRequired => MigrationObservationState.PendingMigration,
+        DatabaseState.KnownUpgradeRequired => MigrationObservationState.PendingMigration,
         DatabaseState.VersionTooNew => MigrationObservationState.VersionTooNew,
         _ => MigrationObservationState.InspectionFailed,
     };
@@ -129,6 +130,8 @@ public sealed class AuditMigrationExecutor : IDatabaseMigrationExecutor
 
         /// <summary>A verified legacy database without history: backfill, then stamp the baseline.</summary>
         LegacyTakeoverRequired,
+
+        KnownUpgradeRequired,
 
         /// <summary>The history contains migration ids this application does not know.</summary>
         VersionTooNew,
@@ -230,6 +233,7 @@ public sealed class AuditMigrationExecutor : IDatabaseMigrationExecutor
                     "Database is already compatible with the current version; nothing to execute");
                 return;
 
+            case DatabaseState.KnownUpgradeRequired:
             case DatabaseState.Empty:
                 _logger?.LogInformation(
                     "Applying the {MigrationId} baseline migration to the empty database state ({Reason})",
@@ -246,6 +250,7 @@ public sealed class AuditMigrationExecutor : IDatabaseMigrationExecutor
                 cancellationToken.ThrowIfCancellationRequested();
                 await ApplyBackfillsAsync(inspection.Backfills, cancellationToken).ConfigureAwait(false);
                 await StampBaselineAsync(cancellationToken).ConfigureAwait(false);
+                await _context.Database.MigrateAsync(cancellationToken).ConfigureAwait(false);
                 _logger?.LogInformation(
                     "Legacy database taken over: schema verified, data preserved, baseline registered");
                 return;
@@ -282,6 +287,8 @@ public sealed class AuditMigrationExecutor : IDatabaseMigrationExecutor
                 $"the migration history contains ids this application does not know: {Join(unknownIds)}");
         }
 
+        if (!applied.SequenceEqual(KnownMigrationIds.Take(applied.Count), StringComparer.Ordinal))
+            return DatabaseInspection.Failed("migration history is not an exact supported prefix");
         var snapshot = await ReadSchemaSnapshotAsync(connection, cancellationToken).ConfigureAwait(false);
 
         if (applied.Count == KnownMigrationIds.Count)
@@ -296,8 +303,16 @@ public sealed class AuditMigrationExecutor : IDatabaseMigrationExecutor
                     $"the history claims the current version but the schema does not verify: {mismatch.Reason}");
         }
 
+        if (applied.Count == 1)
+        {
+            var mismatch = ValidateTables(snapshot, BuildExpectedTables(baseline: true), KnownTableNames, backfills: null);
+            return mismatch is null ? DatabaseInspection.Of(DatabaseState.KnownUpgradeRequired,
+                "the exact baseline schema requires the reference-observation migration") : DatabaseInspection.Failed(mismatch.Reason);
+        }
+
         if (presentBusinessTables.Count == 0)
         {
+            if (applied.Count != 0) return DatabaseInspection.Failed("history present without business tables");
             // No business tables at all (history absent): EF runs the baseline migration.
             return DatabaseInspection.Of(
                 DatabaseState.Empty,
@@ -313,7 +328,7 @@ public sealed class AuditMigrationExecutor : IDatabaseMigrationExecutor
 
         // Both tables are present without history: verify and collect safe backfills.
         var backfills = new List<BackfillStatement>();
-        var verification = ValidateTables(snapshot, expected, KnownTableNames, backfills);
+        var verification = ValidateTables(snapshot, BuildExpectedTables(baseline: true), KnownTableNames, backfills);
         if (verification is not null)
         {
             return DatabaseInspection.Failed(verification.Reason);
@@ -485,7 +500,7 @@ public sealed class AuditMigrationExecutor : IDatabaseMigrationExecutor
 
     // ---------- expected schema (derived from the current EF model) ----------
 
-    private IReadOnlyDictionary<string, ExpectedTable> BuildExpectedTables()
+    private IReadOnlyDictionary<string, ExpectedTable> BuildExpectedTables(bool baseline = false)
     {
         var expected = new Dictionary<string, ExpectedTable>(StringComparer.Ordinal);
         foreach (var entityType in _context.Model.GetEntityTypes())
@@ -504,6 +519,7 @@ public sealed class AuditMigrationExecutor : IDatabaseMigrationExecutor
             }
 
             var columns = entityType.GetProperties()
+                .Where(property => !baseline || property.Name is not ("ReferenceContractVersion" or "ReferenceSnapshots"))
                 .Select(property => new ExpectedColumn(
                     property.GetColumnName(storeObject.Value)!,
                     property.GetColumnType(storeObject.Value)!,

@@ -48,32 +48,9 @@ Student、Mistake、Homework、Teacher Portal、Assistant Portal 与 Identity �
 
 `docs/overview/Design.md` 的依赖关系图、`docs/api.md` 与本文档已在迁出时更新为当前事实。
 
-## 已修复的继承缺陷
+## Storage Audit
 
-### Storage Audit 曾把 QuestionBank 的题目图片全部误判为孤儿（迁出时修复）
-
-`OssAuditWorker` 原先固定扫描 `uploads/`、`mistakes/`、`questions/` 三个桶，但引用聚合只来自 Student、Homework、Mistake。`questions/` 归 QuestionBank 所有，没有任何来源覆盖它，因此该桶下每个对象都被写入 `OssAuditRecords`。删除前复核查询的是同一批来源，对 `questions/` 必然回答"不是我引用的"，因而拦不住——resolve / batch-resolve 会经 `IOssService.DeleteAsync` 真实删除题目图片并连带删除缩略图。
-
-修复内容：
-
-- 审计范围收敛为 `OssAuditWorker.AuditedBuckets`（`Uploads`、`Mistakes`），并确立不变量「一个桶只有在存在可达引用来源时才允许被扫描」。
-- 新增启动清理 `CleanupUnauditedBucketAuditRecordsAsync`，移除历史遗留的 `questions` / `documents` 误判记录；桶名为空或无法识别的记录保留。
-- `Mistake` 由「降级继续」改为与 Student / Homework 一致的「中止整轮审计」。这一条**不是**数据丢失修复：删除前复核会在 Mistake 不可达时返回 502 拒删，恢复后也能识别真实引用。改它是因为降级会让整轮审计报告成功并给出失真的 `NewZombieCount`，把待处置队列灌满噪声。
-- 测试见 `backend/Tests/Services/OssAuditWorkerScopeTests.cs`；其中 `RunAudit_AbortsWhenMistakeServiceIsUnavailable_*` 已对修复前代码做过 A/B 验证（修复前 `Status` 为 1，测试失败）。
-
-权威描述见 [modules/OssAudit/OssAudit/06-CONVENTIONS.md](./modules/OssAudit/OssAudit/06-CONVENTIONS.md) 的「桶范围」与「删除前复核」。
-
-**运维注意**：修复只在应用启动时清理误判记录。若线上库中已有 `Bucket = 'questions'` 的记录，升级后首次启动会自动移除；升级前不要对这些记录执行 resolve 或 batch-resolve。
-
-### `OssAuditController` 曾完全没有测试覆盖（迁出时补齐）
-
-`ResolveRecord` / `BatchResolve` 的删除前复核是唯一阻止误删的运行时保护，迁出时 `backend/Tests/Controllers/` 下没有 `OssAuditControllerTests`。原 monorepo 文档把 22 个此类用例标注为「已实现」，实际在源仓库中也不存在——属虚构清单。
-
-现已按实际代码补齐 `OssAuditControllerTests`，31 个用例覆盖复核的每一条拒删分支、大小写不敏感比对、`_homeworkClient` 为 null 的收窄语义、删除失败留档、批量处置的整批拒绝与逐条跳过，以及查询与触发端点。两个 502 守卫用例已做 A/B 验证（临时移除守卫后确实失败）。补测试过程中还发现并修复了 `BatchResolve` 空结果早退路径缺 `totalRequested` 字段、与 `docs/api.md` 和前端 `BatchResolveResponse` 声明不一致的问题。
-
-清单见 [modules/OssAudit/OssAudit/05-TESTS.md](./modules/OssAudit/OssAudit/05-TESTS.md)。
-
-**仍未覆盖**：`OssAuditWorker.ExecuteAsync` 的调度计算与并发互斥分支。
+当前行为与验证入口见 [StorageAudit](./modules/OssAudit/StorageAudit.md)。v1扫描仅产出只读观察，所有删除入口拒绝；旧审计历史和对象保留，startup不再清理旧review图或旧桶记录。
 
 ## 待补的继承缺陷
 
@@ -97,6 +74,6 @@ Student、Mistake、Homework、Teacher Portal、Assistant Portal 与 Identity �
 
 它的 `All` 只列 `uploads/`、`mistakes/`、`homework/`，与 `OssBucket` 的四个值（`Uploads`、`Mistakes`、`Questions`、`Documents`）并不对应。**不要**把它当作审计范围的依据——审计范围由 `OssAuditWorker.AuditedBuckets` 定义。
 
-另外 `homework/` 这个前缀本身具有误导性：Homework 服务没有 OSS 集成，作业图片实际由 Student 存放在 `uploads/homework/` 之下（`OssAuditWorker.CleanupLegacyHomeworkReviewImagesAsync` 处理的正是这个路径），源码注释也标明该常量是「reserved for future homework-service image upload」。判断某类对象归谁所有时，应以实际写入方为准，不要以这个常量为准。
+另外 `homework/` 这个前缀本身具有误导性：Homework 服务没有 OSS 集成，作业图片实际由 Student 存放在 `uploads/homework/` 之下（旧startup清理曾处理这个路径，当前v1已停止该破坏性路径并保留对象），源码注释也标明该常量是「reserved for future homework-service image upload」。判断某类对象归谁所有时，应以实际写入方为准，不要以这个常量为准。
 
 处理选项：删除该文件，或补注释说明其真实归属与 `homework/` 的保留状态。

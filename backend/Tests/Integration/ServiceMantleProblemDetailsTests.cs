@@ -89,7 +89,7 @@ public sealed class ServiceMantleProblemDetailsTests : ServiceMantleIntegrationT
     }
 
     [Fact]
-    public async Task OssDeleteFailure_ReturnsProblemDetails_AndKeepsTheAuditRecord()
+    public async Task OssResolve_DeniesCleanupWithoutCallingDeleteAndKeepsTheAuditRecord()
     {
         using var authority = new OidcTestAuthority();
         var probe = new SessionBusinessProbe();
@@ -113,10 +113,13 @@ public sealed class ServiceMantleProblemDetailsTests : ServiceMantleIntegrationT
         using var response = await SendAsync(client, $"/api/admin/oss-audit/records/{recordId}/resolve", "POST",
             $"{session}; {csrfCookie}", token);
 
-        AssertProblemShape(response, 500, "http.internal_server_error", "An unexpected error occurred.");
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        var rejected = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("cleanup_not_authorized", rejected.GetProperty("errorKind").GetString());
+        probe.Oss.Verify(s => s.DeleteAsync(It.IsAny<string>()), Times.Never);
         await AssertNoLeakAsync(response, "secret-canary-oss-delete-failure", "IOException", "Failed to delete object");
 
-        // The audit trail is never dropped for a failed delete.
+        // Reference proof cannot authorize deletion; its existing audit trail remains.
         await using (var scope = factory.Services.CreateAsyncScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<AuditDbContext>();
@@ -295,6 +298,7 @@ public sealed class ServiceMantleProblemDetailsTests : ServiceMantleIntegrationT
         services.AddHttpClient("IdentityService").ConfigurePrimaryHttpMessageHandler(() => probe.Identity);
         services.Replace(ServiceDescriptor.Singleton<IOptionsMonitor<AdminPortalOptions>>(probe.Admins));
         services.Replace(ServiceDescriptor.Singleton(probe.Oss.Object));
+        services.Replace(ServiceDescriptor.Singleton(probe.References.Object));
         services.Replace(ServiceDescriptor.Singleton(probe.Student.Object));
         services.Replace(ServiceDescriptor.Singleton(probe.Mistake.Object));
         services.Replace(ServiceDescriptor.Singleton(new HomeworkReferenceClient(new HttpClient(probe.Homework)

@@ -18,7 +18,10 @@ namespace Admin.WebApi.Tests.Integration;
 /// </summary>
 public sealed class PostgreSqlFixture : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _container;
+    private readonly PostgreSqlContainer? _container;
+    private readonly string? _externalConnection;
+    private string? _ownedDatabase;
+    private string? _connection;
     private readonly string? _previousConsulHost;
     private readonly string? _previousConsulPort;
 
@@ -36,6 +39,8 @@ public sealed class PostgreSqlFixture : IAsyncLifetime
         // and is not a credential of any real environment. The image is passed via the
         // constructor because the parameterless PostgreSqlBuilder constructor is obsolete
         // (CS0618); with the image pinned there, .WithImage is no longer needed.
+        _externalConnection = Environment.GetEnvironmentVariable("ADMIN_MIGRATION_TEST_CONNECTION");
+        if (!string.IsNullOrWhiteSpace(_externalConnection)) return;
         _container = new PostgreSqlBuilder("postgres:16-alpine")
             .WithDatabase("ruoyu_admin")
             .WithUsername("postgres")
@@ -43,18 +48,35 @@ public sealed class PostgreSqlFixture : IAsyncLifetime
             .Build();
     }
 
-    public Task InitializeAsync() => _container.StartAsync();
+    public async Task InitializeAsync()
+    {
+        if (_container is not null) { await _container.StartAsync(); _connection = _container.GetConnectionString(); return; }
+        _ownedDatabase = "admin_fixture_" + Guid.NewGuid().ToString("N");
+        await using var connection = new Npgsql.NpgsqlConnection(_externalConnection);
+        await connection.OpenAsync();
+        await using var command = new Npgsql.NpgsqlCommand($"CREATE DATABASE \"{_ownedDatabase}\"", connection);
+        await command.ExecuteNonQueryAsync();
+        _connection = new Npgsql.NpgsqlConnectionStringBuilder(_externalConnection) { Database = _ownedDatabase }.ConnectionString;
+    }
 
     /// <summary>
     /// The container's connection string for direct read-only Npgsql access in tests
     /// (row-count guards for the health probe). The randomly generated password never
     /// leaves the test process.
     /// </summary>
-    public string ConnectionString => _container.GetConnectionString();
+    public string ConnectionString => _connection ?? throw new InvalidOperationException("Fixture not initialized.");
 
     public async Task DisposeAsync()
     {
-        await _container.DisposeAsync();
+        if (_container is not null) await _container.DisposeAsync();
+        else if (_ownedDatabase is not null)
+        {
+            Npgsql.NpgsqlConnection.ClearAllPools();
+            await using var connection = new Npgsql.NpgsqlConnection(_externalConnection);
+            await connection.OpenAsync();
+            await using var command = new Npgsql.NpgsqlCommand($"DROP DATABASE IF EXISTS \"{_ownedDatabase}\" WITH (FORCE)", connection);
+            await command.ExecuteNonQueryAsync();
+        }
         Environment.SetEnvironmentVariable("CONSUL_HOST", _previousConsulHost);
         Environment.SetEnvironmentVariable("CONSUL_PORT", _previousConsulPort);
     }
@@ -67,7 +89,7 @@ public sealed class PostgreSqlFixture : IAsyncLifetime
     {
         var connection = new DbConnectionStringBuilder
         {
-            ConnectionString = _container.GetConnectionString()
+            ConnectionString = ConnectionString
         };
         return new Dictionary<string, string?>
         {
@@ -75,7 +97,7 @@ public sealed class PostgreSqlFixture : IAsyncLifetime
             ["PostgreSql:Port"] = Convert.ToString(connection["Port"]),
             ["PostgreSql:Username"] = Convert.ToString(connection["Username"]),
             ["PostgreSql:Password"] = Convert.ToString(connection["Password"]),
-            ["Database:Name"] = "ruoyu_admin"
+            ["Database:Name"] = Convert.ToString(connection["Database"])
         };
     }
 }

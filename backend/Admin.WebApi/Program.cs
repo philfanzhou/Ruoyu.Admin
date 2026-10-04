@@ -226,6 +226,10 @@ builder.Services.AddDbContext<AuditDbContext>(options =>
     options.UseNpgsql(connectionString);
 });
 
+builder.Services.AddSingleton(new StorageReferenceSigningConfiguration(builder.Configuration));
+builder.Services.AddHttpClient(StorageReferenceCollector.ClientName, client => client.Timeout = TimeSpan.FromSeconds(35))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddScoped<IStorageReferenceCollector, StorageReferenceCollector>();
 builder.Services.AddSingleton<OssAuditWorker>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<OssAuditWorker>());
 

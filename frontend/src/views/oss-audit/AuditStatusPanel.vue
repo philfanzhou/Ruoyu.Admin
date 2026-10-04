@@ -6,7 +6,7 @@
         <span class="status-text">{{ statusText }}</span>
         <span v-if="state === 'done' && status.lastCompleted" class="status-meta">
           （耗时 {{ formatDuration(status.lastCompleted.durationSeconds) }}，发现
-          {{ status.lastCompleted.newZombieCount }} 个僵尸文件，
+          {{ status.lastCompleted.newZombieCount }} 个{{ status.lastCompleted.referenceContractVersion === 'storage-references-v1' ? '未观察到引用的对象' : '历史发现' }}，
           {{ status.lastCompleted.triggerType === 'manual' ? '手动触发' : '定时触发' }}）
         </span>
         <span v-if="status.lastFailed" class="status-meta error">
@@ -16,6 +16,11 @@
       <span class="auto-refresh-hint">
         <el-icon class="is-loading"><Refresh /></el-icon>
         每 10 秒自动刷新
+      </span>
+    </div>
+    <div v-if="referenceProofs.length === 3" class="reference-proofs">
+      <span v-for="proof in referenceProofs" :key="proof.provider">
+        {{ proof.provider }}：{{ proof.entryCount }} 条引用，采集于 {{ proof.createdAt }}
       </span>
     </div>
     <div class="oss-stats">
@@ -32,8 +37,12 @@
         </div>
       </div>
       <div class="oss-stat">
-        <div class="oss-stat-label">待处理</div>
+        <div class="oss-stat-label">历史待处理</div>
         <div class="oss-stat-value red">{{ status.pendingCount }}</div>
+      </div>
+      <div class="oss-stat">
+        <div class="oss-stat-label">未观察到引用</div>
+        <div class="oss-stat-value gray">{{ status.observationCount ?? 0 }}</div>
       </div>
       <div class="oss-stat">
         <div class="oss-stat-label">已忽略</div>
@@ -55,6 +64,23 @@ const props = defineProps<{
   /** statusCounts[2] of the last records response. */
   ignoredCount: number
 }>()
+
+// Only show complete typed evidence from the persisted run, never infer old history.
+const referenceProofs = computed<Array<{ provider: string; entryCount: number; createdAt: string }>>(() => {
+  if (props.status.lastCompleted?.referenceContractVersion !== 'storage-references-v1') return []
+  try {
+    const proofs: unknown = JSON.parse(props.status.lastCompleted.referenceSnapshots ?? '')
+    if (!Array.isArray(proofs) || proofs.length !== 3) return []
+    const names = new Set<string>()
+    for (const proof of proofs) {
+      if (!proof || !['student', 'mistake', 'homework'].includes(proof.provider)
+        || names.has(proof.provider) || !Number.isInteger(proof.entryCount) || proof.entryCount < 0
+        || typeof proof.createdAt !== 'string') return []
+      names.add(proof.provider)
+    }
+    return proofs
+  } catch { return [] }
+})
 
 // Three distinct states: never report "completed" when no scan has ever completed.
 const state = computed<'running' | 'never' | 'done'>(() => {
@@ -124,6 +150,7 @@ const statusText = computed(() => {
   color: var(--adm-text-tertiary);
 }
 .status-meta.error { color: var(--adm-error); }
+.reference-proofs { display: flex; flex-wrap: wrap; gap: 16px; font-size: 12px; margin-bottom: 16px; color: var(--adm-text-secondary); }
 .auto-refresh-hint {
   display: inline-flex;
   align-items: center;
@@ -133,7 +160,7 @@ const statusText = computed(() => {
 }
 .oss-stats {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   border: 1px solid var(--adm-border);
   border-radius: var(--adm-radius-md);
   overflow: hidden;
