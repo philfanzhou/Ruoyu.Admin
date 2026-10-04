@@ -121,7 +121,7 @@ public sealed partial class AdminOidcTests
         probe.Student.Verify(s => s.GetPresignedUrlAsync("uploads/test.jpg", 3600, "small", It.IsAny<CancellationToken>()), Times.Once);
         Assert.Equal(0, probe.Writes);
         foreach (var path in new[] { "/api/teacher-portal/admin/users", "/api/assistant-portal/admin/users" })
-            Assert.Equal(HttpStatusCode.Unauthorized, (await Api(client, path, cookie, "GET")).StatusCode);
+            await Rejected(await Api(client, path, cookie), 503, "session_portal_proxy_disabled");
         await Rejected(await Api(client, "/api/identity/admin/users", cookie), 503, "session_identity_proxy_disabled");
         await Rejected(await Api(client, "/api/auth/logout", cookie, "POST"), 503, "session_logout_disabled");
         // The accessor returns the server token, without leaking it through formatting.
@@ -313,7 +313,7 @@ public sealed partial class AdminOidcTests
     }
 
     [Fact]
-    public async Task SessionApi_RetiresPasswordBeforeBindingKeepsCallbacksSpaHealthAndLegacyProxyScheme()
+    public async Task SessionApi_RetiresPasswordBeforeBindingKeepsCallbacksSpaHealthAndRejectsDisabledProxies()
     {
         using var authority = new OidcTestAuthority();
         var probe = new SessionBusinessProbe();
@@ -340,12 +340,19 @@ public sealed partial class AdminOidcTests
             Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/health/ready")).StatusCode);
             var callback = await client.PostAsJsonAsync("/api/auth/callback", new { userId = "fake-subject" });
             Assert.Equal("{\"roles\":[\"admin\"]}", await callback.Content.ReadAsStringAsync());
-            var selector = factory.Services.GetRequiredService<IOptionsMonitor<Microsoft.AspNetCore.Authentication.PolicySchemeOptions>>().Get("AdminApiAuthentication");
-            foreach (var path in new[] { "/api/teacher-portal/admin/users", "/api/assistant-portal/admin/users" })
+            // Disabled proxy/logout capabilities cannot be restored by browser credentials.
+            var bearerBefore = probe.BearerAuthentications;
+            foreach (var (path, error) in new[]
             {
-                var context = new Microsoft.AspNetCore.Http.DefaultHttpContext(); context.Request.Path = path;
-                Assert.Equal("Bearer", selector.ForwardDefaultSelector!(context));
-            }
+                ("/api/identity/admin/users", "session_identity_proxy_disabled"),
+                ("/api/teacher-portal/admin/users", "session_portal_proxy_disabled"),
+                ("/api/assistant-portal/admin/users", "session_portal_proxy_disabled"),
+                ("/api/auth/logout", "session_logout_disabled")
+            })
+                await Rejected(await Api(client, path, legacy, path.EndsWith("logout") ? "POST" : "GET",
+                    authorization: ["Bearer invalid"]), 503, error);
+            Assert.Equal(bearerBefore, probe.BearerAuthentications);
+            Assert.Equal(0, probe.Identity.Calls);
         }
         finally { Directory.Delete(root, true); }
     }

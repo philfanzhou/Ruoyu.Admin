@@ -66,6 +66,19 @@ internal sealed class AdminSessionMiddleware(RequestDelegate next, AdminOidcSett
             await AdminSessionBoundary.RejectAsync(context, 503, "session_identity_proxy_disabled");
             return;
         }
+        if ((context.Request.Path.StartsWithSegments("/api/teacher-portal") || context.Request.Path.StartsWithSegments("/api/assistant-portal"))
+            && !settings.UseSessionForPortalProxies)
+        {
+            await AdminSessionBoundary.RejectAsync(context, 503, "session_portal_proxy_disabled");
+            return;
+        }
+        // This aggregate follows the API capability, independently of the portal proxy flag.
+        if (!settings.UseSessionForAdminApi && context.Request.Path.StartsWithSegments("/api/admin/students", out var associationPath)
+            && associationPath.Value?.TrimEnd('/').EndsWith("/linked-accounts", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            await AdminSessionBoundary.RejectAsync(context, 503, "session_api_disabled");
+            return;
+        }
         var csrf = AdminSessionBoundary.IsAuthPath(context.Request.Path, "/api/auth/csrf");
         if ((csrf || context.Request.Path.StartsWithSegments("/api/admin")
             || AdminSessionBoundary.IsAuthPath(context.Request.Path, "/api/auth/session")) && !settings.UseSessionForAdminApi)

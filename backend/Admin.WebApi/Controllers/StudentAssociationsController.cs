@@ -37,17 +37,17 @@ public class StudentAssociationsController : ControllerBase
     [HttpGet("{studentId:guid}/linked-accounts")]
     public async Task<IActionResult> GetLinkedAccounts(Guid studentId)
     {
-        var sessionMode = HttpContext.RequestServices.GetRequiredService<AdminOidcSettings>().UseSessionForAdminApi;
-        var authHeader = HttpContext.Request.Headers.Authorization.ToString();
-        if (sessionMode)
+        if (!HttpContext.RequestServices.GetRequiredService<AdminOidcSettings>().UseSessionForAdminApi)
+            return StatusCode(503, new { error = "session_api_disabled" });
+        var session = HttpContext.Items[AdminSessionBoundary.TrustedSessionKey] as AdminSessionResult;
+        if (session?.StatusCode != 200 || string.IsNullOrWhiteSpace(session.AccessToken))
         {
             var boundary = HttpContext.RequestServices.GetRequiredService<AdminSessionBoundary>();
-            if (HttpContext.Items[AdminSessionBoundary.TrustedSessionKey] is not AdminSessionResult)
-                if (!await boundary.ValidateAsync(HttpContext)) return new EmptyResult();
-            var session = (AdminSessionResult)HttpContext.Items[AdminSessionBoundary.TrustedSessionKey]!;
-            authHeader = "Bearer " + session.AccessToken;
+            if (!await boundary.ValidateAsync(HttpContext)) return new EmptyResult();
+            session = (AdminSessionResult)HttpContext.Items[AdminSessionBoundary.TrustedSessionKey]!;
         }
-        var cancellation = sessionMode ? HttpContext.RequestAborted : CancellationToken.None;
+        var accessToken = session.AccessToken!;
+        var cancellation = HttpContext.RequestAborted;
         cancellation.ThrowIfCancellationRequested();
         List<string> accountIds;
         try
@@ -76,28 +76,25 @@ public class StudentAssociationsController : ControllerBase
 
         if (!string.IsNullOrWhiteSpace(teacherPortalUrl))
         {
-            teachers = await FetchLinkedAccountsAsync("TeacherPortal", $"{teacherPortalUrl.TrimEnd('/')}/api/admin/teachers", "教师", accountIdSet, authHeader, cancellation);
+            teachers = await FetchLinkedAccountsAsync("TeacherPortal", $"{teacherPortalUrl.TrimEnd('/')}/api/admin/teachers", "教师", accountIdSet, accessToken, cancellation);
         }
 
         if (!string.IsNullOrWhiteSpace(assistantPortalUrl))
         {
-            assistants = await FetchLinkedAccountsAsync("AssistantPortal", $"{assistantPortalUrl.TrimEnd('/')}/api/admin/assistants", "助教", accountIdSet, authHeader, cancellation);
+            assistants = await FetchLinkedAccountsAsync("AssistantPortal", $"{assistantPortalUrl.TrimEnd('/')}/api/admin/assistants", "助教", accountIdSet, accessToken, cancellation);
         }
 
         return Ok(new LinkedAccountsResponse(teachers, assistants));
     }
 
-    private async Task<List<LinkedAccountDto>> FetchLinkedAccountsAsync(string clientName, string url, string roleLabel, HashSet<string> accountIds, string authHeader, CancellationToken cancellation)
+    private async Task<List<LinkedAccountDto>> FetchLinkedAccountsAsync(string clientName, string url, string roleLabel, HashSet<string> accountIds, string accessToken, CancellationToken cancellation)
     {
         try
         {
             var client = _httpClientFactory.CreateClient(clientName);
 
             using var request = new HttpRequestMessage(HttpMethod.Get, url);
-            if (!string.IsNullOrEmpty(authHeader))
-            {
-                request.Headers.Authorization = AuthenticationHeaderValue.Parse(authHeader);
-            }
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
 
             using var response = await client.SendAsync(request, cancellation);
             if (!response.IsSuccessStatusCode)

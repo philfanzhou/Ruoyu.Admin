@@ -127,7 +127,7 @@ public sealed partial class AdminOidcTests
             await Rejected(await Api(client, path, cookie), 401, "unauthorized");
         Assert.Equal(identityProxy ? HttpStatusCode.Unauthorized : HttpStatusCode.ServiceUnavailable, (await Api(client, "/api/identity/users", cookie)).StatusCode);
         foreach (var path in new[] { "/api/teacher-portal/admin/users", "/api/assistant-portal/admin/users" })
-            Assert.Equal(HttpStatusCode.Unauthorized, (await Api(client, path, cookie)).StatusCode);
+            Assert.Equal(portalProxies ? HttpStatusCode.Unauthorized : HttpStatusCode.ServiceUnavailable, (await Api(client, path, cookie)).StatusCode);
         Assert.Null(await factory.Services.GetRequiredService<MemoryTicketStore>().RetrieveAsync(key));
         Assert.Empty(probe.Student.Invocations); Assert.Empty(probe.Oss.Invocations);
         Assert.Equal(0, probe.Reads); Assert.Equal(0, probe.Writes);
