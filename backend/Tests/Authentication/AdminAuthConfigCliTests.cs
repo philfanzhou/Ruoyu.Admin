@@ -10,6 +10,29 @@ namespace Admin.WebApi.Tests.Authentication;
 public sealed class AdminAuthConfigCliTests
 {
     [Theory]
+    [InlineData("https://localhost", "Production", 2)]
+    [InlineData("https://LOCALHOST", "Testing", 2)]
+    [InlineData("https://localhost.", "Development", 2)]
+    [InlineData("https://admin.example.test", "Production", 0)]
+    [InlineData("http://127.0.0.1:5020", "Development", 0)]
+    [InlineData("http://[::1]:5020", "Testing", 0)]
+    public async Task PreflightEnforcesHostnameTlsAndNumericLoopback(string origin, string environment, int exit)
+    {
+        using var fixture = new CliFixture();
+        var config = AdminSessionDisabledTests.ValidConfiguration();
+        config["IdentityService:Authority"] = origin;
+        config["AdminOidc:RedirectUri"] = origin + "/api/auth/oidc/callback";
+        config["AdminOidc:PostLogoutRedirectUri"] = origin + "/api/auth/oidc/logout-callback";
+        config["ConnectionStrings:AuditDb"] = "deliberately-unparsable-secret-canary";
+        fixture.WriteSettings(config);
+        var result = await fixture.Run(new() { ["ASPNETCORE_ENVIRONMENT"] = environment, ["DOTNET_ENVIRONMENT"] = environment });
+        Assert.Equal(exit, result.Exit);
+        Assert.Equal(exit == 0 ? "RUOYU_ADMIN_AUTH_CONFIG_VALID\n" : "", result.Out);
+        Assert.Equal(exit == 0 ? "" : "RUOYU_ADMIN_AUTH_CONFIG_INVALID\n", result.Error);
+        Assert.False(Directory.Exists(Path.Combine(fixture.Root, "data")));
+    }
+
+    [Theory]
     [InlineData(null, 0)][InlineData("true", 0)]
     [InlineData("false", 2)][InlineData("bad-secret-canary", 2)]
     public async Task PreflightExitsWithFixedOutputBeforeDatabaseWorkerOrListener(string? legacy, int exit)

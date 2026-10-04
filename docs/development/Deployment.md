@@ -45,7 +45,7 @@ Admin API 启动时通过 Consul `config/ruoyu/*` 加载 PostgreSQL、OSS 和下
 
 `dotnet Admin.WebApi.dll --validate-auth-config` 先读取正式启动相同的 appsettings/environment/command-line 和 Consul 有效配置，再复用同一认证校验；成功 stdout 固定 `RUOYU_ADMIN_AUTH_CONFIG_VALID`、exit0，失败 stderr 固定 `RUOYU_ADMIN_AUTH_CONFIG_INVALID`、exit2。不创建宿主、迁移、worker、监听或会话。允许读取 Consul/既有 cache，禁止预检刷新或改写 cache，配置值不进入输出。正式启动仍按原合同缓存成功 Consul snapshot；Consul 不可达时使用已有 cache，否则 appsettings，environment/command-line 始终覆盖 snapshot。
 
-先由部署角色取得已有注册码及 secret，按精确 URI 注册 Code+PKCE 和 Logout，确认正常 CA/SAN 与同源 HTTPS 到 BFF；移除五旧键、通过目标集成镜像预检后再替换。`start.sh` 使用 `--image`（或 `IMAGE_NAME`）选择具体版本，`--container` 选择精确实例，`--authority`、`--redirect-uri`、`--post-logout-redirect-uri` 提供外部 URI。凭据沿环境或受限 `--env-file` 注入，`--config-file` 可挂载明确 appsettings 文件；`--cache-dir` 指向已有 cache 目录，预检只读挂载，正式使用同目录写原 cache。不存在目录或无效路径直接失败，不创建目录。预检在任何旧容器停止/删除前使用同一目标 image 与同组配置；失败保留原容器。旧容器须有本 launcher label 或原 Ruoyu.Admin 产品 image 身份，防止误换其他应用；成功仍仅替换显式实例并保留5020。此认证预检不证明 DB、下游、网络或生产平台注册已可用。
+先由部署角色取得已有注册码及 secret，按精确 URI 注册 Code+PKCE 和 Logout，确认正常 CA/SAN 与同源 HTTPS 到 BFF；移除五旧键、通过目标集成镜像预检后再替换。`start.sh` 使用 `--image`（或 `IMAGE_NAME`）选择具体版本，`--container` 选择精确实例，`--authority`、`--redirect-uri`、`--post-logout-redirect-uri` 提供外部 URI。凭据沿环境或受限 `--env-file` 注入，`--config-file` 可挂载明确 appsettings 文件；`--cache-dir` 可省略，提供时指向已有 cache 目录，预检只读挂载，正式使用同目录写原 cache。脚本支持系统 Bash 3.2，包括省略 cache 的启动。不存在目录或无效路径直接失败，不创建目录。预检在任何旧容器停止/删除前使用同一目标 image 与同组配置；失败保留原容器。旧容器须有本 launcher label 或原 Ruoyu.Admin 产品 image 身份，防止误换其他应用；成功仍仅替换显式实例并保留5020。此认证预检不证明 DB、下游、网络或生产平台注册已可用。
 
 ```bash
 ./start.sh --image ghcr.io/philfanzhou/ruoyu.admin:<version> --container ruoyu-admin \

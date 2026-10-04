@@ -54,6 +54,7 @@ internal sealed record AdminOidcSettings(string Authority, string ClientId, stri
     {
         return Uri.TryCreate(value, UriKind.Absolute, out uri)
             && string.IsNullOrEmpty(uri.UserInfo) && string.IsNullOrEmpty(uri.Query) && string.IsNullOrEmpty(uri.Fragment)
+            && !string.Equals(uri.Host.TrimEnd('.'), "localhost", StringComparison.OrdinalIgnoreCase)
             && !value.Any(char.IsControl) && !value.Contains('*')
             && (uri.Scheme == "https" || allowLoopback && uri.Scheme == "http" && uri.Host is "127.0.0.1" or "[::1]");
     }

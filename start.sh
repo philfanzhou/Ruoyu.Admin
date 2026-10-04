@@ -63,8 +63,9 @@ if [[ -n "$CACHE_DIR" ]]; then
   preflight_cache+=( --mount "type=bind,src=$CACHE_DIR,dst=/app/data/consul,readonly" )
   runtime_cache+=( --mount "type=bind,src=$CACHE_DIR,dst=/app/data/consul" )
 fi
+# Bash 3.2 treats an empty array as unset under nounset; expand optional mounts only when set.
 # A configuration failure exits here, before even inspecting, stopping or removing the target.
-docker run --rm --name "${CONTAINER_NAME}-auth-preflight" "${common[@]}" "${preflight_cache[@]}" "$IMAGE_NAME" --validate-auth-config
+docker run --rm --name "${CONTAINER_NAME}-auth-preflight" "${common[@]}" ${preflight_cache[@]+"${preflight_cache[@]}"} "$IMAGE_NAME" --validate-auth-config
 
 # The explicitly named target must belong to this launcher (new deployments) or be an
 # existing Ruoyu.Admin product image (upgrade from the original launcher).
@@ -77,4 +78,4 @@ if [[ -n "$old_id" ]]; then
   docker rm "$old_id"
 fi
 docker run -d --name "$CONTAINER_NAME" --label ruoyu.admin.launcher=true \
-  --restart unless-stopped -p "${PORT}:5020" "${common[@]}" "${runtime_cache[@]}" "$IMAGE_NAME"
+  --restart unless-stopped -p "${PORT}:5020" "${common[@]}" ${runtime_cache[@]+"${runtime_cache[@]}"} "$IMAGE_NAME"
