@@ -140,7 +140,7 @@ Configuration is read from `appsettings.json`, then Consul KV under `config/ruoy
 | `AdminOidc:UseSessionForLogout`, `AdminOidc:PostLogoutRedirectUri` | Optional prepared logout (default false, requires OIDC and session API); exact registered same-origin `/api/auth/oidc/logout-callback` |
 | Session token expiry | Session API returns `reauthentication_required` for a valid expired token; `/api/auth/session` exposes `requiresReauthentication`; sign-in is explicit with no refresh or write replay |
 | `AdminOidc:UseSessionForPortalProxies` | Teacher/Assistant proxy server tokens (default false, requires OIDC and session API); association queries follow the API switch independently |
-| `AdminOidc:UseSessionForIdentityProxy` | Identity proxy server-token authorization (default false, requires OIDC and session API); isolates browser cookies/CSRF and upstream Set-Cookie |
+| `AdminOidc:UseSessionForIdentityProxy` | Identity proxy server-token authorization (default false returns 503; true requires OIDC and session API); isolates browser cookies/CSRF and upstream Set-Cookie |
 | `AdminOidc:UseSessionForAdminApi` | Optional session authorization and CSRF for `/api/admin/*` (default false, requires OIDC); retires password login when true |
 | `AdminWeb:AllowedOrigins` | CORS origins; empty means allow any |
 | `Oss:*` | `InternalEndpoint` / `InternalSecure` for direct S3 access, `PublicBaseUrl` for presigned URLs |
@@ -229,3 +229,5 @@ Known documentation debt carried over from the monorepo is listed in [docs/READM
 ## License
 
 MIT — see [LICENSE](./LICENSE).
+
+The Identity proxy accepts only a trusted server-session access token. Disabling its capability returns `503 session_identity_proxy_disabled` before authentication; browser Authorization/Cookie credentials cannot restore it. It always strips browser CSRF/Host and forged gateway headers, injects owned AppId/AppSecret, suppresses upstream Set-Cookie, and propagates request cancellation without application retries.
