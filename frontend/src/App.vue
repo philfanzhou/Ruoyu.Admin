@@ -2,7 +2,7 @@
   <div v-if="isLoginPage">
     <router-view />
   </div>
-  <div v-else class="adm-layout" :class="{ 'is-collapsed': collapsed }">
+  <div v-else-if="session.status === 'authenticated'" class="adm-layout" :class="{ 'is-collapsed': collapsed }">
     <aside class="adm-sidebar">
       <div class="adm-sidebar-logo">
         <span class="logo-mark">若</span>
@@ -53,25 +53,26 @@
         <div class="adm-header-right">
           <span class="adm-header-user">
             <span class="adm-avatar">{{ userInitial }}</span>
-            <span class="name">{{ username || 'Admin' }}</span>
+            <span class="name">{{ username }}</span>
           </span>
-          <el-button text :icon="SwitchButton" @click="handleLogout">退出登录</el-button>
+          <el-button text :icon="SwitchButton" :loading="session.signingOut" :disabled="session.signingOut" @click="handleLogout">退出登录</el-button>
         </div>
       </header>
 
       <main class="adm-content">
+        <el-alert v-if="session.logoutNotice" :title="session.logoutNotice" type="warning" :closable="false" show-icon />
         <router-view />
       </main>
     </div>
   </div>
+  <div v-else class="adm-session-wait" role="status">正在确认会话…</div>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Expand, Fold, SwitchButton } from '@element-plus/icons-vue'
-import { clearAuth, getAuthToken } from './services/auth'
-import httpClient from './services/httpClient'
+import { logoutSession, session } from './services/auth'
 import { NAV_GROUPS } from './router/navigation'
 import { useSidebar } from './composables/useSidebar'
 
@@ -101,36 +102,19 @@ const handleSelect = (name: string) => {
   router.push({ name })
 }
 
-// Read username from localStorage (set alongside token on login if available)
-const username = computed(() => {
-  try {
-    return localStorage.getItem('adminUsername') || ''
-  } catch {
-    return ''
-  }
-})
-const userInitial = computed(() => {
-  const name = username.value || 'A'
-  return name.charAt(0).toUpperCase()
-})
+const username = computed(() => session.displayName ?? '')
+const userInitial = computed(() => username.value.charAt(0).toUpperCase())
 
 const handleLogout = async () => {
-  // Notify backend to clear the adminAuthToken cookie (set by Login on success)
-  // so subsequent browser-native <img> requests stop carrying the JWT.
-  // localStorage tokens are cleared client-side by clearAuth(). Best-effort.
-  if (getAuthToken()) {
-    try {
-      await httpClient.post('/api/auth/logout')
-    } catch {
-      // ignore — frontend state is the source of truth for UI navigation
-    }
-  }
-  clearAuth()
-  router.push('/login')
+  const result = await logoutSession()
+  if (result.kind === 'redirect') window.location.assign(result.url)
+  else if (session.status !== 'authenticated') await router.replace('/login')
 }
+
 </script>
 
 <style scoped>
+.adm-session-wait { padding: var(--adm-space-8); color: var(--adm-text-secondary); }
 .adm-layout {
   --sidebar-w: var(--adm-sidebar-width);
   min-height: 100vh;

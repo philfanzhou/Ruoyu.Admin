@@ -43,21 +43,31 @@ Admin API 启动时通过 Consul `config/ruoyu/*` 加载 PostgreSQL、OSS 和下
 
 ### 可选 SignaCore 托管登录
 
-`AdminOidc:Enabled` 与 `AdminOidc:UseSessionForAdminApi` 均默认 false：OIDC入口不可用，管理 API/图片/普通CSRF关闭时固定 `503 session_api_disabled`；三个代理关闭时分别固定 `503 session_identity_proxy_disabled` / `503 session_portal_proxy_disabled`，不能回退旧JWT。显式开启两项后，`/api/admin/*` 使用服务器会话、当前管理员白名单与写请求CSRF；各代理由独立开关启用同一会话边界，始终只使用服务器token。生产激活依赖 IKJ8MO 与最终 #41/#75 组合。
+当前 SPA 使用服务器会话，受控实例须显式启用 `AdminOidc:Enabled`、`UseSessionForAdminApi`、`UseSessionForIdentityProxy`、`UseSessionForPortalProxies`、`UseSessionForLogout` 五项开关（后四项同属 `AdminOidc`），配置当前管理员白名单与 ADMIN 应用 audience，并完成实际下游信任及精确 Code/Logout 注册。五项默认均为 false，`start.sh` 不自动启用。密码入口在任何配置下永久 `410 legacy_login_disabled`；管理 API/图片/普通 CSRF 关闭时固定 `503 session_api_disabled`，代理关闭时分别固定 `503 session_identity_proxy_disabled` / `503 session_portal_proxy_disabled`，退出关闭时固定 `503 session_logout_disabled`，不能通过旧 Cookie 或 Authorization 恢复。当前 SPA 对关闭能力显示不可用，不回退密码或浏览器令牌。
 
 启用时复用 `IdentityService:Authority/AppId/AppSecret`，新增 `AdminOidc:RedirectUri`，精确注册 `https://admin.example.com/api/auth/oidc/callback`（占位示例）。URI 必须与配置 byte-for-byte 相同，路径固定、无 query/fragment/userinfo/wildcard；生产 HTTPS。只有 Development/Testing 允许 `http://127.0.0.1:<port>/api/auth/oidc/callback` 或 `http://[::1]:<port>/api/auth/oidc/callback`；不允许 localhost。Authority 去结尾 `/` 后与 Discovery issuer 严格相同；OIDC 不使用 JWT AdditionalValidIssuers 放宽信任。错误启用配置启动失败，消息只列配置键。
 
-按 [SignaCore HostedLogin](https://github.com/philfanzhou/SignaCore/blob/52c68c812335dd6a967cb90042ac91c21543d387/docs/integrations/HostedLogin.md) 注册 Confidential、PerApplication audience、精确 Redirect URI 和 Code + openid profile + S256，不启用 refresh。Admin 从 Discovery 取授权/token/JWKS 端点，不发送 PAR、prompt 或其他不支持字段；兑换为 client_secret_post，固定外部 RedirectUri 与原 verifier，不信任入站 Host/X-Forwarded-Host 拼地址。TLS 可在可信代理终止，回跳仍固定 HTTPS，Cookie Secure；本服务不增加任意转发头信任。
+按 [SignaCore HostedLogin](https://github.com/philfanzhou/SignaCore/blob/52c68c812335dd6a967cb90042ac91c21543d387/docs/integrations/HostedLogin.md) 注册 Confidential、PerApplication audience、精确 Redirect URI 和 Code + openid profile + S256，不启用 refresh。Admin 从 Discovery 取授权/token/JWKS 端点，不发送 PAR、prompt 或其他不支持字段；兑换为 client_secret_post，固定外部 RedirectUri 与原 verifier，不信任入站 Host/X-Forwarded-Host 拼地址。浏览器原点与 BFF 处理 CSRF 的请求都必须保持 HTTPS。当前服务不处理任意转发头，不能仅由外层 TLS 终止后把 HTTP 转给 5020，再依赖 `X-Forwarded-Proto` 声称安全；生产 `CookieSecurePolicy.Always` 会拒绝这种 CSRF 配置。保留硬编码 HTTP 5020，可通过标准 `Kestrel:Endpoints` 配置增加内部 HTTPS 监听，代理以正常 CA 验证 HTTPS 上游，不改端口契约或扩大转发头信任。
+
+受控 HTTPS 联调的配置例（端口和证书路径由部署选择，密码只注入受限环境）：
+
+```text
+Kestrel__Endpoints__AdminHttps__Url=https://0.0.0.0:5022
+Kestrel__Endpoints__AdminHttps__Certificate__Path=/tls/server.pfx
+Kestrel__Endpoints__AdminHttps__Certificate__Password=<private environment value>
+```
+
+代理使用 `proxy_pass https://admin:5022`、`proxy_ssl_verify on` 与 `proxy_ssl_trusted_certificate`，并设置与证书 SAN 匹配的 `proxy_ssl_name`。证书/PFX 只挂载到本实例，CA 只信任本实例及自有浏览器，不全局导入、不跳过验证。注册 callback 仍为浏览器的 HTTPS 同源地址，5020 仍保留；上述配置不自动开启五项能力。实际联合验证还须确认普通 `/api/auth/csrf` 和退出专用 `/api/auth/logout/csrf` 都返回 200，不能把托管登录成功当成 CSRF 可用。
 
 反向代理必须避免 callback query（尤其 code）进入 access log/analytics，并保证原始单值 query 透传。Admin 协议 handler 禁用可能包含 token/URL/Cookie 的框架详细日志；启用 OIDC 时另外抑制会记录原始 query 的 `Microsoft.AspNetCore.Hosting.Diagnostics` 请求日志（包含其余路由的此类日志），OIDC 入口不导出 ASP.NET Core trace；应用调用方仍不得将敏感值插入自由文本。AppSecret 只通过环境变量/user-secrets/Consul 安全配置，不提交配置文件。
 
-单实例内存 state 最长 5 分钟、43 字符随机引用、单次原子消费；票据 8 小时绝对到期、不滑动，所有 token 留服务器。两类存储各最多 4096 项、每分钟回收；满载固定失败，重启丢失，不能多副本共用会话。数据保护 keys 即使还在也不会恢复已丢失 ticket；无新表/迁移。上游 token 吊销、全局登出与会话续接留后续任务；不要将本地 session 状态作为管理员授权证明。
+单实例内存 state 最长 5 分钟、43 字符随机引用、单次原子消费；票据 8 小时绝对到期、不滑动，所有 token 留服务器。两类存储各最多 4096 项、每分钟回收；满载固定失败，重启丢失，不能多副本共用会话。数据保护 keys 即使还在也不会恢复已丢失 ticket；无新表/迁移。没有 refresh；prepared logout 使用现有服务器 ID token 与专用退出 CSRF，具体边界见下文。不要将前端显示状态作为管理员授权证明。
 
 阶段验证 `AdminOidc:UseSessionForAdminApi=true` 必须同时启用 OIDC；错误组合在启动期失败。新会话管理员身份为已验证 Authority 的唯一 iss/sub 与服务器 stamp，白名单为空或当前移除即 403；入站 Authorization、缺票据/服务器 token 或到期期限为 JSON 401。unsafe 管理请求必须先 GET `/api/auth/csrf`，携带其独立 `adminCsrf` Cookie 与单值 `X-CSRF-TOKEN`；错误为 JSON 400，业务/OSS 删除前拒绝。生产 CSRF Cookie 同为 Secure/HttpOnly/Path=/、SameSite=Lax，仅已验证开发数字 loopback 允许 HTTP；不更改 CORS、不增加跨域凭据。详细响应见 [API 契约](../api.md#可选管理员会话与-csrf42)。
 
-任何配置下密码 login 固定 `410 legacy_login_disabled`，不读取/转发密码。logout仅由prepared logout middleware处理，关闭时固定 `503 session_logout_disabled`，启用时非POST405；原子撤票与专用CSRF沿 #46。Student关联查询只随API-session，在门户proxy开关关闭时仍使用服务器token；单侧失败的partial结果保持。中间镜像含旧SPA，不部署；最终须组合 #41/#75。关闭能力不能恢复browser凭据路径，整版回滚也不复活已撤销或丢失的票据。
+任何配置下密码 login 固定 `410 legacy_login_disabled`，不读取/转发密码。当前 SPA 退出使用专用 logout CSRF，服务器先原子撤销本地票据再准备上游退出；失败/丢失响应只查询本地事实，不自动重放，不宣称上游注销完成。关闭退出能力固定503，启用时非POST405。Student关联查询只随API-session，各代理使用其已启用的服务器token边界。关闭开关不能恢复本版浏览器凭据路径；整版回滚也不能复活已撤销或丢失票据。
 
-生产能力激活还依赖 Ruoyu.Study 的应用 Code 配置与下游 audience 迁移（IKJ8MO）。本项仅用测试 Authority 验证，不代表已修改生产注册或完成平台 E2E。
+生产能力激活还依赖 Ruoyu.Study 的应用 Code 配置与下游 audience 迁移（IKJ8MO）。本配置文档不代表生产注册已修改；55 联合验收必须固定官方 Provider 版本并连接实际三个下游，测试 Authority 单元结果不能代替。
 
 ### OSS
 
@@ -75,7 +85,7 @@ Admin API 启动时通过 Consul `config/ruoyu/*` 加载 PostgreSQL、OSS 和下
 ```
 
 - `InternalEndpoint/InternalSecure`：Admin 后端审计、清理、下载和迁移辅助使用的实际 S3 连接。
-- `PublicBaseUrl`：`GetPresignedUrlAsync` 使用的公共签名地址。
+- `PublicBaseUrl`：`GetPresignedUrlAsync` 使用的公共签名地址。 若地址带 `/oss` 前缀，公开代理只移除该部署前缀，保留签名 URL 中原有的 bucket/key；重复附加 bucket 会破坏 S3 签名。验证实际列表缩略图、预览图和原图，不能只看代理健康状态。
 - 浏览器访问 `/oss/` 时由 User Web Nginx 统一代理；Admin Nginx 不维护 SeaweedFS 上游地址。
 - `USE_LOCAL_OSS=1` 时使用 `LocalFileOssService`，目录由 `OSS_LOCAL_PATH` 指定，默认 `data/oss`。
 
