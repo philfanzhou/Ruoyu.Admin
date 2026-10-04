@@ -19,6 +19,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Moq;
 using Ruoyu.Admin.Common.Oss;
@@ -119,8 +120,10 @@ public sealed partial class AdminOidcTests
         Assert.Equal("https://images.example.test/test.jpg", image.Headers.Location!.OriginalString);
         probe.Student.Verify(s => s.GetPresignedUrlAsync("uploads/test.jpg", 3600, "small", It.IsAny<CancellationToken>()), Times.Once);
         Assert.Equal(0, probe.Writes);
-        foreach (var path in new[] { "/api/identity/admin/users", "/api/teacher-portal/admin/users", "/api/assistant-portal/admin/users", "/api/auth/logout" })
-            Assert.Equal(HttpStatusCode.Unauthorized, (await Api(client, path, cookie, path.EndsWith("logout") ? "POST" : "GET")).StatusCode);
+        foreach (var path in new[] { "/api/teacher-portal/admin/users", "/api/assistant-portal/admin/users" })
+            await Rejected(await Api(client, path, cookie), 503, "session_portal_proxy_disabled");
+        await Rejected(await Api(client, "/api/identity/admin/users", cookie), 503, "session_identity_proxy_disabled");
+        await Rejected(await Api(client, "/api/auth/logout", cookie, "POST"), 503, "session_logout_disabled");
         // The accessor returns the server token, without leaking it through formatting.
         using var scope = factory.Services.CreateScope();
         var context = new Microsoft.AspNetCore.Http.DefaultHttpContext { RequestServices = scope.ServiceProvider };
@@ -310,7 +313,7 @@ public sealed partial class AdminOidcTests
     }
 
     [Fact]
-    public async Task SessionApi_RetiresPasswordBeforeBindingKeepsCallbacksSpaHealthAndLegacyProxyScheme()
+    public async Task SessionApi_RetiresPasswordBeforeBindingKeepsCallbacksSpaHealthAndRejectsDisabledProxies()
     {
         using var authority = new OidcTestAuthority();
         var probe = new SessionBusinessProbe();
@@ -337,12 +340,19 @@ public sealed partial class AdminOidcTests
             Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/health/ready")).StatusCode);
             var callback = await client.PostAsJsonAsync("/api/auth/callback", new { userId = "fake-subject" });
             Assert.Equal("{\"roles\":[\"admin\"]}", await callback.Content.ReadAsStringAsync());
-            var selector = factory.Services.GetRequiredService<IOptionsMonitor<Microsoft.AspNetCore.Authentication.PolicySchemeOptions>>().Get("AdminApiAuthentication");
-            foreach (var path in new[] { "/api/identity/admin/users", "/api/teacher-portal/admin/users", "/api/assistant-portal/admin/users", "/api/auth/logout" })
+            // Disabled proxy/logout capabilities cannot be restored by browser credentials.
+            var bearerBefore = probe.BearerAuthentications;
+            foreach (var (path, error) in new[]
             {
-                var context = new Microsoft.AspNetCore.Http.DefaultHttpContext(); context.Request.Path = path;
-                Assert.Equal("Bearer", selector.ForwardDefaultSelector!(context));
-            }
+                ("/api/identity/admin/users", "session_identity_proxy_disabled"),
+                ("/api/teacher-portal/admin/users", "session_portal_proxy_disabled"),
+                ("/api/assistant-portal/admin/users", "session_portal_proxy_disabled"),
+                ("/api/auth/logout", "session_logout_disabled")
+            })
+                await Rejected(await Api(client, path, legacy, path.EndsWith("logout") ? "POST" : "GET",
+                    authorization: ["Bearer invalid"]), 503, error);
+            Assert.Equal(bearerBefore, probe.BearerAuthentications);
+            Assert.Equal(0, probe.Identity.Calls);
         }
         finally { Directory.Delete(root, true); }
     }
@@ -429,30 +439,81 @@ public sealed partial class AdminOidcTests
     }
 
     [Fact]
-    public async Task SessionApi_DefaultFalseStillUsesLegacyHeaderCookieLoginAndLogout()
+    public async Task SessionApi_DefaultFalseRejectsLegacyHeaderCookieAndLogout()
     {
         using var authority = new OidcTestAuthority();
-        var identity = new IdentityStub();
-        using var factory = OidcFactory(authority, configure: services =>
+        var probe = new SessionBusinessProbe();
+        using var factory = OidcFactory(authority, sessionApi: false, configure: services =>
         {
-            services.AddHttpClient("IdentityService").ConfigurePrimaryHttpMessageHandler(() => identity);
-            services.Configure<JwtBearerOptions>("Bearer", options =>
-            {
-                var metadata = new OpenIdConnectConfiguration { Issuer = OidcTestAuthority.Issuer };
-                metadata.SigningKeys.Add(authority.SigningKey); options.Configuration = metadata;
-            });
+            services.AddHttpClient("IdentityService").ConfigurePrimaryHttpMessageHandler(() => probe.Identity);
+            services.Configure<JwtBearerOptions>("Bearer", options => options.Events.OnMessageReceived = context =>
+            { Interlocked.Increment(ref probe.BearerAuthentications); return Task.CompletedTask; });
         });
         using var client = Browser(factory);
-        var jwtCookie = "adminAuthToken=" + authority.LegacyBearer();
-        Assert.Equal(HttpStatusCode.OK, (await Api(client, ProtectedApiRoute, jwtCookie)).StatusCode);
-        Assert.Equal(HttpStatusCode.Unauthorized, (await Api(client, ProtectedApiRoute, jwtCookie, authorization: ["Bearer invalid"])).StatusCode);
-        using var logout = await Api(client, "/api/auth/logout", jwtCookie, "POST");
-        Assert.Equal(HttpStatusCode.OK, logout.StatusCode);
-        Assert.Contains(logout.Headers.GetValues("Set-Cookie"), c => c.StartsWith("adminAuthToken=;"));
+        foreach (var path in new[] { ProtectedApiRoute, "/API/ADMIN/ENUM-OPTIONS/", "/api/admin/image?path=uploads/test.jpg", "/api/auth/csrf/", "/API/AUTH/SESSION/" })
+        foreach (var auth in new string[]?[] { null, ["Bearer " + authority.LegacyBearer()], ["Bearer invalid"], ["a", "b"] })
+            await Rejected(await Api(client, path, "adminAuthToken=" + authority.LegacyBearer(), authorization: auth), 503, "session_api_disabled");
+        foreach (var path in new[] { "/api/auth/logout", "/API/AUTH/LOGOUT/", "/api/auth/logout/csrf" })
+            await Rejected(await Api(client, path, "adminAuthToken=" + authority.LegacyBearer(), "POST", authorization: ["Bearer " + authority.LegacyBearer()]), 503, "session_logout_disabled");
+        Assert.Equal(0, probe.BearerAuthentications); Assert.Equal(0, probe.Identity.Calls); Assert.Equal(0, probe.Reads);
+        // The merged password-retirement contract is independent of the disabled API/logout gates.
         using var login = await client.PostAsJsonAsync("/api/auth/login", new { username = "fake", password = "fake" });
-        Assert.Equal(HttpStatusCode.OK, login.StatusCode);
-        Assert.Equal(1, identity.Calls);
-        Assert.Contains(login.Headers.GetValues("Set-Cookie"), c => c.StartsWith("adminAuthToken="));
+        Assert.Equal(HttpStatusCode.Gone, login.StatusCode); Assert.Equal(0, probe.Identity.Calls);
+        Assert.Equal("{\"error\":\"legacy_login_disabled\"}", await login.Content.ReadAsStringAsync());
+        Assert.False(login.Headers.Contains("Set-Cookie"));
+        probe.Oss.Verify(s => s.DeleteAsync(It.IsAny<string>()), Times.Never);
+    }
+
+    [Theory]
+    [InlineData(false, false)][InlineData(true, false)][InlineData(true, true)]
+    public async Task PasswordLogin_IsAlwaysRetiredBeforeAuthenticationOrBodyRead(bool enabled, bool sessionApi)
+    {
+        using var authority = new OidcTestAuthority();
+        var probe = new SessionBusinessProbe();
+        var logs = new OidcLogCapture();
+        void Configure(IServiceCollection services)
+        {
+            services.RemoveAll<ILoggerFactory>();
+            services.Configure<LoggerFilterOptions>(options => options.MinLevel = LogLevel.Trace);
+            services.AddSingleton<ILoggerFactory>(provider => new LoggerFactory([logs], provider.GetRequiredService<IOptionsMonitor<LoggerFilterOptions>>()));
+            services.AddHttpClient("IdentityService").ConfigurePrimaryHttpMessageHandler(() => probe.Identity);
+            services.Configure<JwtBearerOptions>("Bearer", options => options.Events.OnMessageReceived = context =>
+            { Interlocked.Increment(ref probe.BearerAuthentications); return Task.CompletedTask; });
+        }
+        using var factory = enabled ? OidcFactory(authority, configure: Configure, sessionApi: sessionApi)
+            : CreateFactory(configureTestServices: Configure);
+        using var client = Browser(factory);
+        foreach (var path in new[] { "/api/auth/login", "/api/auth/login/", "/API/AUTH/LOGIN/" })
+        foreach (var headers in new string[]?[] { null, ["Bearer " + authority.LegacyBearer()], ["Basic invalid"], ["Bearer a", "Bearer b"] })
+        foreach (var kind in new[] { "empty", "json", "malformed", "content-type" })
+        {
+            HttpContent? body = kind switch
+            {
+                "empty" => null, "json" => JsonContent.Create(new { username = "sensitive-canary", password = "sensitive-canary" }),
+                "malformed" => new StringContent("{sensitive-canary", System.Text.Encoding.UTF8, "application/json"),
+                _ => new StringContent("sensitive-canary", System.Text.Encoding.UTF8, "text/plain")
+            };
+            using var response = await Api(client, path, "adminAuthToken=" + authority.LegacyBearer(), "POST", authorization: headers, body: body);
+            Assert.False(response.Headers.TryGetValues("Set-Cookie", out _));
+            Assert.Equal("no-store", response.Headers.CacheControl?.ToString());
+            Assert.Equal("no-cache", string.Join(",", response.Headers.Pragma));
+            Assert.Equal("no-referrer", response.Headers.GetValues("Referrer-Policy").Single());
+            await Rejected(response, 410, "legacy_login_disabled");
+        }
+        var unread = await factory.Server.SendAsync(context =>
+        {
+            context.Request.Path = "/API/AUTH/LOGIN/"; context.Request.Method = "POST";
+            context.Request.Headers["Authorization"] = "";
+            context.Request.ContentType = "application/json"; context.Request.ContentLength = 123;
+            context.Request.Body = new UnreadPasswordStream();
+        });
+        Assert.Equal(410, unread.Response.StatusCode);
+        Assert.Equal(0, probe.BearerAuthentications);
+        Assert.Equal(0, probe.Identity.Calls);
+        Assert.Equal(0, authority.Redeems);
+        Assert.DoesNotContain("sensitive-canary", string.Join("\n", logs.Messages));
+        using var callback = await client.PostAsJsonAsync("/api/auth/callback", new { userId = "not-an-admin" });
+        Assert.Equal("{\"roles\":[]}", await callback.Content.ReadAsStringAsync());
     }
 
     [Fact]
@@ -531,4 +592,14 @@ public sealed class SessionFallbackController(SessionBusinessProbe probe) : Cont
 {
     [HttpGet]
     public IActionResult Read() { Interlocked.Increment(ref probe.Reads); return Ok(); }
+}
+
+internal sealed class UnreadPasswordStream : MemoryStream
+{
+    public override int Read(byte[] buffer, int offset, int count) => throw new InvalidOperationException("Password body must not be read");
+    public override int Read(Span<byte> buffer) => throw new InvalidOperationException("Password body must not be read");
+    public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        => throw new InvalidOperationException("Password body must not be read");
+    public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+        => throw new InvalidOperationException("Password body must not be read");
 }

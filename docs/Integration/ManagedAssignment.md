@@ -6,7 +6,7 @@ Student 与 Mistake 的 HTTP 契约由 Ruoyu.Study 拥有。Admin 只聚合可�
 
 `Mistake:ManagedAssignmentEnabled` 默认 `false`，只接受布尔值。开启时必须显式配置 HTTPS origin `MistakeService:Url`（无路径、用户信息、query、fragment）和现有 `IdentityService:Authority/Audience`，保留 `RequireHttpsMetadata=true`。真实证书须匹配主机名并进入运行环境信任链。不开启自动重定向、Cookie 转发、证书验证绕过或隐式 localhost 回退。
 
-列表复用现有 Student HTTP client。写入使用独立 `IManagedMistakeHttpClient`，仅调用 `POST /api/mistakes/upload`。服务端 session 模式取现有 Admin session boundary 已经检查管理员权限和 unsafe-method CSRF 的可信 access token；legacy 模式取现有 Bearer handler 已验证的管理员原 token。该 token 每个请求单独设置；不接受 body 的 actor/role，不签发 worker 凭据，不附加到其他路由或 redirect。
+列表复用现有 Student HTTP client。写入使用独立 `IManagedMistakeHttpClient`，仅调用 `POST /api/mistakes/upload`。当前 main（#40/#71–#74 已批准并交付）仅接受服务端会话：取现有 Admin session boundary 已经检查管理员权限和 unsafe-method CSRF 的可信 access token。任何入站 Authorization 即使伴随合法 session/CSRF 也401拒绝；API会话能力关闭固定503 session_api_disabled，不恢复已退役 Bearer。该 token 每个请求单独设置；不接受 body 的 actor/role，不签发 worker 凭据，不附加到其他路由或 redirect。
 
 ## 可信来源与固定提案
 
@@ -47,6 +47,8 @@ UI 显示每组真实 IDs 和安全错误种类，不把 HTTP200 等同整批成
 
 ## 验证入口
 
-后端 Release build/test；`ManagedMistakeHttpClientTests` 校验具体 HTTP 编解码和失败，`ManagedAssignmentApiTests` 通过实际 MVC/session/CSRF/Bearer 路径，`ManagedAssignmentOptionsTests` 校验启用前置。前端执行 `npm ci`、`npm run build`、`npm test`；fixed-operation 与 Drawer 测试覆盖固定载荷、部分结果、Unknown恢复、双击、取消及迟到代次。
+后端 Release build/test；`ManagedMistakeHttpClientTests` 校验具体 HTTP 编解码和失败，`ManagedAssignmentApiTests` 通过实际 MVC、已启用可信 session 和 CSRF 的正向路径，另验证任何 Bearer拒绝、API会话能力关闭503、managed能力关闭503、坏body400、坏metadata502及零出站，`ManagedAssignmentOptionsTests` 校验启用前置。前端执行 `npm ci`、`npm run build`、`npm test`；fixed-operation 与 Drawer 测试覆盖固定载荷、部分结果、Unknown恢复、双击、取消及迟到代次。
 
 真实验收使用独立 owning fixture：固定实际 Admin head 和 Study provider head、正常 TLS、实际 Student/Mistake、PG/S3 和正式身份注册。验证合法两组、部分409/5xx/断连/坏 body、commit 后丢响应及历史重放、alias并发/封口/auto竞争、两认证管线和 CSRF。保留 raw 失败与恢复、确切命令/digest/UTC/0skip、owned资源与无关栈前后安全摘要。unit/stub 的绿色结果不代替这些业务证据。
+
+原 IKJKML 六项验收不因本次夹具修复而减少：AC4 原“两既有认证管线”与后续已批准 #40/#71–#74 的唯一会话目标如何适用，须由新的 prepare 阶段在原跟踪明确依据与范围；本修复不恢复退役认证，也不把会话测试绿说成原全部 AC4 完成。同样，现 frozen DELETE409 是正确保护，不能当作原 AC2 的合法后续删除/重放证明；共享原图不同 crop 和合法后续变化的生产者前置仍由原 IKJKML/IKIZY2 与 Study 契约主责准备并交付，原 Feature 继续 Draft/blocked。

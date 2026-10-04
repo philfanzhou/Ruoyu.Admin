@@ -61,21 +61,39 @@ internal sealed class AdminSessionMiddleware(RequestDelegate next, AdminOidcSett
 {
     public async Task InvokeAsync(HttpContext context, AdminSessionBoundary boundary)
     {
-        var csrf = AdminSessionBoundary.IsAuthPath(context.Request.Path, "/api/auth/csrf");
-        if (csrf && !settings.UseSessionForAdminApi)
+        if (context.Request.Path.StartsWithSegments("/api/identity") && !settings.UseSessionForIdentityProxy)
+        {
+            await AdminSessionBoundary.RejectAsync(context, 503, "session_identity_proxy_disabled");
+            return;
+        }
+        if ((context.Request.Path.StartsWithSegments("/api/teacher-portal") || context.Request.Path.StartsWithSegments("/api/assistant-portal"))
+            && !settings.UseSessionForPortalProxies)
+        {
+            await AdminSessionBoundary.RejectAsync(context, 503, "session_portal_proxy_disabled");
+            return;
+        }
+        // This aggregate follows the API capability, independently of the portal proxy flag.
+        if (!settings.UseSessionForAdminApi && context.Request.Path.StartsWithSegments("/api/admin/students", out var associationPath)
+            && associationPath.Value?.TrimEnd('/').EndsWith("/linked-accounts", StringComparison.OrdinalIgnoreCase) == true)
         {
             await AdminSessionBoundary.RejectAsync(context, 503, "session_api_disabled");
             return;
         }
+        var csrf = AdminSessionBoundary.IsAuthPath(context.Request.Path, "/api/auth/csrf");
+        if ((csrf || context.Request.Path.StartsWithSegments("/api/admin")
+            || AdminSessionBoundary.IsAuthPath(context.Request.Path, "/api/auth/session")) && !settings.UseSessionForAdminApi)
+        {
+            await AdminSessionBoundary.RejectAsync(context, 503, "session_api_disabled");
+            return;
+        }
+        // Retire password input in every configuration before authentication or model binding.
+        if (HttpMethods.IsPost(context.Request.Method) && AdminSessionBoundary.IsAuthPath(context.Request.Path, "/api/auth/login"))
+        {
+            await AdminSessionBoundary.RejectAsync(context, 410, "legacy_login_disabled");
+            return;
+        }
         if (settings.UseSessionForAdminApi)
         {
-            // Run before model binding: retired password input is never accepted or forwarded,
-            // including invalid JSON, missing body or invalid credentials.
-            if (HttpMethods.IsPost(context.Request.Method) && AdminSessionBoundary.IsAuthPath(context.Request.Path, "/api/auth/login"))
-            {
-                await AdminSessionBoundary.RejectAsync(context, 410, "legacy_login_disabled");
-                return;
-            }
             if (AdminSessionBoundary.IsSessionPath(context.Request.Path, settings) && !await boundary.ValidateAsync(context)) return;
         }
         await next(context);

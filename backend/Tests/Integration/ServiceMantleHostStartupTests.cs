@@ -67,7 +67,7 @@ public sealed partial class ServiceMantleHostStartupTests : ServiceMantleIntegra
                 await root.Content.ReadAsStringAsync());
 
             using var api = await client.GetAsync(ProtectedApiRoute);
-            Assert.Equal(HttpStatusCode.Unauthorized, api.StatusCode);
+            Assert.Equal(HttpStatusCode.ServiceUnavailable, api.StatusCode);
         }
         finally
         {
@@ -95,7 +95,7 @@ public sealed partial class ServiceMantleHostStartupTests : ServiceMantleIntegra
             Assert.Equal("text/html", spaRoute.Content.Headers.ContentType?.MediaType);
 
             using var api = await client.GetAsync(ProtectedApiRoute);
-            Assert.Equal(HttpStatusCode.Unauthorized, api.StatusCode);
+            Assert.Equal(HttpStatusCode.ServiceUnavailable, api.StatusCode);
         }
         finally
         {

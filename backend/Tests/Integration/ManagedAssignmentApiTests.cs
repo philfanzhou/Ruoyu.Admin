@@ -2,11 +2,9 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Admin.WebApi.Services;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Moq;
 using Ruoyu.Admin.ServiceClients;
 using Xunit;
@@ -39,11 +37,6 @@ public sealed partial class AdminOidcTests
         services.Replace(ServiceDescriptor.Singleton(probe.Student.Object));
         services.Replace(ServiceDescriptor.Singleton(probe.Mistake.Object));
         services.Replace(ServiceDescriptor.Singleton(probe.Oss.Object));
-        services.Configure<JwtBearerOptions>("Bearer", options =>
-        {
-            var metadata = new OpenIdConnectConfiguration { Issuer = OidcTestAuthority.Issuer };
-            metadata.SigningKeys.Add(authority.SigningKey); options.Configuration = metadata;
-        });
     }, sessionApi: session);
 
     private static readonly Guid AssignmentSource = Guid.NewGuid(), AssignmentStudent = Guid.NewGuid(), AssignmentRevision = Guid.NewGuid();
@@ -86,17 +79,31 @@ public sealed partial class AdminOidcTests
         probe.Student.VerifyNoOtherCalls(); probe.Mistake.VerifyNoOtherCalls(); probe.Oss.VerifyNoOtherCalls();
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ManagedAssignment_AnyBearerEvenWithTrustedSessionAndCsrfNeverSends(bool validBearer)
+    {
+        using var authority = new OidcTestAuthority(); var probe = new SessionBusinessProbe(); var wire = new AssignmentWire();
+        using var factory = AssignmentFactory(authority, probe, wire); using var client = Browser(factory);
+        var cookie = await LoginSession(client, authority); var csrf = await Csrf(client, cookie);
+        var token = validBearer ? authority.LegacyBearer() : "invalid";
+        using var response = await Api(client, AssignmentRoute, cookie + "; " + csrf.Cookie, "POST", csrf: [csrf.Token],
+            authorization: ["Bearer " + token], body: JsonContent.Create(AssignmentBody([Guid.NewGuid()])));
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode); Assert.Empty(wire.Calls);
+        probe.Student.VerifyNoOtherCalls(); probe.Mistake.VerifyNoOtherCalls(); probe.Oss.VerifyNoOtherCalls();
+    }
+
     [Fact]
-    public async Task ManagedAssignment_ValidLegacyBearerForwardsOnlyAuthenticatedToken_UnverifiedBearerDoesNotSend()
+    public async Task ManagedAssignment_DisabledSessionApiNeverFallsBackToLegacyBearer()
     {
         using var authority = new OidcTestAuthority(); var probe = new SessionBusinessProbe(); var wire = new AssignmentWire();
         using var factory = AssignmentFactory(authority, probe, wire, session: false); using var client = Browser(factory);
-        using var invalid = await Api(client, AssignmentRoute, method: "POST", authorization: ["Bearer invalid"], body: JsonContent.Create(AssignmentBody([Guid.NewGuid()])));
-        Assert.Equal(HttpStatusCode.Unauthorized, invalid.StatusCode); Assert.Empty(wire.Calls);
-        var token = authority.LegacyBearer(); wire.Replies.Enqueue((200, new { success = true, data = new { success = true, createdItemIds = new[] { Guid.NewGuid() } } }));
-        using var valid = await Api(client, AssignmentRoute, method: "POST", authorization: ["Bearer " + token], body: JsonContent.Create(AssignmentBody([Guid.NewGuid()])));
-        Assert.Equal(HttpStatusCode.OK, valid.StatusCode); Assert.True((await valid.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("success").GetBoolean());
-        Assert.Equal(token, Assert.Single(wire.Calls).Token); probe.Student.VerifyNoOtherCalls();
+        using var response = await Api(client, AssignmentRoute, method: "POST", authorization: ["Bearer " + authority.LegacyBearer()],
+            body: JsonContent.Create(AssignmentBody([Guid.NewGuid()])));
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+        Assert.Equal("session_api_disabled", (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("error").GetString());
+        Assert.Empty(wire.Calls); probe.Student.VerifyNoOtherCalls(); probe.Mistake.VerifyNoOtherCalls(); probe.Oss.VerifyNoOtherCalls();
     }
 
     [Theory]
@@ -105,8 +112,9 @@ public sealed partial class AdminOidcTests
     public async Task ManagedAssignment_DisabledOrBadInputNeverFallsBackToStudentOrLegacy(bool enabled, int subject, int status)
     {
         using var authority = new OidcTestAuthority(); var probe = new SessionBusinessProbe(); var wire = new AssignmentWire();
-        using var factory = AssignmentFactory(authority, probe, wire, session: false, enabled: enabled); using var client = Browser(factory);
-        using var response = await Api(client, AssignmentRoute, method: "POST", authorization: ["Bearer " + authority.LegacyBearer()], body: JsonContent.Create(AssignmentBody([Guid.NewGuid()], subject)));
+        using var factory = AssignmentFactory(authority, probe, wire, enabled: enabled); using var client = Browser(factory);
+        var cookie = await LoginSession(client, authority); var csrf = await Csrf(client, cookie);
+        using var response = await Api(client, AssignmentRoute, cookie + "; " + csrf.Cookie, "POST", csrf: [csrf.Token], body: JsonContent.Create(AssignmentBody([Guid.NewGuid()], subject)));
         Assert.Equal(status, (int)response.StatusCode); Assert.Empty(wire.Calls);
         probe.Student.VerifyNoOtherCalls(); probe.Mistake.VerifyNoOtherCalls(); probe.Oss.VerifyNoOtherCalls();
     }
@@ -130,8 +138,9 @@ public sealed partial class AdminOidcTests
         var page = kind == "missing_items" ? new UploadRecordsPage() : new UploadRecordsPage { Items = kind == "empty" ? [] : [record], TotalCount = 1 };
         probe.Student.Setup(s => s.GetAllUploadRecordsAsync(It.IsAny<int?>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<string?>(), It.IsAny<CancellationToken>())).ReturnsAsync(page);
         probe.Student.Setup(s => s.GetStudentAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(new StudentDto { Name = "Test student" });
-        using var factory = AssignmentFactory(authority, probe, wire, session: false, enabled: enabled); using var client = Browser(factory);
-        using var response = await Api(client, "/api/admin/oss-upload-records", authorization: ["Bearer " + authority.LegacyBearer()]);
+        using var factory = AssignmentFactory(authority, probe, wire, enabled: enabled); using var client = Browser(factory);
+        var cookie = await LoginSession(client, authority);
+        using var response = await Api(client, "/api/admin/oss-upload-records", cookie);
         Assert.Equal(status, (int)response.StatusCode); Assert.Empty(wire.Calls);
         if (status == 502) probe.Student.Verify(s => s.GetStudentAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
         if (status == 200 && kind != "empty")

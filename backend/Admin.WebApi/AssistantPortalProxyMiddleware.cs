@@ -15,12 +15,12 @@ internal sealed class AssistantPortalProxyMiddleware
     private readonly RequestDelegate _next;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly AssistantPortalOptions _options;
-    private readonly AdminOidcSettings? _sessionSettings;
+    private readonly AdminOidcSettings _sessionSettings;
 
     public AssistantPortalProxyMiddleware(
         RequestDelegate next,
         IHttpClientFactory httpClientFactory,
-        IOptions<AssistantPortalOptions> options, AdminOidcSettings? sessionSettings = null)
+        IOptions<AssistantPortalOptions> options, AdminOidcSettings sessionSettings)
     {
         _next = next;
         _httpClientFactory = httpClientFactory;
@@ -36,42 +36,27 @@ internal sealed class AssistantPortalProxyMiddleware
             return;
         }
 
-        var sessionMode = _sessionSettings?.UseSessionForPortalProxies == true;
+        if (!_sessionSettings.UseSessionForPortalProxies)
+        { await AdminSessionBoundary.RejectAsync(context, 503, "session_portal_proxy_disabled"); return; }
         var session = context.Items[AdminSessionBoundary.TrustedSessionKey] as AdminSessionResult;
-        if (sessionMode && (session?.StatusCode != 200 || string.IsNullOrWhiteSpace(session.AccessToken)))
+        if (session?.StatusCode != 200 || string.IsNullOrWhiteSpace(session.AccessToken))
         { await AdminSessionBoundary.RejectAsync(context, 401, "unauthorized"); return; }
-        var cancellation = sessionMode ? context.RequestAborted : CancellationToken.None;
+        var cancellation = context.RequestAborted;
         cancellation.ThrowIfCancellationRequested();
         if (string.IsNullOrWhiteSpace(_options.Url))
         {
             context.Response.StatusCode = 503;
             context.Response.ContentType = "application/json; charset=utf-8";
-            await context.Response.WriteAsync("{\"message\":\"Assistant portal not configured\"}").ConfigureAwait(false);
+            await context.Response.WriteAsync("{\"message\":\"Assistant portal not configured\"}", cancellation).ConfigureAwait(false);
             return;
         }
 
         var client = _httpClientFactory.CreateClient("AssistantPortal");
 
-        var pathValue = context.Request.Path.Value!;
         string targetPath;
-        if (sessionMode)
-        {
-            if (remaining.StartsWithSegments("/admin", out var adminSuffix)) targetPath = "/api/admin" + adminSuffix;
-            else if (remaining.StartsWithSegments("/auth", out var authSuffix)) targetPath = "/api/auth" + authSuffix;
-            else targetPath = "/api/admin" + remaining;
-        }
-        else if (pathValue.StartsWith("/api/assistant-portal/admin", StringComparison.OrdinalIgnoreCase))
-        {
-            targetPath = pathValue.Replace("/api/assistant-portal/admin", "/api/admin");
-        }
-        else if (pathValue.StartsWith("/api/assistant-portal/auth", StringComparison.OrdinalIgnoreCase))
-        {
-            targetPath = pathValue.Replace("/api/assistant-portal/auth", "/api/auth");
-        }
-        else
-        {
-            targetPath = pathValue.Replace("/api/assistant-portal", "/api/admin");
-        }
+        if (remaining.StartsWithSegments("/admin", out var adminSuffix)) targetPath = "/api/admin" + adminSuffix;
+        else if (remaining.StartsWithSegments("/auth", out var authSuffix)) targetPath = "/api/auth" + authSuffix;
+        else targetPath = "/api/admin" + remaining;
 
         var targetUri = $"{_options.Url.TrimEnd('/')}{targetPath}{context.Request.QueryString}";
 
@@ -91,11 +76,11 @@ internal sealed class AssistantPortalProxyMiddleware
 
         foreach (var header in context.Request.Headers)
         {
-            if (sessionMode && (header.Key.Equals("Authorization", StringComparison.OrdinalIgnoreCase)
+            if (header.Key.Equals("Authorization", StringComparison.OrdinalIgnoreCase)
                 || header.Key.Equals("Cookie", StringComparison.OrdinalIgnoreCase)
                 || header.Key.Equals(AdminSessionBoundary.CsrfHeader, StringComparison.OrdinalIgnoreCase)
                 || header.Key.Equals("X-Admin-AppId", StringComparison.OrdinalIgnoreCase)
-                || header.Key.Equals("X-Admin-AppSecret", StringComparison.OrdinalIgnoreCase))) continue;
+                || header.Key.Equals("X-Admin-AppSecret", StringComparison.OrdinalIgnoreCase)) continue;
             if (header.Key.StartsWith("Content-", StringComparison.OrdinalIgnoreCase))
                 continue;
             if (string.Equals(header.Key, "Host", StringComparison.OrdinalIgnoreCase))
@@ -103,7 +88,7 @@ internal sealed class AssistantPortalProxyMiddleware
             requestMessage.Headers.TryAddWithoutValidation(header.Key, header.Value.ToArray());
         }
 
-        if (sessionMode) requestMessage.Headers.Authorization = new AuthenticationHeaderValue("Bearer", session!.AccessToken);
+        requestMessage.Headers.Authorization = new AuthenticationHeaderValue("Bearer", session!.AccessToken);
 
         HttpResponseMessage response;
         try
@@ -115,7 +100,7 @@ internal sealed class AssistantPortalProxyMiddleware
         {
             context.Response.StatusCode = 502;
             context.Response.ContentType = "application/json; charset=utf-8";
-            await context.Response.WriteAsync("{\"message\":\"Assistant portal service unreachable\"}").ConfigureAwait(false);
+            await context.Response.WriteAsync("{\"message\":\"Assistant portal service unreachable\"}", cancellation).ConfigureAwait(false);
             return;
         }
 
@@ -125,12 +110,12 @@ internal sealed class AssistantPortalProxyMiddleware
 
             foreach (var header in response.Headers)
             {
-                if (ExcludedResponseHeaders.Contains(header.Key) || sessionMode && header.Key.Equals("Set-Cookie", StringComparison.OrdinalIgnoreCase)) continue;
+                if (ExcludedResponseHeaders.Contains(header.Key) || header.Key.Equals("Set-Cookie", StringComparison.OrdinalIgnoreCase)) continue;
                 context.Response.Headers[header.Key] = header.Value.ToArray();
             }
             foreach (var header in response.Content.Headers)
             {
-                if (ExcludedResponseHeaders.Contains(header.Key) || sessionMode && header.Key.Equals("Set-Cookie", StringComparison.OrdinalIgnoreCase)) continue;
+                if (ExcludedResponseHeaders.Contains(header.Key) || header.Key.Equals("Set-Cookie", StringComparison.OrdinalIgnoreCase)) continue;
                 context.Response.Headers[header.Key] = header.Value.ToArray();
             }
 

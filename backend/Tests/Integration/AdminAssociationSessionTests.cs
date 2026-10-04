@@ -21,7 +21,7 @@ public sealed partial class AdminOidcTests
     public async Task AssociationsSession_TokenFollowsApiSwitchAndKeepsPartialAggregation(bool api, bool portals)
     {
         using var authority = new OidcTestAuthority();
-        var student = new Mock<IStudentHttpClient>(); var accounts = new List<string> { "known" }; var failStudent = false;
+        var student = new Mock<IStudentHttpClient>(); var accounts = new List<string> { "known" }; var failStudent = false; var bearers = 0;
         student.Setup(s => s.GetIdentityAccountsByStudentIdAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(() => failStudent ? throw new HttpRequestException("fake.unreachable") : accounts);
         var admins = new MutableAdmins();
@@ -35,6 +35,7 @@ public sealed partial class AdminOidcTests
             services.AddHttpClient("AssistantPortal").ConfigurePrimaryHttpMessageHandler(() => assistant);
             services.Configure<JwtBearerOptions>("Bearer", options =>
             {
+                options.Events.OnMessageReceived = _ => { Interlocked.Increment(ref bearers); return Task.CompletedTask; };
                 var metadata = new OpenIdConnectConfiguration { Issuer = OidcTestAuthority.Issuer };
                 metadata.SigningKeys.Add(authority.SigningKey); options.Configuration = metadata;
             });
@@ -43,6 +44,14 @@ public sealed partial class AdminOidcTests
         var cookie = api ? await LoginSession(client, authority) : null;
         var authorization = api ? null : new[] { "Bearer " + authority.LegacyBearer() };
         var path = $"/api/admin/students/{Guid.NewGuid()}/linked-accounts";
+        if (!api)
+        {
+            await Rejected(await Api(client, path, cookie, authorization: authorization), 503, "session_api_disabled");
+            await Rejected(await Api(client, path.ToUpperInvariant() + "/", "adminAuthToken=" + authority.LegacyBearer(), authorization: ["a", "b"]), 503, "session_api_disabled");
+            Assert.Equal(0, bearers); Assert.Equal(0, authority.Redeems);
+            Assert.Empty(student.Invocations); Assert.Empty(teacher.Requests); Assert.Empty(assistant.Requests);
+            return;
+        }
         async Task<JsonElement> Query()
         { using var response = await Api(client, path, cookie, authorization: authorization); Assert.Equal(HttpStatusCode.OK, response.StatusCode); return await response.Content.ReadFromJsonAsync<JsonElement>(); }
         var result = await Query();
