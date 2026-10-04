@@ -28,20 +28,16 @@ public sealed class AdminOidcController : ControllerBase
     {
         var settings = HttpContext.RequestServices.GetRequiredService<AdminOidcSettings>();
         if (!settings.Enabled) return StatusCode(503, new { error = "oidc_disabled" });
-        if (settings.UseSessionForAdminApi)
+        if (!settings.UseSessionForAdminApi) return StatusCode(503, new { error = "session_api_disabled" });
+        var session = await HttpContext.RequestServices.GetRequiredService<AdminSessionAccessor>().AuthenticateAsync(HttpContext);
+        if (Request.Headers.ContainsKey("Authorization") || session.StatusCode == 403)
         {
-            var session = await HttpContext.RequestServices.GetRequiredService<AdminSessionAccessor>().AuthenticateAsync(HttpContext);
-            if (Request.Headers.ContainsKey("Authorization") || session.StatusCode == 403)
-            {
-                await AdminSessionBoundary.RejectAsync(HttpContext, session.StatusCode, session.Error!);
-                return new EmptyResult();
-            }
-            var reauthenticate = session.Error == "reauthentication_required";
-            return Ok(new { authenticated = session.StatusCode == 200,
-                displayName = session.StatusCode == 200 ? session.Principal?.FindFirst("display_name")?.Value : reauthenticate ? session.DisplayName : null,
-                requiresReauthentication = reauthenticate });
+            await AdminSessionBoundary.RejectAsync(HttpContext, session.StatusCode, session.Error!);
+            return new EmptyResult();
         }
-        var result = await HttpContext.AuthenticateAsync(AdminOidcSettings.SessionScheme);
-        return Ok(new { authenticated = result.Succeeded, displayName = result.Succeeded ? result.Principal?.FindFirst("display_name")?.Value : null });
+        var reauthenticate = session.Error == "reauthentication_required";
+        return Ok(new { authenticated = session.StatusCode == 200,
+            displayName = session.StatusCode == 200 ? session.Principal?.FindFirst("display_name")?.Value : reauthenticate ? session.DisplayName : null,
+            requiresReauthentication = reauthenticate });
     }
 }

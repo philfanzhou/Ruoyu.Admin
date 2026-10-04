@@ -56,24 +56,6 @@ public class AdminAuthController : ControllerBase
 
         return Ok(new CallbackResponse());
     }
-
-    /// <summary>
-    /// Clears the legacy adminAuthToken cookie. Frontend calls
-    /// this on logout so subsequent browser-native &lt;img&gt; requests stop carrying
-    /// the JWT. localStorage tokens are cleared client-side by services/auth.ts.
-    /// </summary>
-    [HttpPost("logout")]
-    [Authorize]
-    public IActionResult Logout()
-    {
-        Response.Cookies.Delete("adminAuthToken", new CookieOptions
-        {
-            HttpOnly = true,
-            SameSite = SameSiteMode.Strict,
-            Path = "/",
-        });
-        return Ok(new { success = true });
-    }
 }
 
 public class CallbackRequest

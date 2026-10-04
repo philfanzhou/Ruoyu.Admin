@@ -379,7 +379,7 @@ healthEndpoints.MapServiceMantleHealthEndpoints();
 
 // ========== Marker-only endpoints for middleware-owned auth routes ==========
 // These routes are always handled (short-circuited) by middleware that runs before endpoint
-// execution — AdminLogoutMiddleware owns /api/auth/logout/csrf and the OIDC logout callback in
+// execution — AdminLogoutMiddleware owns /api/auth/logout, /api/auth/logout/csrf and the OIDC logout callback in
 // every configuration (GET is the answered method; a mismatch answers the disabled-mode
 // 503 first), and UseAdminOidcGate /
 // the OpenIdConnect remote handler own /api/auth/oidc/callback — so their route endpoints
@@ -389,7 +389,10 @@ healthEndpoints.MapServiceMantleHealthEndpoints();
 // they exist so the routes can never 404 and so the marker placement survives any future
 // change in middleware short-circuiting. Methods beyond GET exist only so method-mismatch
 // 405s keep the baseline as well.
-var authMarkerMethods = new[] { "GET", "HEAD", "POST", "PUT", "PATCH", "DELETE" };app.MapMethods("/api/auth/logout/csrf", authMarkerMethods, () => Results.StatusCode(StatusCodes.Status503ServiceUnavailable))
+var authMarkerMethods = new[] { "GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "TRACE" };
+app.MapMethods("/api/auth/logout", authMarkerMethods, () => Results.StatusCode(StatusCodes.Status503ServiceUnavailable))
+    .RequireServiceMantleSecurityResponseHeaders();
+app.MapMethods("/api/auth/logout/csrf", authMarkerMethods, () => Results.StatusCode(StatusCodes.Status503ServiceUnavailable))
     .RequireServiceMantleSecurityResponseHeaders();
 app.MapMethods(AdminOidcSettings.LogoutCallbackPath, authMarkerMethods, () => Results.StatusCode(StatusCodes.Status503ServiceUnavailable))
     .RequireServiceMantleSecurityResponseHeaders();

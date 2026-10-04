@@ -178,14 +178,15 @@ internal sealed class AdminLogoutMiddleware(RequestDelegate next, AdminOidcSetti
     {
         var csrf = AdminSessionBoundary.IsAuthPath(context.Request.Path, "/api/auth/logout/csrf");
         var callback = AdminSessionBoundary.IsAuthPath(context.Request.Path, AdminOidcSettings.LogoutCallbackPath);
-        var post = HttpMethods.IsPost(context.Request.Method) && AdminSessionBoundary.IsAuthPath(context.Request.Path, "/api/auth/logout");
-        if (!csrf && !callback && !(post && settings.UseSessionForLogout)) { await next(context); return; }
+        var post = AdminSessionBoundary.IsAuthPath(context.Request.Path, "/api/auth/logout");
+        if (!csrf && !callback && !post) { await next(context); return; }
         // The cache-suppression headers previously written here come from the ServiceMantle
         // security response-header baseline: these paths carry marker-only route endpoints
         // (mapped in Program.cs), and route selection happens before this middleware.
         if (!settings.UseSessionForLogout)
         { await AdminSessionBoundary.RejectAsync(context, 503, "session_logout_disabled"); return; }
-        if ((csrf || callback) && !HttpMethods.IsGet(context.Request.Method))
+        if ((post && !HttpMethods.IsPost(context.Request.Method))
+            || ((csrf || callback) && !HttpMethods.IsGet(context.Request.Method)))
         { context.Response.StatusCode = 405; return; }
         if (csrf) await logout.Csrf(context);
         else if (callback) await logout.Complete(context);

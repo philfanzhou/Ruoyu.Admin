@@ -231,3 +231,5 @@ Known documentation debt carried over from the monorepo is listed in [docs/READM
 MIT — see [LICENSE](./LICENSE).
 
 Password login (`POST /api/auth/login`) is permanently retired with `410 legacy_login_disabled`, before authentication or body binding in every configuration. Use SignaCore hosted login through `/api/auth/oidc/start`; disabling OIDC makes login unavailable. The role callback is retained. Deploy the final combined version with the hosted-login SPA (#41); intermediate images containing the old password form are not release candidates.
+
+Management APIs (including native images), ordinary CSRF and session status now require the enabled server-session capability: disabling it returns `503 session_api_disabled` before authentication. OIDC-disabled session status returns `503 oidc_disabled`. Logout is owned by prepared-logout middleware; disabling it returns `503 session_logout_disabled`, and enabled non-POST logout returns 405. Browser JWTs cannot restore these local capabilities. Deploy only the final combination with the hosted-login SPA (#41/#75).
