@@ -123,9 +123,9 @@ public sealed partial class AdminOidcTests
         probe.Student.Verify(s => s.GetPresignedUrlAsync("uploads/test.jpg", 3600, "small", It.IsAny<CancellationToken>()), Times.Once);
         Assert.Equal(0, probe.Writes);
         foreach (var path in new[] { "/api/teacher-portal/admin/users", "/api/assistant-portal/admin/users" })
-            await Rejected(await Api(client, path, cookie), 503, "session_portal_proxy_disabled");
-        await Rejected(await Api(client, "/api/identity/admin/users", cookie), 503, "session_identity_proxy_disabled");
-        await Rejected(await Api(client, "/api/auth/logout", cookie, "POST"), 503, "session_logout_disabled");
+            Assert.Equal(HttpStatusCode.OK, (await Api(client, path, cookie)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await Api(client, "/api/identity/admin/users", cookie)).StatusCode);
+        await Rejected(await Api(client, "/api/auth/logout", cookie, "POST"), 400, "csrf_invalid");
         // The accessor returns the server token, without leaking it through formatting.
         using var scope = factory.Services.CreateScope();
         var context = new Microsoft.AspNetCore.Http.DefaultHttpContext { RequestServices = scope.ServiceProvider };
@@ -315,7 +315,7 @@ public sealed partial class AdminOidcTests
     }
 
     [Fact]
-    public async Task SessionApi_RetiresPasswordBeforeBindingKeepsCallbacksSpaHealthAndRejectsDisabledProxies()
+    public async Task SessionApi_RetiresPasswordBeforeBindingKeepsCallbacksSpaHealthAndRejectsLegacyCredentials()
     {
         using var authority = new OidcTestAuthority();
         var probe = new SessionBusinessProbe();
@@ -342,17 +342,17 @@ public sealed partial class AdminOidcTests
             Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/health/ready")).StatusCode);
             var callback = await client.PostAsJsonAsync("/api/auth/callback", new { userId = "fake-subject" });
             Assert.Equal("{\"roles\":[\"admin\"]}", await callback.Content.ReadAsStringAsync());
-            // Disabled proxy/logout capabilities cannot be restored by browser credentials.
+            // All active proxy/logout surfaces reject retired browser credentials before outbound I/O.
             var bearerBefore = probe.BearerAuthentications;
             foreach (var (path, error) in new[]
             {
-                ("/api/identity/admin/users", "session_identity_proxy_disabled"),
-                ("/api/teacher-portal/admin/users", "session_portal_proxy_disabled"),
-                ("/api/assistant-portal/admin/users", "session_portal_proxy_disabled"),
-                ("/api/auth/logout", "session_logout_disabled")
+                ("/api/identity/admin/users", "unauthorized"),
+                ("/api/teacher-portal/admin/users", "unauthorized"),
+                ("/api/assistant-portal/admin/users", "unauthorized"),
+                ("/api/auth/logout", "unauthorized")
             })
                 await Rejected(await Api(client, path, legacy, path.EndsWith("logout") ? "POST" : "GET",
-                    authorization: ["Bearer invalid"]), 503, error);
+                    authorization: ["Bearer invalid"]), 401, error);
             Assert.Equal(bearerBefore, probe.BearerAuthentications);
             Assert.Equal(0, probe.Identity.Calls);
         }
@@ -442,30 +442,12 @@ public sealed partial class AdminOidcTests
         finally { await db.OssAuditRuns.Where(r => r.Id == run.Id).ExecuteDeleteAsync(); }
     }
 
-    [Fact]
-    public async Task SessionApi_DefaultFalseRejectsLegacyHeaderCookieAndLogout()
+    [Theory]
+    [InlineData("Enabled")][InlineData("UseSessionForAdminApi")][InlineData("UseSessionForLogout")]
+    public void SessionApi_LegacyFalseRejectsBeforeHost(string key)
     {
-        using var authority = new OidcTestAuthority();
-        var probe = new SessionBusinessProbe();
-        using var factory = OidcFactory(authority, sessionApi: false, configure: services =>
-        {
-            services.AddHttpClient("IdentityService").ConfigurePrimaryHttpMessageHandler(() => probe.Identity);
-            services.Configure<JwtBearerOptions>("Bearer", options => options.Events.OnMessageReceived = context =>
-            { Interlocked.Increment(ref probe.BearerAuthentications); return Task.CompletedTask; });
-        });
-        using var client = Browser(factory);
-        foreach (var path in new[] { ProtectedApiRoute, "/API/ADMIN/ENUM-OPTIONS/", "/api/admin/image?path=uploads/test.jpg", "/api/auth/csrf/", "/API/AUTH/SESSION/" })
-        foreach (var auth in new string[]?[] { null, ["Bearer " + authority.LegacyBearer()], ["Bearer invalid"], ["a", "b"] })
-            await Rejected(await Api(client, path, "adminAuthToken=" + authority.LegacyBearer(), authorization: auth), 503, "session_api_disabled");
-        foreach (var path in new[] { "/api/auth/logout", "/API/AUTH/LOGOUT/", "/api/auth/logout/csrf" })
-            await Rejected(await Api(client, path, "adminAuthToken=" + authority.LegacyBearer(), "POST", authorization: ["Bearer " + authority.LegacyBearer()]), 503, "session_logout_disabled");
-        Assert.Equal(0, probe.BearerAuthentications); Assert.Equal(0, probe.Identity.Calls); Assert.Equal(0, probe.Reads);
-        // The merged password-retirement contract is independent of the disabled API/logout gates.
-        using var login = await client.PostAsJsonAsync("/api/auth/login", new { username = "fake", password = "fake" });
-        Assert.Equal(HttpStatusCode.Gone, login.StatusCode); Assert.Equal(0, probe.Identity.Calls);
-        Assert.Equal("{\"error\":\"legacy_login_disabled\"}", await login.Content.ReadAsStringAsync());
-        Assert.False(login.Headers.Contains("Set-Cookie"));
-        probe.Oss.Verify(s => s.DeleteAsync(It.IsAny<string>()), Times.Never);
+        using var factory = CreateFactory(settings: new Dictionary<string, string?> { ["AdminOidc:" + key] = "false" });
+        Assert.Equal("AdminOidc:" + key, Assert.Throws<InvalidOperationException>(() => factory.Services).Message);
     }
 
     [Theory]
@@ -521,14 +503,12 @@ public sealed partial class AdminOidcTests
     }
 
     [Fact]
-    public async Task SessionApi_DisabledCsrfAndInvalidEnableCombinationAreExplicit()
+    public async Task SessionApi_AbsentLegacyKeysStillRequireSessionForCsrf()
     {
-        using var disabled = CreateFactory();
-        using var client = Browser(disabled);
+        using var factory = CreateFactory();
+        using var client = Browser(factory);
         foreach (var path in new[] { "/api/auth/csrf", "/api/auth/csrf/", "/API/AUTH/CSRF/" })
-            await Rejected(await client.GetAsync(path), 503, "session_api_disabled");
-        using var invalid = CreateFactory(settings: new Dictionary<string, string?> { ["AdminOidc:UseSessionForAdminApi"] = "true" });
-        Assert.Equal("AdminOidc:UseSessionForAdminApi requires AdminOidc:Enabled", Assert.Throws<InvalidOperationException>(() => invalid.Services).Message);
+            await Rejected(await client.GetAsync(path), 401, "unauthorized");
     }
 }
 

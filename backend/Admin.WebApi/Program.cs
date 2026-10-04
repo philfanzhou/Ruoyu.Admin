@@ -6,9 +6,9 @@ using Admin.WebApi.Database;
 using Admin.WebApi.Models;
 using Admin.WebApi.Persistence;
 using Admin.WebApi.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.EntityFrameworkCore;
-using Ruoyu.Admin.Common.Authentication;
 using Ruoyu.Admin.Common.Oss;
 using Ruoyu.Admin.Consul;
 using Ruoyu.Admin.ServiceClients;
@@ -19,10 +19,37 @@ using ServiceMantle.Database.PostgreSql.Migration;
 using ServiceMantle.Persistence.Relational;
 using ServiceMantle.Migration;
 
-var builder = WebApplication.CreateBuilder(args);
+var validateAuthConfig = args.Contains("--validate-auth-config", StringComparer.Ordinal);
+WebApplicationBuilder builder;
+try
+{
+    builder = WebApplication.CreateBuilder(args.Where(arg => arg != "--validate-auth-config").ToArray());
+    builder.Configuration.AddRuoyuConsulConfiguration(builder.Configuration, readOnly: validateAuthConfig);
+    _ = AdminOidcSettings.Read(builder.Configuration, builder.Environment);
+}
+catch (Exception error)
+{
+    // Configuration values and provider/driver exceptions never enter startup output.
+    Console.Error.WriteLine("RUOYU_ADMIN_AUTH_CONFIG_INVALID");
+    if (!validateAuthConfig)
+    {
+        var safeKey = error is InvalidOperationException && error.Message is
+            "AdminOidc:Enabled" or "AdminOidc:UseSessionForAdminApi" or "AdminOidc:UseSessionForLogout"
+            or "AdminOidc:UseSessionForIdentityProxy" or "AdminOidc:UseSessionForPortalProxies"
+            or "AdminOidc:RedirectUri" or "AdminOidc:PostLogoutRedirectUri"
+            or "IdentityService:Authority" or "IdentityService:AppId" or "IdentityService:AppSecret"
+            or "IdentityService:ClockSkewSeconds" ? error.Message : "RUOYU_ADMIN_AUTH_CONFIG_INVALID";
+        throw new InvalidOperationException(safeKey);
+    }
+    Environment.ExitCode = 2;
+    return;
+}
+if (validateAuthConfig)
+{
+    Console.WriteLine("RUOYU_ADMIN_AUTH_CONFIG_VALID");
+    return;
+}
 
-// ========== Consul Configuration Source ==========
-builder.Configuration.AddRuoyuConsulConfiguration(builder.Configuration);
 var consulOptions = RuoyuConsulOptions.Bind(builder.Configuration);
 var consulRuntimeState = RuoyuConsulRuntimeState.Instance;
 
@@ -61,18 +88,11 @@ builder.Services.AddHttpClient<HomeworkReferenceClient>(client =>
     client.Timeout = TimeSpan.FromSeconds(30);
 });
 
-// ========== Authentication (JWT Bearer via Identity OIDC) ==========
-// Admin portal authenticates via Identity-issued JWT. The admin role is injected by Identity
-// through admin_portal's callback (/api/auth/callback) for whitelisted AdminUserIds.
-builder.Services.AddRuoyuJwtBearer(
-    builder.Configuration,
-    builder.Environment,
-    options =>
-    {
-        // Browser-native image requests cannot attach an Authorization header.
-        // The shared handler preserves header precedence and uses this cookie only as fallback.
-        options.AccessTokenCookieName = "adminAuthToken";
-    });
+// The only inbound scheme is the server-side session; downstream tokens remain server-side.
+builder.Services.AddAuthorization(options =>
+{
+    options.FallbackPolicy = new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build();
+});
 
 builder.Services.AddAdminOidc(builder.Configuration, builder.Environment);
 
@@ -229,17 +249,7 @@ builder.Services.AddSwaggerGen(c =>
 });
 
 var app = builder.Build();
-var identityTrust = app.Services
-    .GetRequiredService<Microsoft.Extensions.Options.IOptions<IdentityAuthenticationOptions>>()
-    .Value;
-
 app.Logger.LogInformation("Admin Portal starting");
-app.Logger.LogInformation(
-    "Identity trust: Authority={Authority}, Issuers={Issuers}, Audience={Audience}, RequireHttpsMetadata={RequireHttpsMetadata}",
-    identityTrust.Authority,
-    string.Join(",", identityTrust.GetValidIssuers()),
-    identityTrust.Audience,
-    identityTrust.RequireHttpsMetadata);
 app.Logger.LogInformation(
     "Consul startup diagnostics: Address={Address}, Token={Token}, Source={Source}, KeyCount={KeyCount}, Prefixes={Prefixes}, LastError={LastError}",
     $"{consulOptions.Host}:{consulOptions.Port}",
@@ -312,7 +322,7 @@ app.UseServiceMantleSecurityResponseHeaders();
 // ========== Static files & SPA (before authentication) ==========
 // In mode-1 integrated deployment the same container (port 5020) serves both the backend API
 // and the frontend SPA (from wwwroot). The SPA entry point ("/" and all non-/api and non-/health
-// routes) MUST be reachable without a JWT, otherwise the browser can never load the login page
+// routes) MUST be reachable without a session, otherwise the browser can never load the login page
 // (deadlock: not logged in -> can't load login page -> can't log in). Authorization middleware
 // and the FallbackPolicy only apply to endpoints mapped later via MapControllers().
 // "/health" is excluded from the SPA rewrite so the ServiceMantle health endpoints mapped below
@@ -370,8 +380,8 @@ else
 // The library maps GET /health/live (always 200), GET /health/ready and GET /health (readiness
 // alias) WITHOUT any authorization metadata, so the FallbackPolicy (RequireAuthenticatedUser)
 // would 401 them. Mapping them inside an empty route group with AllowAnonymous exempts exactly
-// these endpoints while every /api endpoint keeps requiring a JWT (RuoyuJwtBearerExtensions is
-// untouched). Readiness projects the shared EF Core snapshot source: ready (200) only
+// these endpoints while every /api endpoint keeps requiring a session. Readiness projects
+// the shared EF Core snapshot source: ready (200) only
 // for Completed + Succeeded + Reachable, i.e. this process finished its migration orchestration AND a
 // bounded read-only AuditDb probe of the mapped tables succeeded; every failure answers 503
 // with a fixed safe errorCode and never a connection string, host, or exception text.
@@ -383,9 +393,8 @@ healthEndpoints.MapServiceMantleHealthEndpoints();
 
 // ========== Marker-only endpoints for middleware-owned auth routes ==========
 // These routes are always handled (short-circuited) by middleware that runs before endpoint
-// execution — AdminLogoutMiddleware owns /api/auth/logout, /api/auth/logout/csrf and the OIDC logout callback in
-// every configuration (GET is the answered method; a mismatch answers the disabled-mode
-// 503 first), and UseAdminOidcGate /
+// execution — AdminLogoutMiddleware owns /api/auth/logout, /api/auth/logout/csrf and the
+// OIDC logout callback (GET is the answered method; a mismatch answers 405), and
 // the OpenIdConnect remote handler own /api/auth/oidc/callback — so their route endpoints
 // exist solely to carry the security response-header metadata: route selection happens at the
 // very start of the pipeline, which makes the headers middleware (registered above) cover the
@@ -403,9 +412,8 @@ app.MapMethods(AdminOidcSettings.LogoutCallbackPath, authMarkerMethods, () => Re
 app.MapMethods(AdminOidcSettings.CallbackPath, authMarkerMethods, () => Results.StatusCode(StatusCodes.Status503ServiceUnavailable))
     .RequireServiceMantleSecurityResponseHeaders();
 
-app.UseAdminOidcGate();
-// Explicit session authentication runs inside this boundary; retired password login must
-// return 410 before a caller's legacy Bearer could trigger any Identity discovery HTTP.
+// Explicit session authentication runs inside this boundary; retired password login
+// returns 410 before body binding or any Identity request.
 app.UseMiddleware<AdminLogoutMiddleware>();
 app.UseMiddleware<AdminSessionMiddleware>();
 app.UseAuthentication();

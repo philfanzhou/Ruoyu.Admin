@@ -15,17 +15,15 @@ internal sealed class IdentityProxyMiddleware
     private readonly RequestDelegate _next;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IdentityServiceOptions _options;
-    private readonly AdminOidcSettings _sessionSettings;
 
     public IdentityProxyMiddleware(
         RequestDelegate next,
         IHttpClientFactory httpClientFactory,
-        IOptions<IdentityServiceOptions> options, AdminOidcSettings sessionSettings)
+        IOptions<IdentityServiceOptions> options)
     {
         _next = next;
         _httpClientFactory = httpClientFactory;
         _options = options.Value;
-        _sessionSettings = sessionSettings;
     }
 
     public async Task InvokeAsync(HttpContext context)
@@ -36,8 +34,6 @@ internal sealed class IdentityProxyMiddleware
             return;
         }
 
-        if (!_sessionSettings.UseSessionForIdentityProxy)
-        { await AdminSessionBoundary.RejectAsync(context, 503, "session_identity_proxy_disabled"); return; }
         var session = context.Items[AdminSessionBoundary.TrustedSessionKey] as AdminSessionResult;
         if (session?.StatusCode != 200 || string.IsNullOrWhiteSpace(session.AccessToken))
         { await AdminSessionBoundary.RejectAsync(context, 401, "unauthorized"); return; }

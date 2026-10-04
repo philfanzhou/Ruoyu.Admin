@@ -15,17 +15,15 @@ internal sealed class AssistantPortalProxyMiddleware
     private readonly RequestDelegate _next;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly AssistantPortalOptions _options;
-    private readonly AdminOidcSettings _sessionSettings;
 
     public AssistantPortalProxyMiddleware(
         RequestDelegate next,
         IHttpClientFactory httpClientFactory,
-        IOptions<AssistantPortalOptions> options, AdminOidcSettings sessionSettings)
+        IOptions<AssistantPortalOptions> options)
     {
         _next = next;
         _httpClientFactory = httpClientFactory;
         _options = options.Value;
-        _sessionSettings = sessionSettings;
     }
 
     public async Task InvokeAsync(HttpContext context)
@@ -36,8 +34,6 @@ internal sealed class AssistantPortalProxyMiddleware
             return;
         }
 
-        if (!_sessionSettings.UseSessionForPortalProxies)
-        { await AdminSessionBoundary.RejectAsync(context, 503, "session_portal_proxy_disabled"); return; }
         var session = context.Items[AdminSessionBoundary.TrustedSessionKey] as AdminSessionResult;
         if (session?.StatusCode != 200 || string.IsNullOrWhiteSpace(session.AccessToken))
         { await AdminSessionBoundary.RejectAsync(context, 401, "unauthorized"); return; }

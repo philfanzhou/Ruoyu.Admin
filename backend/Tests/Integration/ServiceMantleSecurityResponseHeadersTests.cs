@@ -221,33 +221,31 @@ public sealed class ServiceMantleSecurityResponseHeadersTests : ServiceMantleInt
     {
         using var authority = new OidcTestAuthority();
         var probe = new SessionBusinessProbe();
-        // sessionLogout stays false: the logout middleware answers its fixed 503/405/400 shape.
+        // Prepared logout always owns these routes, with the same security headers.
         using var factory = HeaderFactory(authority, probe);
         using var client = Browser(factory);
 
-        // 503 session_logout_disabled (fixed body) on the GET csrf route of prepared logout.
+        // Anonymous logout CSRF is rejected before any prepare call.
         using (var disabled = await client.GetAsync("/api/auth/logout/csrf"))
         {
-            Assert.Equal(HttpStatusCode.ServiceUnavailable, disabled.StatusCode);
-            Assert.Equal("{\"error\":\"session_logout_disabled\"}", await disabled.Content.ReadAsStringAsync());
+            Assert.Equal(HttpStatusCode.Unauthorized, disabled.StatusCode);
+            Assert.Equal("{\"error\":\"unauthorized\"}", await disabled.Content.ReadAsStringAsync());
             AssertBaseline(disabled);
         }
 
-        // A method mismatch on the middleware-owned route keeps the same fixed 503 (the
-        // disabled-mode check precedes the 405 branch) and still carries the baseline via
+        // A method mismatch on the middleware-owned route answers 405 with the baseline via
         // the multi-method marker endpoint.
         using (var wrongMethod = await SendAsync(client, "/api/auth/logout/csrf", "POST"))
         {
-            Assert.Equal(HttpStatusCode.ServiceUnavailable, wrongMethod.StatusCode);
-            Assert.Equal("{\"error\":\"session_logout_disabled\"}", await wrongMethod.Content.ReadAsStringAsync());
+            Assert.Equal(HttpStatusCode.MethodNotAllowed, wrongMethod.StatusCode);
             AssertBaseline(wrongMethod);
         }
 
         foreach (var path in new[] { "/api/auth/logout", "/API/AUTH/LOGOUT/" })
         {
             using var response = await SendAsync(client, path, "POST");
-            Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
-            Assert.Equal("{\"error\":\"session_logout_disabled\"}", await response.Content.ReadAsStringAsync());
+            Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+            Assert.Equal("{\"error\":\"unauthorized\"}", await response.Content.ReadAsStringAsync());
             AssertBaseline(response);
         }
 
@@ -276,28 +274,10 @@ public sealed class ServiceMantleSecurityResponseHeadersTests : ServiceMantleInt
     }
 
     [Fact]
-    public async Task OidcDisabledGate_KeepsFixed503_AndCarriesBaseline()
+    public void LegacyDisabledGateRejectsBeforeAnyHttpSurface()
     {
-        // Plain factory: AdminOidc:Enabled is false (default), so the gate owns the OIDC surfaces.
-        using var factory = CreateFactory();
-        using var client = factory.CreateClient();
-
-        foreach (var path in new[] { "/api/auth/oidc/start", "/api/auth/oidc/callback", "/api/auth/session" })
-        {
-            using var response = await client.GetAsync(path);
-            Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
-            Assert.Equal("{\"error\":\"oidc_disabled\"}", await response.Content.ReadAsStringAsync());
-            AssertBaseline(response);
-        }
-        // Logout owns its callback in every configuration, including Enabled=false.
-        foreach (var path in new[] { "/api/auth/logout", "/api/auth/logout/csrf", AdminOidcSettings.LogoutCallbackPath, "/API/AUTH/OIDC/LOGOUT-CALLBACK/" })
-        {
-            using var response = await SendAsync(client, path, path == "/api/auth/logout" ? "POST" : "GET");
-            Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
-            Assert.Equal("{\"error\":\"session_logout_disabled\"}", await response.Content.ReadAsStringAsync());
-            AssertBaseline(response);
-        }
-
+        using var factory = CreateFactory(settings: new Dictionary<string, string?> { ["AdminOidc:Enabled"] = "false" });
+        Assert.Equal("AdminOidc:Enabled", Assert.Throws<InvalidOperationException>(() => factory.Services).Message);
     }
 
     // ===== Unmarked surfaces keep their existing header behavior =====
@@ -339,7 +319,7 @@ public sealed class ServiceMantleSecurityResponseHeadersTests : ServiceMantleInt
             // ImageController: browser-native image redirect surface stays unmarked.
             using (var image = await client.GetAsync("/api/admin/image?path=uploads/a.jpg"))
             {
-                Assert.Equal(HttpStatusCode.ServiceUnavailable, image.StatusCode);
+                Assert.Equal(HttpStatusCode.Unauthorized, image.StatusCode);
                 AssertNoBaseline(image);
             }
 
@@ -382,7 +362,7 @@ public sealed class ServiceMantleSecurityResponseHeadersTests : ServiceMantleInt
         ["AdminOidc:Enabled"] = "true",
         ["AdminOidc:RedirectUri"] = OidcTestAuthority.RedirectUri,
         ["AdminOidc:UseSessionForAdminApi"] = "true",
-        ["AdminOidc:UseSessionForLogout"] = sessionLogout.ToString(),
+
         ["AdminOidc:PostLogoutRedirectUri"] = "https://admin.example.test/api/auth/oidc/logout-callback",
         ["TeacherPortal:Url"] = "https://teacher.example.test",
         ["AssistantPortal:Url"] = "https://assistant.example.test",

@@ -11,7 +11,7 @@ internal sealed class AdminSessionAccessor(AdminOidcSettings settings, IOptionsM
     internal async Task<AdminSessionResult> AuthenticateAsync(HttpContext context)
     {
         context.RequestAborted.ThrowIfCancellationRequested();
-        if (!settings.Enabled || context.Request.Headers.ContainsKey("Authorization")) return new(401);
+        if (context.Request.Headers.ContainsKey("Authorization")) return new(401);
         var authenticated = await context.AuthenticateAsync(AdminOidcSettings.SessionScheme);
         context.RequestAborted.ThrowIfCancellationRequested();
         if (!authenticated.Succeeded || authenticated.Principal is null || authenticated.Properties is null) return new(401);

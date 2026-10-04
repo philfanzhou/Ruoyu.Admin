@@ -127,32 +127,20 @@ public sealed partial class AdminOidcTests
     }
 
     [Theory]
-    [InlineData(false, false)][InlineData(true, false)][InlineData(true, true)]
-    public async Task IdentitySession_DisabledStopsBeforeBearerAndHttp(bool enabled, bool api)
+    [InlineData("false")][InlineData("not-a-bool")]
+    public void IdentitySession_LegacyModeRejectsBeforeHost(string value)
     {
-        using var authority = new OidcTestAuthority(); var downstream = new SessionProxyCapture(); var bearers = 0;
-        void Configure(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
-        {
-            services.AddHttpClient("IdentityService").ConfigurePrimaryHttpMessageHandler(() => downstream);
-            services.Configure<Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerOptions>("Bearer", options =>
-                options.Events.OnMessageReceived = _ => { Interlocked.Increment(ref bearers); return Task.CompletedTask; });
-        }
-        using var factory = enabled ? OidcFactory(authority, configure: Configure, sessionApi: api)
-            : CreateFactory(configureTestServices: Configure);
-        using var client = Browser(factory);
-        foreach (var path in new[] { "/api/identity", "/API/IDENTITY/", "/api/identity/users?size=2" })
-        foreach (var auth in new string[]?[] { null, ["Bearer " + authority.LegacyBearer()], ["a", "b"] })
-            await Rejected(await Api(client, path, "adminAuthToken=" + authority.LegacyBearer(), "POST", authorization: auth,
-                body: new StringContent("invalid json")), 503, "session_identity_proxy_disabled");
-        Assert.Equal(0, bearers); Assert.Equal(0, authority.Redeems); Assert.Empty(downstream.Requests);
+        using var factory = CreateFactory(settings: new Dictionary<string, string?> { ["AdminOidc:UseSessionForIdentityProxy"] = value });
+        Assert.Equal("AdminOidc:UseSessionForIdentityProxy", Assert.Throws<InvalidOperationException>(() => factory.Services).Message);
     }
 
     [Fact]
-    public void IdentitySession_InvalidSwitchCombinationFailsWithoutValues()
+    public async Task IdentitySession_AbsentLegacyKeysRegisterOnlySessionAndOidc()
     {
-        using var invalid = CreateFactory(settings: new Dictionary<string, string?> { ["AdminOidc:UseSessionForIdentityProxy"] = "true" });
-        Assert.Equal("AdminOidc:UseSessionForIdentityProxy requires AdminOidc:Enabled and AdminOidc:UseSessionForAdminApi",
-            Assert.Throws<InvalidOperationException>(() => invalid.Services).Message);
+        using var factory = CreateFactory();
+        var schemes = (await factory.Services.GetRequiredService<Microsoft.AspNetCore.Authentication.IAuthenticationSchemeProvider>()
+            .GetAllSchemesAsync()).Select(s => s.Name).Order().ToArray();
+        Assert.Equal(new[] { AdminOidcSettings.OidcScheme, AdminOidcSettings.SessionScheme }.Order(), schemes);
     }
 }
 

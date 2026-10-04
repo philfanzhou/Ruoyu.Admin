@@ -44,9 +44,8 @@ internal static class AdminOidcRegistration
             options.Cookie.SameSite = SameSiteMode.Lax;
             options.Cookie.SecurePolicy = settings.InsecureLoopback ? CookieSecurePolicy.SameAsRequest : CookieSecurePolicy.Always;
         });
-        // Only explicitly migrated paths select the server session. Bare [Authorize] and
-        // FallbackPolicy must select the same scheme as UseAuthentication, never re-run Bearer.
-        var authentication = services.AddAuthentication().AddCookie(AdminOidcSettings.SessionScheme, options =>
+        // Every inbound authenticated surface uses the server-side session exclusively.
+        var authentication = services.AddAuthentication(AdminOidcSettings.SessionScheme).AddCookie(AdminOidcSettings.SessionScheme, options =>
         {
             options.Cookie.Name = AdminOidcSettings.SessionCookie;
             options.Cookie.Path = "/";
@@ -60,14 +59,6 @@ internal static class AdminOidcRegistration
         });
         services.AddOptions<CookieAuthenticationOptions>(AdminOidcSettings.SessionScheme)
             .Configure<MemoryTicketStore, TimeProvider>((options, store, time) => { options.SessionStore = store; options.TimeProvider = time; });
-        authentication.AddPolicyScheme("AdminApiAuthentication", null, options =>
-            options.ForwardDefaultSelector = context => (AdminSessionBoundary.IsAuthPath(context.Request.Path, "/api/auth/session")
-                || AdminSessionBoundary.IsSessionPath(context.Request.Path, settings)
-                || settings.UseSessionForLogout && (AdminSessionBoundary.IsAuthPath(context.Request.Path, "/api/auth/logout")
-                    || AdminSessionBoundary.IsAuthPath(context.Request.Path, "/api/auth/logout/csrf")))
-                ? AdminOidcSettings.SessionScheme : "Bearer");
-        services.Configure<AuthenticationOptions>(options => options.DefaultScheme = "AdminApiAuthentication");
-        if (!settings.Enabled) return services;
         // Hosting diagnostics log raw query strings outside the application middleware.
         services.AddLogging(logging => logging.AddFilter("Microsoft.AspNetCore.Hosting.Diagnostics", LogLevel.None));
 
@@ -216,29 +207,4 @@ internal static class AdminOidcRegistration
         return metadata;
     }
 
-    /// <summary>
-    /// Gate for the OIDC-only auth surfaces: when OIDC is disabled, /api/auth/oidc/* and
-    /// /api/auth/session answer a fixed 503 oidc_disabled instead of falling through to a 404
-    /// or the SPA. The response-header half of the former middleware (no-store / no-referrer)
-    /// moved to the ServiceMantle security response-header baseline carried by the marked
-    /// endpoints of these routes (see Program.cs).
-    /// </summary>
-    internal static void UseAdminOidcGate(this WebApplication app)
-    {
-        app.Use(async (context, next) =>
-        {
-            if ((context.Request.Path.StartsWithSegments("/api/auth/oidc")
-                    && !AdminSessionBoundary.IsAuthPath(context.Request.Path, AdminOidcSettings.LogoutCallbackPath))
-                || AdminSessionBoundary.IsAuthPath(context.Request.Path, "/api/auth/session"))
-            {
-                if (!context.RequestServices.GetRequiredService<AdminOidcSettings>().Enabled)
-                {
-                    context.Response.StatusCode = 503;
-                    await context.Response.WriteAsJsonAsync(new { error = "oidc_disabled" }, context.RequestAborted);
-                    return;
-                }
-            }
-            await next(context);
-        });
-    }
 }

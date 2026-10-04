@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Configuration;
 using System.Net;
 using Admin.WebApi.Authentication;
 using System.Text;
@@ -12,8 +13,7 @@ namespace Admin.WebApi.Tests.Middleware;
 
 public class IdentityProxyMiddlewareTests
 {
-    private static readonly AdminOidcSettings SessionSettings = new(true, "", "", "", "", false, TimeSpan.Zero)
-        { UseSessionForAdminApi = true, UseSessionForIdentityProxy = true };
+    private static readonly AdminOidcSettings SessionSettings = new("", "", "", "", false, TimeSpan.Zero);
     private static DefaultHttpContext TrustedContext()
     {
         var context = new DefaultHttpContext();
@@ -54,7 +54,7 @@ public class IdentityProxyMiddlewareTests
     {
         var optionsMock = new Mock<IOptions<IdentityServiceOptions>>();
         optionsMock.Setup(o => o.Value).Returns(options ?? new IdentityServiceOptions());
-        return new IdentityProxyMiddleware(next, factory, optionsMock.Object, SessionSettings);
+        return new IdentityProxyMiddleware(next, factory, optionsMock.Object);
     }
 
     [Fact]
@@ -95,7 +95,7 @@ public class IdentityProxyMiddlewareTests
         var optionsMock = new Mock<IOptions<IdentityServiceOptions>>();
         optionsMock.Setup(o => o.Value).Returns(options);
 
-        var middleware = new IdentityProxyMiddleware(nextMock.Object, factoryMock.Object, optionsMock.Object, SessionSettings);
+        var middleware = new IdentityProxyMiddleware(nextMock.Object, factoryMock.Object, optionsMock.Object);
 
         var context = TrustedContext();
         context.Request.Path = "/api/identity/users";
@@ -135,7 +135,7 @@ public class IdentityProxyMiddlewareTests
         var optionsMock = new Mock<IOptions<IdentityServiceOptions>>();
         optionsMock.Setup(o => o.Value).Returns(options);
 
-        var middleware = new IdentityProxyMiddleware(nextMock.Object, factoryMock.Object, optionsMock.Object, SessionSettings);
+        var middleware = new IdentityProxyMiddleware(nextMock.Object, factoryMock.Object, optionsMock.Object);
 
         var context = TrustedContext();
         context.Request.Path = "/api/identity/accounts";
@@ -181,7 +181,7 @@ public class IdentityProxyMiddlewareTests
         var optionsMock = new Mock<IOptions<IdentityServiceOptions>>();
         optionsMock.Setup(o => o.Value).Returns(options);
 
-        var middleware = new IdentityProxyMiddleware(nextMock.Object, factoryMock.Object, optionsMock.Object, SessionSettings);
+        var middleware = new IdentityProxyMiddleware(nextMock.Object, factoryMock.Object, optionsMock.Object);
 
         var context = TrustedContext();
         context.Request.Path = "/api/identity/users";
@@ -258,7 +258,7 @@ public class IdentityProxyMiddlewareTests
         var optionsMock = new Mock<IOptions<IdentityServiceOptions>>();
         optionsMock.Setup(o => o.Value).Returns(options);
 
-        var middleware = new IdentityProxyMiddleware(nextMock.Object, factoryMock.Object, optionsMock.Object, SessionSettings);
+        var middleware = new IdentityProxyMiddleware(nextMock.Object, factoryMock.Object, optionsMock.Object);
 
         var context = TrustedContext();
         context.Request.Path = "/api/identity/users";
@@ -275,13 +275,13 @@ public class IdentityProxyMiddlewareTests
             ItExpr.IsAny<CancellationToken>());
     }
     [Theory]
-    [InlineData(false, false, 503)][InlineData(true, false, 401)][InlineData(true, true, 401)]
-    public async Task MissingTrustedSessionOrDisabledNeverForwards(bool enabled, bool invalidTrusted, int status)
+    [InlineData(false, 401)][InlineData(true, 401)]
+    public async Task MissingTrustedSessionNeverForwards(bool invalidTrusted, int status)
     {
         var factory = new Mock<IHttpClientFactory>(MockBehavior.Strict);
-        var settings = SessionSettings with { UseSessionForIdentityProxy = enabled };
+
         var middleware = new IdentityProxyMiddleware(_ => throw new InvalidOperationException("No fallthrough"), factory.Object,
-            Options.Create(new IdentityServiceOptions()), settings);
+            Options.Create(new IdentityServiceOptions()));
         var context = new DefaultHttpContext(); context.Request.Path = "/API/IDENTITY/users/";
         context.Request.Headers.Authorization = "Bearer browser-token"; context.Request.Headers.Cookie = "adminAuthToken=browser-token";
         context.Response.Body = new MemoryStream();
@@ -329,12 +329,12 @@ public class IdentityProxyMiddlewareTests
     }
 
     [Fact]
-    public async Task DisabledBoundaryRejectsBeforeAuthentication()
+    public void LegacyDisabledIdentityConfigurationRejectsBeforeHost()
     {
-        var middleware = new AdminSessionMiddleware(_ => throw new InvalidOperationException("No authentication"), SessionSettings with { UseSessionForIdentityProxy = false });
-        var context = new DefaultHttpContext(); context.Request.Path = "/API/IDENTITY/";
-        context.Request.Headers.Authorization = "Bearer browser-token"; context.Response.Body = new MemoryStream();
-        await middleware.InvokeAsync(context, null!); Assert.Equal(503, context.Response.StatusCode);
+        var config = new Microsoft.Extensions.Configuration.ConfigurationBuilder().AddInMemoryCollection(
+            new Dictionary<string, string?> { ["AdminOidc:UseSessionForIdentityProxy"] = "false" }).Build();
+        Assert.Equal("AdminOidc:UseSessionForIdentityProxy", Assert.Throws<InvalidOperationException>(() =>
+            AdminOidcSettings.Read(config, new Microsoft.Extensions.Hosting.Internal.HostingEnvironment())).Message);
     }
 
     [Fact]

@@ -18,7 +18,7 @@ public sealed partial class AdminOidcTests
 {
     [Theory]
     [InlineData(true, false)][InlineData(true, true)][InlineData(false, false)]
-    public async Task AssociationsSession_TokenFollowsApiSwitchAndKeepsPartialAggregation(bool api, bool portals)
+    public async Task AssociationsSession_LegacyCredentialsRejectAndSessionKeepsPartialAggregation(bool api, bool portals)
     {
         using var authority = new OidcTestAuthority();
         var student = new Mock<IStudentHttpClient>(); var accounts = new List<string> { "known" }; var failStudent = false; var bearers = 0;
@@ -46,8 +46,8 @@ public sealed partial class AdminOidcTests
         var path = $"/api/admin/students/{Guid.NewGuid()}/linked-accounts";
         if (!api)
         {
-            await Rejected(await Api(client, path, cookie, authorization: authorization), 503, "session_api_disabled");
-            await Rejected(await Api(client, path.ToUpperInvariant() + "/", "adminAuthToken=" + authority.LegacyBearer(), authorization: ["a", "b"]), 503, "session_api_disabled");
+            await Rejected(await Api(client, path, cookie, authorization: authorization), 401, "unauthorized");
+            await Rejected(await Api(client, path.ToUpperInvariant() + "/", "adminAuthToken=" + authority.LegacyBearer(), authorization: ["a", "b"]), 401, "unauthorized");
             Assert.Equal(0, bearers); Assert.Equal(0, authority.Redeems);
             Assert.Empty(student.Invocations); Assert.Empty(teacher.Requests); Assert.Empty(assistant.Requests);
             return;
