@@ -229,3 +229,5 @@ Known documentation debt carried over from the monorepo is listed in [docs/READM
 ## License
 
 MIT — see [LICENSE](./LICENSE).
+
+Management APIs (including native images), ordinary CSRF and session status now require the enabled server-session capability: disabling it returns `503 session_api_disabled` before authentication. OIDC-disabled session status returns `503 oidc_disabled`. Logout is owned by prepared-logout middleware; disabling it returns `503 session_logout_disabled`, and enabled non-POST logout returns 405. Browser JWTs cannot restore these local capabilities. Deploy only the final combination with the hosted-login SPA (#41/#75).

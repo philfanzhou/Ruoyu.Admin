@@ -43,6 +43,12 @@ public sealed partial class AdminOidcTests
         var cookie = api ? await LoginSession(client, authority) : null;
         var authorization = api ? null : new[] { "Bearer " + authority.LegacyBearer() };
         var path = $"/api/admin/students/{Guid.NewGuid()}/linked-accounts";
+        if (!api)
+        {
+            await Rejected(await Api(client, path, cookie, authorization: authorization), 503, "session_api_disabled");
+            Assert.Empty(student.Invocations); Assert.Empty(teacher.Requests); Assert.Empty(assistant.Requests);
+            return;
+        }
         async Task<JsonElement> Query()
         { using var response = await Api(client, path, cookie, authorization: authorization); Assert.Equal(HttpStatusCode.OK, response.StatusCode); return await response.Content.ReadFromJsonAsync<JsonElement>(); }
         var result = await Query();

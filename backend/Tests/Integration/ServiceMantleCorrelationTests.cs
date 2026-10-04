@@ -54,7 +54,7 @@ public sealed partial class ServiceMantleCorrelationTests : ServiceMantleIntegra
         // The header is injected before authentication runs: even the 401 of an
         // unauthenticated /api request carries the correlation id.
         using var api = await client.GetAsync(ProtectedApiRoute);
-        Assert.Equal(HttpStatusCode.Unauthorized, api.StatusCode);
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, api.StatusCode);
         Assert.Matches(GeneratedIdPattern(), api.Headers.GetValues(CorrelationHeaderName).Single());
     }
 

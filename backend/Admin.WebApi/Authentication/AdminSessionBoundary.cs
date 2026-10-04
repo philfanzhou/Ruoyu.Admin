@@ -62,7 +62,8 @@ internal sealed class AdminSessionMiddleware(RequestDelegate next, AdminOidcSett
     public async Task InvokeAsync(HttpContext context, AdminSessionBoundary boundary)
     {
         var csrf = AdminSessionBoundary.IsAuthPath(context.Request.Path, "/api/auth/csrf");
-        if (csrf && !settings.UseSessionForAdminApi)
+        if ((csrf || context.Request.Path.StartsWithSegments("/api/admin")
+            || AdminSessionBoundary.IsAuthPath(context.Request.Path, "/api/auth/session")) && !settings.UseSessionForAdminApi)
         {
             await AdminSessionBoundary.RejectAsync(context, 503, "session_api_disabled");
             return;

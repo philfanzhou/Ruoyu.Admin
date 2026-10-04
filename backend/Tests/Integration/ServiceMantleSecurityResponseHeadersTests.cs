@@ -50,7 +50,7 @@ public sealed class ServiceMantleSecurityResponseHeadersTests : ServiceMantleInt
 
     private static readonly string[] MarkerOnlyRoutes =
     [
-        "/api/auth/logout/csrf", AdminOidcSettings.LogoutCallbackPath, AdminOidcSettings.CallbackPath,
+        "/api/auth/logout", "/api/auth/logout/csrf", AdminOidcSettings.LogoutCallbackPath, AdminOidcSettings.CallbackPath,
     ];
 
     public ServiceMantleSecurityResponseHeadersTests(PostgreSqlFixture database) : base(database)
@@ -243,12 +243,30 @@ public sealed class ServiceMantleSecurityResponseHeadersTests : ServiceMantleInt
             AssertBaseline(wrongMethod);
         }
 
+        foreach (var path in new[] { "/api/auth/logout", "/API/AUTH/LOGOUT/" })
+        {
+            using var response = await SendAsync(client, path, "POST");
+            Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+            Assert.Equal("{\"error\":\"session_logout_disabled\"}", await response.Content.ReadAsStringAsync());
+            AssertBaseline(response);
+        }
+
         // The same route with prepared logout enabled answers the invalid-state 400
         // (fixed body) — still through the middleware, still with the baseline.
         using var authority2 = new OidcTestAuthority();
         var probe2 = new SessionBusinessProbe();
         using var enabledFactory = HeaderFactory(authority2, probe2, sessionLogout: true);
         using var enabledClient = Browser(enabledFactory);
+        foreach (var method in new[] { "GET", "HEAD", "PUT", "PATCH", "DELETE", "OPTIONS", "TRACE" })
+        {
+            using var wrongMethod = await SendAsync(enabledClient, "/API/AUTH/LOGOUT/", method);
+            Assert.Equal(HttpStatusCode.MethodNotAllowed, wrongMethod.StatusCode);
+            AssertBaseline(wrongMethod);
+        }
+        using (var denied = await SendAsync(enabledClient, "/api/auth/logout", "POST"))
+        {
+            Assert.Equal(HttpStatusCode.Unauthorized, denied.StatusCode); AssertBaseline(denied);
+        }
         using (var invalidCallback = await enabledClient.GetAsync(AdminOidcSettings.LogoutCallbackPath + "?state=not-a-key"))
         {
             Assert.Equal(HttpStatusCode.BadRequest, invalidCallback.StatusCode);
@@ -312,7 +330,7 @@ public sealed class ServiceMantleSecurityResponseHeadersTests : ServiceMantleInt
             // ImageController: browser-native image redirect surface stays unmarked.
             using (var image = await client.GetAsync("/api/admin/image?path=uploads/a.jpg"))
             {
-                Assert.Equal(HttpStatusCode.Unauthorized, image.StatusCode);
+                Assert.Equal(HttpStatusCode.ServiceUnavailable, image.StatusCode);
                 AssertNoBaseline(image);
             }
 

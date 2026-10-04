@@ -119,8 +119,9 @@ public sealed partial class AdminOidcTests
         Assert.Equal("https://images.example.test/test.jpg", image.Headers.Location!.OriginalString);
         probe.Student.Verify(s => s.GetPresignedUrlAsync("uploads/test.jpg", 3600, "small", It.IsAny<CancellationToken>()), Times.Once);
         Assert.Equal(0, probe.Writes);
-        foreach (var path in new[] { "/api/identity/admin/users", "/api/teacher-portal/admin/users", "/api/assistant-portal/admin/users", "/api/auth/logout" })
+        foreach (var path in new[] { "/api/identity/admin/users", "/api/teacher-portal/admin/users", "/api/assistant-portal/admin/users" })
             Assert.Equal(HttpStatusCode.Unauthorized, (await Api(client, path, cookie, path.EndsWith("logout") ? "POST" : "GET")).StatusCode);
+        await Rejected(await Api(client, "/api/auth/logout", cookie, "POST"), 503, "session_logout_disabled");
         // The accessor returns the server token, without leaking it through formatting.
         using var scope = factory.Services.CreateScope();
         var context = new Microsoft.AspNetCore.Http.DefaultHttpContext { RequestServices = scope.ServiceProvider };
@@ -338,7 +339,7 @@ public sealed partial class AdminOidcTests
             var callback = await client.PostAsJsonAsync("/api/auth/callback", new { userId = "fake-subject" });
             Assert.Equal("{\"roles\":[\"admin\"]}", await callback.Content.ReadAsStringAsync());
             var selector = factory.Services.GetRequiredService<IOptionsMonitor<Microsoft.AspNetCore.Authentication.PolicySchemeOptions>>().Get("AdminApiAuthentication");
-            foreach (var path in new[] { "/api/identity/admin/users", "/api/teacher-portal/admin/users", "/api/assistant-portal/admin/users", "/api/auth/logout" })
+            foreach (var path in new[] { "/api/identity/admin/users", "/api/teacher-portal/admin/users", "/api/assistant-portal/admin/users" })
             {
                 var context = new Microsoft.AspNetCore.Http.DefaultHttpContext(); context.Request.Path = path;
                 Assert.Equal("Bearer", selector.ForwardDefaultSelector!(context));
@@ -429,30 +430,28 @@ public sealed partial class AdminOidcTests
     }
 
     [Fact]
-    public async Task SessionApi_DefaultFalseStillUsesLegacyHeaderCookieLoginAndLogout()
+    public async Task SessionApi_DefaultFalseRejectsLegacyHeaderCookieAndLogout()
     {
         using var authority = new OidcTestAuthority();
-        var identity = new IdentityStub();
-        using var factory = OidcFactory(authority, configure: services =>
+        var probe = new SessionBusinessProbe();
+        using var factory = OidcFactory(authority, sessionApi: false, configure: services =>
         {
-            services.AddHttpClient("IdentityService").ConfigurePrimaryHttpMessageHandler(() => identity);
-            services.Configure<JwtBearerOptions>("Bearer", options =>
-            {
-                var metadata = new OpenIdConnectConfiguration { Issuer = OidcTestAuthority.Issuer };
-                metadata.SigningKeys.Add(authority.SigningKey); options.Configuration = metadata;
-            });
+            services.AddHttpClient("IdentityService").ConfigurePrimaryHttpMessageHandler(() => probe.Identity);
+            services.Configure<JwtBearerOptions>("Bearer", options => options.Events.OnMessageReceived = context =>
+            { Interlocked.Increment(ref probe.BearerAuthentications); return Task.CompletedTask; });
         });
         using var client = Browser(factory);
-        var jwtCookie = "adminAuthToken=" + authority.LegacyBearer();
-        Assert.Equal(HttpStatusCode.OK, (await Api(client, ProtectedApiRoute, jwtCookie)).StatusCode);
-        Assert.Equal(HttpStatusCode.Unauthorized, (await Api(client, ProtectedApiRoute, jwtCookie, authorization: ["Bearer invalid"])).StatusCode);
-        using var logout = await Api(client, "/api/auth/logout", jwtCookie, "POST");
-        Assert.Equal(HttpStatusCode.OK, logout.StatusCode);
-        Assert.Contains(logout.Headers.GetValues("Set-Cookie"), c => c.StartsWith("adminAuthToken=;"));
+        foreach (var path in new[] { ProtectedApiRoute, "/API/ADMIN/ENUM-OPTIONS/", "/api/admin/image?path=uploads/test.jpg", "/api/auth/csrf/", "/API/AUTH/SESSION/" })
+        foreach (var auth in new string[]?[] { null, ["Bearer " + authority.LegacyBearer()], ["Bearer invalid"], ["a", "b"] })
+            await Rejected(await Api(client, path, "adminAuthToken=" + authority.LegacyBearer(), authorization: auth), 503, "session_api_disabled");
+        foreach (var path in new[] { "/api/auth/logout", "/API/AUTH/LOGOUT/", "/api/auth/logout/csrf" })
+            await Rejected(await Api(client, path, "adminAuthToken=" + authority.LegacyBearer(), "POST", authorization: ["Bearer " + authority.LegacyBearer()]), 503, "session_logout_disabled");
+        Assert.Equal(0, probe.BearerAuthentications); Assert.Equal(0, probe.Identity.Calls); Assert.Equal(0, probe.Reads);
+        // Password retirement is a separate slice; preserve the baseline false-mode login here.
         using var login = await client.PostAsJsonAsync("/api/auth/login", new { username = "fake", password = "fake" });
-        Assert.Equal(HttpStatusCode.OK, login.StatusCode);
-        Assert.Equal(1, identity.Calls);
-        Assert.Contains(login.Headers.GetValues("Set-Cookie"), c => c.StartsWith("adminAuthToken="));
+        Assert.Equal(HttpStatusCode.OK, login.StatusCode); Assert.Equal(1, probe.Identity.Calls);
+        Assert.Contains(login.Headers.GetValues("Set-Cookie"), value => value.StartsWith("adminAuthToken="));
+        probe.Oss.Verify(s => s.DeleteAsync(It.IsAny<string>()), Times.Never);
     }
 
     [Fact]

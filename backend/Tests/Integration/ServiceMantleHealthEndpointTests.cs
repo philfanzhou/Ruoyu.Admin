@@ -350,7 +350,7 @@ public sealed partial class ServiceMantleHealthEndpointTests : ServiceMantleInte
         // The FallbackPolicy (RequireAuthenticatedUser) is untouched: unauthenticated /api
         // requests still 401, while the health endpoints on the same client stay anonymous.
         using var api = await client.GetAsync(ProtectedApiRoute);
-        Assert.Equal(HttpStatusCode.Unauthorized, api.StatusCode);
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, api.StatusCode);
 
         using var live = await client.GetAsync("/health/live");
         Assert.Equal(HttpStatusCode.OK, live.StatusCode);
