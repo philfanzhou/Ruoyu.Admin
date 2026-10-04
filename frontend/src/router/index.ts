@@ -1,7 +1,7 @@
 import { markRaw } from 'vue'
 import { createRouter, createWebHistory } from 'vue-router'
 import { Box, Collection, DataBoard, Reading, Service, Upload, User } from '@element-plus/icons-vue'
-import { isAuthenticated } from '../services/auth'
+import { initializeSession, onSessionInvalidated, safeReturnUrl, session } from '../services/auth'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -61,22 +61,21 @@ const router = createRouter({
   ]
 })
 
-router.beforeEach((to, _from, next) => {
+onSessionInvalidated(() => {
+  if (router.currentRoute.value.path !== '/login') {
+    void router.replace({ name: 'login', query: { returnUrl: safeReturnUrl(router.currentRoute.value.fullPath) } })
+  }
+})
+
+router.beforeEach(async to => {
   document.title = `${to.meta.title || '管理后台'} - Admin Portal`
-
-  // Redirect unauthenticated users to the login page.
-  if (to.name !== 'login' && !isAuthenticated()) {
-    next({ name: 'login' })
-    return
-  }
-
-  // Authenticated users should not stay on the login page.
-  if (to.name === 'login' && isAuthenticated()) {
-    next('/dashboard')
-    return
-  }
-
-  next()
+  await initializeSession()
+  if (to.name !== 'login' && session.status !== 'authenticated')
+    return { name: 'login', query: { returnUrl: safeReturnUrl(to.fullPath) } }
+  // Callback status and logout completion stay visible until the user acts.
+  if (to.name === 'login' && session.status === 'authenticated' && !to.query.authError && !to.query.loggedOut)
+    return safeReturnUrl(to.query.returnUrl)
+  return true
 })
 
 export default router

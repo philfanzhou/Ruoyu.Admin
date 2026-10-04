@@ -43,7 +43,7 @@ frontend/src/
 │   ├── OssAuditView.vue          # OSS 审计页面（列表、选择与删除/忽略编排）
 │   └── oss-audit/                # OSS 审计子组件：状态面板、记录表格、浮动批量栏、忽略弹窗、扫描状态轮询（useAuditStatus）
 ├── services/
-│   ├── httpClient.ts            # 共享 axios 实例（含 JWT 注入 + 401 重定向拦截器）
+│   ├── httpClient.ts            # 共享 axios 实例（同源会话、CSRF 与受控失效导航）
 │   ├── identityApi.ts           # Identity 用户管理 API
 │   ├── studentAdminApi.ts       # 学生管理 + 上传记录 + 错题查询 API
 │   ├── teacherPortalApi.ts      # 教师权限管理 API
@@ -164,15 +164,14 @@ frontend/src/
 
 ### 0. 登录页 (`/login`)
 
-**布局**：居中单卡片（品牌名 + 标题 + 表单），使用 Element Plus 表单组件与设计令牌，不包含营销文案、版本号或版权年份。
+**布局**：居中单卡片（品牌名、会话状态、显式操作），使用 Element Plus 与设计令牌。
 
-- **表单**：用户名 / 手机号、密码（可切换显示）、「记住用户名」复选框、登录按钮
-- **记住用户名**：勾选时登录成功后写入 `localStorage.adminUsername`（外壳显示用户名用），取消勾选时删除；与 token 是否保存无关
-- **提交**：用户名或密码为空时按钮禁用；回车可提交；登录中按钮进入 loading 状态并忽略重复提交
-- **错误提示**：内联 `el-alert` 显示后端返回的 `message`
-
-**API 调用**：
-- `login(username, password)` - 提交登录表单，成功后写入 token 到 localStorage
+- 不包含用户名、密码、记住用户名或 token 输入；显式同源链接进入 `/api/auth/oidc/start?returnUrl=...`，凭据只在 SignaCore 托管页提交。
+- 路由守卫先等待唯一 `/api/auth/session` 请求。完整三字段状态决定 authenticated、anonymous、reauthentication、forbidden 或 unavailable；显示名只来自当前服务器 session，null 保持空白。
+- 深链保留站内路径与 query；外部、双斜杠、反斜杠、控制字符、点路径、登录/认证循环和四层解码后仍畸形的输入回到 `/dashboard`，长度上限 2048。
+- 过期仅显示显式重新登录，403 仅显示权限提示与本人退出；503、断网和关闭能力显示不可用与显式状态重试，不自动授权跳转。
+- callback 仅识别既有固定 `authError`，不读取 code/state/verifier/token 或输出任意原始错误。`loggedOut=1` 留在退出完成页，避免立即重登。
+- 本人退出单飞，先取专用 `GET /api/auth/logout/csrf`，一次 `POST /api/auth/logout`。本地完成后才跳转 BFF 返回的不透明 prepared URL；仅本地退出明确显示上游未结束。响应丢失/取消只重新查询本地事实，不重放 POST，不声称全局退出。
 
 ---
 
@@ -659,16 +658,11 @@ interface EnumOptionsResponse {
 - **按需调用 API**：每个页面只调用自己需要的接口
 - **错误处理**：Axios 错误统一提取 `response.data.message`，使用 `ElMessage.error` 提示
 - **确认操作**：删除、撤销权限、移除授权、解除关联等破坏性操作必须使用 `src/utils/confirm.ts` 的 `confirmDanger({ title, message, confirmText })`：危险图标与危险按钮、打开时确认按钮不获得焦点（回车不会执行）、点击遮罩不关闭、Esc/取消返回 `false` 且不抛异常。文案写明对象与后果；需要强调时用 `h()` 构造 VNode，**禁止** `dangerouslyUseHTMLString`（姓名、路径来自后端数据）。调用方写 `if (!(await confirmDanger(...))) return`，API 错误在自己的 try/catch 中处理。非破坏性操作（退回、重置状态、忽略、触发扫描等）不使用危险样式。
-- **认证**：JWT Bearer。登录后前端将 access token 存入 localStorage，通过共享 axios 实例（`services/httpClient.ts`）的请求拦截器统一附加 `Authorization: Bearer` 头；后端使用 `[Authorize]` / `[Authorize(Roles="admin")]` 校验 Identity 签发的 JWT
-- **共享 HTTP 客户端**：所有 API 服务（`studentAdminApi` / `teacherPortalApi` / `assistantPortalApi` / `identityApi` / `ossAuditApi`）必须复用 `services/httpClient.ts` 导出的共享 axios 实例，不得各自 `axios.create()` 单独建实例。原因：axios 实例间不共享拦截器，单独建实例会导致 JWT 未注入 → 后端返回 401。共享实例同时配置：
-  - 请求拦截器：从 localStorage 读取 token，附加 `Authorization: Bearer <token>` 头
-  - 响应拦截器：收到 401 时清除 token 并重定向到 `/login`
-- **登录流程例外**：`services/auth.ts` 的 `login()` 使用原生 `fetch`（不经 axios），登录成功后写入 localStorage，后续 axios 请求才能读到 token
-- **图片加载（Cookie + JWT 双通道）**：浏览器 `<img>` / `<el-image>` 标签发起的图片请求**无法携带自定义 Authorization 头**（W3C 标准限制），但会自动携带同源 cookie。为此 admin_portal 采用双通道：
-  - **Bearer 通道**：axios 请求（API 调用）走 `Authorization: Bearer <jwt>`，token 从 localStorage 读取（由 `services/httpClient.ts` 拦截器注入）
-  - **Cookie 通道**：登录成功时后端 `AdminAuthController.Login` 把同一份 JWT 写入 HttpOnly cookie（`adminAuthToken`，SameSite=Strict，Path=/）。`<img>` 标签的图片请求自动携带该 cookie。后端 `AddJwtBearer` 的 `OnMessageReceived` 事件优先读 Authorization 头，缺失时回退读 cookie，保证 `[Authorize]` 端点对两种通道都生效
-  - **退出登录时**：后端 `AdminAuthController.Logout` 清除 cookie；前端 `clearAuth()` 清除 localStorage
-- **图片端点 URL 约定**：`GET /api/admin/image?path=<ossPath>&size=<small|medium|空>`，保留 `[Authorize]`（由 cookie 通道鉴权），返回 302 重定向到 OSS presigned URL；浏览器随后从平台公共 `https://oss.example.com/oss/` 入口拉取图片，该入口由 User Web Nginx 统一代理。
+- **认证**：浏览器只使用同源 HttpOnly 不透明 `adminSession`，access/id token 留 BFF 内存。初始化仅尝试移除历史 `adminAuthToken`、`adminRefreshToken`、`adminUsername`，从不读取这些值作身份依据；侧栏布局偏好不受影响。
+- **共享 HTTP 客户端**：所有 API 服务复用 `services/httpClient.ts`。只允许同源 `/api/`，移除 Authorization 和 axios auth；unsafe 请求单飞取得普通 CSRF 后携带单值 `X-CSRF-TOKEN`，不自动重试任何写请求。
+- **代次与失败**：每次失效/退出推进 session generation；旧初始化和旧 API 401/403 不覆盖新会话，多项同时 401 只执行一次受控登录页导航。请求取消不会产生部分写重放。
+- **图片加载**：同源 `<img>` / `<el-image>` 自动携带服务器会话 Cookie，由现有图片端点授权后重定向；不拼接 JWT、Authorization 或浏览器 token。图片与业务 API 使用同一当前管理员边界。
+- **图片端点 URL 约定**：`GET /api/admin/image?path=<ossPath>&size=<small|medium|空>`，保留现有服务端管理员会话授权，返回 302 重定向到 OSS presigned URL；浏览器随后从平台公共 `https://oss.example.com/oss/` 入口拉取图片，该入口由 User Web Nginx 统一代理。
   - 列表缩略图：`size=small`
   - 详情页中等图：`size=medium`
   - 详情页点击放大预览：不传 `size`（返回原图）

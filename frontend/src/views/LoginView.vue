@@ -3,100 +3,54 @@
     <div class="login-card">
       <div class="login-brand">
         <span class="login-mark">若</span>
-        <div>
-          <div class="login-brand-title">若愚智库</div>
-          <div class="login-brand-sub">管理后台</div>
-        </div>
+        <div><div class="login-brand-title">若愚智库</div><div class="login-brand-sub">管理后台</div></div>
       </div>
-
-      <h1 class="login-title">管理员登录</h1>
-
-      <el-form class="login-form" label-position="top" @submit.prevent="handleLogin">
-        <el-form-item label="用户名 / 手机号" for="username">
-          <el-input
-            id="username"
-            v-model="form.username"
-            size="large"
-            placeholder="请输入用户名"
-            autocomplete="username"
-            :prefix-icon="User"
-          />
-        </el-form-item>
-
-        <el-form-item label="密码" for="password">
-          <el-input
-            id="password"
-            v-model="form.password"
-            size="large"
-            type="password"
-            show-password
-            placeholder="请输入密码"
-            autocomplete="current-password"
-            :prefix-icon="Lock"
-          />
-        </el-form-item>
-
-        <el-alert
-          v-if="error"
-          class="login-error"
-          type="error"
-          :title="error"
-          :closable="false"
-          show-icon
-        />
-
-        <el-checkbox v-model="form.remember" class="login-remember">记住用户名</el-checkbox>
-
-        <el-button
-          class="login-submit"
-          type="primary"
-          size="large"
-          native-type="submit"
-          :loading="loading"
-          :disabled="!canSubmit"
-        >
-          登录
-        </el-button>
-      </el-form>
+      <h1 class="login-title">{{ title }}</h1>
+      <el-alert class="login-error" :title="message" :type="session.status === 'forbidden' ? 'error' : 'info'" :closable="false" show-icon />
+      <el-alert v-if="session.logoutNotice" class="login-error" :title="session.logoutNotice" type="warning" :closable="false" show-icon />
+      <div class="login-actions">
+        <el-button v-if="canSignIn" class="login-submit" tag="a" :href="hostedLoginUrl(returnUrl)" type="primary" size="large" :disabled="session.signingOut">前往身份服务登录</el-button>
+        <el-button v-if="session.status === 'authenticated'" type="primary" @click="router.replace(returnUrl)">返回管理页面</el-button>
+        <el-button :loading="checking" :disabled="checking || session.signingOut" @click="checkSession">重新检查会话</el-button>
+        <el-button v-if="canSignOut" :loading="session.signingOut" :disabled="session.signingOut" @click="handleLogout">退出当前会话</el-button>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
-import { Lock, User } from '@element-plus/icons-vue'
-import { login } from '../services/auth'
+import { computed, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { hostedLoginUrl, initializeSession, logoutSession, safeReturnUrl, session } from '../services/auth'
 
+const route = useRoute()
 const router = useRouter()
-const loading = ref(false)
-const error = ref('')
-
-const form = reactive({
-  username: '',
-  password: '',
-  remember: true,
+const checking = ref(false)
+const returnUrl = computed(() => safeReturnUrl(route.query.returnUrl))
+const canSignIn = computed(() => session.status === 'anonymous' || session.status === 'reauthentication')
+const canSignOut = computed(() => ['authenticated', 'reauthentication', 'forbidden'].includes(session.status))
+const title = computed(() => session.status === 'forbidden' ? '无管理权限' : session.status === 'reauthentication' ? '需要重新认证' : '管理员登录')
+const message = computed(() => {
+  if (session.status === 'forbidden') return '当前账户没有管理权限。可以退出本人会话后使用其他账户。'
+  if (session.status === 'reauthentication') return '登录凭据已到期，请主动重新认证；之前的操作不会自动重试。'
+  if (session.status === 'unavailable') return '会话服务不可用，请重新检查。'
+  if (session.status === 'unknown') return '正在确认当前会话。'
+  if (session.status === 'authenticated') return '当前管理员会话有效。'
+  const errors: Record<string, string> = { cancelled: '已取消登录，可以再次前往身份服务。', sign_in_failed: '登录未完成，请重新登录。', identity_unavailable: '身份服务暂时不可用，请稍后重试。' }
+  if (typeof route.query.authError === 'string') return errors[route.query.authError] ?? '登录未完成，请重试。'
+  if (route.query.loggedOut === '1') return '已退出管理后台。'
+  return '请前往身份服务完成登录。此页面不收集密码。'
 })
-
-const canSubmit = computed(() => !!(form.username.trim() && form.password))
-
-const handleLogin = async () => {
-  if (!canSubmit.value || loading.value) return
-  loading.value = true
-  error.value = ''
-  try {
-    await login(form.username.trim(), form.password)
-    if (form.remember) {
-      localStorage.setItem('adminUsername', form.username.trim())
-    } else {
-      localStorage.removeItem('adminUsername')
-    }
-    router.push('/dashboard')
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : '登录失败'
-  } finally {
-    loading.value = false
-  }
+const checkSession = async () => {
+  if (checking.value) return
+  checking.value = true
+  try { if (await initializeSession(true) === 'authenticated') await router.replace(returnUrl.value) }
+  finally { checking.value = false }
+}
+const handleLogout = async () => {
+  const result = await logoutSession()
+  if (result.kind === 'redirect') window.location.assign(result.url)
+  else if (session.status !== 'authenticated') await router.replace('/login')
 }
 </script>
 
@@ -155,9 +109,7 @@ const handleLogin = async () => {
 .login-error {
   margin-bottom: var(--adm-space-3);
 }
-.login-remember {
-  margin-bottom: var(--adm-space-4);
-}
+.login-actions { display: grid; gap: var(--adm-space-3); }
 .login-submit {
   width: 100%;
 }

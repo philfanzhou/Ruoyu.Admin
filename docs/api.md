@@ -8,8 +8,8 @@ Admin Portal 提供 REST API 接口，用于管理学生、错题记录、OSS �
 
 - 基础路径: `/api/admin`
 - 数据格式: JSON
-- 认证: JWT Bearer（`Authorization: Bearer <token>`）。Program.cs 设置 `FallbackPolicy = RequireAuthenticatedUser()`，所有 `/api/*` 端点默认需要认证
-- 匿名入口：SPA 静态文件、`/` 首页回退、`/api/auth/login`、`/api/auth/callback`、`/api/auth/oidc/start`、`/api/auth/oidc/callback`、`/api/auth/session` 标记 `[AllowAnonymous]`，无需 JWT（见下方"认证流程"）
+- 认证: 管理 API 使用已启用的服务器 AdminSession；任何入站 `Authorization` 固定401。关闭会话能力固定503，不采用浏览器 JWT。
+- 匿名入口：SPA 静态文件、`/` 首页回退、`/api/auth/login`、`/api/auth/callback`、`/api/auth/oidc/start`、`/api/auth/oidc/callback`、`/api/auth/session` 标记 `[AllowAnonymous]`，按各自协议匿名处理（见下方"认证流程"）
 
 ---
 
@@ -18,11 +18,11 @@ Admin Portal 提供 REST API 接口，用于管理学生、错题记录、OSS �
 Admin Portal 采用 **mode-1 集成部署**：同一容器（端口 5020）既提供后端 REST API，又通过 `wwwroot` 提供前端静态文件与 SPA 路由回退。因此认证按请求路径区分：
 
 - **前端入口（匿名）**：`/` 及所有非 `/api/*` 路径由 SPA fallback 处理，无需登录即可加载登录页
-- **API（需认证）**：`/api/*` 受 `FallbackPolicy = RequireAuthenticatedUser()` 保护；默认使用 JWT，显式迁移的管理路径按下文使用管理员会话。匿名协议入口按各自规则豁免。
+- **API（需认证）**：`/api/*` 受 `FallbackPolicy = RequireAuthenticatedUser()` 保护；管理路径与代理按下文使用管理员会话。匿名协议入口按各自规则豁免。
 
 ### 可选托管登录基础（#38）
 
-默认 `AdminOidc:UseSessionForAdminApi=false`：管理 API/图片/普通 CSRF 固定 `503 session_api_disabled`，不再采用旧 JWT；Enabled=true 的 session 状态也固定同一 503。三个代理关闭时分别固定 `503 session_identity_proxy_disabled` / `503 session_portal_proxy_disabled`，不接受旧浏览器凭据。显式启用API会话后，管理API/普通CSRF选择 AdminSession；各代理只在独立开关启用时采用同一会话边界和服务器token。前端切换、门户凭据转发、会话续接与登出由 #44、#45/#46 交付，SPA 激活属 #41。
+当前 SPA 使用服务器会话，受控实例须显式启用 `AdminOidc:Enabled`、`UseSessionForAdminApi`、`UseSessionForIdentityProxy`、`UseSessionForPortalProxies`、`UseSessionForLogout` 五项开关（后四项同属 `AdminOidc`），配置当前管理员白名单与 ADMIN 应用 audience，并完成实际下游信任及精确 Code/Logout 注册。五项默认均为 false，`start.sh` 不自动启用。密码入口在任何配置下永久 `410 legacy_login_disabled`；管理 API/图片/普通 CSRF 关闭时固定 `503 session_api_disabled`，代理关闭时分别固定 `503 session_identity_proxy_disabled` / `503 session_portal_proxy_disabled`，退出关闭时固定 `503 session_logout_disabled`，不能通过旧 Cookie 或 Authorization 恢复。当前 SPA 对关闭能力显示不可用，不回退密码或浏览器令牌。
 
 `AdminOidc:Enabled=false` 默认关闭，新 start/callback/session 入口返回 `503 {"error":"oidc_disabled"}`，旧配置可继续启动。启用配置与部署门禁见 [Deployment.md](development/Deployment.md#可选-signacore-托管登录)。
 
@@ -34,7 +34,7 @@ Admin Portal 采用 **mode-1 集成部署**：同一容器（端口 5020）既�
 
 返回目标只允许绝对站内路径，拒绝外部、编码外部、控制字符、反斜线与 `/api/auth/*`、`/login` 循环；错误目标回退 `/dashboard`。取消返回 `/login?authError=cancelled`；start 的 Discovery/JWKS 不可用返回 `identity_unavailable`；回调协议/兑换/签名等失败统一 `sign_in_failed`，不反射 error_description 或异常。state 无论成功/失败都不重用；失败兑换必须重新 start，不能重试旧 code。入口和 redirect 响应均 no-store/no-cache/no-referrer。
 
-Cookie 为 HttpOnly、Path=/、SameSite=Lax，生产 Secure，只含数据保护后的不透明票据引用；access/id token、截止时间、verifier、已验证 iss+sub 只在单进程内存。请求取消不发布部分票据；存储有界并定期回收，重启/多副本不支持状态延续。展示名取 nickname/name，SMS 身份缺少它们时 null；ID Token 角色不作为本地授权。Cookie challenge/forbid 返回 401/403。此阶段不请求 offline_access、refresh 或上游 logout。
+Cookie 为 HttpOnly、Path=/、SameSite=Lax，生产 Secure，只含数据保护后的不透明票据引用；access/id token、截止时间、verifier、已验证 iss+sub 只在单进程内存。请求取消不发布部分票据；存储有界并定期回收，重启/多副本不支持状态延续。展示名取 nickname/name，SMS 身份缺少它们时 null；ID Token 角色不作为本地授权。Cookie challenge/forbid 返回 401/403。基础 Code 请求不包含 offline_access/refresh；当前 SPA 退出走下文的 prepared logout。
 
 ### 可选管理员会话与 CSRF（#42）
 
