@@ -326,6 +326,8 @@ frontend/src/
 
 **确认**：删除图片使用 `confirmDanger`（文案说明若为最后一张，整条上传记录一并删除）；退回、重置状态为非破坏性操作，使用普通确认或弹窗；遗留清理为两步（检查结果弹窗 → 弹窗内「确认清理」）。
 
+**受管指派**：按 server assignmentProtocol 明确选择 legacy / managed-v1；缺失或未知协议不可指派。managed 展示精确 contentRevision、有序类型/path/原 index，只可选 type 严格等于 mistake。每组确认前固定 UUID requestKey、revision、精确 paths、subject/grade/comments；发送中禁改/双击，逐组展示 Completed/Failed/Unknown/NotAttempted 和真实 IDs，仅全部 Completed 才关闭并提示成功。部分/Unknown 在本页面保留原请求与已有 IDs，显式重试原 batch，不按刷新后的 index 重建；切行/关闭/迟到响应以 generation 隔离，取消只取消当前操作等待，仍可由恢复入口打开原请求。整页关闭不保证内存保留，durable authority 是 Mistake；不新增浏览器持久 journal、不自动 seal/cleanup。详见[受管集成契约](../../docs/Integration/ManagedAssignment.md)。
+
 **功能列表**：
 - 上传记录列表（学生搜索筛选、状态筛选、分页）
 - 总记录数显示
@@ -403,7 +405,7 @@ frontend/src/
 - `getGrades()` - 年级选项（用于分配时选择年级）
 - `getLinkedItems(id)` - 获取上传记录关联的业务实体
 - `getStudents(params)` - 搜索学生（用于指派）
-- `getUploadRecord(id)` - 获取单条记录
+- 详情使用列表项 metadata，不增加单条 GET detail 路由。
 - `assignUploadRecord(id, payload)` - 按图片粒度分配记录（items 数组，每个 item 指定 imageIndices + subject + grade + classification）
 - `resetUploadRecordStatus(id, status)` - 重置状态
 - `rotateUploadImage(id, payload)` - 旋转图片
@@ -493,7 +495,7 @@ frontend/src/
 | `getStudentOpenSubjects(id, activeOnly)` | GET | `/api/admin/students/:id/open-subjects` | 开放学科 |
 | `setStudentOpenSubjects(id, payload)` | PUT | `/api/admin/students/:id/open-subjects` | 设置开放学科 |
 | `getUploadRecords(params)` | GET | `/api/admin/oss-upload-records` | 查询上传记录 |
-| `getUploadRecord(id)` | GET | `/api/admin/oss-upload-records/:id` | 获取单条上传记录 |
+| 详情数据 | GET | `/api/admin/oss-upload-records` | 列表项直接提供详情的 revision/有序 entries |
 | `resetUploadRecordStatus(id, status)` | POST | `/api/admin/oss-upload-records/:id/reset-status` | 重置状态 |
 | `assignUploadRecord(id, payload)` | POST | `/api/admin/oss-upload-records/:id/assign` | 按图片粒度分配记录（items 数组，每个 item 指定 imageIndices（使用原始索引）+ subject + grade + classification） |
 | `getLinkedItems(id)` | GET | `/api/admin/oss-upload-records/:id/linked-items` | 获取关联业务实体 |
@@ -591,6 +593,8 @@ interface UploadRecordDto {
   id: string; studentId: string; studentName: string; status: number;
   imagePaths: string[]; comments: string; createdAt: number | string;
   updatedAt: number | string; imageRotations: number[];
+  contentRevision?: string; imageEntries?: { path: string; type: string }[];
+  assignmentProtocol?: 'legacy' | 'managed-v1';
 }
 
 interface AssignItemRequest {
@@ -608,7 +612,7 @@ interface LinkedItemDto {
   imageIndices: number[];
 }
 
-// 注意：`imageIndices` 使用的是原始索引（上传时的顺序），不受后续移除操作影响。
+// imageIndices 仅解释当前可信详情；managed 发送固定 sourcePaths，不按后续 current 映射。
 interface LinkedItemsResponse {
   mistakeItems: LinkedItemDto[];
   homeworkItems: LinkedItemDto[];

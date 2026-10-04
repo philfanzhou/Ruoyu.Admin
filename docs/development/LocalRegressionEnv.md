@@ -1,5 +1,7 @@
 # 本地非生产回归环境 (LocalRegressionEnv)
 
+受管指派需要真实 Student/Mistake、PG/S3 与正常 TLS/注册身份，本文的旧下游替身不模拟 intake 幂等、lease 或 commit 后丢响应，不能替代该验收。配置和真实验证入口见[受管集成契约](../Integration/ManagedAssignment.md)；默认保持能力关闭。
+
 本文档给出一套**在开发机上从干净 clone 到可执行 [#24](https://github.com/philfanzhou/Ruoyu.Admin/issues/24) 真实环境回归**的完整配方：本地 PostgreSQL + SignaCore 本地 Identity + 三个下游引用来源的本地替身 + `USE_LOCAL_OSS=1` 本地对象目录。全程不依赖任何 rc 发布，Storage Audit 的处置动作触发的**真实删除只作用于本地目录**。
 
 > **安全边界（不可放宽）**
