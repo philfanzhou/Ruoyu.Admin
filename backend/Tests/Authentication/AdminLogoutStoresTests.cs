@@ -40,8 +40,8 @@ public sealed class AdminLogoutStoresTests
     public void LogoutSwitchRequiresOidcAndSessionApi(bool enabled, bool api)
     {
         var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
-        { ["AdminOidc:Enabled"] = enabled.ToString(), ["AdminOidc:UseSessionForAdminApi"] = api.ToString(), ["AdminOidc:UseSessionForLogout"] = "true" }).Build();
-        Assert.Equal("AdminOidc:UseSessionForLogout requires AdminOidc:Enabled and AdminOidc:UseSessionForAdminApi",
+        { ["AdminOidc:Enabled"] = enabled ? "true" : "false", ["AdminOidc:UseSessionForAdminApi"] = api ? "true" : "false", ["AdminOidc:UseSessionForLogout"] = "true" }).Build();
+        Assert.Equal(enabled ? "AdminOidc:UseSessionForAdminApi" : "AdminOidc:Enabled",
             Assert.Throws<InvalidOperationException>(() => AdminOidcSettings.Read(config, new HostingEnvironment { EnvironmentName = "Production" })).Message);
     }
     [Theory]

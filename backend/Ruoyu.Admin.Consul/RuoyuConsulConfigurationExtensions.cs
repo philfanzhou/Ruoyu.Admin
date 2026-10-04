@@ -10,11 +10,17 @@ public static class RuoyuConsulConfigurationExtensions
 {
     public static IConfigurationBuilder AddRuoyuConsulConfiguration(
         this IConfigurationBuilder builder,
-        IConfiguration config)
+        IConfiguration config,
+        bool readOnly = false)
     {
+        // Preflight uses the identical source/precedence, but never logs or refreshes cache.
+        void WriteBootstrap(string message)
+        {
+            if (!readOnly) StartupDiagnosticsFormatter.WriteBootstrap(message);
+        }
         var options = RuoyuConsulOptions.Bind(config);
         var prefixes = RuoyuConsulKvLoader.BuildPrefixes(options);
-        StartupDiagnosticsFormatter.WriteBootstrap(
+        WriteBootstrap(
             $"Consul KV load begin: Address={options.Host}:{options.Port}, Prefixes={StartupDiagnosticsFormatter.SummarizePrefixes(prefixes)}, TimeoutMs={options.TimeoutMs}, RetryCount={options.RetryCount}, Cache={options.EnableCache}, Token={StartupDiagnosticsFormatter.MaskSecret(options.Token)}");
 
         if (!string.IsNullOrWhiteSpace(options.Token))
@@ -30,19 +36,19 @@ public static class RuoyuConsulConfigurationExtensions
         {
             var result = new RuoyuConsulKvLoader(options).Load();
             ApplySnapshotWithExpectedPrecedence(builder, result.Snapshot);
-            if (options.EnableCache && result.Snapshot.Count > 0)
+            if (!readOnly && options.EnableCache && result.Snapshot.Count > 0)
             {
                 cacheService.Save(result.Snapshot);
             }
 
             RuoyuConsulRuntimeState.Instance.MarkLoaded("Consul", result.Snapshot.Count, result.Prefixes, options.CacheDirectory);
-            StartupDiagnosticsFormatter.WriteBootstrap(
+            WriteBootstrap(
                 $"Consul KV load success: Source=Consul, KeyCount={result.Snapshot.Count}, Prefixes={StartupDiagnosticsFormatter.SummarizePrefixes(result.Prefixes)}, CacheDirectory={options.CacheDirectory}");
             return builder;
         }
         catch (Exception ex)
         {
-            StartupDiagnosticsFormatter.WriteBootstrap(
+            WriteBootstrap(
                 $"Consul KV load failed: Address={options.Host}:{options.Port}, Prefixes={StartupDiagnosticsFormatter.SummarizePrefixes(prefixes)}, Error={StartupDiagnosticsFormatter.SummarizeError(ex.Message)}");
 
             if (options.EnableCache)
@@ -54,7 +60,7 @@ public static class RuoyuConsulConfigurationExtensions
                     {
                         ApplySnapshotWithExpectedPrecedence(builder, cached);
                         RuoyuConsulRuntimeState.Instance.MarkFallback("Cache", ex.Message, cached.Count, prefixes, options.CacheDirectory);
-                        StartupDiagnosticsFormatter.WriteBootstrap(
+                        WriteBootstrap(
                             $"Consul KV fallback: Source=Cache, KeyCount={cached.Count}, CacheDirectory={options.CacheDirectory}, Error={StartupDiagnosticsFormatter.SummarizeError(ex.Message)}");
                         return builder;
                     }
@@ -63,14 +69,14 @@ public static class RuoyuConsulConfigurationExtensions
                 {
                     var mergedError = $"{ex.Message}; cache load failed: {cacheEx.Message}";
                     RuoyuConsulRuntimeState.Instance.MarkFallback("AppSettings", mergedError, 0, prefixes, options.CacheDirectory);
-                    StartupDiagnosticsFormatter.WriteBootstrap(
+                    WriteBootstrap(
                         $"Consul KV fallback: Source=AppSettings, CacheDirectory={options.CacheDirectory}, Error={StartupDiagnosticsFormatter.SummarizeError(mergedError)}");
                     return builder;
                 }
             }
 
             RuoyuConsulRuntimeState.Instance.MarkFallback("AppSettings", ex.Message, 0, prefixes, options.CacheDirectory);
-            StartupDiagnosticsFormatter.WriteBootstrap(
+            WriteBootstrap(
                 $"Consul KV fallback: Source=AppSettings, CacheDirectory={options.CacheDirectory}, Error={StartupDiagnosticsFormatter.SummarizeError(ex.Message)}");
             return builder;
         }

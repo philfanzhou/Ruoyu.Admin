@@ -31,7 +31,7 @@ internal sealed class AdminPreparedLogout(AdminOidcSettings settings, MemoryTick
     private async Task<AuthenticationTicket?> Identity(HttpContext context)
     {
         context.RequestAborted.ThrowIfCancellationRequested();
-        if (!settings.Enabled || context.Request.Headers.ContainsKey("Authorization")) return null;
+        if (context.Request.Headers.ContainsKey("Authorization")) return null;
         var result = await context.AuthenticateAsync(AdminOidcSettings.SessionScheme);
         return result.Succeeded && IsIdentity(result.Ticket) ? result.Ticket : null;
     }
@@ -172,7 +172,7 @@ internal sealed class AdminPreparedLogout(AdminOidcSettings settings, MemoryTick
     }
 }
 
-internal sealed class AdminLogoutMiddleware(RequestDelegate next, AdminOidcSettings settings)
+internal sealed class AdminLogoutMiddleware(RequestDelegate next)
 {
     public async Task InvokeAsync(HttpContext context, AdminPreparedLogout logout)
     {
@@ -183,8 +183,6 @@ internal sealed class AdminLogoutMiddleware(RequestDelegate next, AdminOidcSetti
         // The cache-suppression headers previously written here come from the ServiceMantle
         // security response-header baseline: these paths carry marker-only route endpoints
         // (mapped in Program.cs), and route selection happens before this middleware.
-        if (!settings.UseSessionForLogout)
-        { await AdminSessionBoundary.RejectAsync(context, 503, "session_logout_disabled"); return; }
         if ((post && !HttpMethods.IsPost(context.Request.Method))
             || ((csrf || callback) && !HttpMethods.IsGet(context.Request.Method)))
         { context.Response.StatusCode = 405; return; }

@@ -38,22 +38,27 @@ public sealed partial class AdminOidcTests(PostgreSqlFixture database) : Service
         {
             services.Configure<OpenIdConnectOptions>(AdminOidcSettings.OidcScheme, options =>
                 options.Backchannel = new HttpClient(authority, disposeHandler: false) { Timeout = TimeSpan.FromSeconds(2) });
+            // All proxy surfaces are active. Use actual fake HTTP transports for protocol tests
+            // that formerly stopped at a disabled gate; specialized captures override these.
+            services.AddHttpClient("IdentityService").ConfigurePrimaryHttpMessageHandler(() => new SessionProxyCapture());
+            services.AddHttpClient("TeacherPortal").ConfigurePrimaryHttpMessageHandler(() => new PortalSessionCapture());
+            services.AddHttpClient("AssistantPortal").ConfigurePrimaryHttpMessageHandler(() => new PortalSessionCapture());
             if (time is not null) services.Replace(ServiceDescriptor.Singleton<TimeProvider>(time));
             if (protection is not null) services.AddSingleton(protection);
             configure?.Invoke(services);
         }, new Dictionary<string, string?>
         {
             ["AdminOidc:Enabled"] = "true", ["AdminOidc:RedirectUri"] = OidcTestAuthority.RedirectUri,
-            ["AdminOidc:UseSessionForAdminApi"] = sessionApi.ToString(),
-            ["AdminOidc:UseSessionForLogout"] = sessionLogout.ToString(),
+            ["AdminOidc:UseSessionForAdminApi"] = sessionApi ? "true" : null,
+            ["AdminOidc:UseSessionForLogout"] = sessionLogout ? "true" : null,
+            ["AdminOidc:UseSessionForPortalProxies"] = portalProxies ? "true" : null,
+            ["AdminOidc:UseSessionForIdentityProxy"] = identityProxy ? "true" : null,
             ["AdminOidc:PostLogoutRedirectUri"] = "https://admin.example.test/api/auth/oidc/logout-callback",
-            ["AdminOidc:UseSessionForPortalProxies"] = portalProxies.ToString(),
             ["TeacherPortal:Url"] = "https://teacher.example.test", ["AssistantPortal:Url"] = "https://assistant.example.test", ["AdminPortal:AdminUserIds:0"] = "FAKE-SUBJECT",
-            ["AdminOidc:UseSessionForIdentityProxy"] = identityProxy.ToString(),
             ["IdentityService:Authority"] = OidcTestAuthority.Issuer, ["IdentityService:Issuer"] = OidcTestAuthority.Issuer,
             ["IdentityService:AppId"] = OidcTestAuthority.ClientId, ["IdentityService:AppSecret"] = OidcTestAuthority.Secret,
             ["IdentityService:RequireHttpsMetadata"] = "true", ["Loki:Uri"] = lokiUri ?? ""
-        });
+        }.Where(entry => entry.Value is not null).ToDictionary(entry => entry.Key, entry => entry.Value));
 
     private static HttpClient Browser(WebApplicationFactory<Program> factory) => factory.CreateClient(new()
     {
@@ -163,8 +168,8 @@ public sealed partial class AdminOidcTests(PostgreSqlFixture database) : Service
         await Rejected(await Api(client, "/api/auth/session", authorization: ["Bearer " + OidcTestAuthority.AccessToken]), 401, "unauthorized");
         Assert.Equal(HttpStatusCode.OK, (await Api(client, ProtectedApiRoute, cookieValue)).StatusCode);
         foreach (var path in new[] { "/api/teacher-portal/admin/users", "/api/assistant-portal/admin/users" })
-            await Rejected(await Api(client, path, cookieValue), 503, "session_portal_proxy_disabled");
-        await Rejected(await Api(client, "/api/identity/admin/users", cookieValue), 503, "session_identity_proxy_disabled");
+            Assert.Equal(HttpStatusCode.OK, (await Api(client, path, cookieValue)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await Api(client, "/api/identity/admin/users", cookieValue)).StatusCode);
         var surfaces = cookieValue + status + response.Headers.Location + string.Join('\n', logs.Messages) + string.Join('\n', traces.Messages);
         foreach (var canary in new[] { OidcTestAuthority.Secret, OidcTestAuthority.AccessToken, authority.LastVerifier!, authority.LastIdToken!, code })
             Assert.DoesNotContain(canary, surfaces);
@@ -426,19 +431,17 @@ public sealed partial class AdminOidcTests(PostgreSqlFixture database) : Service
         var root = CreateTempContentRoot(true);
         try
         {
-            using var factory = CreateFactory(root);
+            using var authority = new OidcTestAuthority();
+            using var factory = OidcFactory(authority, root: root);
             using var client = Browser(factory);
-            foreach (var path in new[] { "/api/auth/oidc/start", AdminOidcSettings.CallbackPath, "/api/auth/session" })
-            {
-                var response = await client.GetAsync(path);
-                Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
-                Assert.Equal("{\"error\":\"oidc_disabled\"}", await response.Content.ReadAsStringAsync());
-            }
+            Assert.Equal(HttpStatusCode.Redirect, (await client.GetAsync("/api/auth/oidc/start")).StatusCode);
+            Assert.Equal(HttpStatusCode.Redirect, (await client.GetAsync(AdminOidcSettings.CallbackPath)).StatusCode);
+            Assert.Contains("\"authenticated\":false", await Status(client));
             foreach (var path in new[] { "/", "/students", "/health/live" }) Assert.Equal(HttpStatusCode.OK, (await client.GetAsync(path)).StatusCode);
             // Readiness now reports the real evidence source (#54): the fixture database is
             // reachable and this process completed its initialization, so ready answers 200.
             Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/health/ready")).StatusCode);
-            Assert.Equal(HttpStatusCode.ServiceUnavailable, (await client.GetAsync(ProtectedApiRoute)).StatusCode);
+            Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync(ProtectedApiRoute)).StatusCode);
             var responseCallback = await client.PostAsJsonAsync("/api/auth/callback", new { userId = "fake-user" });
             Assert.Equal(HttpStatusCode.OK, responseCallback.StatusCode);
             Assert.Equal("{\"roles\":[]}", await responseCallback.Content.ReadAsStringAsync());
@@ -478,7 +481,7 @@ public sealed partial class AdminOidcTests(PostgreSqlFixture database) : Service
     }
 
     [Fact]
-    public async Task DisabledApiAndLogoutRejectLegacyJwtButClaimsCallbackStillWorks()
+    public async Task SessionOnlyApiAndLogoutRejectLegacyJwtButClaimsCallbackStillWorks()
     {
         using var authority = new OidcTestAuthority();
         using var factory = OidcFactory(authority, sessionApi: false, configure: services => services.Configure<JwtBearerOptions>("Bearer", options =>
@@ -489,11 +492,11 @@ public sealed partial class AdminOidcTests(PostgreSqlFixture database) : Service
         }));
         using var client = Browser(factory);
         client.DefaultRequestHeaders.Add("Authorization", "Bearer " + authority.LegacyBearer());
-        await Rejected(await client.GetAsync(ProtectedApiRoute), 503, "session_api_disabled");
-        await Rejected(await client.PostAsync("/api/auth/logout", null), 503, "session_logout_disabled");
-        await Rejected(await client.GetAsync("/api/auth/session"), 503, "session_api_disabled");
+        await Rejected(await client.GetAsync(ProtectedApiRoute), 401, "unauthorized");
+        await Rejected(await client.PostAsync("/api/auth/logout", null), 401, "unauthorized");
+        await Rejected(await client.GetAsync("/api/auth/session"), 401, "unauthorized");
         var authentication = factory.Services.GetRequiredService<IOptions<AuthenticationOptions>>().Value;
-        Assert.Equal("AdminApiAuthentication", authentication.DefaultScheme);
+        Assert.Equal(AdminOidcSettings.SessionScheme, authentication.DefaultScheme);
         var callback = await client.PostAsJsonAsync("/api/auth/callback", new { userId = "fake-user" });
         Assert.Equal(HttpStatusCode.OK, callback.StatusCode);
     }
@@ -506,7 +509,7 @@ public sealed partial class AdminOidcTests(PostgreSqlFixture database) : Service
     {
         using var factory = CreateFactory(settings: new Dictionary<string, string?>
         {
-            ["AdminOidc:Enabled"] = "true", ["AdminOidc:RedirectUri"] = redirect
+            ["AdminOidc:RedirectUri"] = redirect
         });
         var failure = Assert.Throws<InvalidOperationException>(() => factory.Services);
         Assert.Equal("AdminOidc:RedirectUri", failure.Message);

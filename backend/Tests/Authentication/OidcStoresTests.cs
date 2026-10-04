@@ -89,7 +89,8 @@ public sealed class OidcStoresTests
     {
         var config = new Microsoft.Extensions.Configuration.ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
-            ["AdminOidc:Enabled"] = "true", ["AdminOidc:RedirectUri"] = redirect,
+            ["AdminOidc:RedirectUri"] = redirect,
+            ["AdminOidc:PostLogoutRedirectUri"] = new Uri(redirect).GetLeftPart(UriPartial.Authority) + "/api/auth/oidc/logout-callback",
             ["IdentityService:Authority"] = "https://identity.example.test/", ["IdentityService:AppId"] = "fake-app", ["IdentityService:AppSecret"] = "fake-secret"
         }).Build();
         var env = new Microsoft.Extensions.Hosting.Internal.HostingEnvironment { EnvironmentName = environment };

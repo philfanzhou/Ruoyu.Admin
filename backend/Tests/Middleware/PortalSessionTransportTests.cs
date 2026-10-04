@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Configuration;
 using Admin.WebApi.Authentication;
 using Admin.WebApi.Tests.Integration;
 using Microsoft.AspNetCore.Http;
@@ -9,14 +10,13 @@ namespace Admin.WebApi.Tests.Middleware;
 
 public sealed class PortalSessionTransportTests
 {
-    private static readonly AdminOidcSettings Settings = new(true, "", "", "", "", false, TimeSpan.Zero)
-        { UseSessionForAdminApi = true, UseSessionForPortalProxies = true };
+    private static readonly AdminOidcSettings Settings = new("", "", "", "", false, TimeSpan.Zero);
     private static Func<HttpContext, Task> Proxy(string portal, IHttpClientFactory clients, bool enabled = true, string url = "https://portal.example.test")
         => portal == "teacher"
             ? new TeacherPortalProxyMiddleware(_ => throw new InvalidOperationException("No fallthrough"), clients,
-                Options.Create(new TeacherPortalOptions { Url = url }), Settings with { UseSessionForPortalProxies = enabled }).InvokeAsync
+                Options.Create(new TeacherPortalOptions { Url = url })).InvokeAsync
             : new AssistantPortalProxyMiddleware(_ => throw new InvalidOperationException("No fallthrough"), clients,
-                Options.Create(new AssistantPortalOptions { Url = url }), Settings with { UseSessionForPortalProxies = enabled }).InvokeAsync;
+                Options.Create(new AssistantPortalOptions { Url = url })).InvokeAsync;
     private static DefaultHttpContext Context(string portal, string suffix = "", string token = "server-token")
     {
         var context = new DefaultHttpContext(); context.Request.Path = "/API/" + portal.ToUpperInvariant() + "-PORTAL" + suffix;
@@ -26,7 +26,7 @@ public sealed class PortalSessionTransportTests
     }
 
     [Theory]
-    [InlineData("teacher", false, false, 503)][InlineData("assistant", false, false, 503)]
+    [InlineData("teacher", false, false, 401)][InlineData("assistant", false, false, 401)]
     [InlineData("teacher", true, false, 401)][InlineData("assistant", true, false, 401)]
     [InlineData("teacher", true, true, 401)][InlineData("assistant", true, true, 401)]
     public async Task DisabledOrMissingTrustedSessionNeverForwards(string portal, bool enabled, bool emptyToken, int status)
@@ -86,12 +86,12 @@ public sealed class PortalSessionTransportTests
         foreach (var request in capture.Requests) Assert.Equal("Bearer server-" + request.Path.Split('/').Last(), request.Headers["Authorization"]);
     }
 
-    [Theory]
-    [InlineData("teacher")][InlineData("assistant")]
-    public async Task DisabledSharedBoundaryStopsBeforeAuthentication(string portal)
+    [Fact]
+    public void LegacyDisabledPortalConfigurationRejectsBeforeHost()
     {
-        var middleware = new AdminSessionMiddleware(_ => throw new InvalidOperationException("No authentication"), Settings with { UseSessionForPortalProxies = false });
-        var context = Context(portal, "/"); context.Request.Headers.Authorization = "Bearer forged";
-        await middleware.InvokeAsync(context, null!); Assert.Equal(503, context.Response.StatusCode);
+        var config = new Microsoft.Extensions.Configuration.ConfigurationBuilder().AddInMemoryCollection(
+            new Dictionary<string, string?> { ["AdminOidc:UseSessionForPortalProxies"] = "false" }).Build();
+        Assert.Equal("AdminOidc:UseSessionForPortalProxies", Assert.Throws<InvalidOperationException>(() =>
+            AdminOidcSettings.Read(config, new Microsoft.Extensions.Hosting.Internal.HostingEnvironment())).Message);
     }
 }

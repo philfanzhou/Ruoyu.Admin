@@ -12,8 +12,7 @@ namespace Admin.WebApi.Tests.Middleware;
 
 public class TeacherPortalProxyMiddlewareTests
 {
-    private static readonly AdminOidcSettings SessionSettings = new(true, "", "", "", "", false, TimeSpan.Zero)
-        { UseSessionForAdminApi = true, UseSessionForPortalProxies = true };
+    private static readonly AdminOidcSettings SessionSettings = new("", "", "", "", false, TimeSpan.Zero);
     private static DefaultHttpContext TrustedContext()
     {
         var context = new DefaultHttpContext();
@@ -44,7 +43,7 @@ public class TeacherPortalProxyMiddlewareTests
     {
         var optionsMock = new Mock<IOptions<TeacherPortalOptions>>();
         optionsMock.Setup(o => o.Value).Returns(options ?? new TeacherPortalOptions());
-        return new TeacherPortalProxyMiddleware(next, factory, optionsMock.Object, SessionSettings);
+        return new TeacherPortalProxyMiddleware(next, factory, optionsMock.Object);
     }
 
     [Fact]
@@ -82,7 +81,7 @@ public class TeacherPortalProxyMiddlewareTests
         var optionsMock = new Mock<IOptions<TeacherPortalOptions>>();
         optionsMock.Setup(o => o.Value).Returns(options);
 
-        var middleware = new TeacherPortalProxyMiddleware(nextMock.Object, factoryMock.Object, optionsMock.Object, SessionSettings);
+        var middleware = new TeacherPortalProxyMiddleware(nextMock.Object, factoryMock.Object, optionsMock.Object);
 
         var context = TrustedContext();
         context.Request.Path = "/api/teacher-portal/admin/teachers";
@@ -114,7 +113,7 @@ public class TeacherPortalProxyMiddlewareTests
         var optionsMock = new Mock<IOptions<TeacherPortalOptions>>();
         optionsMock.Setup(o => o.Value).Returns(options);
 
-        var middleware = new TeacherPortalProxyMiddleware(nextMock.Object, factoryMock.Object, optionsMock.Object, SessionSettings);
+        var middleware = new TeacherPortalProxyMiddleware(nextMock.Object, factoryMock.Object, optionsMock.Object);
 
         var context = TrustedContext();
         context.Request.Path = "/api/teacher-portal/auth/login";
@@ -147,7 +146,7 @@ public class TeacherPortalProxyMiddlewareTests
         var optionsMock = new Mock<IOptions<TeacherPortalOptions>>();
         optionsMock.Setup(o => o.Value).Returns(options);
 
-        var middleware = new TeacherPortalProxyMiddleware(nextMock.Object, factoryMock.Object, optionsMock.Object, SessionSettings);
+        var middleware = new TeacherPortalProxyMiddleware(nextMock.Object, factoryMock.Object, optionsMock.Object);
 
         var context = TrustedContext();
         context.Request.Path = "/api/teacher-portal/other";
@@ -183,7 +182,7 @@ public class TeacherPortalProxyMiddlewareTests
         var optionsMock = new Mock<IOptions<TeacherPortalOptions>>();
         optionsMock.Setup(o => o.Value).Returns(options);
 
-        var middleware = new TeacherPortalProxyMiddleware(nextMock.Object, factoryMock.Object, optionsMock.Object, SessionSettings);
+        var middleware = new TeacherPortalProxyMiddleware(nextMock.Object, factoryMock.Object, optionsMock.Object);
 
         var context = TrustedContext();
         context.Request.Path = "/api/teacher-portal/admin/teachers";
@@ -214,7 +213,7 @@ public class TeacherPortalProxyMiddlewareTests
         var optionsMock = new Mock<IOptions<TeacherPortalOptions>>();
         optionsMock.Setup(o => o.Value).Returns(options);
 
-        var middleware = new TeacherPortalProxyMiddleware(nextMock.Object, factoryMock.Object, optionsMock.Object, SessionSettings);
+        var middleware = new TeacherPortalProxyMiddleware(nextMock.Object, factoryMock.Object, optionsMock.Object);
 
         var context = TrustedContext();
         context.Request.Path = "/api/teacher-portal/admin/teachers";
@@ -245,7 +244,7 @@ public class TeacherPortalProxyMiddlewareTests
         var optionsMock = new Mock<IOptions<TeacherPortalOptions>>();
         optionsMock.Setup(o => o.Value).Returns(options);
 
-        var middleware = new TeacherPortalProxyMiddleware(nextMock.Object, factoryMock.Object, optionsMock.Object, SessionSettings);
+        var middleware = new TeacherPortalProxyMiddleware(nextMock.Object, factoryMock.Object, optionsMock.Object);
 
         var context = TrustedContext();
         context.Request.Path = "/api/teacher-portal/admin/teachers";

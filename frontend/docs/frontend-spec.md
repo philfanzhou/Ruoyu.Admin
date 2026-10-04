@@ -637,3 +637,5 @@ interface EnumOptionsResponse {
   - 详情页中等图：`size=medium`
   - 详情页点击放大预览：不传 `size`（返回原图）
   - 路径分流：`mistakes/` 前缀走 Mistake 服务，其他路径走 Student 服务
+
+#75 配置收敛后，后端只运行服务器会话，必需认证配置非法时启动拒绝；五旧开关仅接受缺省/规范 true 作为迁移校验，不能选择 disabled 或 JWT 模式。前端同源 Cookie/普通及退出专用 CSRF、显式托管重认证、无写请求重放行为保持；API+SPA 必须使用同一完整集成镜像。升级前使用该目标镜像的只读预检，重启使内存票据失效，回滚须完整旧镜像与匹配配置。详见 [部署契约](../../docs/development/Deployment.md#认证只读预检与升级)。

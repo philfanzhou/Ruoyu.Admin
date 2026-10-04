@@ -14,7 +14,6 @@ public sealed class AdminOidcController : ControllerBase
     public async Task<IActionResult> Start([FromQuery] string? returnUrl)
     {
         var settings = HttpContext.RequestServices.GetRequiredService<AdminOidcSettings>();
-        if (!settings.Enabled) return StatusCode(503, new { error = "oidc_disabled" });
         var options = HttpContext.RequestServices.GetRequiredService<IOptionsMonitor<OpenIdConnectOptions>>().Get(AdminOidcSettings.OidcScheme);
         try { await AdminOidcRegistration.Metadata(options, settings, HttpContext.RequestAborted); }
         catch (OperationCanceledException) when (HttpContext.RequestAborted.IsCancellationRequested) { throw; }
@@ -27,8 +26,6 @@ public sealed class AdminOidcController : ControllerBase
     public async Task<IActionResult> Session()
     {
         var settings = HttpContext.RequestServices.GetRequiredService<AdminOidcSettings>();
-        if (!settings.Enabled) return StatusCode(503, new { error = "oidc_disabled" });
-        if (!settings.UseSessionForAdminApi) return StatusCode(503, new { error = "session_api_disabled" });
         var session = await HttpContext.RequestServices.GetRequiredService<AdminSessionAccessor>().AuthenticateAsync(HttpContext);
         if (Request.Headers.ContainsKey("Authorization") || session.StatusCode == 403)
         {

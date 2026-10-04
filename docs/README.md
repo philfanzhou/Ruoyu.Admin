@@ -21,7 +21,7 @@ Ruoyu.Admin 是 Ruoyu.Study 平台的管理后台服务，负责学生管理、�
 | 路径 | 内容 |
 |------|------|
 | `backend/Admin.WebApi` | 宿主、Controller、代理中间件、审计持久化、`OssAuditWorker` |
-| `backend/Ruoyu.Admin.Common` | `IOssService`（S3 + 本地文件）、缩略图、JWT Bearer 认证、数据库初始化、共享常量 |
+| `backend/Ruoyu.Admin.Common` | `IOssService`（S3 + 本地文件）、缩略图、共享 JWT 工具（本宿主不注册）、数据库初始化、共享常量 |
 | `backend/Ruoyu.Admin.Consul` | Consul KV 配置源与本地缓存回退、Serilog/Loki 引导、PostgreSQL 连接串工厂 |
 | `backend/Ruoyu.Admin.ServiceClients` | Student / Mistake 手写 HTTP 客户端与镜像 DTO |
 | `backend/Tests` | xUnit + Moq + FluentAssertions 单元测试 |

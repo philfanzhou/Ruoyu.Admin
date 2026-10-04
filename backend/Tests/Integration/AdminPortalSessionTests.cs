@@ -128,34 +128,20 @@ public sealed partial class AdminOidcTests
     }
 
     [Theory]
-    [InlineData(false, false)][InlineData(true, false)][InlineData(true, true)]
-    public async Task PortalSession_DisabledStopsBeforeBearerAndHttp(bool enabled, bool api)
+    [InlineData("false")][InlineData("not-a-bool")]
+    public void PortalSession_LegacyModeRejectsBeforeHost(string value)
     {
-        using var authority = new OidcTestAuthority(); var downstream = new PortalSessionCapture(); var bearers = 0;
-        void Configure(IServiceCollection services)
-        {
-            foreach (var clientName in new[] { "TeacherPortal", "AssistantPortal" })
-                services.AddHttpClient(clientName).ConfigurePrimaryHttpMessageHandler(() => downstream);
-            services.Configure<Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerOptions>("Bearer", options =>
-                options.Events.OnMessageReceived = _ => { Interlocked.Increment(ref bearers); return Task.CompletedTask; });
-        }
-        using var factory = enabled ? OidcFactory(authority, configure: Configure, sessionApi: api)
-            : CreateFactory(configureTestServices: Configure);
-        using var client = Browser(factory);
-        foreach (var portal in new[] { "teacher", "assistant" })
-        foreach (var path in new[] { $"/api/{portal}-portal", $"/API/{portal.ToUpperInvariant()}-PORTAL/", $"/api/{portal}-portal/admin/users?size=2" })
-        foreach (var auth in new string[]?[] { null, ["Bearer " + authority.LegacyBearer()], ["a", "b"] })
-            await Rejected(await Api(client, path, "adminAuthToken=" + authority.LegacyBearer(), "POST", authorization: auth,
-                body: new StringContent("invalid json")), 503, "session_portal_proxy_disabled");
-        Assert.Equal(0, bearers); Assert.Equal(0, authority.Redeems); Assert.Empty(downstream.Requests);
+        using var factory = CreateFactory(settings: new Dictionary<string, string?> { ["AdminOidc:UseSessionForPortalProxies"] = value });
+        Assert.Equal("AdminOidc:UseSessionForPortalProxies", Assert.Throws<InvalidOperationException>(() => factory.Services).Message);
     }
 
     [Fact]
-    public void PortalSession_InvalidSwitchCombinationFailsWithoutValues()
+    public async Task PortalSession_AbsentLegacyKeysRegisterOnlySessionAndOidc()
     {
-        using var invalid = CreateFactory(settings: new Dictionary<string, string?> { ["AdminOidc:UseSessionForPortalProxies"] = "true" });
-        Assert.Equal("AdminOidc:UseSessionForPortalProxies requires AdminOidc:Enabled and AdminOidc:UseSessionForAdminApi",
-            Assert.Throws<InvalidOperationException>(() => invalid.Services).Message);
+        using var factory = CreateFactory();
+        var schemes = (await factory.Services.GetRequiredService<Microsoft.AspNetCore.Authentication.IAuthenticationSchemeProvider>()
+            .GetAllSchemesAsync()).Select(s => s.Name).Order().ToArray();
+        Assert.Equal(new[] { AdminOidcSettings.OidcScheme, AdminOidcSettings.SessionScheme }.Order(), schemes);
     }
 }
 

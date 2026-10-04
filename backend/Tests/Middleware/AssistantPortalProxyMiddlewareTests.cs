@@ -12,8 +12,7 @@ namespace Admin.WebApi.Tests.Middleware;
 
 public class AssistantPortalProxyMiddlewareTests
 {
-    private static readonly AdminOidcSettings SessionSettings = new(true, "", "", "", "", false, TimeSpan.Zero)
-        { UseSessionForAdminApi = true, UseSessionForPortalProxies = true };
+    private static readonly AdminOidcSettings SessionSettings = new("", "", "", "", false, TimeSpan.Zero);
     private static DefaultHttpContext TrustedContext()
     {
         var context = new DefaultHttpContext();
@@ -44,7 +43,7 @@ public class AssistantPortalProxyMiddlewareTests
     {
         var optionsMock = new Mock<IOptions<AssistantPortalOptions>>();
         optionsMock.Setup(o => o.Value).Returns(options ?? new AssistantPortalOptions());
-        return new AssistantPortalProxyMiddleware(next, factory, optionsMock.Object, SessionSettings);
+        return new AssistantPortalProxyMiddleware(next, factory, optionsMock.Object);
     }
 
     [Fact]
@@ -82,7 +81,7 @@ public class AssistantPortalProxyMiddlewareTests
         var optionsMock = new Mock<IOptions<AssistantPortalOptions>>();
         optionsMock.Setup(o => o.Value).Returns(options);
 
-        var middleware = new AssistantPortalProxyMiddleware(nextMock.Object, factoryMock.Object, optionsMock.Object, SessionSettings);
+        var middleware = new AssistantPortalProxyMiddleware(nextMock.Object, factoryMock.Object, optionsMock.Object);
 
         var context = TrustedContext();
         context.Request.Path = "/api/assistant-portal/admin/assistants";
@@ -114,7 +113,7 @@ public class AssistantPortalProxyMiddlewareTests
         var optionsMock = new Mock<IOptions<AssistantPortalOptions>>();
         optionsMock.Setup(o => o.Value).Returns(options);
 
-        var middleware = new AssistantPortalProxyMiddleware(nextMock.Object, factoryMock.Object, optionsMock.Object, SessionSettings);
+        var middleware = new AssistantPortalProxyMiddleware(nextMock.Object, factoryMock.Object, optionsMock.Object);
 
         var context = TrustedContext();
         context.Request.Path = "/api/assistant-portal/auth/check-assistant";
@@ -147,7 +146,7 @@ public class AssistantPortalProxyMiddlewareTests
         var optionsMock = new Mock<IOptions<AssistantPortalOptions>>();
         optionsMock.Setup(o => o.Value).Returns(options);
 
-        var middleware = new AssistantPortalProxyMiddleware(nextMock.Object, factoryMock.Object, optionsMock.Object, SessionSettings);
+        var middleware = new AssistantPortalProxyMiddleware(nextMock.Object, factoryMock.Object, optionsMock.Object);
 
         var context = TrustedContext();
         context.Request.Path = "/api/assistant-portal/other";
@@ -183,7 +182,7 @@ public class AssistantPortalProxyMiddlewareTests
         var optionsMock = new Mock<IOptions<AssistantPortalOptions>>();
         optionsMock.Setup(o => o.Value).Returns(options);
 
-        var middleware = new AssistantPortalProxyMiddleware(nextMock.Object, factoryMock.Object, optionsMock.Object, SessionSettings);
+        var middleware = new AssistantPortalProxyMiddleware(nextMock.Object, factoryMock.Object, optionsMock.Object);
 
         var context = TrustedContext();
         context.Request.Path = "/api/assistant-portal/admin/assistants";
@@ -214,7 +213,7 @@ public class AssistantPortalProxyMiddlewareTests
         var optionsMock = new Mock<IOptions<AssistantPortalOptions>>();
         optionsMock.Setup(o => o.Value).Returns(options);
 
-        var middleware = new AssistantPortalProxyMiddleware(nextMock.Object, factoryMock.Object, optionsMock.Object, SessionSettings);
+        var middleware = new AssistantPortalProxyMiddleware(nextMock.Object, factoryMock.Object, optionsMock.Object);
 
         var context = TrustedContext();
         context.Request.Path = "/api/assistant-portal/admin/assistants";
@@ -245,7 +244,7 @@ public class AssistantPortalProxyMiddlewareTests
         var optionsMock = new Mock<IOptions<AssistantPortalOptions>>();
         optionsMock.Setup(o => o.Value).Returns(options);
 
-        var middleware = new AssistantPortalProxyMiddleware(nextMock.Object, factoryMock.Object, optionsMock.Object, SessionSettings);
+        var middleware = new AssistantPortalProxyMiddleware(nextMock.Object, factoryMock.Object, optionsMock.Object);
 
         var context = TrustedContext();
         context.Request.Path = "/api/assistant-portal/admin/assistants";
