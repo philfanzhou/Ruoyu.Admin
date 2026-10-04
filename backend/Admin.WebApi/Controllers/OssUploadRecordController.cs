@@ -100,12 +100,12 @@ public class OssUploadRecordController : ControllerBase
     }
 
     [HttpPost("{id}/assign")]
-    public async Task<IActionResult> AssignUploadRecord(string id, [FromBody] AssignUploadRecordRequest request)
+    public async Task<IActionResult> AssignUploadRecord(string id, [FromBody] AssignUploadRecordRequest request, CancellationToken cancellationToken = default)
     {
         try
         {
             // 获取上传记录
-            var record = await _studentClient.GetUploadRecordAsync(request.StudentId, id);
+            var record = await _studentClient.GetUploadRecordAsync(request.StudentId, id, cancellationToken);
 
             if (string.IsNullOrEmpty(record.Id))
             {
@@ -139,7 +139,7 @@ public class OssUploadRecordController : ControllerBase
                     assignment.Grade,
                     selectedImagePaths,
                     assignment.Comments ?? record.Comments ?? string.Empty,
-                    id);
+                    id, cancellationToken);
 
                 if (!submitResponse.Success)
                 {
@@ -198,7 +198,7 @@ public class OssUploadRecordController : ControllerBase
 
             return Ok(payload);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not MistakeBoundaryException and not OperationCanceledException)
         {
             _logger.LogError(ex, "Failed to assign upload record: {RecordId}", id);
             return StatusCode(500, new ErrorResponse("Failed to assign upload record"));
@@ -305,11 +305,11 @@ public class OssUploadRecordController : ControllerBase
     }
 
     [HttpGet("legacy-check/{id}")]
-    public async Task<IActionResult> LegacyCheck(string id)
+    public async Task<IActionResult> LegacyCheck(string id, CancellationToken cancellationToken = default)
     {
         try
         {
-            var mistakeList = await _mistakeClient.GetMistakeItemsByUploadAsync(id);
+            var mistakeList = await _mistakeClient.GetMistakeItemsByUploadAsync(id, cancellationToken);
 
             if (mistakeList.Items.Count == 0)
             {
@@ -342,7 +342,7 @@ public class OssUploadRecordController : ControllerBase
                 message = $"该记录还有{pendingCount}条错题待审核"
             });
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not MistakeBoundaryException and not OperationCanceledException)
         {
             _logger.LogError(ex, "Failed to check legacy status for upload record: {RecordId}", id);
             return StatusCode(500, new ErrorResponse("Failed to check legacy status"));
@@ -355,13 +355,13 @@ public class OssUploadRecordController : ControllerBase
     /// 正常流程不应遗留需要此接口处理的场景。
     /// </summary>
     [HttpPost("legacy-clean/{id}")]
-    public async Task<IActionResult> LegacyClean(string id)
+    public async Task<IActionResult> LegacyClean(string id, CancellationToken cancellationToken = default)
     {
         try
         {
             _logger.LogInformation("Starting legacy data cleanup for upload record: {RecordId}", id);
 
-            var mistakeList = await _mistakeClient.GetMistakeItemsByUploadAsync(id);
+            var mistakeList = await _mistakeClient.GetMistakeItemsByUploadAsync(id, cancellationToken);
 
             if (mistakeList.Items.Count == 0)
             {
@@ -387,7 +387,7 @@ public class OssUploadRecordController : ControllerBase
             _logger.LogInformation("Step 1: Calling CompleteUploadReview for {RecordId}", id);
             var completeReviewResult = await _mistakeClient.CompleteUploadReviewAsync(
                 id,
-                "admin-legacy-cleanup");
+                "admin-legacy-cleanup", cancellationToken);
 
             if (!completeReviewResult.Success)
             {
@@ -397,17 +397,18 @@ public class OssUploadRecordController : ControllerBase
                     completeReviewResult.ErrorMessage ?? "Failed to complete upload review"));
             }
 
+            cancellationToken.ThrowIfCancellationRequested();
             if (completeReviewResult.RemovedImagePaths.Count > 0)
             {
                 _logger.LogInformation("Step 2: Removing {Count} image paths from upload record {RecordId}",
                     completeReviewResult.RemovedImagePaths.Count, id);
-                await _studentClient.RemoveImagesFromRecordAsync(studentId, id, completeReviewResult.RemovedImagePaths.ToList());
+                await _studentClient.RemoveImagesFromRecordAsync(studentId, id, completeReviewResult.RemovedImagePaths.ToList(), cancellationToken);
             }
 
             _logger.LogInformation("Step 3: Calling DeleteUploadRecordAfterReview for {RecordId}", id);
             try
             {
-                await _studentClient.DeleteUploadRecordAfterReviewAsync(studentId, id);
+                await _studentClient.DeleteUploadRecordAfterReviewAsync(studentId, id, cancellationToken);
             }
             catch (HttpRequestException ex)
             {
@@ -425,7 +426,7 @@ public class OssUploadRecordController : ControllerBase
                 uploadRecordId = id
             });
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not MistakeBoundaryException and not OperationCanceledException)
         {
             _logger.LogError(ex, "Failed to clean legacy data for upload record: {RecordId}", id);
             return StatusCode(500, new ErrorResponse("Failed to clean legacy data"));

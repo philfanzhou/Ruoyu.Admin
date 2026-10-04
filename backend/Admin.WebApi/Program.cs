@@ -26,6 +26,7 @@ try
     builder = WebApplication.CreateBuilder(args.Where(arg => arg != "--validate-auth-config").ToArray());
     builder.Configuration.AddRuoyuConsulConfiguration(builder.Configuration, readOnly: validateAuthConfig);
     _ = AdminOidcSettings.Read(builder.Configuration, builder.Environment);
+    _ = MistakeSessionSettings.Read(builder.Configuration, builder.Environment);
 }
 catch (Exception error)
 {
@@ -38,7 +39,7 @@ catch (Exception error)
             or "AdminOidc:UseSessionForIdentityProxy" or "AdminOidc:UseSessionForPortalProxies"
             or "AdminOidc:RedirectUri" or "AdminOidc:PostLogoutRedirectUri"
             or "IdentityService:Authority" or "IdentityService:AppId" or "IdentityService:AppSecret"
-            or "IdentityService:ClockSkewSeconds" ? error.Message : "RUOYU_ADMIN_AUTH_CONFIG_INVALID";
+            or "IdentityService:ClockSkewSeconds" or "MistakeService:UseSessionToken" or "MistakeService:Url" ? error.Message : "RUOYU_ADMIN_AUTH_CONFIG_INVALID";
         throw new InvalidOperationException(safeKey);
     }
     Environment.ExitCode = 2;
@@ -81,7 +82,19 @@ builder.WebHost.ConfigureKestrel(options =>
 builder.Services.AddStudentHttpClient(studentServiceUrl);
 
 // Mistake service: HTTP (migrated from gRPC)
+var mistakeSessionSettings = MistakeSessionSettings.Read(builder.Configuration, builder.Environment);
+builder.Services.AddSingleton(mistakeSessionSettings);
+builder.Services.AddSingleton(new MistakeClientPolicy(mistakeSessionSettings.UseSessionToken));
 builder.Services.AddMistakeHttpClient(mistakeServiceUrl);
+if (mistakeSessionSettings.UseSessionToken)
+{
+    builder.Services.AddHttpContextAccessor();
+    builder.Services.AddTransient<MistakeSessionHandler>();
+    builder.Services.AddHttpClient<IMistakeHttpClient, MistakeHttpClient>()
+        .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false, ActivityHeadersPropagator = null })
+        .AddHttpMessageHandler<MistakeSessionHandler>()
+        .RemoveAllLoggers();
+}
 builder.Services.AddHttpClient<HomeworkReferenceClient>(client =>
 {
     client.BaseAddress = new Uri(homeworkServiceUrl);
@@ -142,6 +155,7 @@ builder.Services.AddControllers(options =>
     // Marks every action of controllers carrying [RequireSecurityResponseHeaders] with the
     // ServiceMantle security response-header metadata (see the attribute's doc comment).
     options.Conventions.Add(new AdminSecurityResponseHeadersConvention());
+    options.Filters.Add<MistakeSessionFailureFilter>();
 });
 
 // Resolve and validate consumer configuration before registering the shared gate. Parsing
@@ -186,6 +200,12 @@ builder.Services
         StatusCodes.Status502BadGateway,
         "downstream.unavailable",
         "A downstream service request failed.")
+    .AddExceptionMapping<MistakeDownstreamException>(StatusCodes.Status502BadGateway,
+        "mistake.unavailable", "The Mistake service request failed.")
+    .AddExceptionMapping<MistakeBadRequestException>(StatusCodes.Status400BadRequest,
+        "mistake.request_rejected", "The Mistake service rejected the request.")
+    .AddExceptionMapping<MistakeConflictException>(StatusCodes.Status409Conflict,
+        "mistake.conflict", "The Mistake service rejected the conflicting request.")
     .AddSecurityResponseHeaders()
     // ========== Shared startup database gate (issue #66) ==========
     // The PostgreSQL session advisory lock that serializes multi-instance startup: it covers the

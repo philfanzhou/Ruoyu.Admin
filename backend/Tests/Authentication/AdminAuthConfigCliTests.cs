@@ -7,7 +7,7 @@ using Xunit;
 
 namespace Admin.WebApi.Tests.Authentication;
 
-public sealed class AdminAuthConfigCliTests
+public sealed partial class AdminAuthConfigCliTests
 {
     [Theory]
     [InlineData("https://localhost", "Production", 2)]

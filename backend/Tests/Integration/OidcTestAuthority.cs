@@ -27,7 +27,7 @@ internal sealed class OidcTestAuthority : HttpMessageHandler
     // holding-, failure-, and cancellation-shaped tests must keep their exact semantics, and
     // the guarded section never awaits so the gate is always released promptly.
     private readonly object _tokenGate = new();
-    private readonly ConcurrentDictionary<string, (string Nonce, string Challenge, string Defect)> _codes = [];
+    private readonly ConcurrentDictionary<string, (string Nonce, string Challenge, string Defect, string Subject, string AccessToken)> _codes = [];
     internal readonly ConcurrentQueue<Dictionary<string, string>> TokenForms = [];
     internal readonly ConcurrentQueue<string?> AuthorizationHeaders = [];
     internal string? DiscoveryDefect { get; set; }
@@ -39,10 +39,10 @@ internal sealed class OidcTestAuthority : HttpMessageHandler
     internal string? LastIdToken { get; private set; }
     internal string? LastVerifier { get; private set; }
     internal int Redeems => TokenForms.Count;
-    internal string Code(IDictionary<string, string> query, string defect = "valid")
+    internal string Code(IDictionary<string, string> query, string defect = "valid", string subject = "fake-subject", string accessToken = AccessToken)
     {
         var code = "fictitious-code-" + Guid.NewGuid().ToString("N");
-        _codes[code] = (query["nonce"], query["code_challenge"], defect);
+        _codes[code] = (query["nonce"], query["code_challenge"], defect, subject, accessToken);
         return code;
     }
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -86,8 +86,8 @@ internal sealed class OidcTestAuthority : HttpMessageHandler
             LastVerifier = form["code_verifier"];
             if (WebEncoders.Base64UrlEncode(SHA256.HashData(Encoding.ASCII.GetBytes(LastVerifier))) != handshake.Challenge)
                 throw new InvalidOperationException("fake.pkce_mismatch");
-            LastIdToken = Mint(handshake.Nonce, handshake.Defect);
-            return Json(JsonSerializer.Serialize(new { access_token = AccessToken, token_type = "Bearer", expires_in = 900,
+            LastIdToken = Mint(handshake.Nonce, handshake.Defect, handshake.Subject);
+            return Json(JsonSerializer.Serialize(new { access_token = handshake.AccessToken, token_type = "Bearer", expires_in = 900,
                 id_token = LastIdToken, scope = "openid profile" }));
         }
     }
@@ -103,7 +103,7 @@ internal sealed class OidcTestAuthority : HttpMessageHandler
             return input + "." + WebEncoders.Base64UrlEncode(_rsa.SignData(Encoding.ASCII.GetBytes(input), HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1));
         }
     }
-    private string Mint(string nonce, string defect)
+    private string Mint(string nonce, string defect, string subject)
     {
         var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         var header = JsonSerializer.Serialize(new { alg = defect == "unsigned" ? "none" : defect == "alg" ? "HS256" : "RS256",
@@ -112,7 +112,7 @@ internal sealed class OidcTestAuthority : HttpMessageHandler
         {
             ["iss"] = defect == "issuer" ? "https://wrong.example.test" : Issuer,
             ["aud"] = defect == "aud" ? "wrong-audience" : ClientId,
-            ["sub"] = "fake-subject", ["iat"] = now, ["exp"] = now + 300,
+            ["sub"] = subject, ["iat"] = now, ["exp"] = now + 300,
             ["nonce"] = defect == "nonce" ? "wrong-nonce" : nonce,
             ["name"] = "fake-name", ["nickname"] = "fake-display", ["role"] = "admin"
         };
