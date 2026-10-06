@@ -2,7 +2,7 @@
 
 ## 迁移策略
 
-本项目使用 **EF Core Migrations**（exact链 `20260930190608_InitialCreate` → `20261003030002_AddReferenceObservations`），由消费方自有的 `AuditMigrationExecutor`（`backend/Admin.WebApi/Database/AuditMigrationExecutor.cs`）实现 ServiceMantle 的 `IDatabaseMigrationExecutor` SPI，在启动时由 ServiceMantle 0.3.0 的 `StartupDatabaseGate` 调用共享的 `DatabaseMigrationOrchestrator`（PostgreSQL advisory lock 串行化多实例启动）执行。旧的共享 `DatabaseInitializer` + 内联 `CREATE TABLE IF NOT EXISTS` DDL 路径已于 issue #57 移除。
+本项目使用 **EF Core Migrations**（exact链 `20260930190608_InitialCreate` → `20261003030002_AddReferenceObservations`），由消费方自有的 `AuditMigrationExecutor`（`backend/Admin.WebApi/Database/AuditMigrationExecutor.cs`）实现 ServiceMantle 的 `IDatabaseMigrationExecutor` SPI，在启动时由 ServiceMantle 0.3.1-rc.1 的 `StartupDatabaseGate` 调用共享的 `DatabaseMigrationOrchestrator`（PostgreSQL advisory lock 串行化多实例启动）执行。旧的共享 `DatabaseInitializer` + 内联 `CREATE TABLE IF NOT EXISTS` DDL 路径已于 issue #57 移除。
 
 ## 启动流程
 
@@ -49,3 +49,15 @@
 ## StorageReferences v1 观察升级
 
 旧exact baseline history及旧合法无history结构只按旧baseline检查；后者stamp之后才执行追加迁移。新链给OssAuditRuns新增ReferenceContractVersion/ReferenceSnapshots nullable text。原业务/审计事实不改写、不回填假proof。history必须exact known prefix，缺baseline/unknown/结构冲突拒绝；executor的KnownMigrationIds同步维护。新metadata或Status3非空时Down拒绝丢失历史，恢复使用整个数据库pg_dump。唯一语义见[StorageAudit](../modules/OssAudit/StorageAudit.md)。
+
+## #67 schema 证据构件替换
+
+执行器通过 `PostgreSqlSchemaEvidenceReader`（显式扩展证据，只读 `public` 下两张已知业务表）
+读取结构与迁移历史；`EfCoreExpectedSchemaDerivation` 从 EF 设计时模型推导期望，基线期望继续排除
+后续迁移的两列。共享 comparer 比较名称、identity、索引总键数和 INCLUDE；消费方投影保持原有名称
+忽略大小写、忽略无关附加索引与 foreign key 的边界。类型与列名仍精确匹配，不比较默认值。
+
+只缺具名索引的合法旧库继续原 DDL 回填；基线历史由 `EfCoreMigrationBaselineWriter` 在独立事务
+中幂等写入，消费方继续负责先校验、advisory lease 与写前再观察。reader 的多次查询不保证一致快照。
+迁移清单、结构、配置键和固定错误码不变；回滚应用代码及同版包即可，无新增数据迁移，已提交的
+迁移不会随应用回滚撤销。
