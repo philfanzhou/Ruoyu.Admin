@@ -60,7 +60,11 @@ jobs:
       # barrier. Direct CLI invocation because the pinned analyze action exposes no
       # model-pack input; the pack is resolved from the checkout with
       # --additional-packs and applied with --extension-packs (pack name and version
-      # must match .github/codeql/log-models/qlpack.yml).
+      # must match .github/codeql/log-models/qlpack.yml). setup-codeql puts the CLI
+      # (already downloaded by init) on PATH for these steps.
+      - uses: github/codeql-action/setup-codeql@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4
+        if: matrix.language == 'csharp'
+
       - name: Analyze C#
         if: matrix.language == 'csharp'
         env:
