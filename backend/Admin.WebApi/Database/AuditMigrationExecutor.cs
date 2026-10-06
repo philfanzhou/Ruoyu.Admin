@@ -1,12 +1,12 @@
-using System.Data.Common;
 using System.Reflection;
 using Admin.WebApi.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
-using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.Logging;
 using Npgsql;
-using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
+using ServiceMantle.Database.PostgreSql.Migration;
+using ServiceMantle.Persistence.Relational.Migration;
 using ServiceMantle.Migration;
 
 namespace Admin.WebApi.Database;
@@ -71,7 +71,6 @@ public sealed class AuditMigrationExecutor : IDatabaseMigrationExecutor
     internal static readonly IReadOnlyList<string> KnownTableNames = ["OssAuditRecords", "OssAuditRuns"];
 
     private const string SchemaName = "public";
-    private const string InvalidCatalogSqlState = "3D000";
 
     private readonly AuditDbContext _context;
     private readonly ILogger? _logger;
@@ -168,53 +167,59 @@ public sealed class AuditMigrationExecutor : IDatabaseMigrationExecutor
     {
         EnsureMigrationContract();
 
+        var connection = (NpgsqlConnection)_context.Database.GetDbConnection();
+        var openedHere = connection.State != System.Data.ConnectionState.Open;
         try
         {
-            await _context.Database.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
-        }
-        catch (PostgresException exception)
-            when (string.Equals(exception.SqlState, InvalidCatalogSqlState, StringComparison.Ordinal))
-        {
-            // The target database does not exist yet. After the target-preparation stage this
-            // only happens when creation was explicitly allowed but the catalog vanished since;
-            // classifying as Empty lets the failure surface deterministically in Migrate rather
-            // than being reinterpreted here.
-            return DatabaseInspection.Of(
-                DatabaseState.Empty,
-                "the target database does not exist yet");
-        }
-        catch (Exception exception) when (IsCancellation(exception, cancellationToken))
-        {
-            throw NewCancellation(exception, cancellationToken);
-        }
-        catch (Exception exception)
-        {
-            // Authentication, network, and permission failures are refused, never interpreted as
-            // a missing database and never retried with creation fallbacks.
-            _logger?.LogWarning(exception,
-                "Database inspection could not connect to the target database; refusing to classify it");
-            return DatabaseInspection.Of(
-                DatabaseState.InspectionFailed,
-                "the target database connection could not be established (see service logs for the driver error)");
-        }
+            var reader = new PostgreSqlSchemaEvidenceReader();
+            // History classification precedes schema inspection, including schema evidence
+            // that the shared model cannot represent. An empty scope reads history only.
+            var history = await reader.ReadAsync(connection,
+                new PostgreSqlSchemaEvidenceReadOptions(tables: []),
+                cancellationToken).ConfigureAwait(false);
+            if (history.State == SchemaEvidenceReadState.TargetDatabaseMissing)
+                return DatabaseInspection.Of(DatabaseState.Empty, "the target database does not exist yet");
+            if (history.State == SchemaEvidenceReadState.ReadFailed)
+            {
+                _logger?.LogWarning("Database inspection could not read the target structure");
+                return DatabaseInspection.Failed(history.Message);
+            }
+            var historyFailure = InspectHistory(history.AppliedMigrationIds);
+            if (historyFailure is not null) return historyFailure;
 
-        try
-        {
-            return await InspectOpenDatabaseAsync(cancellationToken).ConfigureAwait(false);
+            var evidence = await reader.ReadAsync(connection,
+                new PostgreSqlSchemaEvidenceReadOptions(includeExtendedObjectEvidence: true,
+                    tables: KnownTableNames.Select(name => (SchemaName, name)).ToArray()),
+                cancellationToken).ConfigureAwait(false);
+            if (evidence.State == SchemaEvidenceReadState.ReadFailed)
+                _logger?.LogWarning("Database inspection could not read the target structure");
+            return evidence.State switch
+            {
+                SchemaEvidenceReadState.TargetDatabaseMissing => DatabaseInspection.Of(
+                    DatabaseState.Empty, "the target database does not exist yet"),
+                SchemaEvidenceReadState.ReadFailed => DatabaseInspection.Failed(evidence.Message),
+                _ => InspectEvidence(evidence)
+            };
         }
         catch (Exception exception) when (IsCancellation(exception, cancellationToken))
         {
             throw NewCancellation(exception, cancellationToken);
         }
-        catch (Exception exception)
+        catch (Exception)
         {
-            _logger?.LogWarning(exception, "Database inspection could not read the target structure");
-            return DatabaseInspection.Failed(
-                "the database structure could not be read (see service logs for the driver error)");
+            _logger?.LogWarning("Database inspection could not read the target structure");
+            return DatabaseInspection.Failed("the database structure could not be read");
         }
         finally
         {
-            await _context.Database.CloseConnectionAsync().ConfigureAwait(false);
+            try
+            {
+                if (openedHere) await connection.CloseAsync().ConfigureAwait(false);
+            }
+            finally
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+            }
         }
     }
 
@@ -268,33 +273,19 @@ public sealed class AuditMigrationExecutor : IDatabaseMigrationExecutor
 
     // ---------- inspection ----------
 
-    private async Task<DatabaseInspection> InspectOpenDatabaseAsync(CancellationToken cancellationToken)
+    private DatabaseInspection InspectEvidence(SchemaEvidenceReadResult evidence)
     {
-        var connection = _context.Database.GetDbConnection();
+        var applied = evidence.AppliedMigrationIds;
+        var historyFailure = InspectHistory(applied);
+        if (historyFailure is not null) return historyFailure;
         var expected = BuildExpectedTables();
-
-        var tableNames = await QueryTableNamesAsync(connection, cancellationToken).ConfigureAwait(false);
-        var presentBusinessTables = KnownTableNames.Where(tableNames.Contains).ToList();
-        var applied = tableNames.Contains(HistoryTableName)
-            ? await QueryAppliedMigrationIdsAsync(connection, cancellationToken).ConfigureAwait(false)
-            : [];
-
-        var unknownIds = applied.Where(id => !KnownMigrationIds.Contains(id)).ToList();
-        if (unknownIds.Count > 0)
-        {
-            return DatabaseInspection.Of(
-                DatabaseState.VersionTooNew,
-                $"the migration history contains ids this application does not know: {Join(unknownIds)}");
-        }
-
-        if (!applied.SequenceEqual(KnownMigrationIds.Take(applied.Count), StringComparer.Ordinal))
-            return DatabaseInspection.Failed("migration history is not an exact supported prefix");
-        var snapshot = await ReadSchemaSnapshotAsync(connection, cancellationToken).ConfigureAwait(false);
+        var snapshot = evidence.Snapshot!;
+        var presentBusinessTables = snapshot.Tables.Select(table => table.Name).ToList();
 
         if (applied.Count == KnownMigrationIds.Count)
         {
             // The history claims the current version; the complete current schema must verify.
-            var mismatch = ValidateTables(snapshot, expected, KnownTableNames, backfills: null);
+            var mismatch = ValidateTables(snapshot, expected, backfills: null);
             return mismatch is null
                 ? DatabaseInspection.Of(
                     DatabaseState.CurrentVersionCompatible,
@@ -305,7 +296,7 @@ public sealed class AuditMigrationExecutor : IDatabaseMigrationExecutor
 
         if (applied.Count == 1)
         {
-            var mismatch = ValidateTables(snapshot, BuildExpectedTables(baseline: true), KnownTableNames, backfills: null);
+            var mismatch = ValidateTables(snapshot, BuildExpectedTables(baseline: true), backfills: null);
             return mismatch is null ? DatabaseInspection.Of(DatabaseState.KnownUpgradeRequired,
                 "the exact baseline schema requires the reference-observation migration") : DatabaseInspection.Failed(mismatch.Reason);
         }
@@ -328,7 +319,7 @@ public sealed class AuditMigrationExecutor : IDatabaseMigrationExecutor
 
         // Both tables are present without history: verify and collect safe backfills.
         var backfills = new List<BackfillStatement>();
-        var verification = ValidateTables(snapshot, BuildExpectedTables(baseline: true), KnownTableNames, backfills);
+        var verification = ValidateTables(snapshot, BuildExpectedTables(baseline: true), backfills);
         if (verification is not null)
         {
             return DatabaseInspection.Failed(verification.Reason);
@@ -339,6 +330,22 @@ public sealed class AuditMigrationExecutor : IDatabaseMigrationExecutor
             "a verified legacy database without migration history requires the safe backfills and the baseline registration",
             backfills,
             requiresHistoryStamp: true);
+    }
+
+    private static DatabaseInspection? InspectHistory(IReadOnlyList<string> applied)
+    {
+        var unknownIds = applied.Where(id => !KnownMigrationIds.Contains(id)).ToList();
+        if (unknownIds.Count > 0)
+        {
+            return DatabaseInspection.Of(
+                DatabaseState.VersionTooNew,
+                $"the migration history contains ids this application does not know: {Join(unknownIds)}");
+        }
+
+        if (!applied.SequenceEqual(KnownMigrationIds.Take(applied.Count), StringComparer.Ordinal))
+            return DatabaseInspection.Failed("migration history is not an exact supported prefix");
+
+        return null;
     }
 
     private void EnsureMigrationContract()
@@ -353,335 +360,63 @@ public sealed class AuditMigrationExecutor : IDatabaseMigrationExecutor
         }
     }
 
-    private static async Task<HashSet<string>> QueryTableNamesAsync(
-        DbConnection connection, CancellationToken cancellationToken)
+    // Projection applies only this consumer's established comparison boundary. The shared
+    // derivation owns EF traversal; public is the historical default schema, not a migration.
+    private ExpectedSchema BuildExpectedTables(bool baseline = false)
     {
-        await using var command = connection.CreateCommand();
-        command.CommandText = """
-            SELECT c.relname
-            FROM pg_class c
-            JOIN pg_namespace n ON n.oid = c.relnamespace
-            WHERE n.nspname = 'public' AND c.relkind = 'r'
-            """;
-        var names = new HashSet<string>(StringComparer.Ordinal);
-        await using var reader = await command
-            .ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
-        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
-        {
-            names.Add(reader.GetString(0));
-        }
-
-        return names;
+        var model = _context.GetService<IDesignTimeModel>().Model;
+        var derived = EfCoreExpectedSchemaDerivation.Derive(model,
+            new EfCoreExpectedSchemaDerivationOptions(includeExtendedObjectEvidence: true));
+        if (derived.Tables.Count != KnownTableNames.Count ||
+            derived.Tables.Any(table => !KnownTableNames.Contains(table.Name)))
+            throw new InvalidOperationException($"[{IncompatibleErrorCode}] The EF model does not match the supported table contract.");
+        return new ExpectedSchema(derived.Tables.Select(table => new SchemaTable(table.Name,
+            table.Columns.Where(column => !baseline || column.Name is not
+                ("ReferenceContractVersion" or "ReferenceSnapshots")).ToArray(),
+            table.PrimaryKey, indexes: table.Indexes,
+            schema: table.Schema ?? SchemaName)).ToArray());
     }
 
-    private static async Task<List<string>> QueryAppliedMigrationIdsAsync(
-        DbConnection connection, CancellationToken cancellationToken)
+    private static VerificationFailure? ValidateTables(SchemaSnapshot snapshot,
+        ExpectedSchema expected, List<BackfillStatement>? backfills)
     {
-        await using var command = connection.CreateCommand();
-        command.CommandText =
-            $"""SELECT "MigrationId" FROM "{HistoryTableName}" ORDER BY "MigrationId" """;
-        var ids = new List<string>();
-        await using var reader = await command
-            .ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
-        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        var projected = new List<SchemaTable>();
+        var comparisonExpected = new List<SchemaTable>();
+        foreach (var table in expected.Tables)
         {
-            ids.Add(reader.GetString(0));
-        }
-
-        return ids;
-    }
-
-    private static async Task<SchemaSnapshot> ReadSchemaSnapshotAsync(
-        DbConnection connection, CancellationToken cancellationToken)
-    {
-        var tables = KnownTableNames.ToArray();
-        var snapshot = new SchemaSnapshot();
-
-        await using (var columns = connection.CreateCommand())
-        {
-            // attidentity: '' = not an identity column, 'a' = GENERATED ALWAYS,
-            // 'd' = GENERATED BY DEFAULT. The baseline's Id columns are ALWAYS identities.
-            columns.CommandText = """
-                SELECT c.relname, a.attname, format_type(a.atttypid, a.atttypmod), a.attnotnull, a.attidentity
-                FROM pg_class c
-                JOIN pg_namespace n ON n.oid = c.relnamespace
-                JOIN pg_attribute a ON a.attrelid = c.oid
-                WHERE n.nspname = 'public' AND c.relkind = 'r' AND c.relname = ANY(@tables)
-                  AND a.attnum > 0 AND NOT a.attisdropped
-                ORDER BY c.relname, a.attnum
-                """;
-            AddTableArrayParameter(columns, tables);
-            await using var reader = await columns
-                .ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
-            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
-            {
-                snapshot.AddColumn(
-                    reader.GetString(0),
-                    new ActualColumn(
-                        reader.GetString(1),
-                        reader.GetString(2),
-                        reader.GetBoolean(3),
-                        // attidentity is PostgreSQL's internal "char" type (one byte).
-                        reader.GetChar(4).ToString()));
-            }
-        }
-
-        await using (var constraints = connection.CreateCommand())
-        {
-            constraints.CommandText = """
-                SELECT c.relname, con.conname, (SELECT array_agg(a.attname ORDER BY k.ord)
-                       FROM unnest(con.conkey) WITH ORDINALITY AS k(attnum, ord)
-                       JOIN pg_attribute a ON a.attrelid = con.conrelid AND a.attnum = k.attnum)
-                FROM pg_constraint con
-                JOIN pg_class c ON c.oid = con.conrelid
-                JOIN pg_namespace n ON n.oid = c.relnamespace
-                WHERE n.nspname = 'public' AND c.relname = ANY(@tables)
-                  AND con.contype = 'p'
-                ORDER BY c.relname, con.conname
-                """;
-            AddTableArrayParameter(constraints, tables);
-            await using var reader = await constraints
-                .ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
-            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
-            {
-                snapshot.SetPrimaryKey(
-                    reader.GetString(0),
-                    new ActualConstraint(reader.GetString(1), ReadTextArray(reader, 2) ?? []));
-            }
-        }
-
-        await using (var indexes = connection.CreateCommand())
-        {
-            indexes.CommandText = """
-                SELECT c.relname, ic.relname, i.indisunique, array_length(i.indkey, 1),
-                       (SELECT array_agg(a.attname ORDER BY k.ord)
-                          FROM unnest(i.indkey) WITH ORDINALITY AS k(attnum, ord)
-                          JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = k.attnum)
-                FROM pg_index i
-                JOIN pg_class ic ON ic.oid = i.indexrelid
-                JOIN pg_class c ON c.oid = i.indrelid
-                JOIN pg_namespace n ON n.oid = c.relnamespace
-                WHERE n.nspname = 'public' AND c.relname = ANY(@tables)
-                  AND NOT i.indisprimary
-                  AND NOT EXISTS (
-                      SELECT 1 FROM pg_constraint con WHERE con.conindid = i.indexrelid
-                  )
-                ORDER BY c.relname, ic.relname
-                """;
-            AddTableArrayParameter(indexes, tables);
-            await using var reader = await indexes
-                .ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
-            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
-            {
-                var keyCount = reader.IsDBNull(3) ? -1 : reader.GetInt32(3);
-                snapshot.AddIndex(
-                    reader.GetString(0),
-                    new ActualIndex(
-                        reader.GetString(1),
-                        ReadTextArray(reader, 4) ?? [],
-                        reader.GetBoolean(2),
-                        keyCount));
-            }
-        }
-
-        return snapshot;
-    }
-
-    private static void AddTableArrayParameter(DbCommand command, string[] tables)
-    {
-        var parameter = command.CreateParameter();
-        parameter.ParameterName = "@tables";
-        parameter.Value = tables;
-        command.Parameters.Add(parameter);
-    }
-
-    private static string[]? ReadTextArray(DbDataReader reader, int ordinal) =>
-        reader.IsDBNull(ordinal) ? null : reader.GetFieldValue<string[]>(ordinal);
-
-    // ---------- expected schema (derived from the current EF model) ----------
-
-    private IReadOnlyDictionary<string, ExpectedTable> BuildExpectedTables(bool baseline = false)
-    {
-        var expected = new Dictionary<string, ExpectedTable>(StringComparer.Ordinal);
-        foreach (var entityType in _context.Model.GetEntityTypes())
-        {
-            var tableName = entityType.GetTableName();
-            var storeObject = StoreObjectIdentifier.Create(entityType, StoreObjectType.Table);
-            if (tableName is null || storeObject is null)
-            {
-                continue;
-            }
-
-            if (!KnownTableNames.Contains(tableName))
-            {
-                throw new InvalidOperationException(
-                    $"[{IncompatibleErrorCode}] The EF model contains table '{tableName}' outside the supported migration contract.");
-            }
-
-            var columns = entityType.GetProperties()
-                .Where(property => !baseline || property.Name is not ("ReferenceContractVersion" or "ReferenceSnapshots"))
-                .Select(property => new ExpectedColumn(
-                    property.GetColumnName(storeObject.Value)!,
-                    property.GetColumnType(storeObject.Value)!,
-                    !property.IsNullable,
-                    property.GetValueGenerationStrategy() == NpgsqlValueGenerationStrategy.IdentityAlwaysColumn))
-                .ToList();
-
-            var primaryKey = entityType.FindPrimaryKey();
-            ExpectedConstraint? expectedPrimaryKey = primaryKey is null
-                ? null
-                : new ExpectedConstraint(
-                    primaryKey.GetName()!,
-                    primaryKey.Properties
-                        .Select(property => property.GetColumnName(storeObject.Value)!)
-                        .ToList());
-
-            var indexes = entityType.GetIndexes()
-                .Select(index => new ExpectedIndex(
-                    index.GetDatabaseName(storeObject.Value)!,
-                    index.Properties
-                        .Select(property => property.GetColumnName(storeObject.Value)!)
-                        .ToList(),
-                    index.IsUnique))
-                .ToList();
-
-            expected[tableName] = new ExpectedTable(tableName, columns, expectedPrimaryKey, indexes);
-        }
-
-        foreach (var tableName in KnownTableNames.Where(name => !expected.ContainsKey(name)))
-        {
-            throw new InvalidOperationException(
-                $"[{IncompatibleErrorCode}] The EF model does not contain the contract table '{tableName}'.");
-        }
-
-        return expected;
-    }
-
-    // ---------- validation ----------
-
-    private static VerificationFailure? ValidateTables(
-        SchemaSnapshot snapshot,
-        IReadOnlyDictionary<string, ExpectedTable> expected,
-        IEnumerable<string> tableNames,
-        List<BackfillStatement>? backfills)
-    {
-        foreach (var tableName in tableNames)
-        {
-            var mismatch = ValidateTable(snapshot, expected[tableName], backfills);
-            if (mismatch is not null)
-            {
-                return mismatch;
-            }
-        }
-
-        return null;
-    }
-
-    private static VerificationFailure? ValidateTable(
-        SchemaSnapshot snapshot, ExpectedTable expected, List<BackfillStatement>? backfills)
-    {
-        if (!snapshot.TableExists(expected.Name))
-        {
-            return new VerificationFailure($"table '{expected.Name}' is missing");
-        }
-
-        var actualColumns = snapshot.GetColumns(expected.Name);
-        foreach (var column in expected.Columns)
-        {
-            if (!actualColumns.TryGetValue(column.Name, out var actual))
-            {
-                // A missing column on a legacy database is never backfilled here: the legacy
-                // states this executor takes over were created by the retired inline DDL, which
-                // always created every column of its era. A missing column therefore means an
-                // unknown lineage and is refused rather than invented.
-                return new VerificationFailure(
-                    $"table '{expected.Name}' is missing column '{column.Name}'");
-            }
-
-            if (!string.Equals(actual.Type, column.Type, StringComparison.Ordinal))
-            {
-                return new VerificationFailure(
-                    $"column '{expected.Name}.{column.Name}' has type '{actual.Type}' but the baseline requires '{column.Type}'");
-            }
-
-            if (actual.NotNull != column.NotNull)
-            {
-                return new VerificationFailure(
-                    $"column '{expected.Name}.{column.Name}' has nullability {(actual.NotNull ? "NOT NULL" : "NULL")} " +
-                    $"but the baseline requires {(column.NotNull ? "NOT NULL" : "NULL")}");
-            }
-
-            if (column.IsIdentityAlways != actual.IsIdentityAlways)
-            {
-                return new VerificationFailure(
-                    $"column '{expected.Name}.{column.Name}' identity generation does not match the baseline's " +
-                    "GENERATED ALWAYS AS IDENTITY");
-            }
-        }
-
-        var extraColumn = actualColumns.Keys.FirstOrDefault(name =>
-            expected.Columns.All(column => !string.Equals(column.Name, name, StringComparison.Ordinal)));
-        if (extraColumn is not null)
-        {
-            return new VerificationFailure(
-                $"table '{expected.Name}' contains column '{extraColumn}' outside the baseline");
-        }
-
-        if (expected.PrimaryKey is not null)
-        {
-            var actualPrimaryKey = snapshot.GetPrimaryKey(expected.Name);
-            if (actualPrimaryKey is null)
-            {
-                return new VerificationFailure($"table '{expected.Name}' is missing its primary key");
-            }
-
-            if (!NameMatches(actualPrimaryKey.Name, expected.PrimaryKey.Name))
-            {
-                return new VerificationFailure(
-                    $"table '{expected.Name}' has primary key '{actualPrimaryKey.Name}' but the baseline requires '{expected.PrimaryKey.Name}'");
-            }
-
-            if (!actualPrimaryKey.Columns.SequenceEqual(expected.PrimaryKey.Columns, StringComparer.Ordinal))
-            {
-                return new VerificationFailure(
-                    $"primary key '{expected.PrimaryKey.Name}' covers [{string.Join(", ", actualPrimaryKey.Columns)}] " +
-                    $"but the baseline requires [{string.Join(", ", expected.PrimaryKey.Columns)}]");
-            }
-        }
-
-        var actualIndexes = snapshot.GetIndexes(expected.Name);
-        foreach (var index in expected.Indexes)
-        {
-            var actual = actualIndexes.FirstOrDefault(candidate =>
-                NameMatches(candidate.Name, index.Name));
-            if (actual is null)
-            {
-                if (backfills is null)
+            var actual = snapshot.Tables.SingleOrDefault(candidate => candidate.Name == table.Name);
+            if (actual is null) { comparisonExpected.Add(table); continue; }
+            var indexes = table.Indexes.ToList();
+            if (backfills is not null)
+                foreach (var index in table.Indexes.Where(index => !actual.Indexes.Any(candidate =>
+                             NameMatches(candidate.Name, index.Name))))
                 {
-                    return new VerificationFailure($"table '{expected.Name}' is missing index '{index.Name}'");
+                    // Only absent named indexes are eligible for the historical safe backfill.
+                    var name = index.Name!;
+                    backfills.Add(new BackfillStatement(table.Name, $"index {name}",
+                        $"CREATE {(index.IsUnique ? "UNIQUE " : "")}INDEX IF NOT EXISTS {Quote(name)} ON {Quote(table.Name)} ({string.Join(", ", index.Columns.Select(Quote))})"));
+                    indexes.Remove(index);
                 }
-
-                // A missing index is safe to backfill: CREATE INDEX IF NOT EXISTS is idempotent
-                // and changes no data.
-                backfills.Add(new BackfillStatement(
-                    expected.Name,
-                    $"index {index.Name}",
-                    $"CREATE {(index.IsUnique ? "UNIQUE " : "")}INDEX IF NOT EXISTS \"{index.Name}\" ON \"{expected.Name}\" ({string.Join(", ", index.Columns.Select(Quote))})"));
-                continue;
-            }
-
-            if (actual.IsUnique != index.IsUnique ||
-                actual.ResolvedColumns.Length != index.Columns.Count ||
-                actual.KeyCount != index.Columns.Count ||
-                !actual.ResolvedColumns.SequenceEqual(index.Columns, StringComparer.Ordinal))
-            {
-                return new VerificationFailure(
-                    $"index '{index.Name}' on table '{expected.Name}' does not match the baseline's columns or uniqueness");
-            }
+            comparisonExpected.Add(new SchemaTable(table.Name, table.Columns, NormalizeKey(table.PrimaryKey),
+                indexes: indexes.Select(NormalizeIndex).ToArray(), schema: table.Schema));
+            projected.Add(new SchemaTable(actual.Name, actual.Columns.Select(column =>
+                new SchemaColumn(column.Name, column.DataType, column.IsNullable,
+                    column.IdentityKind == SchemaIdentityKind.Always ? SchemaIdentityKind.Always : SchemaIdentityKind.None,
+                    column.HasStoredDefault)).ToArray(), NormalizeKey(actual.PrimaryKey),
+                indexes: table.Indexes.Select(index => actual.Indexes.FirstOrDefault(candidate =>
+                    NameMatches(candidate.Name, index.Name))).OfType<SchemaIndex>().Select(NormalizeIndex).ToArray(), schema: actual.Schema));
         }
-
-        return null;
+        var differences = SchemaEvidenceComparer.Compare(new SchemaSnapshot(projected),
+            new ExpectedSchema(comparisonExpected), new SchemaEvidenceComparisonOptions(
+                compareObjectNames: true, compareIndexKeyDetails: true));
+        return differences.Count == 0 ? null : new VerificationFailure(string.Join("; ", differences));
     }
+
+    private static SchemaPrimaryKey? NormalizeKey(SchemaPrimaryKey? key) =>
+        key is null ? null : new SchemaPrimaryKey(key.Columns, key.Name?.ToUpperInvariant());
+
+    private static SchemaIndex NormalizeIndex(SchemaIndex index) =>
+        new(index.Columns, index.IsUnique, index.Name?.ToUpperInvariant(), index.KeyColumnCount, index.IncludedColumns);
 
     private static string Quote(string identifier) =>
         $"\"{identifier.Replace("\"", "\"\"", StringComparison.Ordinal)}\"";
@@ -690,7 +425,7 @@ public sealed class AuditMigrationExecutor : IDatabaseMigrationExecutor
     /// Known constraint and index names are compared case-insensitively; the semantics
     /// (columns, uniqueness) must still match exactly.
     /// </summary>
-    private static bool NameMatches(string actual, string expected) =>
+    private static bool NameMatches(string? actual, string? expected) =>
         string.Equals(actual, expected, StringComparison.OrdinalIgnoreCase);
 
     private sealed record VerificationFailure(string Reason);
@@ -712,59 +447,12 @@ public sealed class AuditMigrationExecutor : IDatabaseMigrationExecutor
 
     private async Task StampBaselineAsync(CancellationToken cancellationToken)
     {
-        await _context.Database.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            await using var transaction = await _context.Database
-                .BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
-            var connection = _context.Database.GetDbConnection();
-            var dbTransaction = transaction.GetDbTransaction();
-
-            await using (var createHistory = connection.CreateCommand())
-            {
-                createHistory.Transaction = dbTransaction;
-                createHistory.CommandText = $$"""
-                    CREATE TABLE IF NOT EXISTS "{{HistoryTableName}}" (
-                        "MigrationId" character varying(150) NOT NULL,
-                        "ProductVersion" character varying(32) NOT NULL,
-                        CONSTRAINT "PK___EFMigrationsHistory" PRIMARY KEY ("MigrationId")
-                    )
-                    """;
-                await createHistory.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-            }
-
-            await using (var insertBaseline = connection.CreateCommand())
-            {
-                insertBaseline.Transaction = dbTransaction;
-                // Duplicate registrations re-read the legitimate state instead of failing or
-                // double-stamping; parameters keep the write injection-free.
-                insertBaseline.CommandText = $$"""
-                    INSERT INTO "{{HistoryTableName}}" ("MigrationId", "ProductVersion")
-                    SELECT @migrationId, @productVersion
-                    WHERE NOT EXISTS (
-                        SELECT 1 FROM "{{HistoryTableName}}" WHERE "MigrationId" = @migrationId
-                    )
-                    """;
-                var idParameter = insertBaseline.CreateParameter();
-                idParameter.ParameterName = "@migrationId";
-                idParameter.Value = InitialCreateMigrationId;
-                insertBaseline.Parameters.Add(idParameter);
-                var versionParameter = insertBaseline.CreateParameter();
-                versionParameter.ParameterName = "@productVersion";
-                versionParameter.Value = EfProductVersion;
-                insertBaseline.Parameters.Add(versionParameter);
-                await insertBaseline.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-            }
-
-            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
-            _logger?.LogInformation(
-                "Registered the verified {MigrationId} baseline for the legacy database",
-                InitialCreateMigrationId);
-        }
-        finally
-        {
-            await _context.Database.CloseConnectionAsync().ConfigureAwait(false);
-        }
+        await new EfCoreMigrationBaselineWriter(_context).WriteBaselineAsync(
+            _context.Database.GetDbConnection(), InitialCreateMigrationId, EfProductVersion,
+            cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        _logger?.LogInformation("Registered the verified {MigrationId} baseline for the legacy database",
+            InitialCreateMigrationId);
     }
 
     private static string EfProductVersion { get; } =
@@ -787,93 +475,4 @@ public sealed class AuditMigrationExecutor : IDatabaseMigrationExecutor
             ? canceled
             : new OperationCanceledException(
                 "Database migration work was cancelled.", cancellationToken);
-}
-
-// ---------- shapes ----------
-
-/// <param name="IsIdentityAlways">
-/// Whether the EF model generates this column as GENERATED ALWAYS AS IDENTITY
-/// (Npgsql's IdentityAlwaysColumn strategy) — the exact identity form of the retired inline DDL.
-/// </param>
-internal sealed record ExpectedColumn(string Name, string Type, bool NotNull, bool IsIdentityAlways);
-
-internal sealed record ExpectedConstraint(string Name, IReadOnlyList<string> Columns);
-
-internal sealed record ExpectedIndex(string Name, IReadOnlyList<string> Columns, bool IsUnique);
-
-internal sealed record ExpectedTable(
-    string Name,
-    IReadOnlyList<ExpectedColumn> Columns,
-    ExpectedConstraint? PrimaryKey,
-    IReadOnlyList<ExpectedIndex> Indexes);
-
-internal sealed record ActualColumn(string Name, string Type, bool NotNull, string IdentityKind)
-{
-    /// <summary>PostgreSQL attidentity == 'a' (GENERATED ALWAYS AS IDENTITY).</summary>
-    public bool IsIdentityAlways => string.Equals(IdentityKind, "a", StringComparison.Ordinal);
-}
-
-internal sealed record ActualConstraint(string Name, string[] Columns);
-
-internal sealed record ActualIndex(
-    string Name,
-    string[] ResolvedColumns,
-    bool IsUnique,
-    int KeyCount);
-
-/// <summary>
-/// The actual structure read from PostgreSQL catalogs for the known business tables.
-/// </summary>
-internal sealed class SchemaSnapshot
-{
-    private readonly Dictionary<string, Dictionary<string, ActualColumn>> _columns =
-        new(StringComparer.Ordinal);
-    private readonly Dictionary<string, ActualConstraint?> _primaryKeys =
-        new(StringComparer.Ordinal);
-    private readonly Dictionary<string, List<ActualIndex>> _indexes =
-        new(StringComparer.Ordinal);
-    private readonly HashSet<string> _tables = new(StringComparer.Ordinal);
-
-    internal void AddColumn(string table, ActualColumn column)
-    {
-        _tables.Add(table);
-        if (!_columns.TryGetValue(table, out var columns))
-        {
-            columns = new Dictionary<string, ActualColumn>(StringComparer.Ordinal);
-            _columns[table] = columns;
-        }
-
-        columns[column.Name] = column;
-    }
-
-    internal void SetPrimaryKey(string table, ActualConstraint primaryKey)
-    {
-        _tables.Add(table);
-        _primaryKeys[table] = primaryKey;
-    }
-
-    internal void AddIndex(string table, ActualIndex index)
-    {
-        _tables.Add(table);
-        if (!_indexes.TryGetValue(table, out var list))
-        {
-            list = [];
-            _indexes[table] = list;
-        }
-
-        list.Add(index);
-    }
-
-    internal bool TableExists(string table) => _tables.Contains(table);
-
-    internal IReadOnlyDictionary<string, ActualColumn> GetColumns(string table) =>
-        _columns.TryGetValue(table, out var columns)
-            ? columns
-            : new Dictionary<string, ActualColumn>(StringComparer.Ordinal);
-
-    internal ActualConstraint? GetPrimaryKey(string table) =>
-        _primaryKeys.TryGetValue(table, out var primaryKey) ? primaryKey : null;
-
-    internal IReadOnlyList<ActualIndex> GetIndexes(string table) =>
-        _indexes.TryGetValue(table, out var list) ? list : [];
 }

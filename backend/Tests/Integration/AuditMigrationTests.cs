@@ -205,7 +205,7 @@ public sealed class AuditMigrationTests : ServiceMantleIntegrationTestBase, IAsy
                     fingerprint.Add(
                         $"index|{reader.GetString(0)}|{reader.GetString(1)}|" +
                         $"unique={reader.GetBoolean(2)}|" +
-                        $"columns={string.Join(",", reader.GetFieldValue<string[]>(3))}");
+                        $"columns={string.Join(",", reader.IsDBNull(3) ? [] : reader.GetFieldValue<string[]>(3))}");
                 }
             }
         }
@@ -464,6 +464,97 @@ public sealed class AuditMigrationTests : ServiceMantleIntegrationTestBase, IAsy
         result.Succeeded.Should().BeFalse();
         result.ExecutorWasCalled.Should().BeFalse();
         result.ErrorCode.Should().Be(WellKnownMigrationErrorCodes.VersionTooNew);
+    }
+
+    [Theory]
+    [InlineData("future", AuditMigrationExecutor.DatabaseState.VersionTooNew, WellKnownMigrationErrorCodes.VersionTooNew)]
+    [InlineData("invalid-prefix", AuditMigrationExecutor.DatabaseState.InspectionFailed, WellKnownMigrationErrorCodes.InspectionFailed)]
+    [InlineData("current", AuditMigrationExecutor.DatabaseState.InspectionFailed, WellKnownMigrationErrorCodes.InspectionFailed)]
+    public async Task HistoryClassification_PrecedesUnrepresentableMappedTable_ZeroWrites(
+        string history, AuditMigrationExecutor.DatabaseState expectedState, string errorCode)
+    {
+        using var context = CreateContext();
+        await context.Database.MigrateAsync();
+        if (history == "future")
+            await ExecuteAsync(TargetConnectionString,
+                """INSERT INTO "__EFMigrationsHistory" VALUES ('future-version', '99.0.0')""");
+        else if (history == "invalid-prefix")
+            await ExecuteAsync(TargetConnectionString,
+                $"DELETE FROM \"__EFMigrationsHistory\" WHERE \"MigrationId\"='{AuditMigrationExecutor.InitialCreateMigrationId}'");
+        await ExecuteAsync(TargetConnectionString,
+            """DROP TABLE "OssAuditRecords"; CREATE TABLE "OssAuditRecords"()""");
+        var before = await ReadStructureFingerprintAsync(TargetConnectionString);
+        var beforeHistory = await ReadHistoryAsync(TargetConnectionString);
+        var executor = new AuditMigrationExecutor(context, NullLogger.Instance);
+
+        var inspection = await executor.InspectDetailedAsync(CancellationToken.None);
+        inspection.State.Should().Be(expectedState);
+        if (history == "invalid-prefix")
+            inspection.Reason.Should().Be("migration history is not an exact supported prefix");
+        var result = await CreateOrchestrator(executor)
+            .OrchestrateMigrationAsync(MigrationServiceId, Target, TimeSpan.FromSeconds(30));
+        result.Succeeded.Should().BeFalse();
+        result.ExecutorWasCalled.Should().BeFalse();
+        result.ErrorCode.Should().Be(errorCode);
+        var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => executor.ExecuteAsync());
+        failure.Message.Should().Contain(AuditMigrationExecutor.IncompatibleErrorCode);
+        failure.Message.Should().NotContain("DROP TABLE").And.NotContain("Host=").And.NotContain("Password=");
+        (await ReadStructureFingerprintAsync(TargetConnectionString)).Should().Equal(before);
+        (await ReadHistoryAsync(TargetConnectionString)).Should().Equal(beforeHistory);
+        (await TableExistsAsync(TargetConnectionString, "OssAuditRecords")).Should().BeTrue();
+        (await CountRowsAsync(TargetConnectionString, "OssAuditRecords")).Should().Be(0);
+    }
+
+    [Theory]
+    [InlineData("ALTER TABLE \"OssAuditRecords\" RENAME CONSTRAINT \"OssAuditRecords_pkey\" TO \"unexpected_pk\"", false)]
+    [InlineData("ALTER INDEX \"IX_OssAuditRecords_Bucket\" RENAME TO \"unexpected_index\"", false)]
+    [InlineData("CREATE INDEX \"duplicate_bucket_shape\" ON \"OssAuditRecords\" (\"Bucket\")", true)]
+    [InlineData("ALTER INDEX \"IX_OssAuditRecords_Bucket\" RENAME TO \"ix_ossauditrecords_bucket\"", true)]
+    [InlineData("ALTER TABLE \"OssAuditRecords\" RENAME CONSTRAINT \"OssAuditRecords_pkey\" TO \"ossauditrecords_PKEY\"", true)]
+    [InlineData("DROP INDEX \"IX_OssAuditRecords_Bucket\"; CREATE INDEX \"IX_OssAuditRecords_Bucket\" ON \"OssAuditRecords\" (lower(\"Bucket\"))", false)]
+    [InlineData("DROP INDEX \"IX_OssAuditRecords_Bucket\"; CREATE INDEX \"IX_OssAuditRecords_Bucket\" ON \"OssAuditRecords\" (\"Bucket\") INCLUDE (\"Status\")", false)]
+    public async Task ExtendedEvidence_PreservesCurrentNamedObjectBoundary(string mutation, bool compatible)
+    {
+        using var context = CreateContext();
+        await context.Database.MigrateAsync();
+        await ExecuteAsync(TargetConnectionString, mutation);
+        var before = await ReadStructureFingerprintAsync(TargetConnectionString);
+        var executor = new AuditMigrationExecutor(context, NullLogger.Instance);
+        (await executor.InspectAsync()).Should().Be(compatible
+            ? AuditMigrationExecutor.DatabaseState.CurrentVersionCompatible
+            : AuditMigrationExecutor.DatabaseState.InspectionFailed);
+        if (compatible) await executor.ExecuteAsync();
+        else await Assert.ThrowsAsync<InvalidOperationException>(() => executor.ExecuteAsync());
+        (await ReadStructureFingerprintAsync(TargetConnectionString)).Should().Equal(before);
+        (await ReadHistoryAsync(TargetConnectionString)).Should().Equal(AuditMigrationExecutor.KnownMigrationIds);
+    }
+
+    [Fact]
+    public async Task LegacyWrongIndexName_IsBackfilledWithoutRejectingAdditionalShape()
+    {
+        await ExecuteAsync(TargetConnectionString, LegacyDdl);
+        await ExecuteAsync(TargetConnectionString,
+            """ALTER INDEX "IX_OssAuditRecords_Bucket" RENAME TO "unexpected_index";""");
+        using var context = CreateContext();
+        var executor = new AuditMigrationExecutor(context, NullLogger.Instance);
+        (await executor.InspectAsync()).Should().Be(AuditMigrationExecutor.DatabaseState.LegacyTakeoverRequired);
+        await executor.ExecuteAsync();
+        (await executor.InspectAsync()).Should().Be(AuditMigrationExecutor.DatabaseState.CurrentVersionCompatible);
+        (await ReadHistoryAsync(TargetConnectionString)).Should().Equal(AuditMigrationExecutor.KnownMigrationIds);
+    }
+
+    [Fact]
+    public async Task Inspection_PreservesCallerOpenedConnection_AndRefusesChangedStructureBeforeWrite()
+    {
+        await ExecuteAsync(TargetConnectionString, LegacyDdl);
+        using var context = CreateContext();
+        await context.Database.OpenConnectionAsync();
+        var executor = new AuditMigrationExecutor(context, NullLogger.Instance);
+        (await executor.InspectAsync()).Should().Be(AuditMigrationExecutor.DatabaseState.LegacyTakeoverRequired);
+        context.Database.GetDbConnection().State.Should().Be(System.Data.ConnectionState.Open);
+        await ExecuteAsync(TargetConnectionString, """ALTER TABLE "OssAuditRuns" DROP COLUMN "StartedAt";""");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => executor.ExecuteAsync());
+        (await ReadHistoryAsync(TargetConnectionString)).Should().BeEmpty();
     }
 
     // ---------- multi-instance serialization ----------
