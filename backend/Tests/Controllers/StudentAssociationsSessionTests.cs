@@ -29,8 +29,11 @@ public sealed class StudentAssociationsSessionTests
     [Fact]
     public async Task MissingTrustedSessionRejectsBeforeStudentOrPortal()
     {
+        var login = new Mock<Microsoft.Extensions.Options.IOptionsMonitor<SignaCore.Client.AspNetCore.SignaCoreHostedLoginOptions>>();
+        login.SetupGet(options => options.CurrentValue).Returns(new SignaCore.Client.AspNetCore.SignaCoreHostedLoginOptions());
         var boundary = new AdminSessionBoundary(new AdminSessionAccessor(Settings,
-            new Mock<Microsoft.Extensions.Options.IOptionsMonitor<AdminPortalOptions>>().Object, TimeProvider.System),
+            new Mock<Microsoft.Extensions.Options.IOptionsMonitor<AdminPortalOptions>>().Object,
+            login.Object, new Mock<SignaCore.Client.AspNetCore.ITicketStore>(MockBehavior.Strict).Object),
             new Mock<Microsoft.AspNetCore.Antiforgery.IAntiforgery>(MockBehavior.Strict).Object);
         using var services = new ServiceCollection().AddSingleton(boundary).BuildServiceProvider();
         var clients = new Mock<IHttpClientFactory>(MockBehavior.Strict); var student = new Mock<IStudentHttpClient>(MockBehavior.Strict);

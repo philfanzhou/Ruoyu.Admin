@@ -107,8 +107,9 @@ const userInitial = computed(() => username.value.charAt(0).toUpperCase())
 
 const handleLogout = async () => {
   const result = await logoutSession()
-  if (result.kind === 'redirect') window.location.assign(result.url)
-  else if (session.status !== 'authenticated') await router.replace('/login')
+  // A navigating logout hands control to the browser (the upstream logout redirect chain ends
+  // back on /login); only an unresolved failure needs the local route change.
+  if (result.kind === 'unknown' && session.status !== 'authenticated') await router.replace('/login')
 }
 
 </script>

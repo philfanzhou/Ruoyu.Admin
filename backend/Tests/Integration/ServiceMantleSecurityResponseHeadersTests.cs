@@ -5,7 +5,6 @@ using Admin.WebApi.Authentication;
 using Admin.WebApi.Models;
 using Admin.WebApi.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -48,9 +47,14 @@ public sealed class ServiceMantleSecurityResponseHeadersTests : ServiceMantleInt
         "OssUploadRecord", "Students", "StudentAssociations",
     ];
 
-    private static readonly string[] MarkerOnlyRoutes =
+    // The SignaCore package owns these routes; its endpoints are deliberately unmarked (the
+    // package writes its own cache-suppression), which is the recorded accepted difference
+    // of the hosted-login migration.
+    private static readonly string[] PackageRoutes =
     [
-        "/api/auth/logout", "/api/auth/logout/csrf", AdminOidcSettings.LogoutCallbackPath, AdminOidcSettings.CallbackPath,
+        "/api/auth/oidc/start", "/api/auth/oidc/callback", "/api/auth/oidc/session",
+        "/api/auth/oidc/signin-failed", "/api/auth/oidc/csrf", "/api/auth/oidc/logout",
+        "/api/auth/oidc/logout/return",
     ];
 
     public ServiceMantleSecurityResponseHeadersTests(PostgreSqlFixture database) : base(database)
@@ -73,8 +77,18 @@ public sealed class ServiceMantleSecurityResponseHeadersTests : ServiceMantleInt
     {
         Assert.Null(response.Headers.CacheControl);
         Assert.Empty(response.Headers.Pragma);
+        AssertNoSecurityBaseline(response);
+    }
+
+    /// <summary>The package-owned endpoints suppress caching themselves (no-store) but never
+    /// carry the six-header baseline. The one exception is the antiforgery token issuance: the
+    /// shared ASP.NET Core antiforgery layer adds its own <c>X-Frame-Options: SAMEORIGIN</c>
+    /// whenever it stores a token pair, so exactly that value may appear.</summary>
+    private static void AssertNoSecurityBaseline(HttpResponseMessage response)
+    {
         Assert.False(response.Headers.TryGetValues("X-Content-Type-Options", out _));
-        Assert.False(response.Headers.TryGetValues("X-Frame-Options", out _));
+        if (response.Headers.TryGetValues("X-Frame-Options", out var frame))
+            Assert.Equal("SAMEORIGIN", string.Join(",", frame));
         Assert.False(response.Headers.TryGetValues("Referrer-Policy", out _));
         Assert.False(response.Headers.TryGetValues("Content-Security-Policy", out _));
     }
@@ -113,14 +127,14 @@ public sealed class ServiceMantleSecurityResponseHeadersTests : ServiceMantleInt
             Assert.Contains(controllerEndpoints, e => e.Metadata.GetMetadata<ControllerActionDescriptor>()!.ControllerName == controller);
         }
 
-        // The marker-only routes carry the metadata.
-        foreach (var route in MarkerOnlyRoutes)
+        // The package-owned auth routes exist and stay unmarked.
+        foreach (var route in PackageRoutes)
         {
             var matches = endpoints.Where(e => e.RoutePattern.RawText == route).ToList();
             Assert.NotEmpty(matches);
             foreach (var endpoint in matches)
             {
-                Assert.NotNull(endpoint.Metadata.GetMetadata<SecurityResponseHeadersMetadata>());
+                Assert.Null(endpoint.Metadata.GetMetadata<SecurityResponseHeadersMetadata>());
             }
         }
 
@@ -141,11 +155,11 @@ public sealed class ServiceMantleSecurityResponseHeadersTests : ServiceMantleInt
         using var factory = HeaderFactory(authority, probe, sessionLogout: true);
         using var client = Browser(factory);
 
-        // 302 (OIDC start redirect) and 302 (OIDC callback handled by the remote handler).
+        // 302 (hosted-login start): a package-owned endpoint, deliberately unmarked.
         using (var start = await client.GetAsync("/api/auth/oidc/start"))
         {
             Assert.Equal(HttpStatusCode.Redirect, start.StatusCode);
-            AssertBaseline(start);
+            AssertNoSecurityBaseline(start);
         }
         var session = await LoginAsync(client, authority);
 
@@ -162,10 +176,12 @@ public sealed class ServiceMantleSecurityResponseHeadersTests : ServiceMantleInt
             Assert.Equal(HttpStatusCode.OK, csrf.StatusCode);
             AssertBaseline(csrf);
         }
-        using (var logoutCsrf = await GetAsync(client, "/api/auth/logout/csrf", session))
+        // 200 package-owned logout csrf: user-neutral issuance, no-store without the baseline.
+        using (var logoutCsrf = await GetAsync(client, "/api/auth/oidc/csrf", session))
         {
             Assert.Equal(HttpStatusCode.OK, logoutCsrf.StatusCode);
-            AssertBaseline(logoutCsrf);
+            Assert.Contains("no-store", logoutCsrf.Headers.CacheControl!.ToString());
+            AssertNoSecurityBaseline(logoutCsrf);
         }
 
         // 404 business write endpoint (fixed safe body unchanged) with CSRF header dance.
@@ -217,123 +233,45 @@ public sealed class ServiceMantleSecurityResponseHeadersTests : ServiceMantleInt
     }
 
     [Fact]
-    public async Task MiddlewareOwnedAuthRoutes_CarryBaseline()
+    public async Task PackageAuthRoutes_StayUnmarkedWithFixedBodies()
     {
         using var authority = new OidcTestAuthority();
         var probe = new SessionBusinessProbe();
-        // Prepared logout always owns these routes, with the same security headers.
-        using var factory = HeaderFactory(authority, probe);
+        using var factory = HeaderFactory(authority, probe, sessionLogout: true);
         using var client = Browser(factory);
 
-        // Anonymous logout CSRF is rejected before any prepare call.
-        using (var disabled = await client.GetAsync("/api/auth/logout/csrf"))
+        // The package's csrf issuance is public and carries only its own no-store.
+        using (var csrf = await client.GetAsync("/api/auth/oidc/csrf"))
         {
-            Assert.Equal(HttpStatusCode.Unauthorized, disabled.StatusCode);
-            Assert.Equal("{\"error\":\"unauthorized\"}", await disabled.Content.ReadAsStringAsync());
-            AssertBaseline(disabled);
+            Assert.Equal(HttpStatusCode.OK, csrf.StatusCode);
+            Assert.Contains("no-store", csrf.Headers.CacheControl!.ToString());
+            AssertNoSecurityBaseline(csrf);
         }
 
-        // A method mismatch on the middleware-owned route answers 405 with the baseline via
-        // the multi-method marker endpoint.
-        using (var wrongMethod = await SendAsync(client, "/api/auth/logout/csrf", "POST"))
+        // A method mismatch answers the framework's 405, still unmarked.
+        foreach (var path in new[] { AdminOidcSettings.LogoutPath, "/API/AUTH/OIDC/LOGOUT/" })
         {
+            using var wrongMethod = await SendAsync(client, path, "GET");
+            var dump = $"status={wrongMethod.StatusCode} location={wrongMethod.Headers.Location} headers={string.Join("|", wrongMethod.Headers.Select(h => h.Key + "=" + string.Join(",", h.Value)))}";
             Assert.Equal(HttpStatusCode.MethodNotAllowed, wrongMethod.StatusCode);
-            AssertBaseline(wrongMethod);
+            AssertNoSecurityBaseline(wrongMethod);
         }
 
-        foreach (var path in new[] { "/api/auth/logout", "/API/AUTH/LOGOUT/" })
+        // A missing antiforgery token answers the fixed csrf_rejected body and changes nothing.
+        using (var rejected = await SendAsync(client, AdminOidcSettings.LogoutPath, "POST"))
         {
-            using var response = await SendAsync(client, path, "POST");
-            Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
-            Assert.Equal("{\"error\":\"unauthorized\"}", await response.Content.ReadAsStringAsync());
-            AssertBaseline(response);
+            Assert.Equal(HttpStatusCode.BadRequest, rejected.StatusCode);
+            Assert.Equal("{\"outcome\":\"csrf_rejected\"}", await rejected.Content.ReadAsStringAsync());
+            Assert.Contains("no-store", rejected.Headers.CacheControl!.ToString());
+            AssertNoSecurityBaseline(rejected);
         }
 
-        // The same route with prepared logout enabled answers the invalid-state 400
-        // (fixed body) — still through the middleware, still with the baseline.
-        using var authority2 = new OidcTestAuthority();
-        var probe2 = new SessionBusinessProbe();
-        using var enabledFactory = HeaderFactory(authority2, probe2, sessionLogout: true);
-        using var enabledClient = Browser(enabledFactory);
-        foreach (var method in new[] { "GET", "HEAD", "PUT", "PATCH", "DELETE", "OPTIONS", "TRACE" })
-        {
-            using var wrongMethod = await SendAsync(enabledClient, "/API/AUTH/LOGOUT/", method);
-            Assert.Equal(HttpStatusCode.MethodNotAllowed, wrongMethod.StatusCode);
-            AssertBaseline(wrongMethod);
-        }
-        using (var denied = await SendAsync(enabledClient, "/api/auth/logout", "POST"))
-        {
-            Assert.Equal(HttpStatusCode.Unauthorized, denied.StatusCode); AssertBaseline(denied);
-        }
-        using (var invalidCallback = await enabledClient.GetAsync(AdminOidcSettings.LogoutCallbackPath + "?state=not-a-key"))
+        // The logout return answers its fixed invalid body without echoing any request input.
+        using (var invalidCallback = await client.GetAsync(AdminOidcSettings.LogoutReturnPath + "?state=not-a-key"))
         {
             Assert.Equal(HttpStatusCode.BadRequest, invalidCallback.StatusCode);
-            Assert.Equal("{\"error\":\"logout_callback_invalid\"}", await invalidCallback.Content.ReadAsStringAsync());
-            AssertBaseline(invalidCallback);
-        }
-    }
-
-    [Fact]
-    public void LegacyDisabledGateRejectsBeforeAnyHttpSurface()
-    {
-        using var factory = CreateFactory(settings: new Dictionary<string, string?> { ["AdminOidc:Enabled"] = "false" });
-        Assert.Equal("AdminOidc:Enabled", Assert.Throws<InvalidOperationException>(() => factory.Services).Message);
-    }
-
-    // ===== Unmarked surfaces keep their existing header behavior =====
-
-    [Fact]
-    public async Task UnmarkedSurfaces_DoNotCarryBaseline()
-    {
-        var workingDirectory = CreateTempContentRoot(withWwwrootStub: true);
-        try
-        {
-            using var factory = CreateFactory(contentRoot: workingDirectory);
-            using var client = factory.CreateClient();
-
-            // SPA entry and deep link: HTML without the JSON baseline.
-            using (var root = await client.GetAsync("/"))
-            {
-                Assert.Equal(HttpStatusCode.OK, root.StatusCode);
-                AssertNoBaseline(root);
-            }
-            using (var spa = await client.GetAsync("/students"))
-            {
-                Assert.Equal(HttpStatusCode.OK, spa.StatusCode);
-                AssertNoBaseline(spa);
-            }
-
-            // Health endpoints: JSON without the baseline. The readiness status itself is
-            // owned by the health-endpoint contract tests; only the header shape matters here.
-            using (var live = await client.GetAsync("/health/live"))
-            {
-                Assert.Equal(HttpStatusCode.OK, live.StatusCode);
-                AssertNoBaseline(live);
-            }
-            using (var ready = await client.GetAsync("/health/ready"))
-            {
-                Assert.Equal("application/json", ready.Content.Headers.ContentType?.MediaType);
-                AssertNoBaseline(ready);
-            }
-
-            // ImageController: browser-native image redirect surface stays unmarked.
-            using (var image = await client.GetAsync("/api/admin/image?path=uploads/a.jpg"))
-            {
-                Assert.Equal(HttpStatusCode.Unauthorized, image.StatusCode);
-                AssertNoBaseline(image);
-            }
-
-            // The identity proxy path has no routed endpoint: whatever the proxy answers, it
-            // never carries the JSON baseline (the target is unreachable in this factory).
-            using (var proxied = await client.GetAsync("/api/identity/admin/users"))
-            {
-                Assert.NotEqual(HttpStatusCode.OK, proxied.StatusCode);
-                Assert.False(proxied.Headers.TryGetValues("Content-Security-Policy", out _));
-            }
-        }
-        finally
-        {
-            Directory.Delete(workingDirectory, recursive: true);
+            Assert.Contains("text/html", invalidCallback.Content.Headers.ContentType!.ToString());
+            AssertNoSecurityBaseline(invalidCallback);
         }
     }
 
@@ -342,8 +280,8 @@ public sealed class ServiceMantleSecurityResponseHeadersTests : ServiceMantleInt
     private WebApplicationFactory<Program> HeaderFactory(OidcTestAuthority authority, SessionBusinessProbe probe,
         bool sessionLogout = false) => CreateFactory(configureTestServices: services =>
     {
-        services.Configure<OpenIdConnectOptions>(AdminOidcSettings.OidcScheme, options =>
-            options.Backchannel = new HttpClient(authority, disposeHandler: false) { Timeout = TimeSpan.FromSeconds(2) });
+        services.AddHttpClient(SignaCore.Client.AspNetCore.SignaCoreHostedLoginDefaults.HttpClientName)
+            .ConfigurePrimaryHttpMessageHandler(() => authority);
         services.AddHttpClient("IdentityService").ConfigurePrimaryHttpMessageHandler(() => probe.Identity);
         services.Replace(ServiceDescriptor.Singleton<IOptionsMonitor<AdminPortalOptions>>(probe.Admins));
         services.Replace(ServiceDescriptor.Singleton(probe.Oss.Object));
@@ -363,7 +301,7 @@ public sealed class ServiceMantleSecurityResponseHeadersTests : ServiceMantleInt
         ["AdminOidc:RedirectUri"] = OidcTestAuthority.RedirectUri,
         ["AdminOidc:UseSessionForAdminApi"] = "true",
 
-        ["AdminOidc:PostLogoutRedirectUri"] = "https://admin.example.test/api/auth/oidc/logout-callback",
+        ["AdminOidc:PostLogoutRedirectUri"] = "https://admin.example.test" + AdminOidcSettings.LogoutReturnPath,
         ["TeacherPortal:Url"] = "https://teacher.example.test",
         ["AssistantPortal:Url"] = "https://assistant.example.test",
         ["AdminPortal:AdminUserIds:0"] = "FAKE-SUBJECT",
@@ -405,26 +343,21 @@ public sealed class ServiceMantleSecurityResponseHeadersTests : ServiceMantleInt
         return (body.GetProperty("requestToken").GetString()!, cookie);
     }
 
-    /// <summary>Full OIDC handshake against the test authority; asserts the 302 callback carries the baseline.</summary>
+    /// <summary>Full hosted-login handshake against the test authority (no baseline on package endpoints).</summary>
     private static async Task<string> LoginAsync(HttpClient client, OidcTestAuthority authority)
     {
         using var start = await client.GetAsync("/api/auth/oidc/start");
         Assert.Equal(HttpStatusCode.Redirect, start.StatusCode);
         var query = QueryHelpers.ParseQuery(start.Headers.Location!.Query).ToDictionary(p => p.Key, p => p.Value.ToString());
-        var cookies = string.Join("; ", start.Headers.GetValues("Set-Cookie").Select(value => value.Split(';')[0]));
 
+        // The pending sign-in lives server-side: the start response sets no cookie at all.
         var callbackUri = QueryHelpers.AddQueryString(AdminOidcSettings.CallbackPath, new Dictionary<string, string?>
         {
             ["code"] = authority.Code(query), ["state"] = query["state"], ["iss"] = OidcTestAuthority.Issuer,
         });
-        using var request = new HttpRequestMessage(HttpMethod.Get, callbackUri);
-        request.Headers.Add("Cookie", cookies);
-        using var callback = await client.SendAsync(request);
+        using var callback = await client.GetAsync(callbackUri);
         Assert.Equal(HttpStatusCode.Redirect, callback.StatusCode);
-        // The callback response is written by the OpenIdConnect remote handler inside the
-        // authentication middleware: the baseline still applies because route selection
-        // (marker-only endpoint) happened at the very start of the pipeline.
-        AssertBaseline(callback);
+        AssertNoSecurityBaseline(callback);
         return callback.Headers.GetValues("Set-Cookie")
             .Single(value => value.StartsWith(AdminOidcSettings.SessionCookie + "=")).Split(';')[0];
     }

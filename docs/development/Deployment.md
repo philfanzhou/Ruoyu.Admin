@@ -52,7 +52,7 @@ Admin API 启动时通过 Consul `config/ruoyu/*` 加载 PostgreSQL、OSS 和下
   --env-file /private/admin.env --cache-dir /private/admin-consul-cache \
   --authority https://identity.example.com \
   --redirect-uri https://admin.example.com/api/auth/oidc/callback \
-  --post-logout-redirect-uri https://admin.example.com/api/auth/oidc/logout-callback
+  --post-logout-redirect-uri https://admin.example.com/api/auth/oidc/logout/return
 ```
 
 替换/重启使现有内存票据失效，不恢复已撤票据；回滚须使用此前明确可用的完整集成镜像与其匹配配置，不能关闭旧键回退身份模式。#75 的实际固定 head/image 正常 TLS 组合验收不代替生产切流，生产 rollout 和共享平台注册不在实现 PR 范围。
@@ -73,7 +73,7 @@ Kestrel__Endpoints__AdminHttps__Certificate__Path=/tls/server.pfx
 Kestrel__Endpoints__AdminHttps__Certificate__Password=<private environment value>
 ```
 
-代理使用 `proxy_pass https://admin:5022`、`proxy_ssl_verify on` 与 `proxy_ssl_trusted_certificate`，并设置与证书 SAN 匹配的 `proxy_ssl_name`。证书/PFX 只挂载到本实例，CA 只信任本实例及自有浏览器，不全局导入、不跳过验证。注册 callback 仍为浏览器的 HTTPS 同源地址，5020 仍保留；上述 HTTPS 监听不替代认证必需配置。实际联合验证还须确认普通 `/api/auth/csrf` 和退出专用 `/api/auth/logout/csrf` 都返回 200，不能把托管登录成功当成 CSRF 可用。
+代理使用 `proxy_pass https://admin:5022`、`proxy_ssl_verify on` 与 `proxy_ssl_trusted_certificate`，并设置与证书 SAN 匹配的 `proxy_ssl_name`。证书/PFX 只挂载到本实例，CA 只信任本实例及自有浏览器，不全局导入、不跳过验证。注册 callback 仍为浏览器的 HTTPS 同源地址，5020 仍保留；上述 HTTPS 监听不替代认证必需配置。实际联合验证还须确认 `/api/auth/csrf` 与 `/api/auth/oidc/csrf` 都返回 200，不能把托管登录成功当成 CSRF 可用。
 
 反向代理必须避免 callback query（尤其 code）进入 access log/analytics，并保证原始单值 query 透传。Admin 协议 handler 禁用可能包含 token/URL/Cookie 的框架详细日志；启用 OIDC 时另外抑制会记录原始 query 的 `Microsoft.AspNetCore.Hosting.Diagnostics` 请求日志（包含其余路由的此类日志），OIDC 入口不导出 ASP.NET Core trace；应用调用方仍不得将敏感值插入自由文本。AppSecret 只通过环境变量/user-secrets/Consul 安全配置，不提交配置文件。
 
@@ -172,15 +172,15 @@ docker exec ruoyu-postgres pg_dump -U postgres ruoyu_admin | gzip > backup_admin
 gunzip -c backup_admin.sql.gz | docker exec -i ruoyu-postgres psql -U postgres -d ruoyu_admin
 ```
 
-### Prepared logout（#46）
+### Prepared logout（#46，#83 起由 SignaCore 包承担）
 
-退出始终使用 prepared logout。必需的 `AdminOidc:PostLogoutRedirectUri` 与 RedirectUri 同 origin，路径固定 `/api/auth/oidc/logout-callback`、生产 HTTPS、无 query/fragment/userinfo。数字 loopback 开发例外沿 OIDC；非 POST logout 固定405，匿名/坏票据与退出专用 CSRF 仍按原 #40 协议拒绝。
+退出始终使用 prepared logout，端点为包拥有的 `POST /api/auth/oidc/logout`。必需的 `AdminOidc:PostLogoutRedirectUri` 与 RedirectUri 同 origin，路径固定 `/api/auth/oidc/logout/return`、生产 HTTPS、无 query/fragment/userinfo；SignaCore 应用注册的 PostLogout 回调需由维护者改为该值。数字 loopback 开发例外沿 OIDC；非 POST logout 固定405，每次 POST 尝试都清理旧 `adminAuthToken` Cookie。
 
-本人先 GET `/api/auth/logout/csrf` 取得 adminCsrf Cookie 与单值 X-CSRF-TOKEN，再 POST `/api/auth/logout`。专用入口只验证服务器 8h 有效身份票据/唯一 Authority iss/sub/stamp，允许 access token 到期或移出管理员白名单后退出本人，不授业务权限；普通 `/api/auth/csrf` 与管理 API 仍要求有效管理员 token。任何 Authorization 401，CSRF 缺/错/重复/异主体 400、零撤票/HTTP。受保护 Cookie 引用由服务器 TicketDataFormat 读取，锁内 Take 只允许一个并发 winner、Renew 不能复活；先清新 adminSession 和旧 adminAuthToken，再向固定 Authority `/oauth2/logout/requests` 发服务端 client_secret_post、服务器 id_token_hint、精确 PostLogout URI 及随机 state，不自动重试/跟随 redirect，不向浏览器发 ID token/secret。
+SPA 先 GET `/api/auth/oidc/csrf`（公开签发 `{"token":"..."}`，轮换共享 `adminCsrf` Cookie），再以导航式 form POST 提交 `__RequestVerificationToken`（或单值 `X-CSRF-TOKEN` header）。缺/错 token 固定 `400 {"outcome":"csrf_rejected"}` 且不触碰会话；登出不以 access token 期限或管理员白名单阻止本人退出。包在按会话键串行的门内先移除票据、删除会话 Cookie，再向 Authority `/oauth2/logout/requests` 发 HTTP Basic 认证 + 服务器 id_token_hint + PostLogout URI + 一次性 state，不重试不跟随 redirect；成功 302 验证过的同源 logout_uri，失败/超时/取消固定 `200 {"outcome":"local_only"}`。回跳 `/api/auth/oidc/logout/return?state=...` 以绑定 Cookie（5 分钟）原子单用，正确 302 `/login`，其余固定 400 HTML。
+
 
 成功 JSON `{success:true,upstreamLogout:true,logoutUrl:...}` 仅导航验证后同源或相对 `/oauth2/logout?logout_handle=<43base64url>` 的唯一 URL；相对 URL 解析成 Authority 同源绝对 URL。准备失败、畸形/超大响应、错误 URL、超时、取消、容量不足或缺 ID token 均永久保持本地退出，响应可写时 `{success:true,upstreamLogout:false}`，断连不能保证浏览器收到结果。重新查询本地状态恢复，不推定远端成功。整体发送/读取 10 秒上限、JSON 最多 4096B；私有 HTTP 无浏览器 Cookie/Authorization、日志或 redirect，协议路径不进入 telemetry。
 
-完成回跳只支持 GET、单值 state + 独立 HttpOnly/Secure/SameSite=Lax/Path=callback 绑定 Cookie，进程内 4096 容量/5 分钟绝对时限/原子单用；正确 302 `/login?loggedOut=1`，缺/错/重复/到期/错浏览器 400 `logout_callback_invalid`，GET 不发起本地撤票。退出和回跳 no-store/no-cache/no-referrer，回滚不能恢复已撤票据/state。SignaCore 验证 ID token hint 的 iat 24h、忽略 exp，本地 8h 更短；下游已发令牌不保证立即失效。真实 PostLogout/audience 注册与 SPA 激活仍由维护者/#41/IKJ8MO 完成，fake Authority 专项不能代替生产联调。专项 `PreparedLogout_` 与 `AdminLogoutStoresTests` 使用隔离数据库/虚构凭据，无生产 OSS 删除。
 
 ### 令牌过期与显式重认证（#45）
 

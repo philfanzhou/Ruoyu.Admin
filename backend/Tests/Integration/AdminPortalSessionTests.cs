@@ -35,7 +35,7 @@ public sealed partial class AdminOidcTests
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
             Assert.False(response.Headers.Contains("Set-Cookie"));
             var last = downstream.Requests.Last();
-            Assert.Equal("Bearer " + OidcTestAuthority.AccessToken, last.Headers["Authorization"]);
+            Assert.Equal("Bearer " + authority.LastAccessToken, last.Headers["Authorization"]);
             foreach (var forbidden in new[] { "Cookie", "Host", "X-CSRF-TOKEN", "X-Admin-AppId", "X-Admin-AppSecret" }) Assert.False(last.Headers.ContainsKey(forbidden));
             Assert.Contains("\"test\":true", last.Body);
         }
@@ -84,11 +84,11 @@ public sealed partial class AdminOidcTests
         Assert.Empty(downstream.Requests);
         var responses = await Task.WhenAll(Enumerable.Range(0, 6).Select(i => Api(client, path, cookie + "; " + csrf.Cookie, "POST", csrf: [i % 2 == 0 ? csrf.Token : "wrong"])));
         Assert.Equal(3, responses.Count(r => r.StatusCode == HttpStatusCode.OK)); Assert.Equal(3, downstream.Requests.Count);
-        var (key, ticket) = await Stored(factory, cookie);
-        ticket.Properties.UpdateTokenValue("expires_at", DateTimeOffset.UtcNow.AddHours(-1).ToString("o"));
-        await factory.Services.GetRequiredService<MemoryTicketStore>().RenewAsync(key, ticket);
-        await Rejected(await Api(client, path, cookie), 401, "reauthentication_required");
-        await factory.Services.GetRequiredService<MemoryTicketStore>().RemoveAsync(key);
+        var (key, _) = await Stored(factory, cookie);
+        // An expired session is indistinguishable from a removed one: the fixed 401.
+        await factory.Services.GetRequiredService<SignaCore.Client.AspNetCore.ITicketStore>().RemoveAsync(key, CancellationToken.None);
+        await Rejected(await Api(client, path, cookie), 401, "unauthorized");
+        await factory.Services.GetRequiredService<SignaCore.Client.AspNetCore.ITicketStore>().RemoveAsync(key, CancellationToken.None);
         await Rejected(await Api(client, path, cookie), 401, "unauthorized");
         Assert.Equal(3, downstream.Requests.Count);
     }
@@ -107,12 +107,8 @@ public sealed partial class AdminOidcTests
         }, sessionApi: true, portalProxies: true, identityProxy: identityProxy);
         using var client = Browser(factory);
         var first = await LoginSession(client, authority); var csrf = await Csrf(client, first);
-        var second = await LoginSession(client, authority); var (key, ticket) = await Stored(factory, second);
-        ticket.Properties.Items["oidc.subject"] = "second";
-        ticket = new(new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity(
-            [new("iss", OidcTestAuthority.Issuer), new("sub", "second")], AdminOidcSettings.SessionScheme)), ticket.Properties, AdminOidcSettings.SessionScheme);
         admins.CurrentValue.AdminUserIds.Add("second");
-        await factory.Services.GetRequiredService<MemoryTicketStore>().RenewAsync(key, ticket);
+        var second = await ForgedTicket(factory, subject: "second");
         await Rejected(await Api(client, $"/api/{portal}-portal/users", second + "; " + csrf.Cookie, "POST", csrf: [csrf.Token]), 400, "csrf_invalid");
         Assert.Empty(downstream.Requests);
         using var cancelled = new CancellationTokenSource(); cancelled.Cancel();
@@ -141,7 +137,7 @@ public sealed partial class AdminOidcTests
         using var factory = CreateFactory();
         var schemes = (await factory.Services.GetRequiredService<Microsoft.AspNetCore.Authentication.IAuthenticationSchemeProvider>()
             .GetAllSchemesAsync()).Select(s => s.Name).Order().ToArray();
-        Assert.Equal(new[] { AdminOidcSettings.OidcScheme, AdminOidcSettings.SessionScheme }.Order(), schemes);
+        Assert.Equal(new[] { SignaCore.Client.AspNetCore.SignaCoreHostedLoginDefaults.AuthenticationScheme, SignaCore.Client.AspNetCore.SignaCoreHostedLoginDefaults.SessionAuthenticationScheme }.Order(), schemes);
     }
 }
 

@@ -13,6 +13,7 @@ using Ruoyu.Admin.Common.Oss;
 using Ruoyu.Admin.Consul;
 using Ruoyu.Admin.ServiceClients;
 using ServiceMantle;
+using SignaCore.Client.AspNetCore;
 using ServiceMantle.Bootstrap;
 using ServiceMantle.Database.PostgreSql;
 using ServiceMantle.Database.PostgreSql.Migration;
@@ -417,30 +418,34 @@ else
 var healthEndpoints = app.MapGroup(string.Empty).AllowAnonymous();
 healthEndpoints.MapServiceMantleHealthEndpoints();
 
-// ========== Marker-only endpoints for middleware-owned auth routes ==========
-// These routes are always handled (short-circuited) by middleware that runs before endpoint
-// execution — AdminLogoutMiddleware owns /api/auth/logout, /api/auth/logout/csrf and the
-// OIDC logout callback (GET is the answered method; a mismatch answers 405), and
-// the OpenIdConnect remote handler own /api/auth/oidc/callback — so their route endpoints
-// exist solely to carry the security response-header metadata: route selection happens at the
-// very start of the pipeline, which makes the headers middleware (registered above) cover the
-// middleware-written responses too. The handlers below are therefore unreachable by design;
-// they exist so the routes can never 404 and so the marker placement survives any future
-// change in middleware short-circuiting. Methods beyond GET exist only so method-mismatch
-// 405s keep the baseline as well.
-var authMarkerMethods = new[] { "GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "TRACE" };
-app.MapMethods("/api/auth/logout", authMarkerMethods, () => Results.StatusCode(StatusCodes.Status503ServiceUnavailable))
-    .RequireServiceMantleSecurityResponseHeaders();
-app.MapMethods("/api/auth/logout/csrf", authMarkerMethods, () => Results.StatusCode(StatusCodes.Status503ServiceUnavailable))
-    .RequireServiceMantleSecurityResponseHeaders();
-app.MapMethods(AdminOidcSettings.LogoutCallbackPath, authMarkerMethods, () => Results.StatusCode(StatusCodes.Status503ServiceUnavailable))
-    .RequireServiceMantleSecurityResponseHeaders();
-app.MapMethods(AdminOidcSettings.CallbackPath, authMarkerMethods, () => Results.StatusCode(StatusCodes.Status503ServiceUnavailable))
-    .RequireServiceMantleSecurityResponseHeaders();
+// ========== SignaCore hosted-login endpoints (package-owned, anonymous) ==========
+// MapSignaCoreHostedLogin mounts /api/auth/oidc/start, /callback (exactly the registered
+// RedirectUri path), /session, /signin-failed, /csrf, POST /logout, and /logout/return. They
+// are mapped inside an empty AllowAnonymous group exactly like the health endpoints: the
+// FallbackPolicy below would otherwise 401 them, and the package owns each endpoint's own
+// gate (antiforgery, session cookie, one-time state) instead of the ambient authorization.
+var hostedLogin = app.MapGroup(string.Empty).AllowAnonymous();
+hostedLogin.MapSignaCoreHostedLogin(AdminOidcSettings.HostedLoginPrefix);
 
 // Explicit session authentication runs inside this boundary; retired password login
-// returns 410 before body binding or any Identity request.
-app.UseMiddleware<AdminLogoutMiddleware>();
+// returns 410 before body binding or any Identity request. The logout branch keeps the
+// previous middleware contract deterministically: only POST is ever answered (any other
+// method is a plain 405 before the authorization pipeline can challenge), and every POST
+// also retires the legacy adminAuthToken cookie of the password era, matching the old
+// local-session-first logout contract.
+app.Use(async (context, next) =>
+{
+    if (AdminSessionBoundary.IsAuthPath(context.Request.Path, AdminOidcSettings.LogoutPath))
+    {
+        if (!HttpMethods.IsPost(context.Request.Method))
+        {
+            context.Response.StatusCode = StatusCodes.Status405MethodNotAllowed;
+            return;
+        }
+        context.Response.Cookies.Delete("adminAuthToken", new CookieOptions { HttpOnly = true, SameSite = SameSiteMode.Strict, Path = "/" });
+    }
+    await next(context);
+});
 app.UseMiddleware<AdminSessionMiddleware>();
 app.UseAuthentication();
 app.UseAuthorization();

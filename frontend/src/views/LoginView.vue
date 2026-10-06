@@ -48,9 +48,10 @@ const checkSession = async () => {
   finally { checking.value = false }
 }
 const handleLogout = async () => {
+  // A navigating logout hands control to the browser; only an unresolved failure needs the
+  // local route change.
   const result = await logoutSession()
-  if (result.kind === 'redirect') window.location.assign(result.url)
-  else if (session.status !== 'authenticated') await router.replace('/login')
+  if (result.kind === 'unknown' && session.status !== 'authenticated') await router.replace('/login')
 }
 </script>
 

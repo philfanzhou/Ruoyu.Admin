@@ -30,24 +30,29 @@ describe('server-session application shell', () => {
     const { wrapper } = await page(null)
     expect(wrapper.find('.name').text()).toBe(''); expect(wrapper.find('.adm-avatar').text()).toBe('')
   })
-  it('ends a Cookie session without any browser token and coalesces repeated exit clicks', async () => {
-    const { wrapper, router } = await page(null)
-    vi.mocked(fetch).mockReset().mockResolvedValueOnce(response({ requestToken: 'synthetic' })).mockResolvedValueOnce(response({ success: true, upstreamLogout: false }))
+  it('ends a Cookie session by a navigational logout POST and coalesces repeated exit clicks', async () => {
+    const { wrapper } = await page(null)
+    const submissions: HTMLFormElement[] = []
+    const submit = vi.spyOn(HTMLFormElement.prototype, 'submit').mockImplementation(function (this: HTMLFormElement) { submissions.push(this) })
+    vi.mocked(fetch).mockReset().mockResolvedValueOnce(response({ token: 'synthetic' }))
     const leave = wrapper.findAll('button').find(button => button.text().includes('退出登录'))!
     await Promise.all([leave.trigger('click'), leave.trigger('click')])
-    await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/login'))
-    expect(vi.mocked(fetch).mock.calls.map(call => call[0])).toEqual(['/api/auth/logout/csrf', '/api/auth/logout'])
+    await vi.waitFor(() => expect(submissions).toHaveLength(1))
+    expect(vi.mocked(fetch).mock.calls.map(call => call[0])).toEqual(['/api/auth/oidc/csrf'])
+    expect(submissions[0].method).toBe('post'); expect(submissions[0].action).toContain('/api/auth/oidc/logout')
+    expect((submissions[0].querySelector('input[name="__RequestVerificationToken"]') as HTMLInputElement).value).toBe('synthetic')
     expect(localStorage.getItem('adminAuthToken')).toBeNull()
+    submit.mockRestore()
   })
   it('keeps a still-valid local session visible with an unknown exit result after disconnect', async () => {
     const { wrapper, router, auth } = await page('Server name')
-    vi.mocked(fetch).mockReset().mockResolvedValueOnce(response({ requestToken: 'synthetic' })).mockRejectedValueOnce(new Error('lost'))
+    vi.mocked(fetch).mockReset().mockRejectedValueOnce(new Error('lost'))
       .mockResolvedValueOnce(response({ authenticated: true, displayName: 'Server name', requiresReauthentication: false }))
     const leave = wrapper.findAll('button').find(button => button.text().includes('退出登录'))!
     await leave.trigger('click')
     await vi.waitFor(() => expect(auth.session.signingOut).toBe(false)); await flushPromises()
     expect(router.currentRoute.value.path).toBe('/students'); expect(wrapper.text()).toContain('退出结果未确认')
     expect(wrapper.text()).not.toContain('已退出管理后台')
-    expect(vi.mocked(fetch).mock.calls.filter(call => call[1]?.method === 'POST')).toHaveLength(1)
+    expect(vi.mocked(fetch).mock.calls.filter(call => call[1]?.method === 'POST')).toHaveLength(0)
   })
 })

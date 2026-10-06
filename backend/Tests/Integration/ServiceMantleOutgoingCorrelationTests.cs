@@ -19,23 +19,29 @@ public sealed partial class AdminOidcTests
 {
     private static readonly string[] CorrelationClients =
     [nameof(IStudentHttpClient), nameof(IMistakeHttpClient), nameof(HomeworkReferenceClient),
-        "IdentityService", "TeacherPortal", "AssistantPortal", StorageReferenceCollector.ClientName, AdminPreparedLogout.ClientName];
+        "IdentityService", "TeacherPortal", "AssistantPortal", StorageReferenceCollector.ClientName, SignaCore.Client.AspNetCore.SignaCoreHostedLoginDefaults.HttpClientName];
     private static readonly HttpRequestOptionsKey<CancellationTokenSource> CancelAtReturn = new("Test.CancelAtReturn");
 
     private WebApplicationFactory<Program> CorrelationFactory(OidcTestAuthority authority, CorrelationTransport capture, bool probe) =>
-        OidcFactory(authority, configure: services => CaptureCorrelationClients(services, capture, probe))
+        OidcFactory(authority, configure: services => CaptureCorrelationClients(services, authority, capture, probe))
             .WithWebHostBuilder(builder =>
             {
                 builder.UseSetting("MistakeService:UseSessionToken", "true");
                 builder.UseSetting("MistakeService:Url", "https://mistake.example.test");
             });
 
-    private static void CaptureCorrelationClients(IServiceCollection services, CorrelationTransport capture, bool probe)
+    private static void CaptureCorrelationClients(IServiceCollection services, OidcTestAuthority authority, CorrelationTransport capture, bool probe)
     {
         services.AddHttpClient<IStudentHttpClient, StudentHttpClient>().ConfigurePrimaryHttpMessageHandler(() => new TaggedTransport(nameof(IStudentHttpClient), capture));
         services.AddHttpClient<IMistakeHttpClient, MistakeHttpClient>().ConfigurePrimaryHttpMessageHandler(() => new TaggedTransport(nameof(IMistakeHttpClient), capture));
         services.AddHttpClient<HomeworkReferenceClient>().ConfigurePrimaryHttpMessageHandler(() => new TaggedTransport(nameof(HomeworkReferenceClient), capture));
-        foreach (var name in CorrelationClients.Skip(3))
+        // The package's shared backchannel must still reach the authority for Discovery, JWKS,
+        // and the token endpoint; every other destination (the logout preparation and the
+        // synthetic probes) is captured like the other clients.
+        services.AddHttpClient(SignaCore.Client.AspNetCore.SignaCoreHostedLoginDefaults.HttpClientName)
+            .ConfigurePrimaryHttpMessageHandler(() => new AuthoritySplitTransport(authority,
+                new TaggedTransport(SignaCore.Client.AspNetCore.SignaCoreHostedLoginDefaults.HttpClientName, capture)));
+        foreach (var name in CorrelationClients.Skip(3).Where(name => name != SignaCore.Client.AspNetCore.SignaCoreHostedLoginDefaults.HttpClientName))
             services.AddHttpClient(name).ConfigurePrimaryHttpMessageHandler(() => new TaggedTransport(name, capture));
         services.AddHttpClient("external").ConfigurePrimaryHttpMessageHandler(() => new TaggedTransport("external", capture));
         services.AddSingleton(capture);
@@ -72,7 +78,7 @@ public sealed partial class AdminOidcTests
         using var mistake = clients.CreateClient(nameof(IMistakeHttpClient)); var before = capture.Sends.Count;
         await Assert.ThrowsAsync<MistakeDownstreamException>(() => mistake.GetAsync("https://mistake.example.test/api/mistakes/item?probe=background"));
         Assert.Equal(before, capture.Sends.Count);
-        foreach (var (name, seconds) in new[] { (nameof(HomeworkReferenceClient), 30), ("IdentityService", 30), ("TeacherPortal", 10), ("AssistantPortal", 10), (StorageReferenceCollector.ClientName, 35), (AdminPreparedLogout.ClientName, 10) })
+        foreach (var (name, seconds) in new[] { (nameof(HomeworkReferenceClient), 30), ("IdentityService", 30), ("TeacherPortal", 10), ("AssistantPortal", 10), (StorageReferenceCollector.ClientName, 35), (SignaCore.Client.AspNetCore.SignaCoreHostedLoginDefaults.HttpClientName, 30) })
         {
             using var client = clients.CreateClient(name); Assert.Equal(TimeSpan.FromSeconds(seconds), client.Timeout);
         }
@@ -113,7 +119,7 @@ public sealed partial class AdminOidcTests
             var resolved = response.Headers.GetValues(CorrelationHeaderName).Single();
             if (mode == "valid") Assert.Equal("proxy-correlation-admin", resolved); else Assert.Matches("^[0-9a-f]{32}$", resolved);
             var sent = capture.Sends[name + "|" + probe]; Assert.Equal(new[] { resolved }, sent.Correlation);
-            Assert.Equal("Bearer " + OidcTestAuthority.AccessToken, sent.Authorization);
+            Assert.Equal("Bearer " + authority.LastAccessToken, sent.Authorization);
             Assert.False(sent.Cookie); Assert.False(sent.Csrf); Assert.False(sent.Host);
             Assert.Equal(name == "IdentityService" ? OidcTestAuthority.Secret : null, sent.AppSecret);
             Assert.False(response.Headers.Contains("Set-Cookie"));
@@ -162,13 +168,23 @@ public sealed partial class AdminOidcTests
                 if (name == nameof(IMistakeHttpClient))
                 {
                     var sent = context.RequestServices.GetRequiredService<CorrelationTransport>().Sends[name + "|" + probe];
-                    Assert.Equal("Bearer " + OidcTestAuthority.AccessToken, sent.Authorization); Assert.False(sent.Cookie); Assert.False(sent.Csrf); Assert.Null(sent.AppSecret);
+                    // The server ticket's access token is the only credential the handler may use.
+                    var session = await context.RequestServices.GetRequiredService<AdminSessionAccessor>().AuthenticateAsync(context);
+                    Assert.Equal("Bearer " + session.AccessToken, sent.Authorization); Assert.False(sent.Cookie); Assert.False(sent.Csrf); Assert.Null(sent.AppSecret);
                 }
             }
             Assert.Equal("student", (await context.RequestServices.GetRequiredService<IStudentHttpClient>().GetStudentAsync("student", context.RequestAborted)).Id);
             Assert.Empty(await context.RequestServices.GetRequiredService<HomeworkReferenceClient>().GetAllImagePathsAsync(context.RequestAborted));
             await context.Response.WriteAsync("sent");
         }
+    }
+
+    private sealed class AuthoritySplitTransport(OidcTestAuthority authority, TaggedTransport fallback) : DelegatingHandler(fallback)
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+            => request.RequestUri!.AbsolutePath is "/.well-known/openid-configuration" or "/keys" or "/token"
+                ? authority.DispatchAsync(request, cancellationToken)
+                : base.SendAsync(request, cancellationToken);
     }
 
     private static string CorrelationUri(string name, string probe) => (name == nameof(IMistakeHttpClient) ? "https://mistake.example.test/api/mistakes/item" : "https://downstream.test/probe") + "?probe=" + probe;
