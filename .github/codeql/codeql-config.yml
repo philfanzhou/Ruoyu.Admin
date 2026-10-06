@@ -1,0 +1,5 @@
+# CodeQL analysis configuration (#91): loads the repository's local data-flow model pack so
+# cs/log-forging recognizes AdminLogValue.Sanitize as a log-injection barrier. Paths stay at
+# the default (the whole repository) for both language suites.
+packs:
+  - .github/codeql/log-models

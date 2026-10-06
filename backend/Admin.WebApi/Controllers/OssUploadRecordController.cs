@@ -94,7 +94,7 @@ public class OssUploadRecordController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to reset upload record status: {RecordId}", id);
+            _logger.LogError(ex, "Failed to reset upload record status: {RecordId}", AdminLogValue.Sanitize(id));
             return StatusCode(500, new ErrorResponse("Failed to reset upload record status"));
         }
     }
@@ -149,7 +149,7 @@ public class OssUploadRecordController : ControllerBase
                 else
                 {
                     _logger.LogInformation("Successfully created mistake items {ItemIds} for upload record {RecordId}",
-                        string.Join(",", submitResponse.CreatedItemIds), id);
+                        AdminLogValue.Sanitize(string.Join(",", submitResponse.CreatedItemIds)), AdminLogValue.Sanitize(id));
 
                     foreach (var itemId in submitResponse.CreatedItemIds)
                     {
@@ -200,7 +200,7 @@ public class OssUploadRecordController : ControllerBase
         }
         catch (Exception ex) when (ex is not MistakeBoundaryException and not OperationCanceledException)
         {
-            _logger.LogError(ex, "Failed to assign upload record: {RecordId}", id);
+            _logger.LogError(ex, "Failed to assign upload record: {RecordId}", AdminLogValue.Sanitize(id));
             return StatusCode(500, new ErrorResponse("Failed to assign upload record"));
         }
     }
@@ -235,7 +235,7 @@ public class OssUploadRecordController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to get image: {Path}", path);
+            _logger.LogError(ex, "Failed to get image: {Path}", AdminLogValue.Sanitize(path));
             return StatusCode(500, new ErrorResponse("Failed to get image"));
         }
     }
@@ -261,7 +261,7 @@ public class OssUploadRecordController : ControllerBase
         }
         catch (HttpRequestException ex)
         {
-            _logger.LogWarning(ex, "Failed to rotate image: RecordId={RecordId}", id);
+            _logger.LogWarning(ex, "Failed to rotate image: RecordId={RecordId}", AdminLogValue.Sanitize(id));
             return BadRequest(new ErrorResponse("Failed to rotate image"));
         }
 
@@ -287,7 +287,7 @@ public class OssUploadRecordController : ControllerBase
 
             _logger.LogInformation(
                 "Removed image at index {Index} from record {RecordId}, record deleted: {Deleted}, remaining: {Remaining}",
-                imageIndex, id, response.RecordDeleted, response.RemainingImageCount);
+                imageIndex, AdminLogValue.Sanitize(id), response.RecordDeleted, response.RemainingImageCount);
 
             return Ok(new
             {
@@ -299,7 +299,7 @@ public class OssUploadRecordController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to remove image from record: {RecordId}, index: {Index}", id, imageIndex);
+            _logger.LogError(ex, "Failed to remove image from record: {RecordId}, index: {Index}", AdminLogValue.Sanitize(id), imageIndex);
             return StatusCode(500, new ErrorResponse("Failed to remove image"));
         }
     }
@@ -344,7 +344,7 @@ public class OssUploadRecordController : ControllerBase
         }
         catch (Exception ex) when (ex is not MistakeBoundaryException and not OperationCanceledException)
         {
-            _logger.LogError(ex, "Failed to check legacy status for upload record: {RecordId}", id);
+            _logger.LogError(ex, "Failed to check legacy status for upload record: {RecordId}", AdminLogValue.Sanitize(id));
             return StatusCode(500, new ErrorResponse("Failed to check legacy status"));
         }
     }
@@ -359,7 +359,7 @@ public class OssUploadRecordController : ControllerBase
     {
         try
         {
-            _logger.LogInformation("Starting legacy data cleanup for upload record: {RecordId}", id);
+            _logger.LogInformation("Starting legacy data cleanup for upload record: {RecordId}", AdminLogValue.Sanitize(id));
 
             var mistakeList = await _mistakeClient.GetMistakeItemsByUploadAsync(id, cancellationToken);
 
@@ -384,7 +384,7 @@ public class OssUploadRecordController : ControllerBase
                 return BadRequest(new ErrorResponse("无法找到该上传记录的学生ID"));
             }
 
-            _logger.LogInformation("Step 1: Calling CompleteUploadReview for {RecordId}", id);
+            _logger.LogInformation("Step 1: Calling CompleteUploadReview for {RecordId}", AdminLogValue.Sanitize(id));
             var completeReviewResult = await _mistakeClient.CompleteUploadReviewAsync(
                 id,
                 "admin-legacy-cleanup", cancellationToken);
@@ -392,7 +392,7 @@ public class OssUploadRecordController : ControllerBase
             if (!completeReviewResult.Success)
             {
                 _logger.LogWarning("CompleteUploadReview failed for {RecordId}: {Message}",
-                    id, completeReviewResult.ErrorMessage);
+                    AdminLogValue.Sanitize(id), AdminLogValue.Sanitize(completeReviewResult.ErrorMessage));
                 return BadRequest(new ErrorResponse(
                     completeReviewResult.ErrorMessage ?? "Failed to complete upload review"));
             }
@@ -401,11 +401,11 @@ public class OssUploadRecordController : ControllerBase
             if (completeReviewResult.RemovedImagePaths.Count > 0)
             {
                 _logger.LogInformation("Step 2: Removing {Count} image paths from upload record {RecordId}",
-                    completeReviewResult.RemovedImagePaths.Count, id);
+                    completeReviewResult.RemovedImagePaths.Count, AdminLogValue.Sanitize(id));
                 await _studentClient.RemoveImagesFromRecordAsync(studentId, id, completeReviewResult.RemovedImagePaths.ToList(), cancellationToken);
             }
 
-            _logger.LogInformation("Step 3: Calling DeleteUploadRecordAfterReview for {RecordId}", id);
+            _logger.LogInformation("Step 3: Calling DeleteUploadRecordAfterReview for {RecordId}", AdminLogValue.Sanitize(id));
             try
             {
                 await _studentClient.DeleteUploadRecordAfterReviewAsync(studentId, id, cancellationToken);
@@ -413,11 +413,11 @@ public class OssUploadRecordController : ControllerBase
             catch (HttpRequestException ex)
             {
                 // No longer relays the downstream message: fixed local result only.
-                _logger.LogWarning(ex, "DeleteUploadRecordAfterReview failed for {RecordId}", id);
+                _logger.LogWarning(ex, "DeleteUploadRecordAfterReview failed for {RecordId}", AdminLogValue.Sanitize(id));
                 return BadRequest(new ErrorResponse("Failed to delete upload record"));
             }
 
-            _logger.LogInformation("Legacy data cleanup completed successfully for {RecordId}", id);
+            _logger.LogInformation("Legacy data cleanup completed successfully for {RecordId}", AdminLogValue.Sanitize(id));
 
             return Ok(new
             {
@@ -428,7 +428,7 @@ public class OssUploadRecordController : ControllerBase
         }
         catch (Exception ex) when (ex is not MistakeBoundaryException and not OperationCanceledException)
         {
-            _logger.LogError(ex, "Failed to clean legacy data for upload record: {RecordId}", id);
+            _logger.LogError(ex, "Failed to clean legacy data for upload record: {RecordId}", AdminLogValue.Sanitize(id));
             return StatusCode(500, new ErrorResponse("Failed to clean legacy data"));
         }
     }
@@ -448,7 +448,7 @@ public class OssUploadRecordController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to analyze upload record: {RecordId}", id);
+            _logger.LogError(ex, "Failed to analyze upload record: {RecordId}", AdminLogValue.Sanitize(id));
             return StatusCode(500, new ErrorResponse("Failed to analyze upload record"));
         }
     }

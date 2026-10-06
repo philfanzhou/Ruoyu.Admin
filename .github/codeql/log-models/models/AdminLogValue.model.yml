@@ -1,0 +1,10 @@
+# Data-flow model (#91): AdminLogValue.Sanitize is the single log-injection barrier of this
+# repository. Wrapping a user-controlled value in that call closes the cs/log-forging path —
+# the runtime normalization replaces control/format/line/paragraph-separator runes with
+# spaces before the value reaches ILogger.
+extensions:
+  - addsTo:
+      pack: codeql/csharp-all
+      extensible: barrierModel
+    data:
+      - ["Admin.WebApi", "AdminLogValue", false, "Sanitize", "(System.String)", "", "Argument[0]", "log-injection", "manual"]

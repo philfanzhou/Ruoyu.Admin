@@ -44,6 +44,8 @@ jobs:
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
+          # Local model pack (#91): declares AdminLogValue.Sanitize as a log-injection barrier.
+          config: .github/codeql/codeql-config.yml
 
       - name: Build C#
         if: matrix.language == 'csharp'
