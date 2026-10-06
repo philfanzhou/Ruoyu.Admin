@@ -8,13 +8,11 @@ using Admin.WebApi.Persistence;
 using Admin.WebApi.Services;
 using Admin.WebApi.Tests.Authentication;
 using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.Authentication.Cookies;
-using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Testing;
-using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -25,6 +23,7 @@ using Moq;
 using Ruoyu.Admin.Common.Oss;
 using Ruoyu.Admin.ServiceClients;
 using Ruoyu.Admin.ServiceClients.StorageReferences;
+using SignaCore.Client.AspNetCore;
 using Xunit;
 
 namespace Admin.WebApi.Tests.Integration;
@@ -61,12 +60,29 @@ public sealed partial class AdminOidcTests
         return SessionCookie(response);
     }
 
-    private static async Task<(string Key, AuthenticationTicket Ticket)> Stored(WebApplicationFactory<Program> factory, string cookie)
+    // The session cookie value is the opaque store key itself; the ticket it references keeps
+    // the principal and both tokens server-side.
+    private static async Task<(string Key, SignaCoreSessionTicket Ticket)> Stored(WebApplicationFactory<Program> factory, string cookie)
     {
-        var options = factory.Services.GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>().Get(AdminOidcSettings.SessionScheme);
-        var reference = options.TicketDataFormat.Unprotect(cookie[(cookie.IndexOf('=') + 1)..])!;
-        var key = Assert.Single(reference.Principal.Claims).Value;
-        return (key, (await factory.Services.GetRequiredService<MemoryTicketStore>().RetrieveAsync(key))!);
+        var key = cookie[(cookie.IndexOf('=') + 1)..];
+        return (key, (await factory.Services.GetRequiredService<ITicketStore>().RetrieveAsync(key, CancellationToken.None))!);
+    }
+
+    // A forged ticket enters only through the public ITicketStore contract, exactly like any
+    // hypothetical corrupt-store content the accessor must fail closed against.
+    private static async Task<string> ForgedTicket(WebApplicationFactory<Program> factory, string? subject = "fake-subject",
+        string issuer = OidcTestAuthority.Issuer, string? accessToken = "forged-access-token", params Claim[] extraClaims)
+    {
+        var claims = new List<Claim>();
+        if (issuer is not null) claims.Add(new("iss", issuer));
+        if (subject is not null) claims.Add(new("sub", subject));
+        claims.Add(new Claim("name", "fake-name"));
+        claims.AddRange(extraClaims);
+        var ticket = new SignaCoreSessionTicket(
+            new ClaimsPrincipal(new ClaimsIdentity(claims, SignaCoreHostedLoginDefaults.SessionAuthenticationScheme)),
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddHours(1), accessToken ?? "", "forged-id-token");
+        var key = await factory.Services.GetRequiredService<ITicketStore>().StoreAsync(ticket, CancellationToken.None);
+        return AdminOidcSettings.SessionCookie + "=" + key;
     }
 
     private static async Task<HttpResponseMessage> Api(HttpClient client, string path, string? cookie = null,
@@ -102,7 +118,6 @@ public sealed partial class AdminOidcTests
             Assert.Null(response.Headers.Location);
             Assert.Equal("application/json", response.Content.Headers.ContentType!.MediaType);
             Assert.Equal("{\"error\":\"" + error + "\"}", await response.Content.ReadAsStringAsync());
-            Assert.DoesNotContain(OidcTestAuthority.AccessToken, await response.Content.ReadAsStringAsync());
         }
     }
 
@@ -125,14 +140,20 @@ public sealed partial class AdminOidcTests
         foreach (var path in new[] { "/api/teacher-portal/admin/users", "/api/assistant-portal/admin/users" })
             Assert.Equal(HttpStatusCode.OK, (await Api(client, path, cookie)).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await Api(client, "/api/identity/admin/users", cookie)).StatusCode);
-        await Rejected(await Api(client, "/api/auth/logout", cookie, "POST"), 400, "csrf_invalid");
+        // The package's logout endpoint owns its gate: no antiforgery token, no session change.
+        using var logout = await Api(client, AdminOidcSettings.LogoutPath, cookie, "POST");
+        Assert.Equal(HttpStatusCode.BadRequest, logout.StatusCode);
+        Assert.Equal("{\"outcome\":\"csrf_rejected\"}", await logout.Content.ReadAsStringAsync());
         // The accessor returns the server token, without leaking it through formatting.
         using var scope = factory.Services.CreateScope();
         var context = new Microsoft.AspNetCore.Http.DefaultHttpContext { RequestServices = scope.ServiceProvider };
         context.Request.Headers.Cookie = cookie;
         var session = await context.RequestServices.GetRequiredService<AdminSessionAccessor>().AuthenticateAsync(context);
-        Assert.Equal(OidcTestAuthority.AccessToken, session.AccessToken);
-        Assert.DoesNotContain(OidcTestAuthority.AccessToken, session.ToString());
+        Assert.Equal(authority.LastAccessToken, session.AccessToken);
+        Assert.DoesNotContain(authority.LastAccessToken!, session.ToString());
+        // The boundary principal carries only the verified identity; ID-token roles never enter it.
+        Assert.False(session.Principal!.IsInRole("admin"));
+        Assert.Null(session.Principal.FindFirst("role"));
     }
 
     [Theory]
@@ -171,10 +192,8 @@ public sealed partial class AdminOidcTests
 
     [Theory]
     [InlineData("anonymous")][InlineData("missing")][InlineData("expired")][InlineData("issuer")]
-    [InlineData("subject-stamp")][InlineData("issuer-stamp")][InlineData("sub-empty")]
-    [InlineData("sub-duplicate")][InlineData("iss-duplicate")]
-    [InlineData("token-missing")][InlineData("deadline-invalid")][InlineData("deadline-offset-missing")]
-    [InlineData("deadline-exact")][InlineData("deadline-past")]
+    [InlineData("subject-empty")][InlineData("subject-missing")][InlineData("sub-duplicate")]
+    [InlineData("iss-duplicate")]
     public async Task SessionApi_InvalidIdentityTicketOrAccessTokenFailsClosed(string defect)
     {
         using var authority = new OidcTestAuthority();
@@ -183,32 +202,25 @@ public sealed partial class AdminOidcTests
         using var factory = SessionFactory(authority, probe, time);
         using var client = Browser(factory);
         var cookie = await LoginSession(client, authority);
-        var (key, ticket) = await Stored(factory, cookie);
-        var store = factory.Services.GetRequiredService<MemoryTicketStore>();
+        var (key, _) = await Stored(factory, cookie);
         if (defect == "anonymous") cookie = "";
-        else if (defect == "missing") await store.RemoveAsync(key);
-        else if (defect == "expired") time.Advance(TimeSpan.FromHours(8));
+        else if (defect == "missing") await factory.Services.GetRequiredService<ITicketStore>().RemoveAsync(key, CancellationToken.None);
+        else if (defect == "expired")
+            // The session never outlives the access token; the store reclaims it on read, and
+            // an expired session is indistinguishable from an absent one by design.
+            time.Advance(TimeSpan.FromMinutes(16));
         else
-        {
-            var claims = ticket.Principal.Claims.ToList();
-            if (defect == "issuer") { claims.RemoveAll(c => c.Type == "iss"); claims.Add(new("iss", "https://wrong.example.test")); }
-            if (defect == "sub-empty") { claims.RemoveAll(c => c.Type == "sub"); claims.Add(new("sub", " ")); }
-            if (defect == "sub-duplicate") claims.Add(new("sub", "fake-subject"));
-            if (defect == "iss-duplicate") claims.Add(new("iss", OidcTestAuthority.Issuer));
-            ticket = new(new ClaimsPrincipal(new ClaimsIdentity(claims, AdminOidcSettings.SessionScheme)), ticket.Properties, AdminOidcSettings.SessionScheme);
-            if (defect == "subject-stamp") ticket.Properties.Items["oidc.subject"] = "wrong";
-            if (defect == "issuer-stamp") ticket.Properties.Items.Remove("oidc.issuer");
-            if (defect == "token-missing") ticket.Properties.StoreTokens(ticket.Properties.GetTokens().Where(t => t.Name != "access_token"));
-            if (defect.StartsWith("deadline")) ticket.Properties.UpdateTokenValue("expires_at", defect switch
+            cookie = defect switch
             {
-                "deadline-invalid" => "tomorrow", "deadline-offset-missing" => "2099-01-01T00:00:00.0000000",
-                "deadline-exact" => time.GetUtcNow().ToString("o"), _ => time.GetUtcNow().AddSeconds(-1).ToString("o")
-            });
-            await store.RenewAsync(key, ticket);
-        }
+                "issuer" => await ForgedTicket(factory, issuer: "https://wrong.example.test"),
+                "subject-empty" => await ForgedTicket(factory, subject: " "),
+                "subject-missing" => await ForgedTicket(factory, subject: null),
+                "sub-duplicate" => await ForgedTicket(factory, extraClaims: new Claim("sub", "duplicate-subject")),
+                _ => await ForgedTicket(factory, extraClaims: new Claim("iss", OidcTestAuthority.Issuer))
+            };
         foreach (var path in new[] { "/api/admin/session-probe", "/api/auth/csrf" })
-            await Rejected(await Api(client, path, cookie), 401, defect is "deadline-exact" or "deadline-past" ? "reauthentication_required" : "unauthorized");
-        await Rejected(await Api(client, "/api/admin/oss-audit/records/1/resolve", cookie, "POST"), 401, defect is "deadline-exact" or "deadline-past" ? "reauthentication_required" : "unauthorized");
+            await Rejected(await Api(client, path, cookie), 401, "unauthorized");
+        await Rejected(await Api(client, "/api/admin/oss-audit/records/1/resolve", cookie, "POST"), 401, "unauthorized");
         Assert.Equal(0, probe.Reads);
         using var scope = factory.Services.CreateScope();
         var context = new Microsoft.AspNetCore.Http.DefaultHttpContext { RequestServices = scope.ServiceProvider };
@@ -221,18 +233,15 @@ public sealed partial class AdminOidcTests
     }
 
     [Fact]
-    public async Task SessionApi_RestartWithSameProtectionKeysCannotReviveServerTicket()
+    public async Task SessionApi_RestartCannotReviveServerTicket()
     {
         using var authority = new OidcTestAuthority();
-        var protection = new EphemeralDataProtectionProvider();
-        using var original = SessionFactory(authority, new SessionBusinessProbe(), protection: protection);
+        using var original = SessionFactory(authority, new SessionBusinessProbe());
         using var client = Browser(original);
         var cookie = await LoginSession(client, authority);
         var probe = new SessionBusinessProbe();
-        using var restarted = SessionFactory(authority, probe, protection: protection);
+        using var restarted = SessionFactory(authority, probe);
         using var browser = Browser(restarted);
-        var options = restarted.Services.GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>().Get(AdminOidcSettings.SessionScheme);
-        Assert.NotNull(options.TicketDataFormat.Unprotect(cookie[(cookie.IndexOf('=') + 1)..]));
         await Rejected(await Api(browser, "/api/admin/session-probe", cookie), 401, "unauthorized");
         await Rejected(await Api(browser, "/api/auth/csrf", cookie), 401, "unauthorized");
         Assert.Equal(0, probe.Reads);
@@ -247,15 +256,14 @@ public sealed partial class AdminOidcTests
         using var client = Browser(factory);
         var cookie = await LoginSession(client, authority);
         Assert.Equal(HttpStatusCode.OK, (await Api(client, "/api/admin/session-probe", cookie)).StatusCode);
-        var (key, ticket) = await Stored(factory, cookie);
-        ticket = new(new ClaimsPrincipal(new ClaimsIdentity(ticket.Principal.Claims.Append(new Claim(ClaimTypes.Role, "admin")), AdminOidcSettings.SessionScheme)), ticket.Properties, AdminOidcSettings.SessionScheme);
-        await factory.Services.GetRequiredService<MemoryTicketStore>().RenewAsync(key, ticket);
+        // A forged role claim on the ticket principal never bypasses the whitelist.
+        var forged = await ForgedTicket(factory, extraClaims: new Claim(ClaimTypes.Role, "admin"));
         foreach (var whitelist in new[] { new List<string> { "someone-else" }, new List<string>() })
         {
             probe.Admins.CurrentValue.AdminUserIds = whitelist;
             foreach (var path in new[] { "/api/admin/session-probe", "/api/auth/csrf" })
-                await Rejected(await Api(client, path, cookie), 403, "forbidden");
-            await Rejected(await Api(client, "/api/admin/oss-audit/records/1/resolve", cookie, "POST"), 403, "forbidden");
+                await Rejected(await Api(client, path, forged), 403, "forbidden");
+            await Rejected(await Api(client, "/api/admin/oss-audit/records/1/resolve", forged, "POST"), 403, "forbidden");
         }
         Assert.Equal(1, probe.Reads);
         probe.Oss.Verify(s => s.DeleteAsync(It.IsAny<string>()), Times.Never);
@@ -295,12 +303,8 @@ public sealed partial class AdminOidcTests
         using var client = Browser(factory);
         var first = await LoginSession(client, authority);
         var csrf = await Csrf(client, first);
-        var second = await LoginSession(client, authority);
-        var (key, ticket) = await Stored(factory, second);
-        ticket.Properties.Items["oidc.subject"] = "fake-second";
-        ticket = new(new ClaimsPrincipal(new ClaimsIdentity([new Claim("iss", OidcTestAuthority.Issuer), new Claim("sub", "fake-second")], AdminOidcSettings.SessionScheme)), ticket.Properties, AdminOidcSettings.SessionScheme);
+        var second = await ForgedTicket(factory, subject: "fake-second");
         probe.Admins.CurrentValue.AdminUserIds.Add("fake-second");
-        await factory.Services.GetRequiredService<MemoryTicketStore>().RenewAsync(key, ticket);
         await Rejected(await Api(client, "/api/admin/session-probe", second + "; " + csrf.Cookie, "DELETE", csrf: [csrf.Token]), 400, "csrf_invalid");
         var valid = first + "; " + csrf.Cookie;
         var requests = Enumerable.Range(0, 8).Select(i => Api(client, "/api/admin/session-probe", valid, "POST", csrf: [i % 2 == 0 ? csrf.Token : "wrong"]));
@@ -342,17 +346,10 @@ public sealed partial class AdminOidcTests
             Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/health/ready")).StatusCode);
             var callback = await client.PostAsJsonAsync("/api/auth/callback", new { userId = "fake-subject" });
             Assert.Equal("{\"roles\":[\"admin\"]}", await callback.Content.ReadAsStringAsync());
-            // All active proxy/logout surfaces reject retired browser credentials before outbound I/O.
+            // All active proxy surfaces reject retired browser credentials before outbound I/O.
             var bearerBefore = probe.BearerAuthentications;
-            foreach (var (path, error) in new[]
-            {
-                ("/api/identity/admin/users", "unauthorized"),
-                ("/api/teacher-portal/admin/users", "unauthorized"),
-                ("/api/assistant-portal/admin/users", "unauthorized"),
-                ("/api/auth/logout", "unauthorized")
-            })
-                await Rejected(await Api(client, path, legacy, path.EndsWith("logout") ? "POST" : "GET",
-                    authorization: ["Bearer invalid"]), 401, error);
+            foreach (var path in new[] { "/api/identity/admin/users", "/api/teacher-portal/admin/users", "/api/assistant-portal/admin/users" })
+                await Rejected(await Api(client, path, legacy, authorization: ["Bearer invalid"]), 401, "unauthorized");
             Assert.Equal(bearerBefore, probe.BearerAuthentications);
             Assert.Equal(0, probe.Identity.Calls);
         }
@@ -561,7 +558,7 @@ internal sealed class IdentityStub : HttpMessageHandler
     {
         Interlocked.Increment(ref Calls);
         return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new
-            { success = true, accessToken = "fictitious-legacy-token", refreshToken = "", expiresAt = DateTimeOffset.UtcNow.AddMinutes(5).ToUnixTimeSeconds() }) });
+        { success = true, accessToken = "fictitious-legacy-token", refreshToken = "", expiresAt = DateTimeOffset.UtcNow.AddMinutes(5).ToUnixTimeSeconds() }) });
     }
 }
 internal sealed class MutableAdmins : IOptionsMonitor<AdminPortalOptions>
@@ -597,8 +594,6 @@ internal sealed class UnreadPasswordStream : MemoryStream
 {
     public override int Read(byte[] buffer, int offset, int count) => throw new InvalidOperationException("Password body must not be read");
     public override int Read(Span<byte> buffer) => throw new InvalidOperationException("Password body must not be read");
-    public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
-        => throw new InvalidOperationException("Password body must not be read");
-    public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
-        => throw new InvalidOperationException("Password body must not be read");
+    public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Password body must not be read");
+    public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) => throw new InvalidOperationException("Password body must not be read");
 }

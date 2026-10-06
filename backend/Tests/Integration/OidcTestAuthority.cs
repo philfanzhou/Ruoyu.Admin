@@ -14,20 +14,18 @@ internal sealed class OidcTestAuthority : HttpMessageHandler
     internal const string Issuer = "https://identity.example.test";
     internal const string ClientId = "oidc-test-app";
     internal const string Secret = "fictitious-oidc-secret-canary";
-    internal const string AccessToken = "fictitious-access-token-canary";
     internal const string RedirectUri = "https://admin.example.test/api/auth/oidc/callback";
     private readonly RSA _rsa = RSA.Create(2048);
     // Serializes every segment of the /token branch that touches shared mutable state (the
-    // _rsa signing instance, LastVerifier, LastIdToken) and the same-family LegacyBearer
-    // signing. On darwin arm64 / .NET 10, concurrent RSA.SignData on ONE instance can
-    // intermittently produce a silently INVALID signature (no exception), which made one of
-    // two parallel callbacks fail ID-token validation and redirect to
-    // /login?authError=sign_in_failed (issue #63). The lock deliberately does NOT cover the
-    // HoldToken infinite wait, the TokenFailure early returns, or the missing-code 400:
-    // holding-, failure-, and cancellation-shaped tests must keep their exact semantics, and
-    // the guarded section never awaits so the gate is always released promptly.
+    // _rsa signing instance, LastVerifier, LastIdToken, LastAccessToken) and the
+    // same-family LegacyBearer signing. Concurrent RSA.SignData on ONE instance can
+    // intermittently produce a silently INVALID signature (no exception, issue #63). The lock
+    // deliberately does NOT cover the HoldToken infinite wait, the TokenFailure early
+    // returns, or the missing-code 400: holding-, failure-, and cancellation-shaped tests
+    // must keep their exact semantics, and the guarded section never awaits so the gate is
+    // always released promptly.
     private readonly object _tokenGate = new();
-    private readonly ConcurrentDictionary<string, (string Nonce, string Challenge, string Defect, string Subject, string AccessToken)> _codes = [];
+    private readonly ConcurrentDictionary<string, (string Nonce, string Challenge, string Defect, string Subject, string AccessDefect)> _codes = [];
     internal readonly ConcurrentQueue<Dictionary<string, string>> TokenForms = [];
     internal readonly ConcurrentQueue<string?> AuthorizationHeaders = [];
     internal string? DiscoveryDefect { get; set; }
@@ -37,12 +35,13 @@ internal sealed class OidcTestAuthority : HttpMessageHandler
     internal TaskCompletionSource DiscoveryEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     internal TaskCompletionSource TokenEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     internal string? LastIdToken { get; private set; }
+    internal string? LastAccessToken { get; private set; }
     internal string? LastVerifier { get; private set; }
     internal int Redeems => TokenForms.Count;
-    internal string Code(IDictionary<string, string> query, string defect = "valid", string subject = "fake-subject", string accessToken = AccessToken)
+    internal string Code(IDictionary<string, string> query, string defect = "valid", string subject = "fake-subject", string accessDefect = "valid")
     {
         var code = "fictitious-code-" + Guid.NewGuid().ToString("N");
-        _codes[code] = (query["nonce"], query["code_challenge"], defect, subject, accessToken);
+        _codes[code] = (query["nonce"], query["code_challenge"], defect, subject, accessDefect);
         return code;
     }
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -60,8 +59,7 @@ internal sealed class OidcTestAuthority : HttpMessageHandler
                 authorization_endpoint = Issuer + "/authorize", token_endpoint = Issuer + "/token", jwks_uri = Issuer + "/keys",
                 response_types_supported = new[] { "code" }, subject_types_supported = new[] { "public" },
                 id_token_signing_alg_values_supported = new[] { "RS256" }, scopes_supported = new[] { "openid", "profile" },
-                code_challenge_methods_supported = new[] { "S256" },
-                pushed_authorization_request_endpoint = Issuer + "/must-not-use-par"
+                code_challenge_methods_supported = new[] { "S256" }
             }));
         }
         if (request.RequestUri.AbsolutePath == "/keys")
@@ -87,11 +85,14 @@ internal sealed class OidcTestAuthority : HttpMessageHandler
             if (WebEncoders.Base64UrlEncode(SHA256.HashData(Encoding.ASCII.GetBytes(LastVerifier))) != handshake.Challenge)
                 throw new InvalidOperationException("fake.pkce_mismatch");
             LastIdToken = Mint(handshake.Nonce, handshake.Defect, handshake.Subject);
-            return Json(JsonSerializer.Serialize(new { access_token = handshake.AccessToken, token_type = "Bearer", expires_in = 900,
+            LastAccessToken = MintAccess(handshake.Subject, handshake.AccessDefect);
+            return Json(JsonSerializer.Serialize(new { access_token = LastAccessToken, token_type = "Bearer", expires_in = 900,
                 id_token = LastIdToken, scope = "openid profile" }));
         }
     }
     internal SecurityKey SigningKey => new RsaSecurityKey(_rsa) { KeyId = "test-kid" };
+    internal Task<HttpResponseMessage> DispatchAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        => SendAsync(request, cancellationToken);
     internal string LegacyBearer()
     {
         var header = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes("{\"alg\":\"RS256\",\"typ\":\"at+jwt\",\"kid\":\"test-kid\"}"));
@@ -116,8 +117,6 @@ internal sealed class OidcTestAuthority : HttpMessageHandler
             ["nonce"] = defect == "nonce" ? "wrong-nonce" : nonce,
             ["name"] = "fake-name", ["nickname"] = "fake-display", ["role"] = "admin"
         };
-        if (defect == "aud-array") payload["aud"] = new[] { ClientId, "additional" };
-        if (defect == "aud-single-array") payload["aud"] = new[] { ClientId };
         if (defect == "sub-missing") payload.Remove("sub");
         if (defect == "sub-empty") payload["sub"] = "";
         if (defect == "sub-array") payload["sub"] = new[] { "one", "two" };
@@ -134,6 +133,36 @@ internal sealed class OidcTestAuthority : HttpMessageHandler
         if (defect == "unsigned") return input + ".";
         using var other = RSA.Create(2048);
         var signature = (defect == "signature" ? other : _rsa).SignData(Encoding.ASCII.GetBytes(input), HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        return input + "." + WebEncoders.Base64UrlEncode(signature);
+    }
+
+    /// <summary>
+    /// The SignaCore access token of the confidential code flow: an RS256 <c>at+jwt</c> signed
+    /// by the authority key and correlated with the ID token's issuer and subject — exactly the
+    /// shape the pre-sign-in authorization gate strictly validates before the whitelist runs.
+    /// </summary>
+    private string MintAccess(string subject, string defect)
+    {
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var header = JsonSerializer.Serialize(new
+        {
+            alg = defect == "access-alg" ? "HS256" : "RS256",
+            typ = defect == "access-typ" ? "JWT" : "at+jwt",
+            kid = defect == "access-kid" ? "unknown-kid" : "test-kid"
+        });
+        var payload = new Dictionary<string, object?>
+        {
+            ["iss"] = Issuer,
+            ["aud"] = defect == "access-aud" ? "wrong-audience" : ClientId,
+            ["sub"] = defect == "access-subject" ? "different-subject" : subject,
+            ["role"] = "admin",
+            ["iat"] = now, ["nbf"] = now - 10,
+            ["exp"] = defect == "access-expired" ? now - 120 : now + 3600
+        };
+        if (defect == "access-opaque") return "fictitious-access-token-canary";
+        var input = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(header)) + "." + WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(payload)));
+        using var other = RSA.Create(2048);
+        var signature = (defect == "access-signature" ? other : _rsa).SignData(Encoding.ASCII.GetBytes(input), HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
         return input + "." + WebEncoders.Base64UrlEncode(signature);
     }
     private static HttpResponseMessage Json(string value) => new(HttpStatusCode.OK) { Content = new StringContent(value, Encoding.UTF8, "application/json") };

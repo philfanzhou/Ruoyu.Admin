@@ -1,61 +1,60 @@
-using System.Globalization;
 using System.Security.Claims;
-using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.Extensions.Options;
+using SignaCore.Client.AspNetCore;
 
 namespace Admin.WebApi.Authentication;
 
-/// <summary>Reads only the explicitly authenticated server ticket, never browser credentials or mixed User claims.</summary>
-internal sealed class AdminSessionAccessor(AdminOidcSettings settings, IOptionsMonitor<AdminPortalOptions> admins, TimeProvider time,
-    IOptionsMonitor<CookieAuthenticationOptions>? cookieOptions = null, MemoryTicketStore? tickets = null)
+/// <summary>
+/// Reads only the SignaCore hosted-login server-side session ticket, never browser credentials
+/// or mixed <see cref="HttpContext.User"/> claims. The session cookie carries the opaque store
+/// key alone, so resolving the store directly keeps the Admin CSRF boundary principal-bound
+/// (the package's session handler would validate it user-neutrally) while the ticket, the
+/// access token, and the ID token never leave the server. An unknown, revoked, and expired
+/// session are indistinguishable by design: the store reclaims expired tickets on read.
+/// </summary>
+internal sealed class AdminSessionAccessor(AdminOidcSettings settings, IOptionsMonitor<AdminPortalOptions> admins,
+    IOptionsMonitor<SignaCoreHostedLoginOptions> login, ITicketStore tickets)
 {
-    internal async Task<AdminSessionResult> AuthenticateAsync(HttpContext context, bool currentTicket = false)
+    internal async Task<AdminSessionResult> AuthenticateAsync(HttpContext context)
     {
         context.RequestAborted.ThrowIfCancellationRequested();
         if (context.Request.Headers.ContainsKey("Authorization")) return new(401);
-        var authenticated = await context.AuthenticateAsync(AdminOidcSettings.SessionScheme);
+        var cookieName = login.CurrentValue.SessionCookieName;
+        var key = context.Request.Cookies[cookieName];
+        if (string.IsNullOrEmpty(key)) return new(401);
+        var ticket = await tickets.RetrieveAsync(key, context.RequestAborted);
         context.RequestAborted.ThrowIfCancellationRequested();
-        if (!authenticated.Succeeded || authenticated.Principal is null || authenticated.Properties is null) return new(401);
-        // CookieAuthenticationHandler caches AuthenticateAsync within a request. Outgoing sends
-        // additionally retrieve the current server ticket, so revoke/renew cannot reuse that snapshot.
-        var ticket = authenticated.Ticket;
-        if (currentTicket)
-        {
-            if (cookieOptions is null || tickets is null) return new(401);
-            var options = cookieOptions.Get(AdminOidcSettings.SessionScheme);
-            var cookie = options.CookieManager.GetRequestCookie(context, options.Cookie.Name!);
-            var reference = cookie is null ? null : options.TicketDataFormat.Unprotect(cookie);
-            var claims = reference?.Principal.Claims.ToArray();
-            if (claims is not { Length: 1 } || claims[0].Type != "Microsoft.AspNetCore.Authentication.Cookies-SessionId") return new(401);
-            ticket = await tickets.RetrieveAsync(claims[0].Value);
-            context.RequestAborted.ThrowIfCancellationRequested();
-            if (ticket is null || ticket.AuthenticationScheme != AdminOidcSettings.SessionScheme) return new(401);
-        }
-        var principal = ticket!.Principal;
+        if (ticket is null) return new(401);
+        var principal = ticket.Principal;
         var issuers = principal.FindAll("iss").ToArray();
         var subjects = principal.FindAll("sub").ToArray();
-        var properties = ticket.Properties;
+        // Only the ticket's own verified identity claims decide; roles are never trusted.
         if (principal.Identity?.IsAuthenticated != true || issuers.Length != 1 || subjects.Length != 1
-            || issuers[0].Value != settings.Authority || string.IsNullOrWhiteSpace(subjects[0].Value)
-            || !properties.Items.TryGetValue("oidc.issuer", out var issuer) || issuer != issuers[0].Value
-            || !properties.Items.TryGetValue("oidc.subject", out var subject) || subject != subjects[0].Value) return new(401);
-        if (!admins.CurrentValue.AdminUserIds.Contains(subject, StringComparer.OrdinalIgnoreCase)) return new(403);
-        var token = properties.GetTokenValue("access_token");
-        var deadline = properties.GetTokenValue("expires_at");
-        // Framework SaveTokens writes round-trip ISO timestamps. No culture-dependent dates,
-        // missing offsets, permissive parsing or session-lifetime fallback may authorize a request.
-        if (string.IsNullOrWhiteSpace(token)
-            || currentTicket && token.Any(character => char.IsWhiteSpace(character) || char.IsControl(character))
-            || !DateTimeOffset.TryParseExact(deadline, "o", CultureInfo.InvariantCulture, DateTimeStyles.None, out var expires)
-            || deadline != expires.ToString("o", CultureInfo.InvariantCulture)) return new(401);
-        if (time.GetUtcNow() >= expires) return new(401, error: "reauthentication_required", displayName: principal.FindFirst("display_name")?.Value);
-        return new(200, principal, token);
+            || issuers[0].Value != settings.Authority || string.IsNullOrWhiteSpace(subjects[0].Value)) return new(401);
+        if (!admins.CurrentValue.AdminUserIds.Contains(subjects[0].Value, StringComparer.OrdinalIgnoreCase)) return new(403);
+        // Only the verified identity and the display name become the boundary principal; the
+        // ticket's other ID-token claims (including any role claim) are never trusted here,
+        // matching the previous contract where roles could not authorize anything.
+        var display = principal.FindFirst("nickname")?.Value ?? principal.FindFirst("name")?.Value;
+        var identity = new ClaimsIdentity(
+        [
+            new Claim("iss", issuers[0].Value),
+            new Claim("sub", subjects[0].Value),
+            ..(display is null ? [] : new[] { new Claim("display_name", display) })
+        ], "AdminSession");
+        return new(200, new ClaimsPrincipal(identity), ticket.AccessToken, displayName: display);
+    }
+
+    internal string? SessionKey(HttpContext context)
+    {
+        var key = context.Request.Cookies[login.CurrentValue.SessionCookieName];
+        return string.IsNullOrEmpty(key) ? null : key;
     }
 }
 
 // Keep secrets out of implicit record/diagnostic formatting.
-internal sealed class AdminSessionResult(int statusCode, ClaimsPrincipal? principal = null, string? accessToken = null, string? error = null, string? displayName = null)
+internal sealed class AdminSessionResult(int statusCode, ClaimsPrincipal? principal = null, string? accessToken = null,
+    string? error = null, string? displayName = null)
 {
     internal int StatusCode { get; } = statusCode;
     internal string? Error { get; } = error ?? (statusCode == 403 ? "forbidden" : statusCode == 401 ? "unauthorized" : null);

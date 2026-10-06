@@ -8,8 +8,6 @@ using Admin.WebApi.Models;
 using Admin.WebApi.Tests.Authentication;
 using Admin.WebApi.Tests.ServiceClients;
 using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.Authentication.Cookies;
-using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
@@ -30,8 +28,8 @@ public sealed partial class AdminOidcTests
         ManualOidcTime? time = null, OidcLogCapture? logs = null, Uri? origin = null)
         => CreateFactory(configureTestServices: services =>
         {
-            services.Configure<OpenIdConnectOptions>(AdminOidcSettings.OidcScheme, options =>
-                options.Backchannel = new HttpClient(authority, false) { Timeout = TimeSpan.FromSeconds(2) });
+            services.AddHttpClient(SignaCore.Client.AspNetCore.SignaCoreHostedLoginDefaults.HttpClientName)
+                .ConfigurePrimaryHttpMessageHandler(() => authority);
             if (capture is not null) services.AddHttpClient<IMistakeHttpClient, MistakeHttpClient>().ConfigurePrimaryHttpMessageHandler(() => capture);
             services.Replace(ServiceDescriptor.Singleton<IOptionsMonitor<AdminPortalOptions>>(admins));
             services.Replace(ServiceDescriptor.Singleton(student.Object));
@@ -47,7 +45,7 @@ public sealed partial class AdminOidcTests
         {
             ["MistakeService:UseSessionToken"] = "true", ["MistakeService:Url"] = origin?.GetLeftPart(UriPartial.Authority) ?? "https://mistake.example.test",
             ["AdminOidc:RedirectUri"] = OidcTestAuthority.RedirectUri,
-            ["AdminOidc:PostLogoutRedirectUri"] = "https://admin.example.test/api/auth/oidc/logout-callback",
+            ["AdminOidc:PostLogoutRedirectUri"] = "https://admin.example.test" + AdminOidcSettings.LogoutReturnPath,
             ["IdentityService:Authority"] = OidcTestAuthority.Issuer,
             ["IdentityService:AppId"] = OidcTestAuthority.ClientId, ["IdentityService:AppSecret"] = OidcTestAuthority.Secret
         });
@@ -62,82 +60,70 @@ public sealed partial class AdminOidcTests
     }
 
     [Theory]
-    [InlineData("anonymous")][InlineData("missing")][InlineData("stamp")][InlineData("issuer")]
-    [InlineData("no-token")][InlineData("bad-expiry")][InlineData("expired")][InlineData("allowlist")]
+    [InlineData("anonymous")][InlineData("missing")][InlineData("forged-subject")][InlineData("forged-issuer")]
+    [InlineData("expired")][InlineData("allowlist")]
     [InlineData("authorization")][InlineData("old-cookie")]
     public async Task MistakeSession_RealCodeHandshakeRejectsInvalidCurrentTicketBeforeAllBusinessIo(string defect)
     {
         using var authority = new OidcTestAuthority(); var capture = new MistakeSessionCapture();
         var admins = new MutableAdmins(); var student = MistakeStudent(); var oss = new Mock<IOssService>(); var time = new ManualOidcTime();
         using var factory = MistakeFactory(authority, capture, admins, student, oss, time); using var browser = Browser(factory);
-        var cookie = await LoginSession(browser, authority); var (key, ticket) = await Stored(factory, cookie);
-        var store = factory.Services.GetRequiredService<MemoryTicketStore>();
+        var cookie = await LoginSession(browser, authority); var (key, _) = await Stored(factory, cookie);
+        var store = factory.Services.GetRequiredService<SignaCore.Client.AspNetCore.ITicketStore>();
         if (defect == "anonymous") cookie = "";
         if (defect == "old-cookie") cookie = "adminAuthToken=" + authority.LegacyBearer();
-        if (defect == "missing") await store.RemoveAsync(key);
+        if (defect == "missing") await store.RemoveAsync(key, CancellationToken.None);
         if (defect == "allowlist") admins.CurrentValue.AdminUserIds.Clear();
-        if (defect == "stamp") ticket.Properties.Items["oidc.subject"] = "wrong";
-        if (defect == "issuer") ticket.Properties.Items["oidc.issuer"] = "https://wrong.example.test";
-        if (defect == "no-token") ticket.Properties.StoreTokens(ticket.Properties.GetTokens().Where(t => t.Name != "access_token"));
-        if (defect == "bad-expiry") ticket.Properties.UpdateTokenValue("expires_at", "tomorrow");
-        if (defect == "expired") ticket.Properties.UpdateTokenValue("expires_at", time.GetUtcNow().ToString("o"));
-        if (defect is "stamp" or "issuer" or "no-token" or "bad-expiry" or "expired") await store.RenewAsync(key, ticket);
+        if (defect == "forged-subject") cookie = await ForgedTicket(factory, subject: "tampered-subject");
+        if (defect == "forged-issuer") cookie = await ForgedTicket(factory, issuer: "https://wrong.example.test");
+        if (defect == "expired") time.Advance(TimeSpan.FromMinutes(16));
         foreach (var path in new[] { "/api/admin/mistakes", "/api/admin/mistakes/item", "/api/admin/mistakes/by-upload/upload", "/api/admin/image?path=mistakes/a.png", "/api/admin/oss-upload-records/legacy-check/upload" })
         {
             using var response = await Api(browser, path, cookie, authorization: defect == "authorization" ? ["Bearer " + authority.LegacyBearer()] : null);
-            Assert.Equal(defect == "allowlist" ? 403 : 401, (int)response.StatusCode);
+            // A tampered subject is not on the whitelist: the boundary's fixed 403.
+            Assert.Equal(defect is "allowlist" or "forged-subject" ? 403 : 401, (int)response.StatusCode);
         }
         Assert.Empty(capture.Requests); Assert.Empty(student.Invocations); Assert.Empty(oss.Invocations);
     }
 
     [Fact]
-    public async Task MistakeSession_All14UseCurrentScopedTicketEvenWithForgedPrincipalAndCachedAuthentication()
+    public async Task MistakeSession_All14UseScopedStoreTicketEvenWithForgedPrincipalAndItems()
     {
         using var authority = new OidcTestAuthority(); var capture = new MistakeSessionCapture();
         var admins = new MutableAdmins(); var student = MistakeStudent(); var oss = new Mock<IOssService>();
         using var factory = MistakeFactory(authority, capture, admins, student, oss); using var browser = Browser(factory);
-        var cookie = await LoginSession(browser, authority); var (key, ticket) = await Stored(factory, cookie);
-        var store = factory.Services.GetRequiredService<MemoryTicketStore>();
+        var cookie = await LoginSession(browser, authority); var (key, _) = await Stored(factory, cookie);
         var accessor = factory.Services.GetRequiredService<IHttpContextAccessor>();
         using var scope = factory.Services.CreateScope();
         var context = new DefaultHttpContext { RequestServices = scope.ServiceProvider, User = new ClaimsPrincipal(new ClaimsIdentity([new Claim("role", "forged")], "forged")) };
         context.Request.Headers.Cookie = cookie; accessor.HttpContext = context;
         try
         {
-            // Populate the framework's per-request cache, then update/revoke the SERVER ticket.
-            Assert.True((await context.AuthenticateAsync(AdminOidcSettings.SessionScheme)).Succeeded);
+            // A forged ambient principal and a forged trusted-session item must never become
+            // the downstream credential: the store ticket alone carries the token.
             context.Items[AdminSessionBoundary.TrustedSessionKey] = new AdminSessionResult(200, context.User, "forged-items-token");
             var client = scope.ServiceProvider.GetRequiredService<IMistakeHttpClient>();
             for (var method = 0; method < 14; method++)
             {
-                var token = "fictitious-current-server-token-" + method;
-                ticket.Properties.UpdateTokenValue("access_token", token); await store.RenewAsync(key, ticket);
                 capture.MethodData = method;
                 Assert.NotNull(await MistakeSessionClientTests.Call(client, method));
-                var sent = capture.Requests.Last(); Assert.Equal("Bearer " + token, sent.Authorization);
+                var sent = capture.Requests.Last(); Assert.Equal("Bearer " + authority.LastAccessToken, sent.Authorization);
                 Assert.False(sent.Cookie); Assert.False(sent.Csrf); Assert.Equal("mistake.example.test", sent.Host);
             }
-            var validSnapshot = Microsoft.AspNetCore.Authentication.TicketSerializer.Default.Serialize(ticket);
-            foreach (var defect in new[] { "stamp", "issuer", "token", "token-control", "expiry", "allowlist" })
+            foreach (var defect in new[] { "forged-subject", "forged-issuer", "allowlist", "revoked" })
             {
-                ticket = Microsoft.AspNetCore.Authentication.TicketSerializer.Default.Deserialize(validSnapshot)!;
-                if (defect == "stamp") ticket.Properties.Items["oidc.subject"] = "wrong";
-                if (defect == "issuer") ticket.Properties.Items["oidc.issuer"] = "https://wrong.example.test";
-                if (defect == "token") ticket.Properties.UpdateTokenValue("access_token", "");
-                if (defect == "token-control") ticket.Properties.UpdateTokenValue("access_token", "invalid\r\ntoken");
-                if (defect == "expiry") ticket.Properties.UpdateTokenValue("expires_at", "tomorrow");
+                if (defect == "forged-subject") context.Request.Headers.Cookie = await ForgedTicket(factory, subject: "tampered-subject");
+                if (defect == "forged-issuer") context.Request.Headers.Cookie = await ForgedTicket(factory, issuer: "https://wrong.example.test");
                 if (defect == "allowlist") admins.CurrentValue.AdminUserIds.Clear();
-                await store.RenewAsync(key, ticket);
+                if (defect == "revoked") await factory.Services.GetRequiredService<SignaCore.Client.AspNetCore.ITicketStore>().RemoveAsync(key, CancellationToken.None);
                 var unchanged = capture.Requests.Count;
-                Assert.Equal(defect == "allowlist" ? 403 : 401, (await Assert.ThrowsAsync<MistakeSessionException>(() => client.GetMistakeItemAsync("item"))).StatusCode);
+                Assert.Equal(defect is "allowlist" or "forged-subject" ? 403 : 401, (await Assert.ThrowsAsync<MistakeSessionException>(() => client.GetMistakeItemAsync("item"))).StatusCode);
                 Assert.Equal(unchanged, capture.Requests.Count);
                 admins.CurrentValue.AdminUserIds.Add("FAKE-SUBJECT");
+                context.Request.Headers.Cookie = cookie;
             }
-            await store.RemoveAsync(key);
-            var before = capture.Requests.Count;
-            Assert.Equal(401, (await Assert.ThrowsAsync<MistakeSessionException>(() => client.GetMistakeItemAsync("item"))).StatusCode);
-            Assert.Equal(before, capture.Requests.Count);
             accessor.HttpContext = null;
+            var before = capture.Requests.Count;
             await Assert.ThrowsAsync<MistakeDownstreamException>(() => client.GetMistakeItemAsync("item"));
             Assert.Equal(before, capture.Requests.Count);
         }
@@ -150,8 +136,11 @@ public sealed partial class AdminOidcTests
         using var authority = new OidcTestAuthority(); var capture = new MistakeSessionCapture();
         var admins = new MutableAdmins(); admins.CurrentValue.AdminUserIds.Add("second-subject");
         using var factory = MistakeFactory(authority, capture, admins, MistakeStudent(), new Mock<IOssService>()); using var browser = Browser(factory);
-        var first = await Start(browser); using var firstCallback = await Callback(browser, first, authority.Code(first.Query, accessToken: "fictitious-first-token"));
-        var second = await Start(browser); using var secondCallback = await Callback(browser, second, authority.Code(second.Query, subject: "second-subject", accessToken: "fictitious-second-token"));
+        var first = await Start(browser); using var firstCallback = await Callback(browser, first, authority.Code(first.Query));
+        var firstToken = authority.LastAccessToken;
+        var second = await Start(browser); using var secondCallback = await Callback(browser, second, authority.Code(second.Query, subject: "second-subject"));
+        var secondToken = authority.LastAccessToken;
+        Assert.NotEqual(firstToken, secondToken);
         var cookies = new[] { SessionCookie(firstCallback), SessionCookie(secondCallback) };
         await Task.WhenAll(Enumerable.Range(0, 24).Select(async i =>
         {
@@ -162,7 +151,7 @@ public sealed partial class AdminOidcTests
         foreach (var sent in capture.Requests)
         {
             var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(sent.Query);
-            Assert.Equal(query["studentId"] == "0" ? "Bearer fictitious-first-token" : "Bearer fictitious-second-token", sent.Authorization);
+            Assert.Equal(query["studentId"] == "0" ? "Bearer " + firstToken : "Bearer " + secondToken, sent.Authorization);
         }
     }
 
@@ -194,7 +183,7 @@ public sealed partial class AdminOidcTests
         oss.Verify(s => s.DeleteAsync(It.IsAny<string>()), Times.Never); oss.Verify(s => s.CopyObjectAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
         Assert.DoesNotContain("access-token-canary", string.Join("\n", logs.Messages));
         Assert.DoesNotContain("signed-url-canary", string.Join("\n", logs.Messages));
-        Assert.DoesNotContain(OidcTestAuthority.AccessToken, string.Join("\n", logs.Messages));
+        Assert.DoesNotContain(authority.LastAccessToken!, string.Join("\n", logs.Messages));
     }
 
     [Fact]
@@ -225,7 +214,7 @@ public sealed partial class AdminOidcTests
         using var image = await Api(browser, "/api/admin/image?path=mistakes/a.png", cookie);
         Assert.Equal(HttpStatusCode.Redirect, image.StatusCode);
         Assert.Equal("https://s3.example.test", image.Headers.Location!.GetLeftPart(UriPartial.Authority));
-        Assert.DoesNotContain(OidcTestAuthority.AccessToken, image.Headers.Location.OriginalString);
+        Assert.DoesNotContain(authority.LastAccessToken!, image.Headers.Location.OriginalString);
         Assert.Single(capture.Requests);
     }
 
@@ -278,7 +267,7 @@ public sealed partial class AdminOidcTests
         {
             using var success = await Api(browser, "/api/admin/mistakes", cookie);
             Assert.Equal(HttpStatusCode.OK, success.StatusCode);
-            Assert.Equal("Bearer " + OidcTestAuthority.AccessToken, target.LastAuthorization);
+            Assert.Equal("Bearer " + authority.LastAccessToken, target.LastAuthorization);
             Assert.False(target.LastCookie); Assert.False(target.LastCsrf); Assert.False(target.LastTrace);
         }
     }

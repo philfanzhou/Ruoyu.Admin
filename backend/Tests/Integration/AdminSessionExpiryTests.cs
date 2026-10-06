@@ -1,10 +1,8 @@
-using System.Globalization;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Admin.WebApi.Authentication;
 using Admin.WebApi.Tests.Authentication;
-using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using Ruoyu.Admin.Common.Oss;
@@ -20,51 +18,42 @@ public sealed partial class AdminOidcTests
         using var authority = new OidcTestAuthority(); var time = new ManualOidcTime(); var probe = new SessionBusinessProbe();
         using var factory = SessionFactory(authority, probe, time); using var client = Browser(factory);
         var cookie = await LoginSession(client, authority); var csrf = await Csrf(client, cookie);
-        var (key, ticket) = await Stored(factory, cookie); var originalIdToken = ticket.Properties.GetTokenValue("id_token");
-        var deadline = time.GetUtcNow().AddMinutes(1);
-        ticket.Properties.UpdateTokenValue("expires_at", deadline.ToString("o", CultureInfo.InvariantCulture));
-        await factory.Services.GetRequiredService<MemoryTicketStore>().RenewAsync(key, ticket);
-        time.Advance(TimeSpan.FromMinutes(1) - TimeSpan.FromTicks(1));
+        // The ticket's absolute deadline is the access token's expiry (expires_in = 900s).
+        time.Advance(TimeSpan.FromMinutes(14));
         Assert.Equal("{\"authenticated\":true,\"displayName\":\"fake-display\",\"requiresReauthentication\":false}", await Status(client, cookie));
         Assert.Equal(HttpStatusCode.OK, (await Api(client, "/api/admin/session-probe", cookie)).StatusCode);
-        time.Advance(TimeSpan.FromTicks(1));
-        foreach (var offset in new[] { TimeSpan.Zero, TimeSpan.FromTicks(1) })
-        {
-            time.Advance(offset);
-            Assert.Equal("{\"authenticated\":false,\"displayName\":\"fake-display\",\"requiresReauthentication\":true}", await Status(client, cookie));
-            var requests = Enumerable.Range(0, 8).Select(_ => Api(client, "/api/admin/oss-audit/records/1/resolve", cookie + "; " + csrf.Cookie, "POST", csrf: [csrf.Token]));
-            foreach (var response in await Task.WhenAll(requests)) await Rejected(response, 401, "reauthentication_required");
-            await Rejected(await Api(client, "/api/admin/session-probe", cookie), 401, "reauthentication_required");
-            await Rejected(await Api(client, "/api/auth/csrf", cookie), 401, "reauthentication_required");
-        }
+        time.Advance(TimeSpan.FromMinutes(2));
+        // An expired session answers the fixed reauthentication status: the store reclaimed the
+        // ticket, and the still-present session cookie is the SPA's only signal left.
+        Assert.Equal("{\"authenticated\":false,\"displayName\":null,\"requiresReauthentication\":true}", await Status(client, cookie));
+        var requests = Enumerable.Range(0, 8).Select(_ => Api(client, "/api/admin/oss-audit/records/1/resolve", cookie + "; " + csrf.Cookie, "POST", csrf: [csrf.Token]));
+        foreach (var response in await Task.WhenAll(requests)) await Rejected(response, 401, "unauthorized");
+        await Rejected(await Api(client, "/api/admin/session-probe", cookie), 401, "unauthorized");
+        await Rejected(await Api(client, "/api/auth/csrf", cookie), 401, "unauthorized");
         probe.Oss.Verify(s => s.DeleteAsync(It.IsAny<string>()), Times.Never);
         Assert.Equal(1, probe.Reads); Assert.Equal(0, probe.Writes); Assert.Equal(0, probe.Identity.Calls);
         Assert.Single(authority.TokenForms); Assert.Equal("authorization_code", authority.TokenForms.Single()["grant_type"]);
-        Assert.Equal(originalIdToken, (await Stored(factory, cookie)).Ticket.Properties.GetTokenValue("id_token"));
-        time.Advance(TimeSpan.FromHours(8));
-        Assert.Equal("{\"authenticated\":false,\"displayName\":null,\"requiresReauthentication\":false}", await Status(client, cookie));
-        await Rejected(await Api(client, "/api/admin/session-probe", cookie), 401, "unauthorized");
     }
 
     [Theory]
-    [InlineData("anonymous")][InlineData("revoked")][InlineData("missing-token")][InlineData("invalid-time")][InlineData("no-offset")][InlineData("bad-stamp")]
-    public async Task SessionExpiry_UntrustedOrIncompleteTicketsNeverAdvertiseReauthentication(string defect)
+    [InlineData("anonymous")][InlineData("revoked")][InlineData("bad-issuer")][InlineData("bad-subject")]
+    public async Task SessionExpiry_UnknownTicketsAnswerAnonymousAndFailClosed(string defect)
     {
         using var authority = new OidcTestAuthority(); var probe = new SessionBusinessProbe();
         using var factory = SessionFactory(authority, probe); using var client = Browser(factory);
-        var cookie = await LoginSession(client, authority); var (key, ticket) = await Stored(factory, cookie);
-        var store = factory.Services.GetRequiredService<MemoryTicketStore>();
+        var cookie = await LoginSession(client, authority); var (key, _) = await Stored(factory, cookie);
+        var store = factory.Services.GetRequiredService<SignaCore.Client.AspNetCore.ITicketStore>();
         if (defect == "anonymous") cookie = null!;
-        else if (defect == "revoked") await store.RemoveAsync(key);
-        else
-        {
-            if (defect == "missing-token") ticket.Properties.StoreTokens(ticket.Properties.GetTokens().Where(t => t.Name != "access_token"));
-            if (defect == "invalid-time") ticket.Properties.UpdateTokenValue("expires_at", "tomorrow");
-            if (defect == "no-offset") ticket.Properties.UpdateTokenValue("expires_at", "2099-01-01T00:00:00.0000000");
-            if (defect == "bad-stamp") ticket.Properties.Items["oidc.subject"] = "wrong";
-            await store.RenewAsync(key, ticket);
-        }
-        Assert.Equal("{\"authenticated\":false,\"displayName\":null,\"requiresReauthentication\":false}", await Status(client, cookie));
+        else if (defect == "revoked") await store.RemoveAsync(key, CancellationToken.None);
+        else if (defect == "bad-issuer") cookie = await ForgedTicket(factory, issuer: "https://wrong.example.test");
+        else cookie = await ForgedTicket(factory, subject: " ");
+        // The presence of the opaque cookie is the only "a session existed" signal left once
+        // the store reclaimed the ticket: it drives the reauthentication UX hint alone and is
+        // never an authorization fact; the ticket contents never enter the status answer.
+        var expected = defect == "anonymous"
+            ? "{\"authenticated\":false,\"displayName\":null,\"requiresReauthentication\":false}"
+            : "{\"authenticated\":false,\"displayName\":null,\"requiresReauthentication\":true}";
+        Assert.Equal(expected, await Status(client, cookie));
         await Rejected(await Api(client, "/api/admin/session-probe", cookie), 401, "unauthorized");
         Assert.Equal(0, probe.Reads);
     }
@@ -74,9 +63,7 @@ public sealed partial class AdminOidcTests
     {
         using var authority = new OidcTestAuthority(); var probe = new SessionBusinessProbe();
         using var factory = SessionFactory(authority, probe); using var client = Browser(factory);
-        var cookie = await LoginSession(client, authority); var (key, ticket) = await Stored(factory, cookie);
-        ticket.Properties.UpdateTokenValue("expires_at", DateTimeOffset.UtcNow.AddHours(-1).ToString("o"));
-        await factory.Services.GetRequiredService<MemoryTicketStore>().RenewAsync(key, ticket);
+        var cookie = await LoginSession(client, authority);
         var bearerBeforeStatus = probe.BearerAuthentications;
         probe.Admins.CurrentValue.AdminUserIds.Clear();
         await Rejected(await Api(client, "/api/auth/session", cookie), 403, "forbidden");
@@ -95,10 +82,9 @@ public sealed partial class AdminOidcTests
     {
         using var authority = new OidcTestAuthority(); var probe = new SessionBusinessProbe(); var time = new ManualOidcTime();
         using var factory = SessionFactory(authority, probe, time); using var client = Browser(factory);
-        var cookie = await LoginSession(client, authority); var (key, ticket) = await Stored(factory, cookie);
-        ticket.Properties.UpdateTokenValue("expires_at", time.GetUtcNow().ToString("o"));
-        await factory.Services.GetRequiredService<MemoryTicketStore>().RenewAsync(key, ticket);
-        await Rejected(await Api(client, "/api/admin/session-probe", cookie, "POST"), 401, "reauthentication_required");
+        var cookie = await LoginSession(client, authority);
+        time.Advance(TimeSpan.FromMinutes(16));
+        await Rejected(await Api(client, "/api/admin/session-probe", cookie, "POST"), 401, "unauthorized");
         Assert.Equal(1, authority.Redeems); // No automatic challenge or write replay.
         var handshake = await Start(client, "/students?filter=test");
         Assert.Equal("openid profile", handshake.Query["scope"]);

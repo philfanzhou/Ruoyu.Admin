@@ -4,10 +4,12 @@ internal sealed record AdminOidcSettings(string Authority, string ClientId, stri
     string RedirectUri, bool InsecureLoopback, TimeSpan ClockSkew)
 {
     internal string PostLogoutRedirectUri { get; init; } = "";
-    internal const string LogoutCallbackPath = "/api/auth/oidc/logout-callback";
-    public const string SessionScheme = "AdminSession";
-    public const string OidcScheme = "AdminOidc";
-    public const string CallbackPath = "/api/auth/oidc/callback";
+    // The SignaCore client package mounts its endpoints at a fixed prefix and requires the
+    // registered redirect URIs to match <prefix>/callback and <prefix>/logout/return exactly.
+    public const string HostedLoginPrefix = "/api/auth/oidc";
+    public const string CallbackPath = HostedLoginPrefix + "/callback";
+    public const string LogoutReturnPath = HostedLoginPrefix + "/logout/return";
+    public const string LogoutPath = HostedLoginPrefix + "/logout";
     public const string SessionCookie = "adminSession";
 
     internal static AdminOidcSettings Read(IConfiguration config, IHostEnvironment environment)
@@ -32,7 +34,7 @@ internal sealed record AdminOidcSettings(string Authority, string ClientId, stri
             throw new InvalidOperationException("AdminOidc:RedirectUri");
         if (!IsSafeUri(authority, dev, out _)) throw new InvalidOperationException("IdentityService:Authority");
         var postLogout = config["AdminOidc:PostLogoutRedirectUri"] ?? "";
-        if (!IsSafeUri(postLogout, dev, out var postLogoutUri) || postLogoutUri!.AbsolutePath != LogoutCallbackPath
+        if (!IsSafeUri(postLogout, dev, out var postLogoutUri) || postLogoutUri!.AbsolutePath != LogoutReturnPath
             || postLogoutUri.AbsoluteUri != postLogout || postLogout.Length > 500 || postLogout.Any(c => c > 127)
             || postLogoutUri.GetLeftPart(UriPartial.Authority) != redirectUri.GetLeftPart(UriPartial.Authority))
             throw new InvalidOperationException("AdminOidc:PostLogoutRedirectUri");
@@ -46,6 +48,8 @@ internal sealed record AdminOidcSettings(string Authority, string ClientId, stri
                 System.Globalization.CultureInfo.InvariantCulture, out skew))
             throw new InvalidOperationException("IdentityService:ClockSkewSeconds");
         if (skew is < 0 or > 300) throw new InvalidOperationException("IdentityService:ClockSkewSeconds");
+        // ClockSkew stays part of the startup contract (malformed values still fail the host),
+        // but the SignaCore client package fixes its own token validation skew at 30 seconds.
         return new(authority, clientId, secret, redirect, redirectUri.Scheme == "http", TimeSpan.FromSeconds(skew))
             { PostLogoutRedirectUri = postLogout };
     }
@@ -57,28 +61,6 @@ internal sealed record AdminOidcSettings(string Authority, string ClientId, stri
             && !string.Equals(uri.Host.TrimEnd('.'), "localhost", StringComparison.OrdinalIgnoreCase)
             && !value.Any(char.IsControl) && !value.Contains('*')
             && (uri.Scheme == "https" || allowLoopback && uri.Scheme == "http" && uri.Host is "127.0.0.1" or "[::1]");
-    }
-
-    internal static string ReturnPath(string? path)
-    {
-        if (string.IsNullOrEmpty(path) || path.Length > 2048) return "/dashboard";
-        // Reject encoded alternate origins and loop paths as well as their decoded forms.
-        var candidate = path;
-        for (var i = 0; i < 4; i++)
-        {
-            if (!candidate.StartsWith('/') || candidate.StartsWith("//") || candidate.Contains('\\')
-                || candidate.Any(char.IsControl)) return "/dashboard";
-            var route = candidate.Split('?', '#')[0];
-            if (route.Split('/').Any(segment => segment is "." or "..")) return "/dashboard";
-            if (route.Equals("/login", StringComparison.OrdinalIgnoreCase)
-                || route.StartsWith("/login/", StringComparison.OrdinalIgnoreCase)
-                || route.Equals("/api/auth", StringComparison.OrdinalIgnoreCase)
-                || route.StartsWith("/api/auth/", StringComparison.OrdinalIgnoreCase)) return "/dashboard";
-            var decoded = Uri.UnescapeDataString(candidate);
-            if (decoded == candidate) return path;
-            candidate = decoded;
-        }
-        return "/dashboard";
     }
 
     public override string ToString() => "AdminOidcSettings";

@@ -3,8 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 function response(data: unknown, status = 200) { return new Response(JSON.stringify(data), { status }) }
 function deferred<T>() {
   let resolve!: (value: T) => void
-  const promise = new Promise<T>(yes => { resolve = yes })
-  return { promise, resolve }
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no })
+  return { promise, resolve, reject }
 }
 const valid = { authenticated: true, displayName: 'Server name', requiresReauthentication: false }
 const anonymous = { authenticated: false, displayName: null, requiresReauthentication: false }
@@ -79,45 +80,59 @@ describe('controlled return paths', () => {
 })
 
 describe('one-shot dedicated logout', () => {
+  let submitted: { action: string, method: string, token: string }[]
+  beforeEach(() => {
+    submitted = []
+    vi.spyOn(HTMLFormElement.prototype, 'submit').mockImplementation(function (this: HTMLFormElement) {
+      submitted.push({
+        action: this.action,
+        method: this.method,
+        token: (this.querySelector('input[name="__RequestVerificationToken"]') as HTMLInputElement | null)?.value ?? '',
+      })
+    })
+  })
+
   it.each([403, 200])('permits own logout independently of current administrator/access authorization (%s)', async status => {
     vi.mocked(fetch).mockResolvedValueOnce(response(status === 403 ? {} : { ...anonymous, requiresReauthentication: true }, status))
-      .mockResolvedValueOnce(response({ requestToken: 'synthetic-csrf' })).mockResolvedValueOnce(response({ success: true, upstreamLogout: false }))
+      .mockResolvedValueOnce(response({ token: 'synthetic-csrf' }))
     const auth = await import('./auth'); await auth.initializeSession()
-    expect(await auth.logoutSession()).toEqual({ kind: 'local' })
-    expect(vi.mocked(fetch).mock.calls.map(call => call[0])).toEqual(['/api/auth/session', '/api/auth/logout/csrf', '/api/auth/logout'])
-    expect(fetch).toHaveBeenLastCalledWith('/api/auth/logout', expect.objectContaining({ method: 'POST', headers: { 'X-CSRF-TOKEN': 'synthetic-csrf' } }))
-    expect(auth.session.status).toBe('anonymous'); expect(auth.session.logoutNotice).toContain('尚未确认')
+    expect(await auth.logoutSession()).toEqual({ kind: 'navigating' })
+    expect(vi.mocked(fetch).mock.calls.map(call => call[0])).toEqual(['/api/auth/session', '/api/auth/oidc/csrf'])
+    expect(submitted).toEqual([{ action: 'http://localhost:3000/api/auth/oidc/logout', method: 'post', token: 'synthetic-csrf' }])
+    expect(auth.session.status).toBe('anonymous')
   })
 
-  it('coalesces repeated clicks and returns only the prepared opaque BFF URL', async () => {
-    const pending = deferred<Response>(); const url = 'https://issuer.invalid/oauth2/logout?logout_handle=' + 'a'.repeat(43)
-    vi.mocked(fetch).mockReturnValueOnce(pending.promise).mockResolvedValueOnce(response({ success: true, upstreamLogout: true, logoutUrl: url }))
+  it('coalesces repeated clicks into one navigational submission', async () => {
+    const pending = deferred<Response>()
+    vi.mocked(fetch).mockReturnValueOnce(pending.promise)
     const auth = await import('./auth'); const first = auth.logoutSession(); const second = auth.logoutSession()
-    expect(first).toBe(second); pending.resolve(response({ requestToken: 'synthetic-csrf' }))
-    expect(await first).toEqual({ kind: 'redirect', url }); expect(fetch).toHaveBeenCalledTimes(2)
+    expect(first).toBe(second); pending.resolve(response({ token: 'synthetic-csrf' }))
+    expect(await first).toEqual({ kind: 'navigating' }); expect(fetch).toHaveBeenCalledTimes(1)
+    expect(submitted).toHaveLength(1)
   })
 
-  it.each(['network', 'abort', 'invalid'])('reconciles unknown %s against the local fact without replaying POST', async mode => {
-    vi.mocked(fetch).mockResolvedValueOnce(response({ requestToken: 'synthetic-csrf' }))
-    if (mode === 'invalid') vi.mocked(fetch).mockResolvedValueOnce(response({ success: true, upstreamLogout: true, logoutUrl: 'https://outside.invalid/arbitrary' }))
-    else vi.mocked(fetch).mockRejectedValueOnce(mode === 'abort' ? new DOMException('Aborted', 'AbortError') : new Error('response lost'))
+  it.each(['network', 'abort', 'invalid'])('reconciles unknown %s against the local fact without any logout POST fetch', async mode => {
+    if (mode === 'network') vi.mocked(fetch).mockRejectedValueOnce(new Error('response lost'))
+    else if (mode === 'abort') vi.mocked(fetch).mockRejectedValueOnce(new DOMException('Aborted', 'AbortError'))
+    else vi.mocked(fetch).mockResolvedValueOnce(response({}))
     vi.mocked(fetch).mockResolvedValueOnce(response(anonymous))
     const auth = await import('./auth'); expect(await auth.logoutSession()).toEqual({ kind: 'unknown' })
     expect(auth.session.status).toBe('anonymous'); expect(auth.session.logoutNotice).toContain('退出结果未确认')
-    expect(vi.mocked(fetch).mock.calls.filter(call => call[1]?.method === 'POST')).toHaveLength(1)
+    expect(vi.mocked(fetch).mock.calls.filter(call => call[1]?.method === 'POST')).toHaveLength(0)
+    expect(submitted).toHaveLength(0)
   })
 
-  it('does not announce success when the lost logout response leaves a valid local session', async () => {
-    vi.mocked(fetch).mockResolvedValueOnce(response({ requestToken: 'synthetic-csrf' })).mockRejectedValueOnce(new Error('lost'))
-      .mockResolvedValueOnce(response(valid))
+  it('does not announce success when the lost logout token leaves a valid local session', async () => {
+    vi.mocked(fetch).mockRejectedValueOnce(new Error('lost')).mockResolvedValueOnce(response(valid))
     const auth = await import('./auth'); expect(await auth.logoutSession()).toEqual({ kind: 'unknown' })
     expect(auth.session.status).toBe('authenticated'); expect(auth.session.logoutNotice).toContain('退出结果未确认')
     expect(auth.session.logoutNotice).not.toContain('会话已结束')
+    expect(submitted).toHaveLength(0)
   })
 
   it('cannot revive a revoked frontend state from a previously pending initialization', async () => {
     const old = deferred<Response>(); vi.mocked(fetch).mockReturnValueOnce(old.promise)
-      .mockResolvedValueOnce(response({ requestToken: 'synthetic-csrf' })).mockResolvedValueOnce(response({ success: true, upstreamLogout: false }))
+      .mockResolvedValueOnce(response({ token: 'synthetic-csrf' }))
     const auth = await import('./auth'); const initial = auth.initializeSession(); await auth.logoutSession()
     old.resolve(response(valid)); await initial; expect(auth.session.status).toBe('anonymous'); expect(auth.session.displayName).toBeNull()
   })
@@ -125,25 +140,32 @@ describe('one-shot dedicated logout', () => {
 
 
 describe('status queries begun during logout', () => {
+  let submitted: number
+  beforeEach(() => {
+    submitted = 0
+    vi.spyOn(HTMLFormElement.prototype, 'submit').mockImplementation(() => { submitted += 1 })
+  })
+
   it('discards a late pre-revocation fact even when initialization begins after logout started', async () => {
     const csrf = deferred<Response>(); const oldStatus = deferred<Response>()
     vi.mocked(fetch).mockReturnValueOnce(csrf.promise).mockReturnValueOnce(oldStatus.promise)
-      .mockResolvedValueOnce(response({ success: true, upstreamLogout: false }))
     const auth = await import('./auth'); const logout = auth.logoutSession(); const status = auth.initializeSession(true)
-    csrf.resolve(response({ requestToken: 'synthetic-csrf' })); expect(await logout).toEqual({ kind: 'local' })
+    csrf.resolve(response({ token: 'synthetic-csrf' })); expect(await logout).toEqual({ kind: 'navigating' })
     oldStatus.resolve(response(valid)); await status
     expect(auth.session.status).toBe('anonymous'); expect(auth.session.displayName).toBeNull()
+    expect(submitted).toBe(1)
   })
 
-  it('uses a new authoritative status query after a lost logout response, not an earlier in-flight fact', async () => {
+  it('uses a new authoritative status query after a lost logout token, not an earlier in-flight fact', async () => {
     const csrf = deferred<Response>(); const oldStatus = deferred<Response>()
     vi.mocked(fetch).mockReturnValueOnce(csrf.promise).mockReturnValueOnce(oldStatus.promise)
-      .mockRejectedValueOnce(new Error('response lost')).mockResolvedValueOnce(response(anonymous))
+      .mockResolvedValueOnce(response(anonymous))
     const auth = await import('./auth'); const logout = auth.logoutSession(); const status = auth.initializeSession(true)
-    csrf.resolve(response({ requestToken: 'synthetic-csrf' })); expect(await logout).toEqual({ kind: 'unknown' })
+    csrf.reject(new Error('response lost')); expect(await logout).toEqual({ kind: 'unknown' })
     expect(vi.mocked(fetch).mock.calls.filter(call => call[0] === '/api/auth/session')).toHaveLength(2)
     oldStatus.resolve(response(valid)); await status
     expect(auth.session.status).toBe('anonymous'); expect(auth.session.logoutNotice).toContain('会话已结束')
-    expect(vi.mocked(fetch).mock.calls.filter(call => call[1]?.method === 'POST')).toHaveLength(1)
+    expect(vi.mocked(fetch).mock.calls.filter(call => call[1]?.method === 'POST')).toHaveLength(0)
+    expect(submitted).toBe(0)
   })
 })

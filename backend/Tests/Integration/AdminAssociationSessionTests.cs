@@ -59,7 +59,7 @@ public sealed partial class AdminOidcTests
         Assert.Equal("1,math", result.GetProperty("teachers")[0].GetProperty("subjects").GetString());
         foreach (var capture in new[] { teacher, assistant })
         {
-            Assert.Equal(api ? "Bearer " + OidcTestAuthority.AccessToken : authorization![0], capture.Requests.Single().Headers["Authorization"]);
+            Assert.Equal(api ? "Bearer " + authority.LastAccessToken : authorization![0], capture.Requests.Single().Headers["Authorization"]);
             Assert.False(capture.Requests.Single().Headers.ContainsKey("Cookie"));
         }
         teacher.Status = HttpStatusCode.Forbidden; result = await Query();
@@ -79,10 +79,10 @@ public sealed partial class AdminOidcTests
             admins.CurrentValue.AdminUserIds.Clear();
             await Rejected(await Api(client, path, cookie), 403, "forbidden");
             admins.CurrentValue.AdminUserIds.Add("fake-subject");
-            var (key, ticket) = await Stored(factory, cookie!);
-            ticket.Properties.UpdateTokenValue("expires_at", DateTimeOffset.UtcNow.AddHours(-1).ToString("o"));
-            await factory.Services.GetRequiredService<MemoryTicketStore>().RenewAsync(key, ticket);
-            await Rejected(await Api(client, path, cookie), 401, "reauthentication_required");
+            var (key, _) = await Stored(factory, cookie!);
+            // A revoked (or expired) server ticket answers the fixed 401 before any I/O.
+            await factory.Services.GetRequiredService<SignaCore.Client.AspNetCore.ITicketStore>().RemoveAsync(key, CancellationToken.None);
+            await Rejected(await Api(client, path, cookie), 401, "unauthorized");
             Assert.Empty(student.Invocations); Assert.Empty(teacher.Requests); Assert.Empty(assistant.Requests);
         }
     }

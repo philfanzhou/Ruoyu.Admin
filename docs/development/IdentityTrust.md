@@ -6,7 +6,7 @@
 
 若显式配置与实际签发 issuer 不一致，校验抛出 `SecurityTokenInvalidIssuerException`，固定消息为 `Token issuer must match IdentityService:Issuer or IdentityService:AdditionalValidIssuers.`，不回显 issuer、token 或密钥。部署负责人应核对经批准的精确 issuer；迁移期间仅添加批准的旧 issuer，窗口结束后清空迁移列表。升级后原来依赖 discovery 自动扩充信任的调用会被拒绝，不能通过添加未批准 issuer 消除负例。
 
-该 helper 的公开 API 和配置键不变，也不更改 Admin 入口认证模式。Admin 的托管 OIDC 由 `StrictIdTokenHandler` 独立约束 `IdentityService:Authority`：metadata 与 ID token issuer 必须精确等于 Authority，公共 helper 的迁移列表不扩充托管登录信任。`AdminSessionAccessor` 读取服务器票据，不验证浏览器 JWT。专属回归宿主的 Bearer 200 只证明公共 helper 合同，不代表 Admin API 授予入站 Bearer 权限；Admin 的唯一服务器会话模式见 [Deployment.md](./Deployment.md)。
+该 helper 的公开 API 和配置键不变，也不更改 Admin 入口认证模式。Admin 的托管登录由 `SignaCore.Client.AspNetCore` 独立约束 `IdentityService:Authority`：Discovery issuer 必须与 Authority 同源且 ID/access token 的 issuer 精确校验，公共 helper 的迁移列表不扩充托管登录信任。`AdminSessionAccessor` 读取服务器票据，不验证浏览器 JWT。专属回归宿主的 Bearer 200 只证明公共 helper 合同，不代表 Admin API 授予入站 Bearer 权限；Admin 的唯一服务器会话模式见 [Deployment.md](./Deployment.md)。
 
 本次没有数据库迁移、持久状态或新取消入口。快照可并发读取，每次创建相互独立。不防御签名密钥泄露，也不防御受信进程代码移除严格委托、关闭 issuer 校验或主动改写内部信任数据；调用方必须保留这些校验。代码或整版镜像回滚可能恢复 discovery 信任放大风险，不是安全保证，也不作为恢复旧登录模式的依据。
 

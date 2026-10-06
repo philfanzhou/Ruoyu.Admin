@@ -44,7 +44,7 @@ Unhandled exceptions on JSON API endpoints answer `application/problem+json` wit
 
 ### Security response headers
 
-JSON API responses carry the ServiceMantle six-header baseline (`Cache-Control: no-store`, `Pragma: no-cache`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, and a `default-src 'none'` CSP) on every routed response of a marked endpoint — success, business 4xx, 401/403 challenges, 5xx and middleware short-circuits alike, as long as headers have not started. Marked surface: the ten JSON controllers annotated with `[RequireSecurityResponseHeaders]` plus the middleware-owned auth routes (`/api/auth/oidc/callback`, `/api/auth/logout/csrf`, `/api/auth/oidc/logout-callback`) whose marker-only route endpoints exist to carry metadata. Deliberately unmarked: `ImageController` (browser-native image redirects), the three proxy middlewares' forwarded responses, the SPA / static files, and the health endpoints.
+JSON API responses carry the ServiceMantle six-header baseline (`Cache-Control: no-store`, `Pragma: no-cache`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, and a `default-src 'none'` CSP) on every routed response of a marked endpoint — success, business 4xx, 401/403 challenges, 5xx and middleware short-circuits alike, as long as headers have not started. Marked surface: the JSON controllers annotated with `[RequireSecurityResponseHeaders]`. Deliberately unmarked: `ImageController` (browser-native image redirects), the three proxy middlewares' forwarded responses, the SPA / static files, the health endpoints, and the SignaCore hosted-login package endpoints under `/api/auth/oidc` (their answers carry their own `no-store`).
 
 ### Backend projects
 
@@ -105,7 +105,7 @@ The integrated image serves the API and the built SPA from one container:
 ./start.sh --image ruoyu.admin:<version> --container ruoyu-admin --env-file /private/admin.env \
   --authority https://identity.example.com \
   --redirect-uri https://admin.example.com/api/auth/oidc/callback \
-  --post-logout-redirect-uri https://admin.example.com/api/auth/oidc/logout-callback
+  --post-logout-redirect-uri https://admin.example.com/api/auth/oidc/logout/return
 ```
 
 `start.sh` first runs the selected image with `--validate-auth-config` and the same effective configuration; failure preserves the existing container. Credentials come from the deployment environment or a private env file, never output. `--config-file` mounts an explicit appsettings file; `--cache-dir` mounts an existing cache read-only during preflight and writable during normal startup. Port **5020** remains the container API port. See [Deployment](docs/development/Deployment.md#认证只读预检与升级) for target validation and the upgrade checklist.

@@ -126,7 +126,7 @@ public abstract class ServiceMantleIntegrationTestBase
         new Dictionary<string, string?>
         {
             ["AdminOidc:RedirectUri"] = "https://admin.example.test/api/auth/oidc/callback",
-            ["AdminOidc:PostLogoutRedirectUri"] = "https://admin.example.test/api/auth/oidc/logout-callback",
+            ["AdminOidc:PostLogoutRedirectUri"] = "https://admin.example.test/api/auth/oidc/logout/return",
             ["IdentityService:AppId"] = "integration-test-app-id",
             ["IdentityService:AppSecret"] = "integration-test-app-secret",
             ["IdentityService:Authority"] = "http://127.0.0.1:5002",

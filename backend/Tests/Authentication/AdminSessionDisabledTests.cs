@@ -1,5 +1,4 @@
 using Admin.WebApi.Authentication;
-using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting.Internal;
 using Xunit;
@@ -13,7 +12,7 @@ public sealed class AdminSessionDisabledTests
         ["IdentityService:Authority"] = "https://identity.example.test",
         ["IdentityService:AppId"] = "fixture-app", ["IdentityService:AppSecret"] = "fixture-secret",
         ["AdminOidc:RedirectUri"] = "https://admin.example.test/api/auth/oidc/callback",
-        ["AdminOidc:PostLogoutRedirectUri"] = "https://admin.example.test/api/auth/oidc/logout-callback"
+        ["AdminOidc:PostLogoutRedirectUri"] = "https://admin.example.test" + AdminOidcSettings.LogoutReturnPath
     };
 
     public static IEnumerable<object?[]> LegacyValues()
@@ -58,14 +57,4 @@ public sealed class AdminSessionDisabledTests
             new ConfigurationBuilder().AddInMemoryCollection(values).Build(), new HostingEnvironment { EnvironmentName = "Production" })).Message);
     }
 
-    [Theory]
-    [InlineData("GET")][InlineData("HEAD")][InlineData("PUT")][InlineData("PATCH")]
-    [InlineData("DELETE")][InlineData("OPTIONS")][InlineData("TRACE")]
-    public async Task LogoutRejectsOtherMethodsBeforeRevocation(string method)
-    {
-        var middleware = new AdminLogoutMiddleware(_ => throw new InvalidOperationException("Must not fall through"));
-        var context = new DefaultHttpContext(); context.Request.Path = "/API/AUTH/LOGOUT/"; context.Request.Method = method;
-        await middleware.InvokeAsync(context, null!);
-        Assert.Equal(405, context.Response.StatusCode);
-    }
 }

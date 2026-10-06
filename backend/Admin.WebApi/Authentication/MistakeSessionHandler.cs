@@ -16,7 +16,9 @@ internal sealed class MistakeSessionHandler(IHttpContextAccessor contexts, Mista
         var ct = linked.Token;
         ct.ThrowIfCancellationRequested();
         if (!IsAllowed(request, settings.Origin!)) throw new MistakeDownstreamException();
-        var session = await context.RequestServices.GetRequiredService<AdminSessionAccessor>().AuthenticateAsync(context, currentTicket: true);
+        // The store read inside the accessor always resolves the CURRENT server ticket, so a
+        // revoke or renew between requests can never reuse a stale snapshot.
+        var session = await context.RequestServices.GetRequiredService<AdminSessionAccessor>().AuthenticateAsync(context);
         ct.ThrowIfCancellationRequested();
         if (session.StatusCode != 200) throw new MistakeSessionException(session.StatusCode, session.Error!);
         // Preserve only deliberately supplied correlation metadata; never browser credentials.

@@ -135,16 +135,12 @@ export function businessCsrf(expectedGeneration: number): Promise<string> {
   return promise
 }
 
-export type LogoutResult = { kind: 'redirect'; url: string } | { kind: 'local' } | { kind: 'unknown' }
+export type LogoutResult = { kind: 'navigating' } | { kind: 'unknown' }
 
-function logoutUrl(value: unknown): string | null {
-  if (typeof value !== 'string') return null
-  try {
-    const uri = new URL(value)
-    const secure = uri.protocol === 'https:' || uri.protocol === 'http:' && ['127.0.0.1', '[::1]'].includes(uri.hostname)
-    return secure && !uri.username && !uri.password && !uri.hash && uri.pathname === '/oauth2/logout'
-      && /^\?logout_handle=[A-Za-z0-9_-]{43}$/.test(uri.search) ? uri.href : null
-  } catch { return null }
+async function logoutAntiforgeryToken(signal?: AbortSignal): Promise<string> {
+  const data = await sessionJson('/api/auth/oidc/csrf', { signal })
+  if (!object(data) || typeof data.token !== 'string' || !data.token) throw new SessionRequestError(503)
+  return data.token
 }
 
 export function logoutSession(): Promise<LogoutResult> {
@@ -154,15 +150,24 @@ export function logoutSession(): Promise<LogoutResult> {
   view.logoutNotice = ''
   const flight = (async (): Promise<LogoutResult> => {
     try {
-      // This endpoint deliberately supports expired access tokens and removed administrators.
-      const token = await requestToken('/api/auth/logout/csrf')
-      const data = await sessionJson('/api/auth/logout', { method: 'POST', headers: { 'X-CSRF-TOKEN': token } })
-      if (!object(data) || data.success !== true || typeof data.upstreamLogout !== 'boolean') throw new SessionRequestError(503)
-      const url = data.upstreamLogout ? logoutUrl(data.logoutUrl) : null
-      if (data.upstreamLogout && !url) throw new SessionRequestError(503)
+      // The logout endpoint deliberately supports expired access tokens and removed administrators.
+      const token = await logoutAntiforgeryToken()
       invalidateSession('anonymous', generation, false)
-      view.logoutNotice = data.upstreamLogout ? '' : '已退出管理后台；身份服务会话尚未确认退出。'
-      return url ? { kind: 'redirect', url } : { kind: 'local' }
+      // Navigational form POST: the browser follows the upstream logout redirect chain itself
+      // (the server validates the logout_uri) and lands back on /login. When the upstream
+      // preparation failed, the server answers the fixed local-only result and the local
+      // session is already gone.
+      const form = document.createElement('form')
+      form.method = 'post'
+      form.action = '/api/auth/oidc/logout'
+      const field = document.createElement('input')
+      field.type = 'hidden'
+      field.name = '__RequestVerificationToken'
+      field.value = token
+      form.appendChild(field)
+      document.body.appendChild(form)
+      form.submit()
+      return { kind: 'navigating' }
     } catch {
       // Discard any status query started during logout, then recover only the local fact.
       invalidateSession('unknown', generation, false)

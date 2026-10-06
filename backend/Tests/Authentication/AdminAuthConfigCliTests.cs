@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
+using Admin.WebApi.Authentication;
 using Xunit;
 
 namespace Admin.WebApi.Tests.Authentication;
@@ -22,7 +23,7 @@ public sealed partial class AdminAuthConfigCliTests
         var config = AdminSessionDisabledTests.ValidConfiguration();
         config["IdentityService:Authority"] = origin;
         config["AdminOidc:RedirectUri"] = origin + "/api/auth/oidc/callback";
-        config["AdminOidc:PostLogoutRedirectUri"] = origin + "/api/auth/oidc/logout-callback";
+        config["AdminOidc:PostLogoutRedirectUri"] = origin + AdminOidcSettings.LogoutReturnPath;
         config["ConnectionStrings:AuditDb"] = "deliberately-unparsable-secret-canary";
         fixture.WriteSettings(config);
         var result = await fixture.Run(new() { ["ASPNETCORE_ENVIRONMENT"] = environment, ["DOTNET_ENVIRONMENT"] = environment });
