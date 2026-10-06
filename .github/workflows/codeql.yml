@@ -46,10 +46,12 @@ jobs:
           build-mode: ${{ matrix.build-mode }}
           # Local model pack (#91): declares AdminLogValue.Sanitize as a log-injection
           # barrier. The config input takes inline YAML; the pack directory is resolved from
-          # the checkout root.
+          # the checkout root. `packs` must use the append-mapping form (`+:`) — a bare
+          # list entry is rejected as an invalid pack specification and silently ignored.
           config: |
             packs:
-              - .github/codeql/log-models
+              +:
+                - .github/codeql/log-models
 
       - name: Build C#
         if: matrix.language == 'csharp'
