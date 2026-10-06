@@ -122,6 +122,10 @@ The shared lifecycle gate runs once before the web host or audit worker starts. 
 
 The startup error codes changed in #66: missing-target refusal now uses `database_target_preparation.creation_not_allowed` (previously `RUOYU_ADMIN_DB_CREATION_NOT_ALLOWED`), invalid `Database:AllowCreate` uses `database_target_preparation.invalid_target` (previously `RUOYU_ADMIN_DB_ALLOW_CREATE_INVALID`), and an unconnectable target after preparation uses `database_target_preparation.not_connectable_after_preparation`. Fresh receipts now report NotStarted; failed receipts report Failed / `ruoyu-admin.startup_failed`. Running, Succeeded, normal readiness JSON and migration/schema refusal codes stay unchanged. Rolling back restores the former codes without a schema rollback and does not undo created databases or committed migrations. See [migration compatibility notes](docs/database/migrations.md#66-发布兼容说明).
 
+### Internal request correlation
+
+Existing Student, Mistake, Homework, Identity/Teacher/Assistant proxies, StorageReferences and prepared-logout clients explicitly propagate the middleware-resolved `x-correlation-id`. Raw proxy input is not copied; explicit outgoing correlation metadata is preserved without duplication. Background sends without HttpContext do not invent an ID; Mistake retains its existing no-session refusal. External object storage and the independent OIDC discovery/token backchannel do not opt in. Transport settings and credential stripping stay unchanged. `InstanceId.CreateRandom` retains `ruoyu-admin-<Guid:N>` per host without persistence. All direct ServiceMantle packages use official `0.3.1-rc.1`; there is no new configuration or data migration. Rollback deploys the previous code and matching package set.
+
 ### Health probes
 
 Three anonymous JSON endpoints are served alongside the SPA (never rewritten by the SPA fallback):

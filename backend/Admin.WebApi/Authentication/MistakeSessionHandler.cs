@@ -19,7 +19,10 @@ internal sealed class MistakeSessionHandler(IHttpContextAccessor contexts, Mista
         var session = await context.RequestServices.GetRequiredService<AdminSessionAccessor>().AuthenticateAsync(context, currentTicket: true);
         ct.ThrowIfCancellationRequested();
         if (session.StatusCode != 200) throw new MistakeSessionException(session.StatusCode, session.Error!);
+        // Preserve only deliberately supplied correlation metadata; never browser credentials.
+        var correlation = request.Headers.TryGetValues("x-correlation-id", out var values) ? values.ToArray() : null;
         request.Headers.Clear();
+        if (correlation is not null) request.Headers.TryAddWithoutValidation("x-correlation-id", correlation);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", session.AccessToken);
         // Checking again closes the cancellation interval introduced by asynchronous authentication.
         ct.ThrowIfCancellationRequested();

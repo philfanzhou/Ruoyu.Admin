@@ -62,6 +62,8 @@ internal sealed class IdentityProxyMiddleware
         {
             if (header.Key.Equals("Authorization", StringComparison.OrdinalIgnoreCase)
                 || header.Key.Equals("Cookie", StringComparison.OrdinalIgnoreCase)
+                // Correlation belongs to the resolved middleware slot, not copied raw input.
+                || header.Key.Equals("x-correlation-id", StringComparison.OrdinalIgnoreCase)
                 || header.Key.Equals("Host", StringComparison.OrdinalIgnoreCase)
                 || header.Key.Equals(AdminSessionBoundary.CsrfHeader, StringComparison.OrdinalIgnoreCase)) continue;
             if (header.Key.StartsWith("Content-", StringComparison.OrdinalIgnoreCase))

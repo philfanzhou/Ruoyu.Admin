@@ -25,7 +25,8 @@ internal static class AdminOidcRegistration
         services.AddHttpClient(AdminPreparedLogout.ClientName, client => client.Timeout = TimeSpan.FromSeconds(10))
             .RemoveAllLoggers()
             .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
-            { AllowAutoRedirect = false, UseCookies = false, ActivityHeadersPropagator = null });
+            { AllowAutoRedirect = false, UseCookies = false, ActivityHeadersPropagator = null })
+            .AddServiceMantleCorrelationIdPropagation();
         services.Configure<HttpClientTraceInstrumentationOptions>(options =>
         {
             var prior = options.FilterHttpRequestMessage;

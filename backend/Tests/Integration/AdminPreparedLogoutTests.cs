@@ -118,7 +118,13 @@ public sealed partial class AdminOidcTests
         Assert.Equal(new[] { "client_id", "client_secret", "id_token_hint", "post_logout_redirect_uri", "state" }, form.Keys.Order());
         Assert.Equal(OidcTestAuthority.ClientId, form["client_id"]); Assert.Equal(OidcTestAuthority.Secret, form["client_secret"]);
         Assert.Equal(authority.LastIdToken, form["id_token_hint"]); Assert.Equal("https://admin.example.test/api/auth/oidc/logout-callback", form["post_logout_redirect_uri"]);
-        Assert.Matches("^[A-Za-z0-9_-]{43}$", form["state"]); Assert.Empty(upstream.Headers.Single());
+        Assert.Matches("^[A-Za-z0-9_-]{43}$", form["state"]);
+        var outgoingHeaders = upstream.Headers.Single();
+        // The new non-credential correlation value is the only allowed header; all original
+        // credential, cookie and instrumentation exclusions still hold.
+        Assert.Equal(response.Headers.GetValues(CorrelationHeaderName).Single(), outgoingHeaders[CorrelationHeaderName]);
+        Assert.Single(outgoingHeaders);
+        Assert.Empty(outgoingHeaders.Where(header => !header.Key.Equals(CorrelationHeaderName, StringComparison.OrdinalIgnoreCase)));
         var cookies = response.Headers.GetValues("Set-Cookie").ToArray();
         Assert.Contains(cookies, c => c.StartsWith("adminSession=;")); Assert.Contains(cookies, c => c.StartsWith("adminAuthToken=;") && c.Contains("samesite=strict"));
         var binding = cookies.Single(c => c.StartsWith("adminLogout."));
