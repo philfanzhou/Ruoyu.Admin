@@ -74,6 +74,8 @@ internal sealed class TeacherPortalProxyMiddleware
         {
             if (header.Key.Equals("Authorization", StringComparison.OrdinalIgnoreCase)
                 || header.Key.Equals("Cookie", StringComparison.OrdinalIgnoreCase)
+                // Correlation belongs to the resolved middleware slot, not copied raw input.
+                || header.Key.Equals("x-correlation-id", StringComparison.OrdinalIgnoreCase)
                 || header.Key.Equals(AdminSessionBoundary.CsrfHeader, StringComparison.OrdinalIgnoreCase)
                 || header.Key.Equals("X-Admin-AppId", StringComparison.OrdinalIgnoreCase)
                 || header.Key.Equals("X-Admin-AppSecret", StringComparison.OrdinalIgnoreCase)) continue;
