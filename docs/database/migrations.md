@@ -6,7 +6,9 @@
 
 ## 启动流程
 
-配置在注册门前由 `AuditDatabaseStartupConfiguration` 解析：`Database:AllowCreate` 缺省/空值为 false，只接受 true/false；空或不可解析的连接、非法开关以 `database_target_preparation.invalid_target` 拒绝，无数据库 I/O，不回显输入。部署固定为 PostgreSQL `MultiInstance`，由 `AuditDatabaseDeploymentCapability` 显式声明能力，使用真实 advisory lock；不提供单实例 canonical identity 入口。
+配置在注册门前由 `AuditDatabaseStartupConfiguration` 解析：`Database:AllowCreate` 缺省/空值为 false，只接受 true/false；空或不可解析的连接、非法开关以 `database_target_preparation.invalid_target` 拒绝，无数据库 I/O，不回显输入。部署固定为 PostgreSQL `MultiInstance`，由共享 `PostgreSqlDatabaseDeploymentCapabilityProvider` 显式声明能力，使用真实 advisory lock。
+
+使用官方同版 `ServiceMantle 0.3.1-rc.1` 的 PostgreSQL 选项预设与显式能力注册；产品配置仍由本地边界校验，`AddStartupDatabaseGate` 仍是原唯一宿主入口。锁等待和准备预算各 30 秒、健康分类、执行器与迁移不变。共享单实例 canonical identity 是不含凭据的 SHA-256 TCP 目标摘要；原本地入口直接拒绝单实例 identity。Admin 固定选择多实例真实 lease，不调用单实例 identity，变化不影响实际执行路径。回滚应用代码和原同版包，无 schema/data 迁移，不撤销已经提交的副作用。
 
 1. **共享启动门**（`StartupDatabaseGate`）：观察解析出的连接串——已有数据库原样使用（不建 maintenance 连接、不需要 CREATEDB 权限）；**可证实缺失**的数据库仅当 `Database:AllowCreate=true`（默认 `false`）时创建，否则以固定错误码 `database_target_preparation.creation_not_allowed` 拒绝启动且零写入；服务器不可达 / 认证 / 权限 / 身份冲突一律拒绝，绝不回退为建库。maintenance 由共享 `PostgreSqlMaintenanceConnection` 派生，只把数据库名改为 `postgres`，沿用同一凭据；准备预算固定 30 秒，成功后重新 Observe，仅可连接时才继续。
 2. **迁移编排**（ServiceMantle）：以 ServiceId `ruoyu-admin` 派生的 advisory lock（30 秒获取预算）覆盖初始检查、执行与持锁终检；失败以安全错误码（`migration.lock_*` / `migration.inspection_failed` / `migration.version_too_new` / `migration.execution_failed` / `migration.final_state_invalid`）非零码退出。
@@ -61,3 +63,5 @@
 中幂等写入，消费方继续负责先校验、advisory lease 与写前再观察。reader 的多次查询不保证一致快照。
 迁移清单、结构、配置键和固定错误码不变；回滚应用代码及同版包即可，无新增数据迁移，已提交的
 迁移不会随应用回滚撤销。
+
+共享 reader 先用空业务表范围读取 history，优先拒绝未知 migration id 与非法 known-prefix，再读取完整业务表结构；未知版本即使与无法表示的零列表同时出现，仍保持 `VersionTooNew`。合法 history 不会绕过结构检查，拒绝路径不回填、不 stamp。

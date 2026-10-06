@@ -80,6 +80,8 @@ builder.WebHost.ConfigureKestrel(options =>
 // Configure downstream clients
 // Student service: HTTP (migrated from gRPC)
 builder.Services.AddStudentHttpClient(studentServiceUrl);
+builder.Services.AddHttpClient<IStudentHttpClient, StudentHttpClient>()
+    .AddServiceMantleCorrelationIdPropagation();
 
 // Mistake service: HTTP (migrated from gRPC)
 var mistakeSessionSettings = MistakeSessionSettings.Read(builder.Configuration, builder.Environment);
@@ -95,11 +97,14 @@ if (mistakeSessionSettings.UseSessionToken)
         .AddHttpMessageHandler<MistakeSessionHandler>()
         .RemoveAllLoggers();
 }
+// Run after the session handler has established the only downstream credential.
+builder.Services.AddHttpClient<IMistakeHttpClient, MistakeHttpClient>()
+    .AddServiceMantleCorrelationIdPropagation();
 builder.Services.AddHttpClient<HomeworkReferenceClient>(client =>
 {
     client.BaseAddress = new Uri(homeworkServiceUrl);
     client.Timeout = TimeSpan.FromSeconds(30);
-});
+}).AddServiceMantleCorrelationIdPropagation();
 
 // The only inbound scheme is the server-side session; downstream tokens remain server-side.
 builder.Services.AddAuthorization(options =>
@@ -124,17 +129,17 @@ builder.Services.Configure<AdminPortalOptions>(
 builder.Services.AddHttpClient("IdentityService", client =>
 {
     client.Timeout = TimeSpan.FromSeconds(30);
-});
+}).AddServiceMantleCorrelationIdPropagation();
 
 builder.Services.AddHttpClient("TeacherPortal", client =>
 {
     client.Timeout = TimeSpan.FromSeconds(10);
-});
+}).AddServiceMantleCorrelationIdPropagation();
 
 builder.Services.AddHttpClient("AssistantPortal", client =>
 {
     client.Timeout = TimeSpan.FromSeconds(10);
-});
+}).AddServiceMantleCorrelationIdPropagation();
 
 builder.Services.AddCors(options =>
 {
@@ -162,7 +167,7 @@ builder.Services.AddControllers(options =>
 // failures carry only a safe code, without the original value or driver exception.
 var startupDatabaseOptions = AuditDatabaseStartupConfiguration.Read(builder.Configuration);
 var connectionString = startupDatabaseOptions.Database.ConnectionString;
-builder.Services.AddSingleton<IDatabaseDeploymentCapabilityProvider, AuditDatabaseDeploymentCapability>();
+builder.Services.AddServiceMantlePostgreSqlDeploymentCapability();
 
 // ========== ServiceMantle (service identity, correlation id, base telemetry, health) ==========
 // ServiceId "ruoyu-admin" is the stable deployment identity (lowercase; deliberately distinct
@@ -190,7 +195,7 @@ builder.Services.AddSingleton<IDatabaseDeploymentCapabilityProvider, AuditDataba
 builder.Services
     .AddServiceMantle(
         ServiceId.Parse("ruoyu-admin"),
-        InstanceId.Parse($"ruoyu-admin-{Guid.NewGuid():N}"))
+        InstanceId.CreateRandom(ServiceId.Parse("ruoyu-admin")))
     .AddOpenTelemetryInstrumentation()
     .AddServiceMantleHealthEndpoints(options =>
     {
@@ -257,7 +262,8 @@ builder.Services.AddDbContext<AuditDbContext>(options =>
 
 builder.Services.AddSingleton(new StorageReferenceSigningConfiguration(builder.Configuration));
 builder.Services.AddHttpClient(StorageReferenceCollector.ClientName, client => client.Timeout = TimeSpan.FromSeconds(35))
-    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false })
+    .AddServiceMantleCorrelationIdPropagation();
 builder.Services.AddScoped<IStorageReferenceCollector, StorageReferenceCollector>();
 builder.Services.AddSingleton<OssAuditWorker>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<OssAuditWorker>());

@@ -23,16 +23,10 @@ internal static class AuditDatabaseStartupConfiguration
                 configuration, configuration.GetConnectionString("AuditDb"));
             // Parsing/derivation does no I/O. Never preserve an inner driver exception: its
             // message may contain an invalid configuration value or a connection secret.
-            var maintenance = PostgreSqlMaintenanceConnection.DeriveConnectionString(connectionString!);
-            return new StartupDatabaseGateOptions(
+            return PostgreSqlStartupDatabaseGateOptions.Create(
                 new BootstrapDatabaseConfiguration(
                     WellKnownDatabaseProviderIds.PostgreSql, null, connectionString!),
-                DatabaseDeploymentMode.MultiInstance,
-                TimeSpan.FromSeconds(30),
-                enableTargetPreparation: true,
-                allowTargetCreation: allowCreate,
-                maintenanceConnectionString: maintenance,
-                preparationTimeout: TimeSpan.FromSeconds(30));
+                allowTargetCreation: allowCreate);
         }
         catch (Exception exception) when (exception is ArgumentException or FormatException or OverflowException)
         {

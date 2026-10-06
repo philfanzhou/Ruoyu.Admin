@@ -197,3 +197,11 @@ Teacher/Assistant 全代理前缀始终在认证/授权前共用管理员/CSRF �
 Identity 代理退役浏览器凭据兼容（#73）：middleware 的 settings 为必需依赖，直接调用缺 TrustedSessionKey/有效服务器 token 也401拒绝。所有路径使用 StartsWithSegments remaining 映射 `/api`，根/尾斜线/大小写/query/body 保持；始终 RequestAborted，预取消/发送中取消传播且无应用层重试。非代理的 IdentityAccountsController 不在此切片范围。中间镜像不部署，最终须包含 #41/#75；回滚只选择明确旧完整镜像，不复活票据。
 
 门户传输退役浏览器凭据兼容（#74）：两 middleware 只接受 TrustedSessionKey 的有效 server token，settings 为必需依赖，直接调用缺可信项也401。统一 remaining 的 admin/auth/其他三类映射，始终 RequestAborted、剥离浏览器Authorization/Cookie/Host/CSRF/gateway，隔离Set-Cookie；取消传播且无应用层重试。关联查询只随API-session，即使门户proxy开关false也用server token；当前账户筛选、单侧失败保另一侧、无关联短路与Student失败响应保持。此中间镜像不部署，最终须组合#41/#75；整版回滚不恢复本版浏览器凭据路径或复活撤票。
+
+## 内部 HTTP 关联值（#85）
+
+全部直接 ServiceMantle 包统一官方 `0.3.1-rc.1`。既有 Student、Mistake、Homework、IdentityService、TeacherPortal、AssistantPortal、StorageReferences 和固定内部 Authority 的 prepared logout 显式挂载共享 `AddServiceMantleCorrelationIdPropagation`；外部 S3、Consul 及独立 OIDC discovery/token Backchannel 不挂载，无全局策略。目的地与 redirect 信任仍由调用方承担，既有基址、timeout、retry、日志禁用和敏感 span 过滤保持。
+
+三代理不把原始入站 `x-correlation-id` 当成明确出站值复制，由共享 handler 读取 middleware 私有已解析 slot；正常接受值保持相同，拒绝的输入对应同一生成值。明确由出站调用指定的 header 保持单值；Mistake 会话 handler 仅保留该非凭据 metadata，其余 header 继续清空并注入服务器票据 token，propagation 位于会话 handler 之后。Authorization/Cookie/CSRF/Host/AppSecret 的原剥离及下游 Set-Cookie 隔离不变。池化每 send 读当前 context，后台没有 context 不造 ID；Mistake 原无会话请求仍零下游拒绝。关联值不参与认证或幂等。
+
+`InstanceId.CreateRandom` 保持每 Host build 随机 `ruoyu-admin-<Guid:N>`、同 Host 稳定，不写 bootstrap 或其他状态。无需新配置/数据迁移；回滚部署旧代码及配套同版包，不运行数据库 Down。

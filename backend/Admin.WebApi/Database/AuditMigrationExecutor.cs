@@ -171,7 +171,23 @@ public sealed class AuditMigrationExecutor : IDatabaseMigrationExecutor
         var openedHere = connection.State != System.Data.ConnectionState.Open;
         try
         {
-            var evidence = await new PostgreSqlSchemaEvidenceReader().ReadAsync(connection,
+            var reader = new PostgreSqlSchemaEvidenceReader();
+            // History classification precedes schema inspection, including schema evidence
+            // that the shared model cannot represent. An empty scope reads history only.
+            var history = await reader.ReadAsync(connection,
+                new PostgreSqlSchemaEvidenceReadOptions(tables: []),
+                cancellationToken).ConfigureAwait(false);
+            if (history.State == SchemaEvidenceReadState.TargetDatabaseMissing)
+                return DatabaseInspection.Of(DatabaseState.Empty, "the target database does not exist yet");
+            if (history.State == SchemaEvidenceReadState.ReadFailed)
+            {
+                _logger?.LogWarning("Database inspection could not read the target structure");
+                return DatabaseInspection.Failed(history.Message);
+            }
+            var historyFailure = InspectHistory(history.AppliedMigrationIds);
+            if (historyFailure is not null) return historyFailure;
+
+            var evidence = await reader.ReadAsync(connection,
                 new PostgreSqlSchemaEvidenceReadOptions(includeExtendedObjectEvidence: true,
                     tables: KnownTableNames.Select(name => (SchemaName, name)).ToArray()),
                 cancellationToken).ConfigureAwait(false);
@@ -259,21 +275,12 @@ public sealed class AuditMigrationExecutor : IDatabaseMigrationExecutor
 
     private DatabaseInspection InspectEvidence(SchemaEvidenceReadResult evidence)
     {
+        var applied = evidence.AppliedMigrationIds;
+        var historyFailure = InspectHistory(applied);
+        if (historyFailure is not null) return historyFailure;
         var expected = BuildExpectedTables();
         var snapshot = evidence.Snapshot!;
         var presentBusinessTables = snapshot.Tables.Select(table => table.Name).ToList();
-        var applied = evidence.AppliedMigrationIds;
-
-        var unknownIds = applied.Where(id => !KnownMigrationIds.Contains(id)).ToList();
-        if (unknownIds.Count > 0)
-        {
-            return DatabaseInspection.Of(
-                DatabaseState.VersionTooNew,
-                $"the migration history contains ids this application does not know: {Join(unknownIds)}");
-        }
-
-        if (!applied.SequenceEqual(KnownMigrationIds.Take(applied.Count), StringComparer.Ordinal))
-            return DatabaseInspection.Failed("migration history is not an exact supported prefix");
 
         if (applied.Count == KnownMigrationIds.Count)
         {
@@ -323,6 +330,22 @@ public sealed class AuditMigrationExecutor : IDatabaseMigrationExecutor
             "a verified legacy database without migration history requires the safe backfills and the baseline registration",
             backfills,
             requiresHistoryStamp: true);
+    }
+
+    private static DatabaseInspection? InspectHistory(IReadOnlyList<string> applied)
+    {
+        var unknownIds = applied.Where(id => !KnownMigrationIds.Contains(id)).ToList();
+        if (unknownIds.Count > 0)
+        {
+            return DatabaseInspection.Of(
+                DatabaseState.VersionTooNew,
+                $"the migration history contains ids this application does not know: {Join(unknownIds)}");
+        }
+
+        if (!applied.SequenceEqual(KnownMigrationIds.Take(applied.Count), StringComparer.Ordinal))
+            return DatabaseInspection.Failed("migration history is not an exact supported prefix");
+
+        return null;
     }
 
     private void EnsureMigrationContract()
