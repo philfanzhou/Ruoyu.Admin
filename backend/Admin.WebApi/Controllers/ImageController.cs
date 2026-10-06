@@ -79,7 +79,7 @@ public class ImageController : ControllerBase
         }
         catch (HttpRequestException ex)
         {
-            _logger.LogError(ex, "GetPresignedUrl 失败, Path: {Path}", objectPath);
+            _logger.LogError(ex, "GetPresignedUrl 失败, Path: {Path}", AdminLogValue.Sanitize(objectPath));
             return StatusCode(502, new { message = "图片服务暂不可用" });
         }
     }

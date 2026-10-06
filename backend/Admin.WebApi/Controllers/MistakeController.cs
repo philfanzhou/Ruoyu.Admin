@@ -153,7 +153,7 @@ public class MistakeController : ControllerBase
         }
         catch (Exception ex) when (ex is not MistakeBoundaryException and not OperationCanceledException)
         {
-            _logger.LogError(ex, "Failed to get mistake item: {Id}", id);
+            _logger.LogError(ex, "Failed to get mistake item: {Id}", AdminLogValue.Sanitize(id));
             return StatusCode(500, new ErrorResponse("Failed to get mistake item"));
         }
     }
@@ -210,7 +210,7 @@ public class MistakeController : ControllerBase
         }
         catch (Exception ex) when (ex is not MistakeBoundaryException and not OperationCanceledException)
         {
-            _logger.LogError(ex, "Failed to get mistakes by upload id: {UploadId}", uploadId);
+            _logger.LogError(ex, "Failed to get mistakes by upload id: {UploadId}", AdminLogValue.Sanitize(uploadId));
             return StatusCode(500, new ErrorResponse("Failed to get mistakes by upload id"));
         }
     }
@@ -249,7 +249,7 @@ public class MistakeController : ControllerBase
         }
         catch (Exception ex) when (ex is not MistakeBoundaryException and not OperationCanceledException)
         {
-            _logger.LogError(ex, "Failed to update mistake item: {Id}", id);
+            _logger.LogError(ex, "Failed to update mistake item: {Id}", AdminLogValue.Sanitize(id));
             return StatusCode(500, new ErrorResponse("Failed to update mistake item"));
         }
     }
