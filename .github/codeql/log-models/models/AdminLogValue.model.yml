@@ -2,9 +2,16 @@
 # repository. Wrapping a user-controlled value in that call closes the cs/log-forging path —
 # the runtime normalization replaces control/format/line/paragraph-separator runes with
 # spaces before the value reaches ILogger.
+#
+# The barrier must be declared on "ReturnValue": a C# barrierModel's seventh column is an
+# OUTPUT access path, where "Argument[n]" designates the post-call (ref/out) value of an
+# argument and never matches a by-value parameter, so such a row silently no-ops. The
+# return value of the sanitizer is the trusted copy, mirroring the official ESAPI
+# getValid* barrier models. Verified locally: this pack + "ReturnValue" yields 0
+# cs/log-forging results where "Argument[0]" yields 22.
 extensions:
   - addsTo:
       pack: codeql/csharp-all
       extensible: barrierModel
     data:
-      - ["Admin.WebApi", "AdminLogValue", false, "Sanitize", "(System.String)", "", "Argument[0]", "log-injection", "manual"]
+      - ["Admin.WebApi", "AdminLogValue", false, "Sanitize", "(System.String)", "", "ReturnValue", "log-injection", "manual"]
