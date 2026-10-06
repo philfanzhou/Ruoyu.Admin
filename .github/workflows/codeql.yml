@@ -60,21 +60,23 @@ jobs:
       # barrier. Direct CLI invocation because the pinned analyze action exposes no
       # model-pack input; the pack is resolved from the checkout with
       # --additional-packs and applied with --extension-packs (pack name and version
-      # must match .github/codeql/log-models/qlpack.yml). setup-codeql puts the CLI
-      # (already downloaded by init) on PATH for these steps.
-      - uses: github/codeql-action/setup-codeql@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4
+      # must match .github/codeql/log-models/qlpack.yml). setup-codeql exposes the
+      # CLI (already downloaded by init) via its codeql-path output.
+      - id: setup-codeql
+        uses: github/codeql-action/setup-codeql@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4
         if: matrix.language == 'csharp'
 
       - name: Analyze C#
         if: matrix.language == 'csharp'
         env:
           DB: ${{ runner.temp }}/codeql_databases/csharp
+          CODEQL: ${{ steps.setup-codeql.outputs.codeql-path }}
         run: |
-          codeql database finalize --finalize-dataset "$DB"
-          codeql database run-queries "$DB" \
+          "$CODEQL" database finalize --finalize-dataset "$DB"
+          "$CODEQL" database run-queries "$DB" \
             --additional-packs="$GITHUB_WORKSPACE/.github/codeql/log-models" \
             --extension-packs=ruoyu-admin/log-sanitizer-models@0.1.0
-          codeql database interpret-results "$DB" \
+          "$CODEQL" database interpret-results "$DB" \
             --format=sarif-latest \
             --output="$RUNNER_TEMP/csharp.sarif" \
             --sarif-category=/language:csharp
