@@ -112,7 +112,7 @@ The integrated image serves the API and the built SPA from one container:
 
 ### Database startup (migrations)
 
-The `ruoyu_admin` schema is managed by an EF Core baseline migration executed by the ServiceMantle 0.3.0 startup database gate and shared orchestrator:
+The `ruoyu_admin` schema is managed by an EF Core baseline migration executed by the ServiceMantle 0.3.1-rc.1 startup database gate and shared orchestrator:
 
 1. **Target preparation** — an existing database is used as-is; a verifiably missing database is created only when `Database:AllowCreate=true` (default `false` — otherwise startup refuses with the fixed code `database_target_preparation.creation_not_allowed` and writes nothing). Back up the database before upgrading.
 2. **Advisory-lock orchestration** — startup acquires a PostgreSQL session advisory lock (30 s acquire budget) so that when multiple instances start concurrently exactly one executes the migration; the others re-inspect under the lock and skip.

@@ -162,7 +162,7 @@ builder.Services.AddControllers(options =>
 // failures carry only a safe code, without the original value or driver exception.
 var startupDatabaseOptions = AuditDatabaseStartupConfiguration.Read(builder.Configuration);
 var connectionString = startupDatabaseOptions.Database.ConnectionString;
-builder.Services.AddSingleton<IDatabaseDeploymentCapabilityProvider, AuditDatabaseDeploymentCapability>();
+builder.Services.AddServiceMantlePostgreSqlDeploymentCapability();
 
 // ========== ServiceMantle (service identity, correlation id, base telemetry, health) ==========
 // ServiceId "ruoyu-admin" is the stable deployment identity (lowercase; deliberately distinct
