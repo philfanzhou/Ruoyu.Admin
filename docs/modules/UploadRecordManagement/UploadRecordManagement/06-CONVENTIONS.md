@@ -1,5 +1,7 @@
 # UploadRecordManagement 约定
 
+当前调用链是 HTTP ServiceClients，以下旧 gRPC 名称与 index-based 流程保留为 legacy 迁移背景。受管分支遵循[受管集成契约](../../../Integration/ManagedAssignment.md)：只发精确 POST upload，经当前 session/CSRF 或已验证 Bearer 管线取 caller token，安全 errorkind 代替原 provider 文本；不写 receipt、不移图/删源/自动 seal，固定请求在页面内恢复，producer 是唯一 durable authority。
+
 ## 命名约定
 
 - Controller 路由：`api/admin/oss-upload-records`（kebab-case）

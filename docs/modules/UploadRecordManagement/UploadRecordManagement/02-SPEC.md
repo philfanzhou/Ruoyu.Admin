@@ -1,5 +1,7 @@
 # UploadRecordManagement API
 
+新增 managed-v1 与 legacyfalse 分支共用现有 assign 路由。受管分支的字段、验证与逐组结果以[受管集成契约](../../../Integration/ManagedAssignment.md)为准；以下 index-based shape 描述 legacy 分支。当前客户端为 HTTP，旧 gRPC 名称只描述原迁移背景。
+
 ## 接口列表
 
 | 方法 | 路径 | 说明 |
@@ -27,7 +29,7 @@
 | status | int | 否 | -1 | 上传状态（-1 表示所有） |
 | studentId | string | 否 | - | 学生 ID |
 
-**gRPC 调用：** `StudentManagement.GetAllUploadRecords`（Admin 专用接口，待 Task 4.6 迁移至通用接口）
+**HTTP 调用：** Student `GET /api/uploads`；列表项直接作为详情抽屉数据源，新增 contentRevision/imageEntries/assignmentProtocol 并保留 imagePaths。开启 managed 时坏 metadata 返回502，依赖错误明确失败。
 
 **响应：**
 

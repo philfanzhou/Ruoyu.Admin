@@ -64,6 +64,8 @@ const int httpPort = 5020;
 
 var studentServiceUrl = builder.Configuration["StudentService:Url"] ?? "http://localhost:5005";
 var mistakeServiceUrl = builder.Configuration["MistakeService:Url"] ?? "http://localhost:5007";
+var managedAssignment = ManagedAssignmentOptions.Read(builder.Configuration);
+builder.Services.AddSingleton(managedAssignment);
 var homeworkServiceUrl = builder.Configuration["HomeworkService:Url"] ?? "http://localhost:5009";
 var identityAppId = builder.Configuration["IdentityService:AppId"];
 var identityAppSecret = builder.Configuration["IdentityService:AppSecret"];
@@ -101,6 +103,18 @@ if (mistakeSessionSettings.UseSessionToken)
 // Run after the session handler has established the only downstream credential.
 builder.Services.AddHttpClient<IMistakeHttpClient, MistakeHttpClient>()
     .AddServiceMantleCorrelationIdPropagation();
+if (managedAssignment.Enabled)
+{
+    // Same handler hygiene as the session mistake client: no redirects, no cookie jar,
+    // no activity headers, no logging handlers (the request carries a caller token).
+    builder.Services.AddHttpClient<IManagedMistakeHttpClient, ManagedMistakeHttpClient>(client =>
+    {
+        client.BaseAddress = new Uri(mistakeServiceUrl);
+        client.Timeout = TimeSpan.FromSeconds(30);
+    }).ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false, ActivityHeadersPropagator = null })
+      .AddServiceMantleCorrelationIdPropagation()
+      .RemoveAllLoggers();
+}
 builder.Services.AddHttpClient<HomeworkReferenceClient>(client =>
 {
     client.BaseAddress = new Uri(homeworkServiceUrl);

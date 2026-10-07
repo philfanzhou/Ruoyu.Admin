@@ -39,15 +39,23 @@ public class HomeworkImageContentResult
 public class ImageEntryDto
 {
     public string Path { get; set; } = string.Empty;
-    public string Type { get; set; } = "mistake";
+    public string Type { get; set; } = string.Empty;
 }
 
 public class UploadRecordDto
 {
+    public Guid? ContentRevision { get; set; }
     public string Id { get; set; } = string.Empty;
     public string StudentId { get; set; } = string.Empty;
     public int Status { get; set; }
-    public List<ImageEntryDto> ImageEntries { get; set; } = new();
+    private List<ImageEntryDto> _imageEntries = new();
+    public List<ImageEntryDto> ImageEntries
+    {
+        get => _imageEntries;
+        set { _imageEntries = value; HasImageEntries = true; }
+    }
+    [JsonIgnore]
+    public bool HasImageEntries { get; private set; }
     public List<int> ImageRotations { get; set; } = new();
     public string Comments { get; set; } = string.Empty;
     public string ReturnReason { get; set; } = string.Empty;
@@ -90,7 +98,14 @@ public class PresignedUrlResult
 
 public class UploadRecordsPage
 {
-    public List<UploadRecordDto> Items { get; set; } = new();
+    private List<UploadRecordDto> _items = new();
+    public List<UploadRecordDto> Items
+    {
+        get => _items;
+        set { _items = value; HasItems = true; }
+    }
+    [JsonIgnore]
+    public bool HasItems { get; private set; }
     public int TotalCount { get; set; }
     public int Page { get; set; }
     public int PageSize { get; set; }

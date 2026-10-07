@@ -1,5 +1,7 @@
 # 部署与运维
 
+受管错题指派默认关闭，启用前须配置合法 HTTPS Mistake origin 与现有可信身份，确认实际 Student metadata 和 Mistake intake 已交付。错误 bool / 缺 HTTPS / 缺必要 trust 在业务写入前拒绝启动；关闭不删除上游历史。配置、TLS/token 接线与回退边界见[受管集成契约](../Integration/ManagedAssignment.md)。
+
 ## 构建与启动
 
 - 集成镜像：`backend/Admin.WebApi/Dockerfile`，先构建 Vue 前端，再把产物复制到 API 的 `wwwroot`。构建入口 `./scripts/build.sh`，产物 `ruoyu.admin:${IMAGE_TAG}`（`IMAGE_TAG` 默认 `20260502`）。

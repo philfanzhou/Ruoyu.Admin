@@ -2,6 +2,8 @@
 
 > 前半部分保留 #24 历史旧完整版本的现场配方；其密码/Bearer 登录步骤不适用于当前 main。当前版本必须组合 #41 托管 SPA，密码入口永久410、认证配置非法时启动拒绝、API拒绝任何 Authorization；最新受控部署配置见 [Deployment.md](./Deployment.md#signacore-托管登录唯一模式)。不能通过开启旧路径恢复当前版本认证。
 
+受管指派需要真实 Student/Mistake、PG/S3 与正常 TLS/注册身份，本文的旧下游替身不模拟 intake 幂等、lease 或 commit 后丢响应，不能替代该验收。配置和真实验证入口见[受管集成契约](../Integration/ManagedAssignment.md)；默认保持能力关闭。
+
 本文档给出一套**在开发机上从干净 clone 到可执行 [#24](https://github.com/philfanzhou/Ruoyu.Admin/issues/24) 真实环境回归**的完整配方：本地 PostgreSQL + SignaCore 本地 Identity + 三个下游引用来源的本地替身 + `USE_LOCAL_OSS=1` 本地对象目录。该配方保留旧完整版本的登录、下游旧DTO和本地对象目录回归；当前 StorageReferences v1 的真实三方验收须另用生产Host、PG、正常TLS和专属RS256，不能由这些替身代替。所有审计resolve都拒绝删除。
 
 > **安全边界（不可放宽）**

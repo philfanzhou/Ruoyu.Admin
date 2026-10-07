@@ -4,7 +4,7 @@
       指派为错题
       <el-button v-if="canApplyVl" link type="primary" class="apply-vl" @click="emit('applyVl')">应用 VL 分组</el-button>
     </div>
-    <el-form label-position="top" @submit.prevent>
+    <el-form label-position="top" :disabled="disabled" @submit.prevent>
       <div class="form-row-2">
         <el-form-item label="学科" required>
           <el-select v-model="subjectModel" placeholder="请选择学科">
@@ -32,6 +32,7 @@ defineProps<{
   subjectOptions: SubjectOption[]
   gradeOptions: GradeOption[]
   canApplyVl: boolean
+  disabled?: boolean
 }>()
 
 // 0 means "not selected" (validated by the caller); the selects show their placeholder for it.

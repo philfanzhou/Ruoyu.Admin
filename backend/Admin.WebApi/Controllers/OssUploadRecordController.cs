@@ -4,6 +4,8 @@ using Microsoft.AspNetCore.Mvc;
 using Ruoyu.Admin.ServiceClients;
 using Admin.WebApi.Models;
 using Ruoyu.Admin.Common.Oss;
+using Admin.WebApi.Services;
+using Admin.WebApi.Authentication;
 
 namespace Admin.WebApi.Controllers;
 
@@ -16,17 +18,23 @@ public class OssUploadRecordController : ControllerBase
     private readonly IMistakeHttpClient _mistakeClient;
     private readonly ILogger<OssUploadRecordController> _logger;
     private readonly IOssService _ossService;
+    private readonly ManagedAssignmentOptions _managed;
+    private readonly IManagedMistakeHttpClient? _managedClient;
 
     public OssUploadRecordController(
         IStudentHttpClient studentClient,
         IMistakeHttpClient mistakeClient,
         ILogger<OssUploadRecordController> logger,
-        IOssService ossService)
+        IOssService ossService,
+        ManagedAssignmentOptions? managed = null,
+        IManagedMistakeHttpClient? managedClient = null)
     {
         _studentClient = studentClient;
         _mistakeClient = mistakeClient;
         _logger = logger;
         _ossService = ossService;
+        _managed = managed ?? new(false);
+        _managedClient = managedClient;
     }
 
     [HttpGet]
@@ -35,6 +43,9 @@ public class OssUploadRecordController : ControllerBase
         try
         {
             var response = await _studentClient.GetAllUploadRecordsAsync(status >= 0 ? status : (int?)null, page, pageSize, studentId);
+            if (_managed.Enabled && (!response.HasItems || response.Items is null
+                || response.Items.Any(r => r is null || !HasManagedMetadata(r))))
+                return StatusCode(502, new { errorKind = "invalid_source_metadata", message = "Upload metadata is unavailable." });
 
             // 收集所有唯一的 studentId，批量查询学生姓名
             var studentIds = response.Items.Select(r => r.StudentId).Distinct().ToList();
@@ -62,6 +73,9 @@ public class OssUploadRecordController : ControllerBase
                     studentName = studentNameMap.GetValueOrDefault(r.StudentId, r.StudentId),
                     status = r.Status,
                     imagePaths = r.ImageEntries.Select(e => e.Path).ToList(),
+                    imageEntries = r.ImageEntries.Select(e => new { path = e.Path, type = e.Type }).ToList(),
+                    contentRevision = r.ContentRevision,
+                    assignmentProtocol = _managed.Enabled ? "managed-v1" : "legacy",
                     comments = r.Comments,
                     createdAt = ParseTimestampToUnixSeconds(r.CreatedAt),
                     updatedAt = ParseTimestampToUnixSeconds(r.UpdatedAt)
@@ -102,6 +116,12 @@ public class OssUploadRecordController : ControllerBase
     [HttpPost("{id}/assign")]
     public async Task<IActionResult> AssignUploadRecord(string id, [FromBody] AssignUploadRecordRequest request, CancellationToken cancellationToken = default)
     {
+        if (_managed.Enabled || request.Mode is not null || request.ExpectedContentRevision.HasValue
+            || request.Assignments?.Any(a => a is not null && (a.RequestKey.HasValue || a.SourcePaths is not null
+                || a.SourceRegions is not null)) == true)
+            return await AssignManagedAsync(id, request);
+        if (request.Assignments is not { Count: > 0 })
+            return BadRequest(new ErrorResponse("Assignments are required."));
         try
         {
             // 获取上传记录
@@ -116,7 +136,7 @@ public class OssUploadRecordController : ControllerBase
             var warnings = new List<string>();
             var allSuccess = true;
             var createdItems = new List<object>();
-            var assignedImagePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var assignedImagePaths = new HashSet<string>(StringComparer.Ordinal);
 
             foreach (var assignment in request.Assignments)
             {
@@ -128,6 +148,7 @@ public class OssUploadRecordController : ControllerBase
 
                 if (selectedImagePaths.Count == 0)
                 {
+                    allSuccess = false;
                     warnings.Add($"No valid images found for assignment with indices: {string.Join(",", assignment.ImageIndices)}");
                     continue;
                 }
@@ -141,7 +162,7 @@ public class OssUploadRecordController : ControllerBase
                     assignment.Comments ?? record.Comments ?? string.Empty,
                     id, cancellationToken);
 
-                if (!submitResponse.Success)
+                if (!submitResponse.Success || submitResponse.CreatedItemIds.Count == 0)
                 {
                     allSuccess = false;
                     warnings.Add($"Failed to create mistake for images {string.Join(",", assignment.ImageIndices)}: {submitResponse.ErrorMessage}");
@@ -203,6 +224,79 @@ public class OssUploadRecordController : ControllerBase
             _logger.LogError(ex, "Failed to assign upload record: {RecordId}", AdminLogValue.Sanitize(id));
             return StatusCode(500, new ErrorResponse("Failed to assign upload record"));
         }
+    }
+
+    private static bool HasManagedMetadata(UploadRecordDto record) => Guid.TryParse(record.Id, out var source) && source != Guid.Empty
+        && Guid.TryParse(record.StudentId, out var student) && student != Guid.Empty
+        && record.ContentRevision is { } revision && revision != Guid.Empty && record.HasImageEntries
+        && record.ImageEntries is not null && record.ImageEntries.All(e => e is not null
+            && !string.IsNullOrEmpty(e.Path) && e.Path.Length <= 4096 && !string.IsNullOrEmpty(e.Type));
+
+    private async Task<IActionResult> AssignManagedAsync(string id, AssignUploadRecordRequest request)
+    {
+        if (!_managed.Enabled) return StatusCode(503, new { errorKind = "managed_assignment_disabled" });
+        var caller = ManagedCaller();
+        if (caller.StatusCode != 200) return StatusCode(caller.StatusCode, new { errorKind = caller.Error });
+        if (request.Mode != "managed-v1" || !Guid.TryParse(id, out var source) || source == Guid.Empty
+            || !Guid.TryParse(request.StudentId, out var student) || student == Guid.Empty
+            || request.ExpectedContentRevision is not { } revision || revision == Guid.Empty
+            || request.Assignments is not { Count: >= 1 and <= 100 }
+            || request.Assignments.Any(a => a is null || !IsValidManagedAssignment(a!))
+            || request.Assignments.Select(a => a.RequestKey).Distinct().Count() != request.Assignments.Count)
+            return BadRequest(new { errorKind = "invalid_assignment", message = "The fixed managed assignment is invalid." });
+        if (_managedClient is null) throw new InvalidOperationException("Managed client is not registered.");
+        var groups = new List<object>(); var stopped = false;
+        foreach (var assignment in request.Assignments)
+        {
+            var payload = ManagedPayload(assignment);
+            var result = stopped ? new ManagedMistakeResult("NotAttempted", "", Array.Empty<Guid>())
+                : await _managedClient.SubmitAsync(new(source, revision, assignment.RequestKey!.Value, student,
+                    assignment.Subject, assignment.Grade, payload.Paths, payload.Regions,
+                    assignment.Comments ?? string.Empty), caller.AccessToken!, HttpContext.RequestAborted);
+            groups.Add(new { requestKey = assignment.RequestKey, state = result.State,
+                errorKind = result.ErrorKind, createdItemIds = result.CreatedItemIds, statusCode = result.HttpStatus });
+            if (result.State != "Completed") stopped = true;
+        }
+        return Ok(new { success = !stopped, groups });
+    }
+
+    private static bool IsValidManagedAssignment(ImageAssignment a)
+    {
+        if (a.RequestKey is null || a.RequestKey == Guid.Empty || a.Subject is < 1 or > 9 || a.Grade is < 1 or > 12
+            || a.Comments?.Length > 4096)
+            return false;
+        var hasPaths = a.SourcePaths is { Count: >= 1 and <= 100 }
+            && a.SourcePaths.All(path => !string.IsNullOrEmpty(path) && path.Length <= 4096);
+        var hasRegions = a.SourceRegions is { Count: >= 1 and <= 100 } && a.SourceRegions.All(IsValidRegion);
+        // The upstream contract rejects a request carrying both imagePaths and sourceRegions;
+        // a managed assignment must pick exactly one payload shape.
+        return hasPaths ^ hasRegions;
+    }
+
+    private static bool IsValidRegion(RegionInput? region)
+        => region is not null && !string.IsNullOrEmpty(region.SourceImagePath) && region.SourceImagePath.Length <= 4096
+            && (region.BoundingBox is null
+                || (region.BoundingBox.X1 >= 0 && region.BoundingBox.Y1 >= 0
+                    && region.BoundingBox.X1 < region.BoundingBox.X2 && region.BoundingBox.Y1 < region.BoundingBox.Y2));
+
+    private static (IReadOnlyList<string> Paths, IReadOnlyList<ManagedSourceRegion>? Regions) ManagedPayload(ImageAssignment assignment)
+        => assignment.SourceRegions is { Count: > 0 } regions
+            ? (Array.Empty<string>(),
+                regions.Select(region => new ManagedSourceRegion(region.SourceImagePath!,
+                        region.BoundingBox is null
+                            ? null
+                            : new ManagedBoundingBox(region.BoundingBox.X1, region.BoundingBox.Y1, region.BoundingBox.X2, region.BoundingBox.Y2)))
+                    .Distinct()
+                    .ToList())
+            : (assignment.SourcePaths!.Distinct(StringComparer.Ordinal).ToArray(), null);
+
+    private AdminSessionResult ManagedCaller()
+    {
+        // The session boundary already verified the administrator identity, rejected any
+        // inbound Authorization header, and ran the unsafe-method CSRF gate.
+        return HttpContext.Items.TryGetValue(AdminSessionBoundary.TrustedSessionKey, out var value)
+            && value is AdminSessionResult trusted && trusted.StatusCode == 200
+            ? trusted : new(401);
     }
 
     [HttpGet("image")]
@@ -492,14 +586,34 @@ public class ResetStatusRequest
 
 public class ImageAssignment
 {
+    public Guid? RequestKey { get; set; }
+    public List<string>? SourcePaths { get; set; }
+    public List<RegionInput>? SourceRegions { get; set; }
     public List<int> ImageIndices { get; set; } = new();
     public int Subject { get; set; }
     public int Grade { get; set; }
     public string? Comments { get; set; }
 }
 
+/// <summary>Crop region input mirroring the mistake service's SourceRegionDto wire shape.</summary>
+public class RegionInput
+{
+    public string? SourceImagePath { get; set; }
+    public BoxInput? BoundingBox { get; set; }
+}
+
+public class BoxInput
+{
+    public int X1 { get; set; }
+    public int Y1 { get; set; }
+    public int X2 { get; set; }
+    public int Y2 { get; set; }
+}
+
 public class AssignUploadRecordRequest
 {
+    public string? Mode { get; set; }
+    public Guid? ExpectedContentRevision { get; set; }
     public string StudentId { get; set; } = string.Empty;
     public List<ImageAssignment> Assignments { get; set; } = new();
 }

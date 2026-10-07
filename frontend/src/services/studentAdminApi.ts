@@ -112,6 +112,9 @@ export interface EnumOptionsResponse {
 
 // Upload Record Types
 export interface UploadRecordDto {
+    contentRevision?: string | null
+    imageEntries?: { path: string; type: string }[]
+    assignmentProtocol?: string
     id: string
     studentId: string
     studentName: string
@@ -128,6 +131,30 @@ export interface ImageAssignmentPayload {
     subject: number
     grade: number
     comments?: string
+}
+
+/** Mirror of the mistake service's SourceRegionDto wire shape; a null box is the full image. */
+export interface ManagedSourceRegion {
+    sourceImagePath: string
+    boundingBox: { x1: number; y1: number; x2: number; y2: number } | null
+}
+
+export interface ManagedImageAssignment {
+    requestKey: string
+    /** Full-image payload; exclusive with sourceRegions. */
+    sourcePaths?: string[]
+    /** Explicit crop payload; exclusive with sourcePaths. */
+    sourceRegions?: ManagedSourceRegion[]
+    subject: number
+    grade: number
+    comments: string
+}
+
+export interface ManagedAssignRequest {
+    mode: 'managed-v1'
+    studentId: string
+    expectedContentRevision: string
+    assignments: ManagedImageAssignment[]
 }
 
 export interface AssignUploadRecordRequest {
@@ -314,6 +341,11 @@ class StudentAdminApiClient {
             `/api/admin/oss-upload-records/${recordId}/assign`,
             payload
         )
+        return response.data
+    }
+
+    async assignManagedUploadRecord(recordId: string, payload: ManagedAssignRequest, signal?: AbortSignal): Promise<unknown> {
+        const response = await this.client.post(`/api/admin/oss-upload-records/${recordId}/assign`, payload, { signal })
         return response.data
     }
 
