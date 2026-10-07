@@ -2,6 +2,7 @@ using Admin.WebApi.Database;
 using Microsoft.Extensions.Configuration;
 using Npgsql;
 using ServiceMantle.Bootstrap;
+using ServiceMantle.Database.PostgreSql;
 using Xunit;
 
 namespace Admin.WebApi.Tests.Database;
@@ -50,12 +51,27 @@ public sealed class AuditDatabaseStartupConfigurationTests
     }
 
     [Fact]
-    public async Task DeploymentCapability_RejectsUnusedSingleInstanceIdentityEntry()
+    public async Task SharedDeploymentCapability_UnusedSingleInstanceIdentityExcludesCredentials()
     {
-        var provider = new AuditDatabaseDeploymentCapability();
+        var provider = new PostgreSqlDatabaseDeploymentCapabilityProvider();
         Assert.Equal(DatabaseDeploymentSupport.SingleAndMultiInstance, provider.Capability.Support);
-        await Assert.ThrowsAsync<InvalidOperationException>(() => provider.GetCanonicalTargetIdentityAsync(
-            AuditDatabaseStartupConfiguration.Read(Configuration(null)).Database, default).AsTask());
+        var target = AuditDatabaseStartupConfiguration.Read(Configuration(null)).Database;
+        var identity = await provider.GetCanonicalTargetIdentityAsync(target, default);
+        var changedCredentials = new NpgsqlConnectionStringBuilder(target.ConnectionString)
+        {
+            Username = "another-owner",
+            Password = "another-mock-value",
+        };
+        var equivalent = new BootstrapDatabaseConfiguration(
+            WellKnownDatabaseProviderIds.PostgreSql, null, changedCredentials.ConnectionString);
+        Assert.Equal(identity, await provider.GetCanonicalTargetIdentityAsync(equivalent, default));
+        Assert.Matches("^[0-9A-F]{64}$", identity);
+        Assert.DoesNotContain("mock-value", identity);
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        var exception = await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            provider.GetCanonicalTargetIdentityAsync(target, cancellation.Token).AsTask());
+        Assert.Equal(cancellation.Token, exception.CancellationToken);
     }
 
     private static IConfiguration Configuration(string? allow,

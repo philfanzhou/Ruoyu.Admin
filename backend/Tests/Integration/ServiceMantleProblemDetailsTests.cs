@@ -8,7 +8,6 @@ using Admin.WebApi.Services;
 using Admin.WebApi.Persistence;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Controllers;
@@ -293,8 +292,8 @@ public sealed class ServiceMantleProblemDetailsTests : ServiceMantleIntegrationT
         Action<IServiceCollection>? extraServices = null) => CreateFactory(configureTestServices: services =>
     {
         services.AddControllers().AddApplicationPart(typeof(StartedResponseProbeController).Assembly);
-        services.Configure<OpenIdConnectOptions>(AdminOidcSettings.OidcScheme, options =>
-            options.Backchannel = new HttpClient(authority, disposeHandler: false) { Timeout = TimeSpan.FromSeconds(2) });
+        services.AddHttpClient(SignaCore.Client.AspNetCore.SignaCoreHostedLoginDefaults.HttpClientName)
+            .ConfigurePrimaryHttpMessageHandler(() => authority);
         services.AddHttpClient("IdentityService").ConfigurePrimaryHttpMessageHandler(() => probe.Identity);
         services.Replace(ServiceDescriptor.Singleton<IOptionsMonitor<AdminPortalOptions>>(probe.Admins));
         services.Replace(ServiceDescriptor.Singleton(probe.Oss.Object));
@@ -315,7 +314,7 @@ public sealed class ServiceMantleProblemDetailsTests : ServiceMantleIntegrationT
         ["AdminOidc:Enabled"] = "true",
         ["AdminOidc:RedirectUri"] = OidcTestAuthority.RedirectUri,
         ["AdminOidc:UseSessionForAdminApi"] = "true",
-        ["AdminOidc:PostLogoutRedirectUri"] = "https://admin.example.test/api/auth/oidc/logout-callback",
+        ["AdminOidc:PostLogoutRedirectUri"] = "https://admin.example.test" + AdminOidcSettings.LogoutReturnPath,
         ["TeacherPortal:Url"] = "https://teacher.example.test",
         ["AssistantPortal:Url"] = "https://assistant.example.test",
         ["AdminPortal:AdminUserIds:0"] = "FAKE-SUBJECT",
@@ -362,15 +361,12 @@ public sealed class ServiceMantleProblemDetailsTests : ServiceMantleIntegrationT
         using var start = await client.GetAsync("/api/auth/oidc/start");
         Assert.Equal(HttpStatusCode.Redirect, start.StatusCode);
         var query = QueryHelpers.ParseQuery(start.Headers.Location!.Query).ToDictionary(p => p.Key, p => p.Value.ToString());
-        var cookies = string.Join("; ", start.Headers.GetValues("Set-Cookie").Select(value => value.Split(';')[0]));
-
+        // The pending sign-in lives server-side: the start response sets no cookie at all.
         var callbackUri = QueryHelpers.AddQueryString(AdminOidcSettings.CallbackPath, new Dictionary<string, string?>
         {
             ["code"] = authority.Code(query), ["state"] = query["state"], ["iss"] = OidcTestAuthority.Issuer,
         });
-        using var request = new HttpRequestMessage(HttpMethod.Get, callbackUri);
-        request.Headers.Add("Cookie", cookies);
-        using var callback = await client.SendAsync(request);
+        using var callback = await client.GetAsync(callbackUri);
         Assert.Equal(HttpStatusCode.Redirect, callback.StatusCode);
         return callback.Headers.GetValues("Set-Cookie")
             .Single(value => value.StartsWith(AdminOidcSettings.SessionCookie + "=")).Split(';')[0];

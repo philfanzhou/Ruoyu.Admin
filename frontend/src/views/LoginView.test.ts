@@ -66,12 +66,16 @@ describe('hosted login status page', () => {
     expect(wrapper.text()).toContain('已退出管理后台'); expect(fetch).toHaveBeenCalledTimes(1)
   })
 
-  it('uses dedicated logout CSRF and displays local-only completion from a forbidden session', async () => {
+  it('uses the hosted-login logout CSRF and navigates away from a forbidden session', async () => {
     const { wrapper, auth } = await page({}, 403)
-    vi.mocked(fetch).mockReset().mockResolvedValueOnce(response({ requestToken: 'synthetic' })).mockResolvedValueOnce(response({ success: true, upstreamLogout: false }))
+    const submissions: HTMLFormElement[] = []
+    const submit = vi.spyOn(HTMLFormElement.prototype, 'submit').mockImplementation(function (this: HTMLFormElement) { submissions.push(this) })
+    vi.mocked(fetch).mockReset().mockResolvedValueOnce(response({ token: 'synthetic' }))
     const leave = wrapper.findAll('button').find(button => button.text().includes('退出当前会话'))!
     await leave.trigger('click'); await flushPromises()
-    expect(auth.session.status).toBe('anonymous'); expect(wrapper.text()).toContain('身份服务会话尚未确认退出')
-    expect(vi.mocked(fetch).mock.calls.map(call => call[0])).toEqual(['/api/auth/logout/csrf', '/api/auth/logout'])
+    expect(auth.session.status).toBe('anonymous')
+    expect(vi.mocked(fetch).mock.calls.map(call => call[0])).toEqual(['/api/auth/oidc/csrf'])
+    expect(submissions).toHaveLength(1); expect(submissions[0].action).toContain('/api/auth/oidc/logout')
+    submit.mockRestore()
   })
 })

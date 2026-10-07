@@ -37,8 +37,6 @@ public class StudentAssociationsController : ControllerBase
     [HttpGet("{studentId:guid}/linked-accounts")]
     public async Task<IActionResult> GetLinkedAccounts(Guid studentId)
     {
-        if (!HttpContext.RequestServices.GetRequiredService<AdminOidcSettings>().UseSessionForAdminApi)
-            return StatusCode(503, new { error = "session_api_disabled" });
         var session = HttpContext.Items[AdminSessionBoundary.TrustedSessionKey] as AdminSessionResult;
         if (session?.StatusCode != 200 || string.IsNullOrWhiteSpace(session.AccessToken))
         {

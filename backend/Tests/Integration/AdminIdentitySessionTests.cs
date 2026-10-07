@@ -34,7 +34,7 @@ public sealed partial class AdminOidcTests
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
             Assert.False(response.Headers.Contains("Set-Cookie"));
             var last = downstream.Requests.Last();
-            Assert.Equal("Bearer " + OidcTestAuthority.AccessToken, last.Headers["Authorization"]);
+            Assert.Equal("Bearer " + authority.LastAccessToken, last.Headers["Authorization"]);
             Assert.Equal(OidcTestAuthority.ClientId, last.Headers["X-Admin-AppId"]);
             Assert.Equal(OidcTestAuthority.Secret, last.Headers["X-Admin-AppSecret"]);
             foreach (var forbidden in new[] { "Cookie", "Host", "X-CSRF-TOKEN" }) Assert.False(last.Headers.ContainsKey(forbidden));
@@ -84,11 +84,9 @@ public sealed partial class AdminOidcTests
         Assert.Empty(downstream.Requests);
         var responses = await Task.WhenAll(Enumerable.Range(0, 6).Select(i => Api(client, path, cookie + "; " + csrf.Cookie, "POST", csrf: [i % 2 == 0 ? csrf.Token : "wrong"])));
         Assert.Equal(3, responses.Count(r => r.StatusCode == HttpStatusCode.OK)); Assert.Equal(3, downstream.Requests.Count);
-        var (key, ticket) = await Stored(factory, cookie);
-        ticket.Properties.UpdateTokenValue("expires_at", DateTimeOffset.UtcNow.AddHours(-1).ToString("o"));
-        await factory.Services.GetRequiredService<MemoryTicketStore>().RenewAsync(key, ticket);
-        await Rejected(await Api(client, path, cookie), 401, "reauthentication_required");
-        await factory.Services.GetRequiredService<MemoryTicketStore>().RemoveAsync(key);
+        var (key, _) = await Stored(factory, cookie);
+        // An expired session is indistinguishable from a removed one: the fixed 401.
+        await factory.Services.GetRequiredService<SignaCore.Client.AspNetCore.ITicketStore>().RemoveAsync(key, CancellationToken.None);
         await Rejected(await Api(client, path, cookie), 401, "unauthorized");
         Assert.Equal(3, downstream.Requests.Count);
     }
@@ -106,12 +104,8 @@ public sealed partial class AdminOidcTests
         }, sessionApi: true, identityProxy: true, portalProxies: portalProxies);
         using var client = Browser(factory);
         var first = await LoginSession(client, authority); var csrf = await Csrf(client, first);
-        var second = await LoginSession(client, authority); var (key, ticket) = await Stored(factory, second);
-        ticket.Properties.Items["oidc.subject"] = "second";
-        ticket = new(new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity(
-            [new("iss", OidcTestAuthority.Issuer), new("sub", "second")], AdminOidcSettings.SessionScheme)), ticket.Properties, AdminOidcSettings.SessionScheme);
         admins.CurrentValue.AdminUserIds.Add("second");
-        await factory.Services.GetRequiredService<MemoryTicketStore>().RenewAsync(key, ticket);
+        var second = await ForgedTicket(factory, subject: "second");
         await Rejected(await Api(client, "/api/identity/users", second + "; " + csrf.Cookie, "POST", csrf: [csrf.Token]), 400, "csrf_invalid");
         Assert.Empty(downstream.Requests);
         using var cancelled = new CancellationTokenSource(); cancelled.Cancel();
@@ -127,32 +121,20 @@ public sealed partial class AdminOidcTests
     }
 
     [Theory]
-    [InlineData(false, false)][InlineData(true, false)][InlineData(true, true)]
-    public async Task IdentitySession_DisabledStopsBeforeBearerAndHttp(bool enabled, bool api)
+    [InlineData("false")][InlineData("not-a-bool")]
+    public void IdentitySession_LegacyModeRejectsBeforeHost(string value)
     {
-        using var authority = new OidcTestAuthority(); var downstream = new SessionProxyCapture(); var bearers = 0;
-        void Configure(Microsoft.Extensions.DependencyInjection.IServiceCollection services)
-        {
-            services.AddHttpClient("IdentityService").ConfigurePrimaryHttpMessageHandler(() => downstream);
-            services.Configure<Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerOptions>("Bearer", options =>
-                options.Events.OnMessageReceived = _ => { Interlocked.Increment(ref bearers); return Task.CompletedTask; });
-        }
-        using var factory = enabled ? OidcFactory(authority, configure: Configure, sessionApi: api)
-            : CreateFactory(configureTestServices: Configure);
-        using var client = Browser(factory);
-        foreach (var path in new[] { "/api/identity", "/API/IDENTITY/", "/api/identity/users?size=2" })
-        foreach (var auth in new string[]?[] { null, ["Bearer " + authority.LegacyBearer()], ["a", "b"] })
-            await Rejected(await Api(client, path, "adminAuthToken=" + authority.LegacyBearer(), "POST", authorization: auth,
-                body: new StringContent("invalid json")), 503, "session_identity_proxy_disabled");
-        Assert.Equal(0, bearers); Assert.Equal(0, authority.Redeems); Assert.Empty(downstream.Requests);
+        using var factory = CreateFactory(settings: new Dictionary<string, string?> { ["AdminOidc:UseSessionForIdentityProxy"] = value });
+        Assert.Equal("AdminOidc:UseSessionForIdentityProxy", Assert.Throws<InvalidOperationException>(() => factory.Services).Message);
     }
 
     [Fact]
-    public void IdentitySession_InvalidSwitchCombinationFailsWithoutValues()
+    public async Task IdentitySession_AbsentLegacyKeysRegisterOnlySessionAndOidc()
     {
-        using var invalid = CreateFactory(settings: new Dictionary<string, string?> { ["AdminOidc:UseSessionForIdentityProxy"] = "true" });
-        Assert.Equal("AdminOidc:UseSessionForIdentityProxy requires AdminOidc:Enabled and AdminOidc:UseSessionForAdminApi",
-            Assert.Throws<InvalidOperationException>(() => invalid.Services).Message);
+        using var factory = CreateFactory();
+        var schemes = (await factory.Services.GetRequiredService<Microsoft.AspNetCore.Authentication.IAuthenticationSchemeProvider>()
+            .GetAllSchemesAsync()).Select(s => s.Name).Order().ToArray();
+        Assert.Equal(new[] { SignaCore.Client.AspNetCore.SignaCoreHostedLoginDefaults.AuthenticationScheme, SignaCore.Client.AspNetCore.SignaCoreHostedLoginDefaults.SessionAuthenticationScheme }.Order(), schemes);
     }
 }
 

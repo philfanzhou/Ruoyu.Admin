@@ -6,23 +6,52 @@ using Admin.WebApi.Database;
 using Admin.WebApi.Models;
 using Admin.WebApi.Persistence;
 using Admin.WebApi.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.EntityFrameworkCore;
-using Ruoyu.Admin.Common.Authentication;
 using Ruoyu.Admin.Common.Oss;
 using Ruoyu.Admin.Consul;
 using Ruoyu.Admin.ServiceClients;
 using ServiceMantle;
+using SignaCore.Client.AspNetCore;
 using ServiceMantle.Bootstrap;
 using ServiceMantle.Database.PostgreSql;
 using ServiceMantle.Database.PostgreSql.Migration;
 using ServiceMantle.Persistence.Relational;
 using ServiceMantle.Migration;
 
-var builder = WebApplication.CreateBuilder(args);
+var validateAuthConfig = args.Contains("--validate-auth-config", StringComparer.Ordinal);
+WebApplicationBuilder builder;
+try
+{
+    builder = WebApplication.CreateBuilder(args.Where(arg => arg != "--validate-auth-config").ToArray());
+    builder.Configuration.AddRuoyuConsulConfiguration(builder.Configuration, readOnly: validateAuthConfig);
+    _ = AdminOidcSettings.Read(builder.Configuration, builder.Environment);
+    _ = MistakeSessionSettings.Read(builder.Configuration, builder.Environment);
+}
+catch (Exception error)
+{
+    // Configuration values and provider/driver exceptions never enter startup output.
+    Console.Error.WriteLine("RUOYU_ADMIN_AUTH_CONFIG_INVALID");
+    if (!validateAuthConfig)
+    {
+        var safeKey = error is InvalidOperationException && error.Message is
+            "AdminOidc:Enabled" or "AdminOidc:UseSessionForAdminApi" or "AdminOidc:UseSessionForLogout"
+            or "AdminOidc:UseSessionForIdentityProxy" or "AdminOidc:UseSessionForPortalProxies"
+            or "AdminOidc:RedirectUri" or "AdminOidc:PostLogoutRedirectUri"
+            or "IdentityService:Authority" or "IdentityService:AppId" or "IdentityService:AppSecret"
+            or "IdentityService:ClockSkewSeconds" or "MistakeService:UseSessionToken" or "MistakeService:Url" ? error.Message : "RUOYU_ADMIN_AUTH_CONFIG_INVALID";
+        throw new InvalidOperationException(safeKey);
+    }
+    Environment.ExitCode = 2;
+    return;
+}
+if (validateAuthConfig)
+{
+    Console.WriteLine("RUOYU_ADMIN_AUTH_CONFIG_VALID");
+    return;
+}
 
-// ========== Consul Configuration Source ==========
-builder.Configuration.AddRuoyuConsulConfiguration(builder.Configuration);
 var consulOptions = RuoyuConsulOptions.Bind(builder.Configuration);
 var consulRuntimeState = RuoyuConsulRuntimeState.Instance;
 
@@ -54,36 +83,49 @@ builder.WebHost.ConfigureKestrel(options =>
 // Configure downstream clients
 // Student service: HTTP (migrated from gRPC)
 builder.Services.AddStudentHttpClient(studentServiceUrl);
+builder.Services.AddHttpClient<IStudentHttpClient, StudentHttpClient>()
+    .AddServiceMantleCorrelationIdPropagation();
 
 // Mistake service: HTTP (migrated from gRPC)
+var mistakeSessionSettings = MistakeSessionSettings.Read(builder.Configuration, builder.Environment);
+builder.Services.AddSingleton(mistakeSessionSettings);
+builder.Services.AddSingleton(new MistakeClientPolicy(mistakeSessionSettings.UseSessionToken));
 builder.Services.AddMistakeHttpClient(mistakeServiceUrl);
+if (mistakeSessionSettings.UseSessionToken)
+{
+    builder.Services.AddHttpContextAccessor();
+    builder.Services.AddTransient<MistakeSessionHandler>();
+    builder.Services.AddHttpClient<IMistakeHttpClient, MistakeHttpClient>()
+        .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false, ActivityHeadersPropagator = null })
+        .AddHttpMessageHandler<MistakeSessionHandler>()
+        .RemoveAllLoggers();
+}
+// Run after the session handler has established the only downstream credential.
+builder.Services.AddHttpClient<IMistakeHttpClient, MistakeHttpClient>()
+    .AddServiceMantleCorrelationIdPropagation();
 if (managedAssignment.Enabled)
 {
+    // Same handler hygiene as the session mistake client: no redirects, no cookie jar,
+    // no activity headers, no logging handlers (the request carries a caller token).
     builder.Services.AddHttpClient<IManagedMistakeHttpClient, ManagedMistakeHttpClient>(client =>
     {
         client.BaseAddress = new Uri(mistakeServiceUrl);
         client.Timeout = TimeSpan.FromSeconds(30);
-    }).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false })
+    }).ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false, ActivityHeadersPropagator = null })
+      .AddServiceMantleCorrelationIdPropagation()
       .RemoveAllLoggers();
 }
 builder.Services.AddHttpClient<HomeworkReferenceClient>(client =>
 {
     client.BaseAddress = new Uri(homeworkServiceUrl);
     client.Timeout = TimeSpan.FromSeconds(30);
-});
+}).AddServiceMantleCorrelationIdPropagation();
 
-// ========== Authentication (JWT Bearer via Identity OIDC) ==========
-// Admin portal authenticates via Identity-issued JWT. The admin role is injected by Identity
-// through admin_portal's callback (/api/auth/callback) for whitelisted AdminUserIds.
-builder.Services.AddRuoyuJwtBearer(
-    builder.Configuration,
-    builder.Environment,
-    options =>
-    {
-        // Browser-native image requests cannot attach an Authorization header.
-        // The shared handler preserves header precedence and uses this cookie only as fallback.
-        options.AccessTokenCookieName = "adminAuthToken";
-    });
+// The only inbound scheme is the server-side session; downstream tokens remain server-side.
+builder.Services.AddAuthorization(options =>
+{
+    options.FallbackPolicy = new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build();
+});
 
 builder.Services.AddAdminOidc(builder.Configuration, builder.Environment);
 
@@ -102,17 +144,17 @@ builder.Services.Configure<AdminPortalOptions>(
 builder.Services.AddHttpClient("IdentityService", client =>
 {
     client.Timeout = TimeSpan.FromSeconds(30);
-});
+}).AddServiceMantleCorrelationIdPropagation();
 
 builder.Services.AddHttpClient("TeacherPortal", client =>
 {
     client.Timeout = TimeSpan.FromSeconds(10);
-});
+}).AddServiceMantleCorrelationIdPropagation();
 
 builder.Services.AddHttpClient("AssistantPortal", client =>
 {
     client.Timeout = TimeSpan.FromSeconds(10);
-});
+}).AddServiceMantleCorrelationIdPropagation();
 
 builder.Services.AddCors(options =>
 {
@@ -133,13 +175,14 @@ builder.Services.AddControllers(options =>
     // Marks every action of controllers carrying [RequireSecurityResponseHeaders] with the
     // ServiceMantle security response-header metadata (see the attribute's doc comment).
     options.Conventions.Add(new AdminSecurityResponseHeadersConvention());
+    options.Filters.Add<MistakeSessionFailureFilter>();
 });
 
 // Resolve and validate consumer configuration before registering the shared gate. Parsing
 // failures carry only a safe code, without the original value or driver exception.
 var startupDatabaseOptions = AuditDatabaseStartupConfiguration.Read(builder.Configuration);
 var connectionString = startupDatabaseOptions.Database.ConnectionString;
-builder.Services.AddSingleton<IDatabaseDeploymentCapabilityProvider, AuditDatabaseDeploymentCapability>();
+builder.Services.AddServiceMantlePostgreSqlDeploymentCapability();
 
 // ========== ServiceMantle (service identity, correlation id, base telemetry, health) ==========
 // ServiceId "ruoyu-admin" is the stable deployment identity (lowercase; deliberately distinct
@@ -167,7 +210,7 @@ builder.Services.AddSingleton<IDatabaseDeploymentCapabilityProvider, AuditDataba
 builder.Services
     .AddServiceMantle(
         ServiceId.Parse("ruoyu-admin"),
-        InstanceId.Parse($"ruoyu-admin-{Guid.NewGuid():N}"))
+        InstanceId.CreateRandom(ServiceId.Parse("ruoyu-admin")))
     .AddOpenTelemetryInstrumentation()
     .AddServiceMantleHealthEndpoints(options =>
     {
@@ -177,6 +220,12 @@ builder.Services
         StatusCodes.Status502BadGateway,
         "downstream.unavailable",
         "A downstream service request failed.")
+    .AddExceptionMapping<MistakeDownstreamException>(StatusCodes.Status502BadGateway,
+        "mistake.unavailable", "The Mistake service request failed.")
+    .AddExceptionMapping<MistakeBadRequestException>(StatusCodes.Status400BadRequest,
+        "mistake.request_rejected", "The Mistake service rejected the request.")
+    .AddExceptionMapping<MistakeConflictException>(StatusCodes.Status409Conflict,
+        "mistake.conflict", "The Mistake service rejected the conflicting request.")
     .AddSecurityResponseHeaders()
     // ========== Shared startup database gate (issue #66) ==========
     // The PostgreSQL session advisory lock that serializes multi-instance startup: it covers the
@@ -228,7 +277,8 @@ builder.Services.AddDbContext<AuditDbContext>(options =>
 
 builder.Services.AddSingleton(new StorageReferenceSigningConfiguration(builder.Configuration));
 builder.Services.AddHttpClient(StorageReferenceCollector.ClientName, client => client.Timeout = TimeSpan.FromSeconds(35))
-    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false })
+    .AddServiceMantleCorrelationIdPropagation();
 builder.Services.AddScoped<IStorageReferenceCollector, StorageReferenceCollector>();
 builder.Services.AddSingleton<OssAuditWorker>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<OssAuditWorker>());
@@ -240,17 +290,7 @@ builder.Services.AddSwaggerGen(c =>
 });
 
 var app = builder.Build();
-var identityTrust = app.Services
-    .GetRequiredService<Microsoft.Extensions.Options.IOptions<IdentityAuthenticationOptions>>()
-    .Value;
-
 app.Logger.LogInformation("Admin Portal starting");
-app.Logger.LogInformation(
-    "Identity trust: Authority={Authority}, Issuers={Issuers}, Audience={Audience}, RequireHttpsMetadata={RequireHttpsMetadata}",
-    identityTrust.Authority,
-    string.Join(",", identityTrust.GetValidIssuers()),
-    identityTrust.Audience,
-    identityTrust.RequireHttpsMetadata);
 app.Logger.LogInformation(
     "Consul startup diagnostics: Address={Address}, Token={Token}, Source={Source}, KeyCount={KeyCount}, Prefixes={Prefixes}, LastError={LastError}",
     $"{consulOptions.Host}:{consulOptions.Port}",
@@ -323,7 +363,7 @@ app.UseServiceMantleSecurityResponseHeaders();
 // ========== Static files & SPA (before authentication) ==========
 // In mode-1 integrated deployment the same container (port 5020) serves both the backend API
 // and the frontend SPA (from wwwroot). The SPA entry point ("/" and all non-/api and non-/health
-// routes) MUST be reachable without a JWT, otherwise the browser can never load the login page
+// routes) MUST be reachable without a session, otherwise the browser can never load the login page
 // (deadlock: not logged in -> can't load login page -> can't log in). Authorization middleware
 // and the FallbackPolicy only apply to endpoints mapped later via MapControllers().
 // "/health" is excluded from the SPA rewrite so the ServiceMantle health endpoints mapped below
@@ -381,8 +421,8 @@ else
 // The library maps GET /health/live (always 200), GET /health/ready and GET /health (readiness
 // alias) WITHOUT any authorization metadata, so the FallbackPolicy (RequireAuthenticatedUser)
 // would 401 them. Mapping them inside an empty route group with AllowAnonymous exempts exactly
-// these endpoints while every /api endpoint keeps requiring a JWT (RuoyuJwtBearerExtensions is
-// untouched). Readiness projects the shared EF Core snapshot source: ready (200) only
+// these endpoints while every /api endpoint keeps requiring a session. Readiness projects
+// the shared EF Core snapshot source: ready (200) only
 // for Completed + Succeeded + Reachable, i.e. this process finished its migration orchestration AND a
 // bounded read-only AuditDb probe of the mapped tables succeeded; every failure answers 503
 // with a fixed safe errorCode and never a connection string, host, or exception text.
@@ -392,32 +432,34 @@ else
 var healthEndpoints = app.MapGroup(string.Empty).AllowAnonymous();
 healthEndpoints.MapServiceMantleHealthEndpoints();
 
-// ========== Marker-only endpoints for middleware-owned auth routes ==========
-// These routes are always handled (short-circuited) by middleware that runs before endpoint
-// execution — AdminLogoutMiddleware owns /api/auth/logout, /api/auth/logout/csrf and the OIDC logout callback in
-// every configuration (GET is the answered method; a mismatch answers the disabled-mode
-// 503 first), and UseAdminOidcGate /
-// the OpenIdConnect remote handler own /api/auth/oidc/callback — so their route endpoints
-// exist solely to carry the security response-header metadata: route selection happens at the
-// very start of the pipeline, which makes the headers middleware (registered above) cover the
-// middleware-written responses too. The handlers below are therefore unreachable by design;
-// they exist so the routes can never 404 and so the marker placement survives any future
-// change in middleware short-circuiting. Methods beyond GET exist only so method-mismatch
-// 405s keep the baseline as well.
-var authMarkerMethods = new[] { "GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "TRACE" };
-app.MapMethods("/api/auth/logout", authMarkerMethods, () => Results.StatusCode(StatusCodes.Status503ServiceUnavailable))
-    .RequireServiceMantleSecurityResponseHeaders();
-app.MapMethods("/api/auth/logout/csrf", authMarkerMethods, () => Results.StatusCode(StatusCodes.Status503ServiceUnavailable))
-    .RequireServiceMantleSecurityResponseHeaders();
-app.MapMethods(AdminOidcSettings.LogoutCallbackPath, authMarkerMethods, () => Results.StatusCode(StatusCodes.Status503ServiceUnavailable))
-    .RequireServiceMantleSecurityResponseHeaders();
-app.MapMethods(AdminOidcSettings.CallbackPath, authMarkerMethods, () => Results.StatusCode(StatusCodes.Status503ServiceUnavailable))
-    .RequireServiceMantleSecurityResponseHeaders();
+// ========== SignaCore hosted-login endpoints (package-owned, anonymous) ==========
+// MapSignaCoreHostedLogin mounts /api/auth/oidc/start, /callback (exactly the registered
+// RedirectUri path), /session, /signin-failed, /csrf, POST /logout, and /logout/return. They
+// are mapped inside an empty AllowAnonymous group exactly like the health endpoints: the
+// FallbackPolicy below would otherwise 401 them, and the package owns each endpoint's own
+// gate (antiforgery, session cookie, one-time state) instead of the ambient authorization.
+var hostedLogin = app.MapGroup(string.Empty).AllowAnonymous();
+hostedLogin.MapSignaCoreHostedLogin(AdminOidcSettings.HostedLoginPrefix);
 
-app.UseAdminOidcGate();
-// Explicit session authentication runs inside this boundary; retired password login must
-// return 410 before a caller's legacy Bearer could trigger any Identity discovery HTTP.
-app.UseMiddleware<AdminLogoutMiddleware>();
+// Explicit session authentication runs inside this boundary; retired password login
+// returns 410 before body binding or any Identity request. The logout branch keeps the
+// previous middleware contract deterministically: only POST is ever answered (any other
+// method is a plain 405 before the authorization pipeline can challenge), and every POST
+// also retires the legacy adminAuthToken cookie of the password era, matching the old
+// local-session-first logout contract.
+app.Use(async (context, next) =>
+{
+    if (AdminSessionBoundary.IsAuthPath(context.Request.Path, AdminOidcSettings.LogoutPath))
+    {
+        if (!HttpMethods.IsPost(context.Request.Method))
+        {
+            context.Response.StatusCode = StatusCodes.Status405MethodNotAllowed;
+            return;
+        }
+        context.Response.Cookies.Delete("adminAuthToken", new CookieOptions { HttpOnly = true, SameSite = SameSiteMode.Strict, Path = "/" });
+    }
+    await next(context);
+});
 app.UseMiddleware<AdminSessionMiddleware>();
 app.UseAuthentication();
 app.UseAuthorization();

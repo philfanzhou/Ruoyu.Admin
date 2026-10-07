@@ -14,7 +14,7 @@ namespace Admin.WebApi.Tests.Controllers;
 
 public sealed class StudentAssociationsSessionTests
 {
-    private static readonly AdminOidcSettings Settings = new(true, "", "", "", "", false, TimeSpan.Zero) { UseSessionForAdminApi = true };
+    private static readonly AdminOidcSettings Settings = new("", "", "", "", false, TimeSpan.Zero);
     private static StudentAssociationsController Controller(IServiceProvider services, IHttpClientFactory clients, IStudentHttpClient student, string token = "server-token", CancellationToken cancellation = default)
     {
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
@@ -27,24 +27,26 @@ public sealed class StudentAssociationsSessionTests
     }
 
     [Fact]
-    public async Task DisabledApiRejectsBeforeStudentOrPortalEvenWithTrustedItem()
+    public async Task MissingTrustedSessionRejectsBeforeStudentOrPortal()
     {
-        using var services = new ServiceCollection().AddSingleton(Settings with { UseSessionForAdminApi = false }).BuildServiceProvider();
+        var login = new Mock<Microsoft.Extensions.Options.IOptionsMonitor<SignaCore.Client.AspNetCore.SignaCoreHostedLoginOptions>>();
+        login.SetupGet(options => options.CurrentValue).Returns(new SignaCore.Client.AspNetCore.SignaCoreHostedLoginOptions());
+        var boundary = new AdminSessionBoundary(new AdminSessionAccessor(Settings,
+            new Mock<Microsoft.Extensions.Options.IOptionsMonitor<AdminPortalOptions>>().Object,
+            login.Object, new Mock<SignaCore.Client.AspNetCore.ITicketStore>(MockBehavior.Strict).Object),
+            new Mock<Microsoft.AspNetCore.Antiforgery.IAntiforgery>(MockBehavior.Strict).Object);
+        using var services = new ServiceCollection().AddSingleton(boundary).BuildServiceProvider();
         var clients = new Mock<IHttpClientFactory>(MockBehavior.Strict); var student = new Mock<IStudentHttpClient>(MockBehavior.Strict);
         var controller = Controller(services, clients.Object, student.Object);
-        var result = Assert.IsType<ObjectResult>(await controller.GetLinkedAccounts(Guid.NewGuid()));
-        Assert.Equal(503, result.StatusCode); clients.VerifyNoOtherCalls(); student.VerifyNoOtherCalls();
-        controller.HttpContext.Request.Path = "/API/ADMIN/STUDENTS/00000000-0000-0000-0000-000000000001/LINKED-ACCOUNTS/";
-        await new AdminSessionMiddleware(_ => throw new InvalidOperationException("No authentication"), Settings with { UseSessionForAdminApi = false })
-            .InvokeAsync(controller.HttpContext, null!);
-        Assert.Equal(503, controller.HttpContext.Response.StatusCode);
+        controller.HttpContext.Items.Clear(); controller.HttpContext.Response.Body = new MemoryStream();
+        Assert.IsType<EmptyResult>(await controller.GetLinkedAccounts(Guid.NewGuid()));
+        Assert.Equal(401, controller.HttpContext.Response.StatusCode); clients.VerifyNoOtherCalls(); student.VerifyNoOtherCalls();
     }
 
-    [Theory]
-    [InlineData(false)][InlineData(true)]
-    public async Task EnabledApiUsesServerTokenRegardlessOfPortalCapability(bool portals)
+    [Fact]
+    public async Task SessionApiUsesServerTokenForBothPortals()
     {
-        using var services = new ServiceCollection().AddSingleton(Settings with { UseSessionForPortalProxies = portals }).BuildServiceProvider();
+        using var services = new ServiceCollection().AddSingleton(Settings).BuildServiceProvider();
         var student = new Mock<IStudentHttpClient>(); student.Setup(s => s.GetIdentityAccountsByStudentIdAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(["known"]);
         var teacher = new PortalSessionCapture { ResponseBody = "[{\"userId\":\"known\"}]" }; var assistant = new PortalSessionCapture { ResponseBody = "[{\"userId\":\"known\"}]" };
         using var teacherClient = new HttpClient(teacher); using var assistantClient = new HttpClient(assistant);

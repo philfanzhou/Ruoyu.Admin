@@ -40,10 +40,23 @@ public sealed partial class ServiceMantleHostStartupTests : ServiceMantleIntegra
 
         Assert.Equal("ruoyu-admin", serviceId.Value);
         Assert.Matches(InstanceIdPattern(), instanceId.Value);
+        Assert.Equal(instanceId, factory.Services.GetRequiredService<InstanceId>());
 
         Assert.Equal(serviceId.Value, logContext.ServiceName);
         Assert.Equal(instanceId.Value, logContext.InstanceId);
         Assert.Equal(ExpectedEntryAssemblyServiceVersion(), logContext.ServiceVersion);
+    }
+
+    [Fact]
+    public void HostBuilds_CreateDifferentRandomIdentities()
+    {
+        using var first = CreateFactory();
+        using var second = CreateFactory();
+        var firstId = first.Services.GetRequiredService<InstanceId>();
+        var secondId = second.Services.GetRequiredService<InstanceId>();
+        Assert.Matches(InstanceIdPattern(), firstId.Value);
+        Assert.Matches(InstanceIdPattern(), secondId.Value);
+        Assert.NotEqual(firstId, secondId);
     }
 
     [Fact]
@@ -67,7 +80,7 @@ public sealed partial class ServiceMantleHostStartupTests : ServiceMantleIntegra
                 await root.Content.ReadAsStringAsync());
 
             using var api = await client.GetAsync(ProtectedApiRoute);
-            Assert.Equal(HttpStatusCode.ServiceUnavailable, api.StatusCode);
+            Assert.Equal(HttpStatusCode.Unauthorized, api.StatusCode);
         }
         finally
         {
@@ -95,7 +108,7 @@ public sealed partial class ServiceMantleHostStartupTests : ServiceMantleIntegra
             Assert.Equal("text/html", spaRoute.Content.Headers.ContentType?.MediaType);
 
             using var api = await client.GetAsync(ProtectedApiRoute);
-            Assert.Equal(HttpStatusCode.ServiceUnavailable, api.StatusCode);
+            Assert.Equal(HttpStatusCode.Unauthorized, api.StatusCode);
         }
         finally
         {

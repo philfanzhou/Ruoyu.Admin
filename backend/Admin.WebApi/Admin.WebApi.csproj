@@ -13,13 +13,13 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" Version="10.0.12" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
-    <PackageReference Include="ServiceMantle.Database.PostgreSql" Version="0.3.0" />
-    <PackageReference Include="ServiceMantle.Diagnostics" Version="0.3.0" />
-    <PackageReference Include="ServiceMantle.Logging" Version="0.3.0" />
-    <PackageReference Include="ServiceMantle.Persistence.Relational" Version="0.3.0" />
-    <PackageReference Include="ServiceMantle.Web" Version="0.3.0" />
+    <PackageReference Include="SignaCore.Client.AspNetCore" Version="0.1.12" />
+    <PackageReference Include="ServiceMantle.Database.PostgreSql" Version="0.3.1-rc.1" />
+    <PackageReference Include="ServiceMantle.Diagnostics" Version="0.3.1-rc.1" />
+    <PackageReference Include="ServiceMantle.Logging" Version="0.3.1-rc.1" />
+    <PackageReference Include="ServiceMantle.Persistence.Relational" Version="0.3.1-rc.1" />
+    <PackageReference Include="ServiceMantle.Web" Version="0.3.1-rc.1" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.5.0" />
   </ItemGroup>
 

@@ -50,7 +50,7 @@ public class AdminAuthController : ControllerBase
 
         if (_options.AdminUserIds.Contains(request.UserId, StringComparer.OrdinalIgnoreCase))
         {
-            _logger.LogInformation("Identity callback: user {UserId} recognized as admin", request.UserId);
+            _logger.LogInformation("Identity callback: user {UserId} recognized as admin", AdminLogValue.Sanitize(request.UserId));
             return Ok(new CallbackResponse { Roles = new List<string> { "admin" } });
         }
 

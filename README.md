@@ -44,14 +44,14 @@ Unhandled exceptions on JSON API endpoints answer `application/problem+json` wit
 
 ### Security response headers
 
-JSON API responses carry the ServiceMantle six-header baseline (`Cache-Control: no-store`, `Pragma: no-cache`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, and a `default-src 'none'` CSP) on every routed response of a marked endpoint — success, business 4xx, 401/403 challenges, 5xx and middleware short-circuits alike, as long as headers have not started. Marked surface: the ten JSON controllers annotated with `[RequireSecurityResponseHeaders]` plus the middleware-owned auth routes (`/api/auth/oidc/callback`, `/api/auth/logout/csrf`, `/api/auth/oidc/logout-callback`) whose marker-only route endpoints exist to carry metadata. Deliberately unmarked: `ImageController` (browser-native image redirects), the three proxy middlewares' forwarded responses, the SPA / static files, and the health endpoints.
+JSON API responses carry the ServiceMantle six-header baseline (`Cache-Control: no-store`, `Pragma: no-cache`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, and a `default-src 'none'` CSP) on every routed response of a marked endpoint — success, business 4xx, 401/403 challenges, 5xx and middleware short-circuits alike, as long as headers have not started. Marked surface: the JSON controllers annotated with `[RequireSecurityResponseHeaders]`. Deliberately unmarked: `ImageController` (browser-native image redirects), the three proxy middlewares' forwarded responses, the SPA / static files, the health endpoints, and the SignaCore hosted-login package endpoints under `/api/auth/oidc` (their answers carry their own `no-store`).
 
 ### Backend projects
 
 | Project | Purpose |
 |---------|---------|
 | `backend/Admin.WebApi` | Host, controllers, proxy middleware, audit persistence, `OssAuditWorker` |
-| `backend/Ruoyu.Admin.Common` | `IOssService` (S3 + local-file), thumbnails, JWT bearer auth, database initializer, shared constants |
+| `backend/Ruoyu.Admin.Common` | `IOssService` (S3 + local-file), thumbnails, shared JWT utilities (not registered by this host), database initializer, shared constants |
 | `backend/Ruoyu.Admin.Consul` | Consul KV configuration source with local cache fallback, PostgreSQL connection-string factory |
 | `backend/Ruoyu.Admin.ServiceClients` | Hand-written HTTP clients and mirror DTOs for the Student and Mistake services |
 | `backend/Tests` | xUnit + Moq + FluentAssertions unit tests |
@@ -64,7 +64,7 @@ Managed mistake assignment is opt-in (`Mistake:ManagedAssignmentEnabled=false` b
 
 | Dependency | Why |
 |------------|-----|
-| [SignaCore](https://github.com/philfanzhou/SignaCore) (or any compatible Identity service) | Issues the JWTs this console accepts, and serves account lookup |
+| [SignaCore](https://github.com/philfanzhou/SignaCore) (or any compatible Identity service) | Hosted Code + PKCE identity provider and server-side gateway/account lookup |
 | Ruoyu.Study Student service | Student records, upload records, presigned image URLs |
 | Ruoyu.Study Mistake service | Mistake items, review submission, analysis triggers |
 | Ruoyu.Study Homework service | Image-reference aggregation for Storage Audit |
@@ -104,14 +104,17 @@ The integrated image serves the API and the built SPA from one container:
 
 ```bash
 ./scripts/build.sh
-IDENTITY_APP_ID=... IDENTITY_APP_SECRET=... ./start.sh
+./start.sh --image ruoyu.admin:<version> --container ruoyu-admin --env-file /private/admin.env \
+  --authority https://identity.example.com \
+  --redirect-uri https://admin.example.com/api/auth/oidc/callback \
+  --post-logout-redirect-uri https://admin.example.com/api/auth/oidc/logout/return
 ```
 
-`start.sh` maps host port **5020** to container port 5020 (host port equals container port, matching the platform's other APIs), and expects `CONSUL_HTTP_ADDR`, `IDENTITY_APP_ID` and `IDENTITY_APP_SECRET` from the deployment environment.
+`start.sh` first runs the selected image with `--validate-auth-config` and the same effective configuration; failure preserves the existing container. Credentials come from the deployment environment or a private env file, never output. `--config-file` mounts an explicit appsettings file; `--cache-dir` mounts an existing cache read-only during preflight and writable during normal startup. Port **5020** remains the container API port. See [Deployment](docs/development/Deployment.md#认证只读预检与升级) for target validation and the upgrade checklist.
 
 ### Database startup (migrations)
 
-The `ruoyu_admin` schema is managed by an EF Core baseline migration executed by the ServiceMantle 0.3.0 startup database gate and shared orchestrator:
+The `ruoyu_admin` schema is managed by an EF Core baseline migration executed by the ServiceMantle 0.3.1-rc.1 startup database gate and shared orchestrator:
 
 1. **Target preparation** — an existing database is used as-is; a verifiably missing database is created only when `Database:AllowCreate=true` (default `false` — otherwise startup refuses with the fixed code `database_target_preparation.creation_not_allowed` and writes nothing). Back up the database before upgrading.
 2. **Advisory-lock orchestration** — startup acquires a PostgreSQL session advisory lock (30 s acquire budget) so that when multiple instances start concurrently exactly one executes the migration; the others re-inspect under the lock and skip.
@@ -120,6 +123,10 @@ The `ruoyu_admin` schema is managed by an EF Core baseline migration executed by
 The shared lifecycle gate runs once before the web host or audit worker starts. Configuration is validated before database I/O; invalid creation switches or unparsable connections fail with `database_target_preparation.invalid_target`. The process-local receipt progresses from NotStarted to Running, then Succeeded or Failed; cancellation keeps Running. Readiness makes no database calls until Succeeded. The mapped-schema probe proves only readable mapped tables and columns, not constraints, indexes, or data correctness.
 
 The startup error codes changed in #66: missing-target refusal now uses `database_target_preparation.creation_not_allowed` (previously `RUOYU_ADMIN_DB_CREATION_NOT_ALLOWED`), invalid `Database:AllowCreate` uses `database_target_preparation.invalid_target` (previously `RUOYU_ADMIN_DB_ALLOW_CREATE_INVALID`), and an unconnectable target after preparation uses `database_target_preparation.not_connectable_after_preparation`. Fresh receipts now report NotStarted; failed receipts report Failed / `ruoyu-admin.startup_failed`. Running, Succeeded, normal readiness JSON and migration/schema refusal codes stay unchanged. Rolling back restores the former codes without a schema rollback and does not undo created databases or committed migrations. See [migration compatibility notes](docs/database/migrations.md#66-发布兼容说明).
+
+### Internal request correlation
+
+Existing Student, Mistake, Homework, Identity/Teacher/Assistant proxies, StorageReferences and prepared-logout clients explicitly propagate the middleware-resolved `x-correlation-id`. Raw proxy input is not copied; explicit outgoing correlation metadata is preserved without duplication. Background sends without HttpContext do not invent an ID; Mistake retains its existing no-session refusal. External object storage and the independent OIDC discovery/token backchannel do not opt in. Transport settings and credential stripping stay unchanged. `InstanceId.CreateRandom` retains `ruoyu-admin-<Guid:N>` per host without persistence. All direct ServiceMantle packages use official `0.3.1-rc.1`; there is no new configuration or data migration. Rollback deploys the previous code and matching package set.
 
 ### Health probes
 
@@ -136,14 +143,12 @@ Configuration is read from `appsettings.json`, then Consul KV under `config/ruoy
 |---------|---------|
 | `IdentityService:*` | Identity authority, `AppId` / `AppSecret` for gateway calls |
 | `StudentService:Url`, `MistakeService:Url`, `HomeworkService:Url` | Downstream service addresses |
+| `MistakeService:UseSessionToken` | Default false; opt in to current server-session Bearer for all 14 existing Mistake methods, with an explicit HTTPS root origin |
 | `TeacherPortal:Url`, `AssistantPortal:Url` | Proxy targets |
 | `AdminPortal:AdminUserIds` | Accounts granted the `admin` role via the Identity callback |
-| `AdminOidc:Enabled`, `AdminOidc:RedirectUri` | Optional hosted-login handshake (disabled by default), exact registered callback |
-| `AdminOidc:UseSessionForLogout`, `AdminOidc:PostLogoutRedirectUri` | Optional prepared logout (default false, requires OIDC and session API); exact registered same-origin `/api/auth/oidc/logout-callback` |
-| Session token expiry | Session API returns `reauthentication_required` for a valid expired token; `/api/auth/session` exposes `requiresReauthentication`; sign-in is explicit with no refresh or write replay |
-| `AdminOidc:UseSessionForPortalProxies` | Teacher/Assistant proxy server tokens (default false, requires OIDC and session API); association queries follow the API switch independently |
-| `AdminOidc:UseSessionForIdentityProxy` | Identity proxy server-token authorization (default false returns 503; true requires OIDC and session API); isolates browser cookies/CSRF and upstream Set-Cookie |
-| `AdminOidc:UseSessionForAdminApi` | Optional session authorization and CSRF for `/api/admin/*` (default false, requires OIDC) |
+| `AdminOidc:RedirectUri`, `AdminOidc:PostLogoutRedirectUri` | Required exact registered login and same-origin logout callbacks |
+| Legacy five `AdminOidc` switches | Remove them; absent or canonical lowercase `true` is accepted only for migration validation, false/malformed values reject startup in every environment |
+| Session token expiry | Valid expired access tokens require explicit reauthentication; no refresh or write replay |
 | `AdminWeb:AllowedOrigins` | CORS origins; empty means allow any |
 | `Oss:*` | `InternalEndpoint` / `InternalSecure` for direct S3 access, `PublicBaseUrl` for presigned URLs |
 | `StorageReferences:*` | Default-off dedicated RS256 signing key and three mandatory HTTPS provider roots; see [StorageAudit](docs/modules/OssAudit/StorageAudit.md) |
@@ -154,7 +159,11 @@ Configuration is read from `appsettings.json`, then Consul KV under `config/ruoy
 
 Full details: [docs/development/Deployment.md](docs/development/Deployment.md).
 
-The SPA uses the server-session Code + PKCE flow: credentials stay on the hosted SignaCore page, tokens stay in a single-process ticket, and the browser carries an opaque HttpOnly cookie. Explicitly enable all five `AdminOidc` switches on the controlled instance, configure the current administrator allowlist and ADMIN audience, and register exact HTTPS login and logout callbacks before activation. All five defaults remain false and `start.sh` does not enable them. The current SPA shows an unavailable state when this capability is disabled; it never falls back to browser tokens or password login. Legacy backend endpoints remain available to an older SPA version. Rollback requires the matching older SPA and configuration; it cannot resurrect server tickets or obsolete browser tokens. For production session mode, HTTPS must reach the BFF as well as the browser. The host does not trust arbitrary forwarded scheme headers: an outer TLS proxy forwarding plain HTTP to 5020 cannot satisfy secure antiforgery cookies. Keep port 5020 and add a Kestrel HTTPS endpoint if needed; verify its certificate with the normal CA at the proxy. See [Deployment](docs/development/Deployment.md#可选-signacore-托管登录) for configuration and both CSRF probes. Tickets expire absolutely after eight hours, access-token expiry requires explicit reauthentication, and restarts lose sessions. There is no database migration, refresh, or automatic write replay.
+Mistake session forwarding is an outgoing opt-in, independent of the permanent incoming Session-only boundary. Each send re-reads the current server ticket in the current request scope, including revocation or renewal after framework authentication was cached. A dedicated client permits only the configured origin and existing method/path pairs, strips other headers, disables redirects, cookies, client logging and outbound telemetry, and never sends AppSecret or browser credentials to Mistake. Production uses normal HTTPS/CA/SAN; only Development/Testing numeric loopback HTTP is permitted. The existing `--validate-auth-config` checks these settings before host startup and before `start.sh` stops an existing instance, without creating or rewriting cache.
+
+Target auth/redirect/protocol/transport failures produce safe 502 responses rather than empty DTOs; valid business 400/409, detail GET 404 and empty reads remain distinct. Caller cancellation propagates. Unsafe application sends occur at most once, with no refresh, retry or replay; failure stops later Student/S3 writes but cannot prove an already sent write was uncommitted. `false` preserves legacy Mistake client behavior. Automated tests use real HTTP receivers and a real Program Code/PKCE handshake; final acceptance also requires an owned official-provider/current-Mistake/Student/S3 combination. See [deployment guarantees](docs/development/Deployment.md#mistake-出站会话ikjnxa).
+
+The SPA uses the server-session Code + PKCE flow: credentials stay on the hosted SignaCore page, tokens stay in a single-process ticket, and the browser carries an opaque HttpOnly cookie. Configure the required authority/client credentials, exact login/logout callbacks, current administrator allowlist and downstream ADMIN audience. Server sessions are the only inbound mode: no Bearer/JWT-cookie scheme is registered, and any Authorization header rejects protected business paths. Missing or invalid authentication configuration refuses startup instead of starting a disabled instance. Preflight uses the same appsettings, Consul snapshot/cache, environment and command-line precedence as normal startup, emits only fixed safe codes and exits before logging, host/database/worker/listener startup; it never refreshes or rewrites cache. Rollback requires a previously working complete integrated image and matching configuration; it cannot resurrect revoked tickets or obsolete browser tokens. For production session mode, HTTPS must reach the BFF as well as the browser. The host does not trust arbitrary forwarded scheme headers: an outer TLS proxy forwarding plain HTTP to 5020 cannot satisfy secure antiforgery cookies. Keep port 5020 and add a Kestrel HTTPS endpoint if needed; verify its certificate with the normal CA at the proxy. See [Deployment](docs/development/Deployment.md#signacore-托管登录唯一模式) for configuration and both CSRF probes. Tickets expire absolutely after eight hours, access-token expiry requires explicit reauthentication, and restarts lose sessions. There is no database migration, refresh, or automatic write replay.
 
 ## Tests
 
@@ -231,10 +240,10 @@ Known documentation debt carried over from the monorepo is listed in [docs/READM
 
 MIT — see [LICENSE](./LICENSE).
 
-Password login (`POST /api/auth/login`) is permanently retired with `410 legacy_login_disabled`, before authentication or body binding in every configuration. Use SignaCore hosted login through `/api/auth/oidc/start`; disabling OIDC makes login unavailable. The role callback is retained. Deploy the final combined version with the hosted-login SPA (#41); intermediate images containing the old password form are not release candidates.
+Password login (`POST /api/auth/login`) is permanently retired with `410 legacy_login_disabled`, before authentication or body binding in every configuration. Use SignaCore hosted login through `/api/auth/oidc/start`; invalid OIDC configuration refuses startup. The role callback is retained. Deploy the final combined version with the hosted-login SPA (#41); intermediate images containing the old password form are not release candidates.
 
-Teacher/Assistant proxies now use only trusted server-session tokens. Disabling portal proxying returns `503 session_portal_proxy_disabled` before authentication; browser credentials cannot restore it. Both portals share path/body preservation, credential and upstream-cookie isolation, and request cancellation. Linked-account aggregation follows the API-session capability independently of the portal proxy flag; disabling the API capability returns `503 session_api_disabled`, while enabled queries use server tokens and preserve partial-result behavior.
+Teacher/Assistant proxies now use only trusted server-session tokens. Both portals share path/body preservation, credential and upstream-cookie isolation, and request cancellation. Linked-account aggregation shares the same session boundary, uses server tokens and preserves partial-result behavior.
 
-The Identity proxy accepts only a trusted server-session access token. Disabling its capability returns `503 session_identity_proxy_disabled` before authentication; browser Authorization/Cookie credentials cannot restore it. It always strips browser CSRF/Host and forged gateway headers, injects owned AppId/AppSecret, suppresses upstream Set-Cookie, and propagates request cancellation without application retries.
+The Identity proxy accepts only a trusted server-session access token. It always strips browser CSRF/Host and forged gateway headers, injects owned AppId/AppSecret, suppresses upstream Set-Cookie, and propagates request cancellation without application retries.
 
-Management APIs (including native images), ordinary CSRF and session status now require the enabled server-session capability: disabling it returns `503 session_api_disabled` before authentication. OIDC-disabled session status returns `503 oidc_disabled`. Logout is owned by prepared-logout middleware; disabling it returns `503 session_logout_disabled`, and enabled non-POST logout returns 405. Browser JWTs cannot restore these local capabilities. Deploy only the final combination with the hosted-login SPA (#41/#75).
+Management APIs (including native images), ordinary CSRF, all three proxies and association queries always use the same administrator server-session boundary. Prepared logout always owns logout routes; non-POST logout returns 405. Anonymous SPA/static/health/claims callback remain reachable; API FallbackPolicy still requires authentication. Deploy only a complete API+SPA image, after the selected image passes read-only authentication preflight and the controlled end-to-end matrix.

@@ -44,12 +44,52 @@ jobs:
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
+          # NOTE (#91): the local model pack CANNOT be wired through the `config`
+          # input of this action — with the pinned action and CodeQL CLI 2.27.1 the
+          # `packs:` entries never reach the database's recorded extensionPacks, so
+          # the pack is silently ignored by the analysis. The pack is applied at
+          # query time in the Analyze C# step below, using the same
+          # --additional-packs/--extension-packs mechanism the action itself uses
+          # for its pr-diff-range pack.
 
       - name: Build C#
         if: matrix.language == 'csharp'
         run: dotnet build backend/Ruoyu.Admin.sln --configuration Release
 
+      # Local model pack (#91): declares AdminLogValue.Sanitize as a log-injection
+      # barrier. Direct CLI invocation because the pinned analyze action exposes no
+      # model-pack input; the pack is resolved from the checkout with
+      # --additional-packs and applied with --extension-packs (pack name and version
+      # must match .github/codeql/log-models/qlpack.yml). setup-codeql exposes the
+      # CLI (already downloaded by init) via its codeql-path output.
+      - id: setup-codeql
+        uses: github/codeql-action/setup-codeql@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4
+        if: matrix.language == 'csharp'
+
+      - name: Analyze C#
+        if: matrix.language == 'csharp'
+        env:
+          DB: ${{ runner.temp }}/codeql_databases/csharp
+          CODEQL: ${{ steps.setup-codeql.outputs.codeql-path }}
+        run: |
+          "$CODEQL" database finalize --finalize-dataset "$DB"
+          "$CODEQL" database run-queries "$DB" \
+            --additional-packs="$GITHUB_WORKSPACE/.github/codeql/log-models" \
+            --extension-packs=ruoyu-admin/log-sanitizer-models@0.1.0
+          "$CODEQL" database interpret-results "$DB" \
+            --format=sarif-latest \
+            --output="$RUNNER_TEMP/csharp.sarif" \
+            --sarif-category=/language:csharp
+
+      - name: Upload C# results
+        if: matrix.language == 'csharp'
+        uses: github/codeql-action/upload-sarif@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4
+        with:
+          sarif_file: ${{ runner.temp }}/csharp.sarif
+          category: /language:csharp
+
       - name: Analyze
+        if: matrix.language != 'csharp'
         uses: github/codeql-action/analyze@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4
         with:
           category: /language:${{ matrix.language }}

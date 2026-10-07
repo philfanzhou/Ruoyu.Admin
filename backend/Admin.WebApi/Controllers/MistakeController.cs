@@ -31,7 +31,7 @@ public class MistakeController : ControllerBase
         [FromQuery] int? grade = null,
         [FromQuery] int? reviewStatus = null,
         [FromQuery] int page = 1,
-        [FromQuery] int size = 20)
+        [FromQuery] int size = 20, CancellationToken cancellationToken = default)
     {
         try
         {
@@ -45,8 +45,9 @@ public class MistakeController : ControllerBase
                 grade ?? 0,
                 reviewStatus.HasValue ? (MistakeReviewStatus)reviewStatus.Value : MistakeReviewStatus.Unspecified,
                 page,
-                size);
+                size, cancellationToken);
 
+            cancellationToken.ThrowIfCancellationRequested();
             var studentIds = response.Items.Select(i => i.StudentId).Distinct().ToList();
             var studentNameMap = new Dictionary<string, string>();
 
@@ -55,10 +56,10 @@ public class MistakeController : ControllerBase
                 if (string.IsNullOrWhiteSpace(sid)) continue;
                 try
                 {
-                    var student = await _studentClient.GetStudentAsync(sid);
+                    var student = await _studentClient.GetStudentAsync(sid, cancellationToken);
                     studentNameMap[sid] = student.Name;
                 }
-                catch
+                catch (Exception error) when (error is not OperationCanceledException)
                 {
                     studentNameMap[sid] = sid;
                 }
@@ -92,7 +93,7 @@ public class MistakeController : ControllerBase
                 totalPages = response.PageMeta?.TotalPages ?? 0
             });
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not MistakeBoundaryException and not OperationCanceledException)
         {
             _logger.LogError(ex, "Failed to get mistake items");
             return StatusCode(500, new ErrorResponse("Failed to get mistake items"));
@@ -100,24 +101,25 @@ public class MistakeController : ControllerBase
     }
 
     [HttpGet("{id}")]
-    public async Task<IActionResult> GetMistakeItem(string id)
+    public async Task<IActionResult> GetMistakeItem(string id, CancellationToken cancellationToken = default)
     {
         try
         {
-            var item = await _mistakeClient.GetMistakeItemAsync(id);
+            var item = await _mistakeClient.GetMistakeItemAsync(id, cancellationToken);
 
             if (item is null)
             {
                 return NotFound(new ErrorResponse("Mistake item not found"));
             }
 
+            cancellationToken.ThrowIfCancellationRequested();
             string studentName = item.StudentId;
             try
             {
-                var student = await _studentClient.GetStudentAsync(item.StudentId);
+                var student = await _studentClient.GetStudentAsync(item.StudentId, cancellationToken);
                 studentName = student.Name;
             }
-            catch { }
+            catch (Exception error) when (error is not OperationCanceledException) { }
 
             return Ok(new
             {
@@ -149,20 +151,21 @@ public class MistakeController : ControllerBase
                 }).ToList()
             });
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not MistakeBoundaryException and not OperationCanceledException)
         {
-            _logger.LogError(ex, "Failed to get mistake item: {Id}", id);
+            _logger.LogError(ex, "Failed to get mistake item: {Id}", AdminLogValue.Sanitize(id));
             return StatusCode(500, new ErrorResponse("Failed to get mistake item"));
         }
     }
 
     [HttpGet("by-upload/{uploadId}")]
-    public async Task<IActionResult> GetMistakesByUploadId(string uploadId)
+    public async Task<IActionResult> GetMistakesByUploadId(string uploadId, CancellationToken cancellationToken = default)
     {
         try
         {
-            var response = await _mistakeClient.GetMistakeItemsByUploadAsync(uploadId);
+            var response = await _mistakeClient.GetMistakeItemsByUploadAsync(uploadId, cancellationToken);
 
+            cancellationToken.ThrowIfCancellationRequested();
             var studentIds = response.Items.Select(i => i.StudentId).Distinct().ToList();
             var studentNameMap = new Dictionary<string, string>();
 
@@ -171,10 +174,10 @@ public class MistakeController : ControllerBase
                 if (string.IsNullOrWhiteSpace(sid)) continue;
                 try
                 {
-                    var student = await _studentClient.GetStudentAsync(sid);
+                    var student = await _studentClient.GetStudentAsync(sid, cancellationToken);
                     studentNameMap[sid] = student.Name;
                 }
-                catch
+                catch (Exception error) when (error is not OperationCanceledException)
                 {
                     studentNameMap[sid] = sid;
                 }
@@ -205,15 +208,15 @@ public class MistakeController : ControllerBase
                 total = items.Count
             });
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not MistakeBoundaryException and not OperationCanceledException)
         {
-            _logger.LogError(ex, "Failed to get mistakes by upload id: {UploadId}", uploadId);
+            _logger.LogError(ex, "Failed to get mistakes by upload id: {UploadId}", AdminLogValue.Sanitize(uploadId));
             return StatusCode(500, new ErrorResponse("Failed to get mistakes by upload id"));
         }
     }
 
     [HttpPut("{id}")]
-    public async Task<IActionResult> UpdateMistakeItem(string id, [FromBody] UpdateMistakeRequest request)
+    public async Task<IActionResult> UpdateMistakeItem(string id, [FromBody] UpdateMistakeRequest request, CancellationToken cancellationToken = default)
     {
         try
         {
@@ -222,15 +225,16 @@ public class MistakeController : ControllerBase
                 request.StudentId ?? "",
                 request.Subject ?? 0,
                 request.Grade ?? 0,
-                null);
+                null, cancellationToken);
 
+            cancellationToken.ThrowIfCancellationRequested();
             string studentName = item.StudentId;
             try
             {
-                var student = await _studentClient.GetStudentAsync(item.StudentId);
+                var student = await _studentClient.GetStudentAsync(item.StudentId, cancellationToken);
                 studentName = student.Name;
             }
-            catch { }
+            catch (Exception error) when (error is not OperationCanceledException) { }
 
             return Ok(new
             {
@@ -243,9 +247,9 @@ public class MistakeController : ControllerBase
                 reviewStatus = (int)item.ReviewStatus
             });
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not MistakeBoundaryException and not OperationCanceledException)
         {
-            _logger.LogError(ex, "Failed to update mistake item: {Id}", id);
+            _logger.LogError(ex, "Failed to update mistake item: {Id}", AdminLogValue.Sanitize(id));
             return StatusCode(500, new ErrorResponse("Failed to update mistake item"));
         }
     }

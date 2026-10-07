@@ -22,6 +22,7 @@ Ruoyu.Admin 是 Ruoyu.Study 平台的管理后台：.NET BFF API、Vue 3 / Eleme
 
 - `backend/Ruoyu.Admin.Common`、`backend/Ruoyu.Admin.Consul`、`backend/Ruoyu.Admin.ServiceClients` 是类库，不得反向引用 `backend/Admin.WebApi`。
 - `backend/Admin.WebApi` 负责 HTTP、认证、配置、代理中间件和宿主组合。Controller 不得直接构造 `HttpClient`，一律通过 `Ruoyu.Admin.ServiceClients` 的接口或 `IHttpClientFactory` 命名客户端。
+- 认证只使用 AdminSession +托管 OIDC；五旧键只检验缺省/规范 true，false/畸形在启动前拒绝，无入站 Bearer/JWT Cookie scheme。`--validate-auth-config` 加载正式相同配置后固定安全退出，Consul cache只读；`start.sh` 在 stop/rm 前使用目标集成镜像预检。
 - API 监听端口 **5020 是硬编码的**（`Program.cs` 中的 `const int httpPort`），不是配置项。改端口属于部署契约变更，必须同步 `start.sh`、`frontend/vite.config.js` 和部署文档。
 - 数据库只有 `ruoyu_admin`，只有 `OssAuditRuns` 和 `OssAuditRecords` 两张表，结构由确切 EF Core 迁移链（`Persistence/Migrations`）管理，启动时由 ServiceMantle 共享 `StartupDatabaseGate`（配置边界和部署声明位于 `Admin.WebApi/Database`）调用 `AuditMigrationExecutor` 及共享迁移编排（PostgreSQL advisory lock 多实例串行化；旧库接管、结构拒绝规则见 `docs/database/migrations.md`）。新增或修改迁移必须同步 `AuditMigrationExecutor.KnownMigrationIds` 契约；「结构未知即拒绝（`RUOYU_ADMIN_DB_SCHEMA_INCOMPATIBLE`）」「缺库默认拒绝创建（`Database:AllowCreate` 默认 false）」语义不得放宽。
 - Storage Audit v1使用三个完整持久引用快照，只产生Status3只读观察。`deletionAuthorized=false`恒定；所有single/batch resolve状态都经shared collector后拒绝（完整409、不可用502），不执行Delete/Copy/审计record删除。触及聚合、判定或任何删除路径必须有测试。
@@ -36,7 +37,7 @@ Student、Mistake、Homework、Teacher Portal、Assistant Portal 的接口由 Ru
 - `backend/Ruoyu.Admin.ServiceClients` 中的 DTO 是下游 HTTP 契约的**手写镜像副本**。上游字段变更不会在本仓库产生编译错误，只会产生运行时反序列化偏差。
 - 因此下游契约变更必须同步修改 ServiceClients，并补充对应 Controller 单测。
 - 不得为了让编译通过而在 DTO 上加宽容的可选字段来掩盖上游契约漂移；应确认上游事实后显式对齐。
-- 三个代理中间件（Identity / Teacher Portal / Assistant Portal）透传调用方凭据。`IdentityProxyMiddleware` 会剥离入站的 `X-Admin-AppSecret` 再注入本服务自己的值——不得移除这个剥离逻辑，否则调用方可以伪造网关凭据。
+- 三个代理中间件（Identity / Teacher Portal / Assistant Portal）只使用服务器票据内 token，拒绝入站 Authorization，剥离浏览器 Cookie/CSRF/Host 与下游 Set-Cookie。`IdentityProxyMiddleware` 会剥离入站的 `X-Admin-AppSecret` 再注入本服务自己的值——不得移除这个剥离逻辑，否则调用方可以伪造网关凭据。
 
 ## 安全与变更纪律
 

@@ -163,7 +163,7 @@ public sealed class StartupDatabaseGateTests(PostgreSqlFixture database) : Servi
             });
         var executor = new Mock<IDatabaseMigrationExecutor>(MockBehavior.Strict);
         var services = new ServiceCollection().AddLogging();
-        services.AddSingleton<IDatabaseDeploymentCapabilityProvider, AuditDatabaseDeploymentCapability>();
+        services.AddServiceMantlePostgreSqlDeploymentCapability();
         services.AddSingleton(executor.Object);
         services.AddServiceMantle(ServiceId.Parse("ruoyu-admin"), InstanceId.Parse("cancel-test"))
             .AddMigrationLockProvider<PostgreSqlMigrationLockProvider>()
@@ -277,6 +277,8 @@ public sealed class StartupDatabaseGateTests(PostgreSqlFixture database) : Servi
         using var client = factory.CreateClient();
         Assert.True(witness.Started);
         Assert.Same(receipt, factory.Services.GetRequiredService<StartupDatabaseReceipt>());
+        Assert.IsType<PostgreSqlDatabaseDeploymentCapabilityProvider>(
+            Assert.Single(factory.Services.GetServices<IDatabaseDeploymentCapabilityProvider>()));
         // A duplicate direct invocation is rejected, proving Program did not run another gate.
         await Assert.ThrowsAsync<InvalidOperationException>(() => factory.Services.GetRequiredService<StartupDatabaseGate>()
             .RunAsync(factory.Services.GetRequiredService<StartupDatabaseGateOptions>(), receipt,

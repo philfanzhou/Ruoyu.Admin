@@ -1,3 +1,4 @@
+using Admin.WebApi.Authentication;
 using System.Net;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -65,13 +66,20 @@ public class ImageController : ControllerBase
 
             return Redirect(presignedUrl);
         }
+        catch (MistakeSessionException error)
+        {
+            return StatusCode(error.StatusCode, new { error = error.Error });
+        }
+        catch (MistakeBadRequestException) { return BadRequest(new { error = "mistake.request_rejected" }); }
+        catch (MistakeConflictException) { return Conflict(new { error = "mistake.conflict" }); }
+        catch (MistakeDownstreamException) { return StatusCode(502, new { error = "mistake.unavailable" }); }
         catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
         {
             return NotFound();
         }
         catch (HttpRequestException ex)
         {
-            _logger.LogError(ex, "GetPresignedUrl 失败, Path: {Path}", objectPath);
+            _logger.LogError(ex, "GetPresignedUrl 失败, Path: {Path}", AdminLogValue.Sanitize(objectPath));
             return StatusCode(502, new { message = "图片服务暂不可用" });
         }
     }
