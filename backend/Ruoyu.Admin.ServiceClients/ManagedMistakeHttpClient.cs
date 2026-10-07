@@ -26,7 +26,24 @@ public sealed class ManagedMistakeHttpClient(HttpClient client) : IManagedMistak
         var cancellation = deadline.Token;
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/mistakes/upload")
         {
-            Content = JsonContent.Create(new
+            // The upstream contract makes imagePaths and sourceRegions mutually exclusive:
+            // explicit regions travel with an empty path list, paths-only stays legacy-shaped.
+            Content = JsonContent.Create(upload.SourceRegions is { Count: > 0 } regions ? (object)new
+            {
+                sourceUploadId = upload.SourceUploadId, expectedContentRevision = upload.ExpectedContentRevision,
+                requestKey = upload.RequestKey, studentId = upload.StudentId, subject = upload.Subject,
+                grade = upload.Grade, imagePaths = Array.Empty<string>(), rootCause = upload.RootCause,
+                sourceRegions = regions.Select(region => new
+                {
+                    sourceImagePath = region.SourceImagePath,
+                    boundingBox = region.BoundingBox is null ? null : new
+                    {
+                        x1 = region.BoundingBox.X1, y1 = region.BoundingBox.Y1,
+                        x2 = region.BoundingBox.X2, y2 = region.BoundingBox.Y2
+                    }
+                })
+            }
+            : new
             {
                 sourceUploadId = upload.SourceUploadId, expectedContentRevision = upload.ExpectedContentRevision,
                 requestKey = upload.RequestKey, studentId = upload.StudentId, subject = upload.Subject,

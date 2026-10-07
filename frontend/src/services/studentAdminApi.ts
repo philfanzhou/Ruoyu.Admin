@@ -133,9 +133,18 @@ export interface ImageAssignmentPayload {
     comments?: string
 }
 
+/** Mirror of the mistake service's SourceRegionDto wire shape; a null box is the full image. */
+export interface ManagedSourceRegion {
+    sourceImagePath: string
+    boundingBox: { x1: number; y1: number; x2: number; y2: number } | null
+}
+
 export interface ManagedImageAssignment {
     requestKey: string
-    sourcePaths: string[]
+    /** Full-image payload; exclusive with sourceRegions. */
+    sourcePaths?: string[]
+    /** Explicit crop payload; exclusive with sourcePaths. */
+    sourceRegions?: ManagedSourceRegion[]
     subject: number
     grade: number
     comments: string

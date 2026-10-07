@@ -9,7 +9,7 @@ namespace Admin.WebApi.Tests.ServiceClients;
 public sealed class ManagedMistakeHttpClientTests
 {
     private static readonly ManagedMistakeUpload Upload = new(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(),
-        Guid.NewGuid(), 2, 7, ["uploads/题目/A.PNG", "uploads/题目/a.PNG"], "fixed cause");
+        Guid.NewGuid(), 2, 7, ["uploads/题目/A.PNG", "uploads/题目/a.PNG"], null, "fixed cause");
     private static readonly Guid Item = Guid.NewGuid();
     private const string Caller = "unit-test-authenticated-caller";
 
@@ -42,6 +42,40 @@ public sealed class ManagedMistakeHttpClientTests
         });
         var result = await Client(wire).SubmitAsync(Upload, Caller, default);
         Assert.Equal("Completed", result.State); Assert.Equal([Item], result.CreatedItemIds); Assert.Equal(200, result.HttpStatus); Assert.Equal(1, wire.Calls);
+    }
+
+    [Fact]
+    public async Task RegionsTravelAsExclusivePayload_NullBoxSerializesAsFullImage()
+    {
+        var upload = Upload with
+        {
+            ImagePaths = Array.Empty<string>(),
+            SourceRegions =
+            [
+                new ManagedSourceRegion("uploads/题目/A.PNG", new ManagedBoundingBox(10, 20, 30, 40)),
+                new ManagedSourceRegion("uploads/题目/A.PNG", null),
+            ],
+        };
+        JsonElement seen = default;
+        var wire = new Wire(async (request, ct) =>
+        {
+            using (var document = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(ct)))
+                seen = document.RootElement.Clone();
+            return Reply(200, JsonSerializer.Serialize(new { success = true, data = new { success = true, createdItemIds = new[] { Item } } }));
+        });
+        var result = await Client(wire).SubmitAsync(upload, Caller, default);
+        Assert.Equal("Completed", result.State);
+        Assert.Equal(0, seen.GetProperty("imagePaths").GetArrayLength());
+        var regions = seen.GetProperty("sourceRegions");
+        Assert.Equal(2, regions.GetArrayLength());
+        Assert.Equal("uploads/题目/A.PNG", regions[0].GetProperty("sourceImagePath").GetString());
+        var box = regions[0].GetProperty("boundingBox");
+        Assert.Equal(10, box.GetProperty("x1").GetInt32());
+        Assert.Equal(20, box.GetProperty("y1").GetInt32());
+        Assert.Equal(30, box.GetProperty("x2").GetInt32());
+        Assert.Equal(40, box.GetProperty("y2").GetInt32());
+        Assert.Equal("uploads/题目/A.PNG", regions[1].GetProperty("sourceImagePath").GetString());
+        Assert.Equal(JsonValueKind.Null, regions[1].GetProperty("boundingBox").ValueKind);
     }
 
     public static IEnumerable<object[]> InvalidCompletion()

@@ -76,6 +76,31 @@ describe('fixed managed assignment', () => {
     resolve(complete(op)); expect(await pending).toBe(true)
   })
 
+  it('freezes crop groups over one shared original as exclusive sourceRegions with canonical de-duplication', () => {
+    const cropA: AssignmentChoice = { imageIndices: [], subject: 2, grade: 7, comments: 'crop-a',
+      regions: [{ sourceImagePath: 'uploads/题目/A.PNG', box: { x1: 0, y1: 0, x2: 100, y2: 50 } },
+        { sourceImagePath: 'uploads/题目/A.PNG', box: { x1: 0, y1: 0, x2: 100, y2: 50 } }] }
+    const cropB: AssignmentChoice = { imageIndices: [], subject: 2, grade: 7, comments: 'crop-b',
+      regions: [{ sourceImagePath: 'uploads/题目/A.PNG', box: null }] }
+    const op = operation([cropA, cropB])
+    expect(op.payload.assignments.map(group => group.sourceRegions)).toEqual([
+      [{ sourceImagePath: 'uploads/题目/A.PNG', boundingBox: { x1: 0, y1: 0, x2: 100, y2: 50 } }],
+      [{ sourceImagePath: 'uploads/题目/A.PNG', boundingBox: null }],
+    ])
+    expect('sourcePaths' in op.payload.assignments[0]!).toBe(false)
+  })
+
+  it.each([
+    ['mixed paths and regions', { imageIndices: [0], regions: [{ sourceImagePath: 'uploads/题目/A.PNG', box: null }] }],
+    ['empty regions', { imageIndices: [], regions: [] }],
+    ['inverted box', { imageIndices: [], regions: [{ sourceImagePath: 'uploads/题目/A.PNG', box: { x1: 30, y1: 20, x2: 10, y2: 40 } }] }],
+    ['negative origin', { imageIndices: [], regions: [{ sourceImagePath: 'uploads/题目/A.PNG', box: { x1: -1, y1: 0, x2: 10, y2: 40 } }] }],
+    ['blank source path', { imageIndices: [], regions: [{ sourceImagePath: '', box: null }] }],
+    ['non-integer coordinates', { imageIndices: [], regions: [{ sourceImagePath: 'uploads/题目/A.PNG', box: { x1: 0.5, y1: 0, x2: 10, y2: 40 } }] }],
+  ] as [string, AssignmentChoice][])('rejects %s before creating a request', (_name, override) => {
+    expect(() => operation([{ imageIndices: [], subject: 2, grade: 7, comments: 'crop', ...override }])).toThrow()
+  })
+
   it('retains Completed/Failed/NotAttempted and exact 409 without reporting batch success', async () => {
     const op = operation([choice([0]), choice([1])])
     const response = { success: false, groups: [

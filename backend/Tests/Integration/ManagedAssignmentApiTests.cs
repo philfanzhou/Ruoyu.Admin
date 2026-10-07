@@ -65,7 +65,7 @@ public sealed partial class AdminOidcTests
         Assert.False(result.GetProperty("success").GetBoolean());
         Assert.Equal(new[] { "Completed", "Failed", "NotAttempted" }, result.GetProperty("groups").EnumerateArray().Select(g => g.GetProperty("state").GetString()));
         Assert.Equal(firstId, result.GetProperty("groups")[0].GetProperty("createdItemIds")[0].GetGuid());
-        Assert.Equal(2, wire.Calls.Count); Assert.All(wire.Calls, call => Assert.Equal(OidcTestAuthority.AccessToken, call.Token));
+        Assert.Equal(2, wire.Calls.Count); Assert.All(wire.Calls, call => Assert.Equal(authority.LastAccessToken, call.Token));
         Assert.Equal(new[] { "uploads/题目/A.PNG", "uploads/题目/a.PNG" }, wire.Calls[0].Body.GetProperty("imagePaths").EnumerateArray().Select(p => p.GetString()));
         Assert.Equal(AssignmentRevision, wire.Calls[0].Body.GetProperty("expectedContentRevision").GetGuid());
         // The existing source may now be edited or absent: retry never reads it to remap the fixed proposal.
@@ -76,6 +76,74 @@ public sealed partial class AdminOidcTests
         using var retry = await Api(client, AssignmentRoute, cookie + "; " + csrf.Cookie, "POST", csrf: [csrf.Token], body: JsonContent.Create(AssignmentBody(keys)));
         Assert.True((await retry.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("success").GetBoolean());
         Assert.Equal(wire.Calls[0].Body.GetRawText(), wire.Calls[2].Body.GetRawText());
+        probe.Student.VerifyNoOtherCalls(); probe.Mistake.VerifyNoOtherCalls(); probe.Oss.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task ManagedAssignment_SharedOriginalCropGroupsTravelAsRegions_MixedOrInvalidRejectedLocally()
+    {
+        using var authority = new OidcTestAuthority(); var probe = new SessionBusinessProbe(); var wire = new AssignmentWire();
+        using var factory = AssignmentFactory(authority, probe, wire); using var client = Browser(factory);
+        var cookie = await LoginSession(client, authority); var csrf = await Csrf(client, cookie);
+        object Body(object assignment) => new
+        {
+            mode = "managed-v1", studentId = AssignmentStudent, expectedContentRevision = AssignmentRevision,
+            assignments = new[] { assignment }
+        };
+        // Paths and regions are mutually exclusive on the wire; box coordinates must satisfy
+        // X1 >= 0, Y1 >= 0, X1 < X2, Y1 < Y2 upstream — reject locally, zero outbound.
+        object[] rejected =
+        [
+            Body(new { requestKey = Guid.NewGuid(), subject = 2, grade = 7, comments = "mixed",
+                sourcePaths = new[] { "uploads/题目/A.PNG" },
+                sourceRegions = new[] { new { sourceImagePath = "uploads/题目/A.PNG", boundingBox = (object?)null } } }),
+            Body(new { requestKey = Guid.NewGuid(), subject = 2, grade = 7, comments = "inverted-box",
+                sourcePaths = (string[]?)null,
+                sourceRegions = new[] { new { sourceImagePath = "uploads/题目/A.PNG", boundingBox = new { x1 = 30, y1 = 20, x2 = 10, y2 = 40 } } } }),
+            Body(new { requestKey = Guid.NewGuid(), subject = 2, grade = 7, comments = "negative-origin",
+                sourcePaths = (string[]?)null,
+                sourceRegions = new[] { new { sourceImagePath = "uploads/题目/A.PNG", boundingBox = new { x1 = -1, y1 = 0, x2 = 10, y2 = 40 } } } }),
+            Body(new { requestKey = Guid.NewGuid(), subject = 2, grade = 7, comments = "empty-regions",
+                sourcePaths = (string[]?)null, sourceRegions = Array.Empty<object>() }),
+            Body(new { requestKey = Guid.NewGuid(), subject = 2, grade = 7, comments = "blank-region-path",
+                sourcePaths = (string[]?)null,
+                sourceRegions = new[] { new { sourceImagePath = "", boundingBox = (object?)null } } }),
+        ];
+        foreach (var bad in rejected)
+        {
+            using var refused = await Api(client, AssignmentRoute, cookie + "; " + csrf.Cookie, "POST", csrf: [csrf.Token], body: JsonContent.Create(bad));
+            Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
+        }
+        Assert.Empty(wire.Calls);
+        // The AC1 shape: two crop groups over one shared original image.
+        var cropA = Guid.NewGuid(); var cropB = Guid.NewGuid();
+        wire.Replies.Enqueue((200, new { success = true, data = new { success = true, createdItemIds = new[] { Guid.NewGuid() } } }));
+        wire.Replies.Enqueue((200, new { success = true, data = new { success = true, createdItemIds = new[] { Guid.NewGuid() } } }));
+        using var response = await Api(client, AssignmentRoute, cookie + "; " + csrf.Cookie, "POST", csrf: [csrf.Token],
+            body: JsonContent.Create(new
+            {
+                mode = "managed-v1", studentId = AssignmentStudent, expectedContentRevision = AssignmentRevision,
+                assignments = new object[]
+                {
+                    new { requestKey = cropA, subject = 2, grade = 7, comments = "crop-a",
+                        sourceRegions = new[] { new { sourceImagePath = "uploads/题目/A.PNG", boundingBox = new { x1 = 0, y1 = 0, x2 = 100, y2 = 50 } } } },
+                    new { requestKey = cropB, subject = 2, grade = 7, comments = "crop-b",
+                        sourceRegions = new[] { new { sourceImagePath = "uploads/题目/A.PNG", boundingBox = new { x1 = 0, y1 = 50, x2 = 100, y2 = 100 } } } },
+                }
+            }));
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var result = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.True(result.GetProperty("success").GetBoolean());
+        Assert.Equal(2, wire.Calls.Count);
+        foreach (var call in wire.Calls)
+        {
+            Assert.Equal(0, call.Body.GetProperty("imagePaths").GetArrayLength());
+            var region = call.Body.GetProperty("sourceRegions")[0];
+            Assert.Equal("uploads/题目/A.PNG", region.GetProperty("sourceImagePath").GetString());
+            Assert.True(region.GetProperty("boundingBox").GetProperty("x2").GetInt32() > region.GetProperty("boundingBox").GetProperty("x1").GetInt32());
+        }
+        Assert.Equal(cropA, wire.Calls[0].Body.GetProperty("requestKey").GetGuid());
+        Assert.Equal(cropB, wire.Calls[1].Body.GetProperty("requestKey").GetGuid());
         probe.Student.VerifyNoOtherCalls(); probe.Mistake.VerifyNoOtherCalls(); probe.Oss.VerifyNoOtherCalls();
     }
 
@@ -95,14 +163,16 @@ public sealed partial class AdminOidcTests
     }
 
     [Fact]
-    public async Task ManagedAssignment_DisabledSessionApiNeverFallsBackToLegacyBearer()
+    public async Task ManagedAssignment_LegacyBearerWithoutSessionNeverAuthenticatesOrSends()
     {
         using var authority = new OidcTestAuthority(); var probe = new SessionBusinessProbe(); var wire = new AssignmentWire();
+        // The old UseSessionForAdminApi key is absent: session remains the only scheme regardless,
+        // and a request with no session cookie plus a legacy Bearer is rejected before any outbound call.
         using var factory = AssignmentFactory(authority, probe, wire, session: false); using var client = Browser(factory);
         using var response = await Api(client, AssignmentRoute, method: "POST", authorization: ["Bearer " + authority.LegacyBearer()],
             body: JsonContent.Create(AssignmentBody([Guid.NewGuid()])));
-        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
-        Assert.Equal("session_api_disabled", (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("error").GetString());
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Equal("unauthorized", (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("error").GetString());
         Assert.Empty(wire.Calls); probe.Student.VerifyNoOtherCalls(); probe.Mistake.VerifyNoOtherCalls(); probe.Oss.VerifyNoOtherCalls();
     }
 

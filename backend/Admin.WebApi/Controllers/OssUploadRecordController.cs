@@ -6,8 +6,6 @@ using Admin.WebApi.Models;
 using Ruoyu.Admin.Common.Oss;
 using Admin.WebApi.Services;
 using Admin.WebApi.Authentication;
-using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
 
 namespace Admin.WebApi.Controllers;
 
@@ -119,7 +117,8 @@ public class OssUploadRecordController : ControllerBase
     public async Task<IActionResult> AssignUploadRecord(string id, [FromBody] AssignUploadRecordRequest request, CancellationToken cancellationToken = default)
     {
         if (_managed.Enabled || request.Mode is not null || request.ExpectedContentRevision.HasValue
-            || request.Assignments?.Any(a => a is not null && (a.RequestKey.HasValue || a.SourcePaths is not null)) == true)
+            || request.Assignments?.Any(a => a is not null && (a.RequestKey.HasValue || a.SourcePaths is not null
+                || a.SourceRegions is not null)) == true)
             return await AssignManagedAsync(id, request);
         if (request.Assignments is not { Count: > 0 })
             return BadRequest(new ErrorResponse("Assignments are required."));
@@ -236,25 +235,23 @@ public class OssUploadRecordController : ControllerBase
     private async Task<IActionResult> AssignManagedAsync(string id, AssignUploadRecordRequest request)
     {
         if (!_managed.Enabled) return StatusCode(503, new { errorKind = "managed_assignment_disabled" });
-        var caller = await ManagedCallerAsync();
+        var caller = ManagedCaller();
         if (caller.StatusCode != 200) return StatusCode(caller.StatusCode, new { errorKind = caller.Error });
         if (request.Mode != "managed-v1" || !Guid.TryParse(id, out var source) || source == Guid.Empty
             || !Guid.TryParse(request.StudentId, out var student) || student == Guid.Empty
             || request.ExpectedContentRevision is not { } revision || revision == Guid.Empty
             || request.Assignments is not { Count: >= 1 and <= 100 }
-            || request.Assignments.Any(a => a is null || a.RequestKey is null || a.RequestKey == Guid.Empty
-                || a.Subject is < 1 or > 9 || a.Grade is < 1 or > 12 || a.Comments?.Length > 4096
-                || a.SourcePaths is not { Count: >= 1 and <= 100 }
-                || a.SourcePaths.Any(path => string.IsNullOrEmpty(path) || path.Length > 4096))
+            || request.Assignments.Any(a => a is null || !IsValidManagedAssignment(a!))
             || request.Assignments.Select(a => a.RequestKey).Distinct().Count() != request.Assignments.Count)
             return BadRequest(new { errorKind = "invalid_assignment", message = "The fixed managed assignment is invalid." });
         if (_managedClient is null) throw new InvalidOperationException("Managed client is not registered.");
         var groups = new List<object>(); var stopped = false;
         foreach (var assignment in request.Assignments)
         {
+            var payload = ManagedPayload(assignment);
             var result = stopped ? new ManagedMistakeResult("NotAttempted", "", Array.Empty<Guid>())
                 : await _managedClient.SubmitAsync(new(source, revision, assignment.RequestKey!.Value, student,
-                    assignment.Subject, assignment.Grade, assignment.SourcePaths!.Distinct(StringComparer.Ordinal).ToArray(),
+                    assignment.Subject, assignment.Grade, payload.Paths, payload.Regions,
                     assignment.Comments ?? string.Empty), caller.AccessToken!, HttpContext.RequestAborted);
             groups.Add(new { requestKey = assignment.RequestKey, state = result.State,
                 errorKind = result.ErrorKind, createdItemIds = result.CreatedItemIds, statusCode = result.HttpStatus });
@@ -263,23 +260,43 @@ public class OssUploadRecordController : ControllerBase
         return Ok(new { success = !stopped, groups });
     }
 
-    private async Task<AdminSessionResult> ManagedCallerAsync()
+    private static bool IsValidManagedAssignment(ImageAssignment a)
     {
-        // The session boundary already performed the administrator and unsafe-method CSRF gate.
-        var settings = HttpContext.RequestServices.GetService<AdminOidcSettings>();
-        if (settings?.UseSessionForAdminApi == true)
-            return HttpContext.Items.TryGetValue(AdminSessionBoundary.TrustedSessionKey, out var value)
-                && value is AdminSessionResult trusted && trusted.StatusCode == 200
-                ? trusted : new(401);
-        var bearer = await HttpContext.AuthenticateAsync(JwtBearerDefaults.AuthenticationScheme);
-        if (!bearer.Succeeded || bearer.Principal is null) return new(401);
-        if (!bearer.Principal.IsInRole("admin")) return new(403);
-        var token = bearer.Properties?.GetTokenValue("access_token");
-        if (!HttpContext.Request.Headers.TryGetValue("Authorization", out var header) || header.Count != 1
-            || !System.Net.Http.Headers.AuthenticationHeaderValue.TryParse(header[0], out var authorization)
-            || !authorization.Scheme.Equals("Bearer", StringComparison.OrdinalIgnoreCase)
-            || string.IsNullOrWhiteSpace(token) || authorization.Parameter != token) return new(401);
-        return new(200, bearer.Principal, token);
+        if (a.RequestKey is null || a.RequestKey == Guid.Empty || a.Subject is < 1 or > 9 || a.Grade is < 1 or > 12
+            || a.Comments?.Length > 4096)
+            return false;
+        var hasPaths = a.SourcePaths is { Count: >= 1 and <= 100 }
+            && a.SourcePaths.All(path => !string.IsNullOrEmpty(path) && path.Length <= 4096);
+        var hasRegions = a.SourceRegions is { Count: >= 1 and <= 100 } && a.SourceRegions.All(IsValidRegion);
+        // The upstream contract rejects a request carrying both imagePaths and sourceRegions;
+        // a managed assignment must pick exactly one payload shape.
+        return hasPaths ^ hasRegions;
+    }
+
+    private static bool IsValidRegion(RegionInput? region)
+        => region is not null && !string.IsNullOrEmpty(region.SourceImagePath) && region.SourceImagePath.Length <= 4096
+            && (region.BoundingBox is null
+                || (region.BoundingBox.X1 >= 0 && region.BoundingBox.Y1 >= 0
+                    && region.BoundingBox.X1 < region.BoundingBox.X2 && region.BoundingBox.Y1 < region.BoundingBox.Y2));
+
+    private static (IReadOnlyList<string> Paths, IReadOnlyList<ManagedSourceRegion>? Regions) ManagedPayload(ImageAssignment assignment)
+        => assignment.SourceRegions is { Count: > 0 } regions
+            ? (Array.Empty<string>(),
+                regions.Select(region => new ManagedSourceRegion(region.SourceImagePath!,
+                        region.BoundingBox is null
+                            ? null
+                            : new ManagedBoundingBox(region.BoundingBox.X1, region.BoundingBox.Y1, region.BoundingBox.X2, region.BoundingBox.Y2)))
+                    .Distinct()
+                    .ToList())
+            : (assignment.SourcePaths!.Distinct(StringComparer.Ordinal).ToArray(), null);
+
+    private AdminSessionResult ManagedCaller()
+    {
+        // The session boundary already verified the administrator identity, rejected any
+        // inbound Authorization header, and ran the unsafe-method CSRF gate.
+        return HttpContext.Items.TryGetValue(AdminSessionBoundary.TrustedSessionKey, out var value)
+            && value is AdminSessionResult trusted && trusted.StatusCode == 200
+            ? trusted : new(401);
     }
 
     [HttpGet("image")]
@@ -571,10 +588,26 @@ public class ImageAssignment
 {
     public Guid? RequestKey { get; set; }
     public List<string>? SourcePaths { get; set; }
+    public List<RegionInput>? SourceRegions { get; set; }
     public List<int> ImageIndices { get; set; } = new();
     public int Subject { get; set; }
     public int Grade { get; set; }
     public string? Comments { get; set; }
+}
+
+/// <summary>Crop region input mirroring the mistake service's SourceRegionDto wire shape.</summary>
+public class RegionInput
+{
+    public string? SourceImagePath { get; set; }
+    public BoxInput? BoundingBox { get; set; }
+}
+
+public class BoxInput
+{
+    public int X1 { get; set; }
+    public int Y1 { get; set; }
+    public int X2 { get; set; }
+    public int Y2 { get; set; }
 }
 
 public class AssignUploadRecordRequest

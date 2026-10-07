@@ -95,8 +95,31 @@
       <template v-if="managed">
         <el-button v-if="!activeOperation" :disabled="!assignmentAvailable || assigning || draftGroups.length >= 100"
           @click="addManagedGroup">添加分组</el-button>
+        <el-button v-if="!activeOperation && !cropDraft" :disabled="!assignmentAvailable || assigning || draftGroups.length >= 100"
+          @click="startCropGroup">添加裁剪分组</el-button>
+        <div v-if="cropDraft" class="managed-crop">
+          <div class="crop-title">裁剪分组（共享原图 + 矩形区域）</div>
+          <el-select v-model="cropDraft.sourceIndex" size="small" class="crop-source">
+            <el-option v-for="idx in eligibleIndices" :key="idx"
+              :label="`共享原图 #${idx + 1} · ${current.imageEntries[idx].path}`" :value="idx" />
+          </el-select>
+          <div v-for="(rect, rectIndex) in cropDraft.rectangles" :key="rectIndex" class="crop-rect-row">
+            矩形 {{ rectIndex + 1 }}
+            <el-input-number v-model="rect.x1" size="small" :controls="false" :min="0" class="crop-num" placeholder="x1" />
+            <el-input-number v-model="rect.y1" size="small" :controls="false" :min="0" class="crop-num" placeholder="y1" />
+            <el-input-number v-model="rect.x2" size="small" :controls="false" :min="1" class="crop-num" placeholder="x2" />
+            <el-input-number v-model="rect.y2" size="small" :controls="false" :min="1" class="crop-num" placeholder="y2" />
+            <el-button size="small" text @click="cropDraft.rectangles.splice(rectIndex, 1)">移除</el-button>
+          </div>
+          <div class="crop-actions">
+            <el-button size="small" :disabled="cropDraft.rectangles.length >= 100"
+              @click="cropDraft.rectangles.push({ x1: 0, y1: 0, x2: 100, y2: 100 })">添加矩形</el-button>
+            <el-button size="small" type="primary" @click="confirmCropGroup">加入分组</el-button>
+            <el-button size="small" text @click="cropDraft = null">取消</el-button>
+          </div>
+        </div>
         <div v-for="(group, index) in draftGroups" :key="index" class="managed-group">
-          分组 {{ index + 1 }} · {{ getSubjectLabel(group.subject) }} · {{ gradeLabel(group.grade) }} · 图片 {{ group.imageIndices.map(i => i + 1).join(', ') }}
+          分组 {{ index + 1 }} · {{ getSubjectLabel(group.subject) }} · {{ gradeLabel(group.grade) }} · {{ groupChoiceLabel(group) }}
           <el-button v-if="!activeOperation" size="small" text @click="draftGroups.splice(index, 1)">移除分组</el-button>
         </div>
         <div v-if="activeOperation" class="managed-progress">
@@ -180,6 +203,7 @@ const vlResult = ref<VlAnalysisResponse | null>(null)
 const showVlResultDialog = ref(false)
 const operations = ref<FixedOperation[]>([])
 const draftGroups = ref<AssignmentChoice[]>([])
+const cropDraft = ref<{ sourceIndex: number; rectangles: { x1: number; y1: number; x2: number; y2: number }[] } | null>(null)
 const recoveryOpen = ref(false)
 let generation = 0
 const waiting = new Map<string, AbortController>()
@@ -217,6 +241,7 @@ watch(
       comments: existing?.payload.assignments[0].comments ?? displayed.comments ?? '',
     }
     draftGroups.value = []
+    cropDraft.value = null
   },
   { immediate: true },
 )
@@ -351,6 +376,32 @@ function acknowledgeOperation() {
     || activeOperation.value.results.some(result => result.state === 'Unknown')) return
   activeOperation.value.acknowledged = true
   draftGroups.value = []
+}
+
+function groupChoiceLabel(group: AssignmentChoice) {
+  if (group.regions) return group.regions.map(region => region.box
+    ? `${region.sourceImagePath} [${region.box.x1},${region.box.y1}–${region.box.x2},${region.box.y2}]`
+    : `${region.sourceImagePath} [整图]`).join('；')
+  return `图片 ${group.imageIndices.map(i => i + 1).join(', ')}`
+}
+
+function startCropGroup() {
+  if (!current.value || assignmentLocked.value || !eligibleIndices.value.length) return
+  cropDraft.value = { sourceIndex: eligibleIndices.value[0]!, rectangles: [{ x1: 0, y1: 0, x2: 100, y2: 100 }] }
+}
+
+function confirmCropGroup() {
+  if (!cropDraft.value || !current.value || assignmentLocked.value) return
+  const draft = cropDraft.value
+  const entry = current.value.imageEntries?.[draft.sourceIndex]
+  if (!entry || entry.type !== 'mistake') { ElMessage.warning('请选择共享原图。'); return }
+  if (assignForm.value.subject <= 0) { ElMessage.warning('请选择学科'); return }
+  if (assignForm.value.grade <= 0) { ElMessage.warning('请选择年级'); return }
+  const choice: AssignmentChoice = { imageIndices: [], subject: assignForm.value.subject, grade: assignForm.value.grade,
+    comments: assignForm.value.comments, regions: draft.rectangles.map(rect => ({ sourceImagePath: entry.path, box: { ...rect } })) }
+  try { freezeOperation(current.value, [choice]); draftGroups.value.push(choice) }
+  catch { ElMessage.warning('矩形坐标需满足 x1 < x2、y1 < y2 且不小于 0。'); return }
+  cropDraft.value = null
 }
 
 function addManagedGroup() {
@@ -494,7 +545,7 @@ function applyVlGrouping() {
   flex-shrink: 0;
 }
 .drawer-header-actions .el-button + .el-button { margin-left: 0; }
-.managed-recovery, .managed-progress, .managed-group, .source-entries {
+.managed-recovery, .managed-progress, .managed-group, .managed-crop, .source-entries {
   padding: 10px;
   margin: 8px 0;
   border: 1px solid var(--adm-border);
@@ -503,6 +554,21 @@ function applyVlGrouping() {
   overflow-wrap: anywhere;
   font-size: var(--adm-font-size-sm);
 }
+.managed-crop {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.crop-title { font-weight: 600; color: var(--adm-text-primary); }
+.crop-source { width: 100%; }
+.crop-rect-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.crop-num { width: 64px; }
+.crop-actions { display: flex; gap: 8px; }
 .panel-section-title {
   font-size: 13px;
   font-weight: 600;
