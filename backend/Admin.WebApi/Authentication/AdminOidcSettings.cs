@@ -1,7 +1,7 @@
 namespace Admin.WebApi.Authentication;
 
 internal sealed record AdminOidcSettings(string Authority, string ClientId, string ClientSecret,
-    string RedirectUri, bool InsecureLoopback, TimeSpan ClockSkew)
+    string RedirectUri, bool InsecureHttp, IReadOnlySet<string> IntranetHttpOrigins, TimeSpan ClockSkew)
 {
     internal string PostLogoutRedirectUri { get; init; } = "";
     // The SignaCore client package mounts its endpoints at a fixed prefix and requires the
@@ -27,14 +27,17 @@ internal sealed record AdminOidcSettings(string Authority, string ClientId, stri
                 throw new InvalidOperationException("AdminOidc:" + key);
         }
         var dev = environment.IsDevelopment() || environment.IsEnvironment("Testing");
+        // Parsed once here and honored by every IsSafeUri call below (redirect, authority, post-logout)
+        // and by MistakeSessionSettings.Read: the same list is the single HTTP exception surface.
+        var intranetHttpOrigins = AdminIntranetHttpOrigins.Read(config);
         var redirect = config["AdminOidc:RedirectUri"] ?? "";
         var authority = (config["IdentityService:Authority"] ?? "").TrimEnd('/');
-        if (!IsSafeUri(redirect, dev, out var redirectUri) || redirectUri!.AbsolutePath != CallbackPath
+        if (!IsSafeUri(redirect, dev, intranetHttpOrigins, out var redirectUri) || redirectUri!.AbsolutePath != CallbackPath
             || redirectUri.AbsoluteUri != redirect || redirect.Length > 500 || redirect.Any(c => c > 127))
             throw new InvalidOperationException("AdminOidc:RedirectUri");
-        if (!IsSafeUri(authority, dev, out _)) throw new InvalidOperationException("IdentityService:Authority");
+        if (!IsSafeUri(authority, dev, intranetHttpOrigins, out _)) throw new InvalidOperationException("IdentityService:Authority");
         var postLogout = config["AdminOidc:PostLogoutRedirectUri"] ?? "";
-        if (!IsSafeUri(postLogout, dev, out var postLogoutUri) || postLogoutUri!.AbsolutePath != LogoutReturnPath
+        if (!IsSafeUri(postLogout, dev, intranetHttpOrigins, out var postLogoutUri) || postLogoutUri!.AbsolutePath != LogoutReturnPath
             || postLogoutUri.AbsoluteUri != postLogout || postLogout.Length > 500 || postLogout.Any(c => c > 127)
             || postLogoutUri.GetLeftPart(UriPartial.Authority) != redirectUri.GetLeftPart(UriPartial.Authority))
             throw new InvalidOperationException("AdminOidc:PostLogoutRedirectUri");
@@ -48,19 +51,25 @@ internal sealed record AdminOidcSettings(string Authority, string ClientId, stri
                 System.Globalization.CultureInfo.InvariantCulture, out skew))
             throw new InvalidOperationException("IdentityService:ClockSkewSeconds");
         if (skew is < 0 or > 300) throw new InvalidOperationException("IdentityService:ClockSkewSeconds");
-        // ClockSkew stays part of the startup contract (malformed values still fail the host),
-        // but the SignaCore client package fixes its own token validation skew at 30 seconds.
-        return new(authority, clientId, secret, redirect, redirectUri.Scheme == "http", TimeSpan.FromSeconds(skew))
+        // ClockSkew stays part of the startup contract (malformed values still fail the host);
+        // the SignaCore client package validates its own token lifetimes with the strict default
+        // (zero clock skew, future iat rejected) since 0.1.14 and this repository does not relax it.
+        // InsecureHttp reflects "an HTTP entry origin is in effect" (the dev/Testing numeric
+        // loopback exception or an explicitly configured intranet origin), which drives the
+        // adminCsrf cookie SecurePolicy below.
+        return new(authority, clientId, secret, redirect, redirectUri.Scheme == "http", intranetHttpOrigins, TimeSpan.FromSeconds(skew))
             { PostLogoutRedirectUri = postLogout };
     }
 
-    internal static bool IsSafeUri(string value, bool allowLoopback, out Uri? uri)
+    internal static bool IsSafeUri(string value, bool allowLoopback, IReadOnlySet<string> intranetHttpOrigins, out Uri? uri)
     {
         return Uri.TryCreate(value, UriKind.Absolute, out uri)
             && string.IsNullOrEmpty(uri.UserInfo) && string.IsNullOrEmpty(uri.Query) && string.IsNullOrEmpty(uri.Fragment)
             && !string.Equals(uri.Host.TrimEnd('.'), "localhost", StringComparison.OrdinalIgnoreCase)
             && !value.Any(char.IsControl) && !value.Contains('*')
-            && (uri.Scheme == "https" || allowLoopback && uri.Scheme == "http" && uri.Host is "127.0.0.1" or "[::1]");
+            && (uri.Scheme == "https"
+                || allowLoopback && uri.Scheme == "http" && uri.Host is "127.0.0.1" or "[::1]"
+                || AdminIntranetHttpOrigins.Contains(intranetHttpOrigins, uri!));
     }
 
     public override string ToString() => "AdminOidcSettings";

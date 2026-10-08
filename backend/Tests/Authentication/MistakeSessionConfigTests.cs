@@ -37,6 +37,25 @@ public sealed partial class AdminAuthConfigCliTests
         Assert.Equal(exit == 0 ? "" : "RUOYU_ADMIN_AUTH_CONFIG_INVALID\n", result.Error);
         Assert.False(Directory.Exists(cache)); Assert.False(Directory.Exists(Path.Combine(fixture.Root, "data")));
     }
+
+    [Theory]
+    [InlineData("true", "http://192.168.55.10:5007/", "Production", "http://192.168.55.10:5007", 0)]
+    [InlineData("true", "http://[fd12::34]:5007/", "Production", "http://[FD12::34]:5007", 0)]
+    [InlineData("true", "http://192.168.55.10:5007", "Testing", "http://192.168.55.10:5020", 2)]
+    [InlineData("true", "http://192.168.55.10:5007", "Production", null, 2)]
+    [InlineData("false", "http://192.168.55.10:5007", "Production", null, 0)]
+    public async Task MistakePreflightAdmitsOnlyListedIntranetHttpOrigin(string? mode, string url, string environment, string? listed, int exit)
+    {
+        using var fixture = new CliFixture(); var config = AdminSessionDisabledTests.ValidConfiguration();
+        config["MistakeService:UseSessionToken"] = mode;
+        config["MistakeService:Url"] = url;
+        if (listed is not null) config["AdminOidc:IntranetHttpOrigins:0"] = listed;
+        config["ConnectionStrings:AuditDb"] = "deliberately-unparsable-secret-canary"; fixture.WriteSettings(config);
+        var result = await fixture.Run(new() { ["ASPNETCORE_ENVIRONMENT"] = environment, ["DOTNET_ENVIRONMENT"] = environment });
+        Assert.Equal(exit, result.Exit);
+        Assert.Equal(exit == 0 ? "RUOYU_ADMIN_AUTH_CONFIG_VALID\n" : "", result.Out);
+        Assert.Equal(exit == 0 ? "" : "RUOYU_ADMIN_AUTH_CONFIG_INVALID\n", result.Error);
+    }
 }
 
 public sealed class MistakeSessionAllowlistTests

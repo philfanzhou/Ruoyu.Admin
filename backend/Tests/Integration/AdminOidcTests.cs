@@ -72,7 +72,9 @@ public sealed partial class AdminOidcTests(PostgreSqlFixture database) : Service
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
         Assert.Equal(OidcTestAuthority.Issuer + "/authorize", response.Headers.Location!.GetLeftPart(UriPartial.Path));
         var query = QueryHelpers.ParseQuery(response.Headers.Location.Query).ToDictionary(p => p.Key, p => p.Value.ToString());
-        // The pending sign-in lives in the server-side store: the start response sets no cookie.
+        // The pending sign-in itself lives in the server-side store: the only cookie the start
+        // response sets is the package's per-state browser-binding cookie (0.1.14+), which the
+        // callback must present together with the state before anything else is trusted.
         var cookies = string.Join("; ", response.Headers.TryGetValues("Set-Cookie", out var values)
             ? values.Select(value => value.Split(';')[0]) : Array.Empty<string>());
         return new(query, cookies, response);
@@ -138,7 +140,12 @@ public sealed partial class AdminOidcTests(PostgreSqlFixture database) : Service
         Assert.Matches("^[A-Za-z0-9_-]{43}$", handshake.Query["state"]);
         Assert.Matches("^[A-Za-z0-9._~-]{22,128}$", handshake.Query["nonce"]);
         Assert.Matches("^[A-Za-z0-9_-]{43}$", handshake.Query["code_challenge"]);
-        Assert.Empty(handshake.Cookies);
+        // Since the 0.1.14 browser binding, the start response sets exactly one cookie: the
+        // per-state login-binding cookie, scoped to the callback path and named after the
+        // session cookie plus its suffix and the state.
+        var binding = Assert.Single(handshake.Cookies.Split("; "));
+        Assert.StartsWith(AdminOidcSettings.SessionCookie + "-login-binding." + handshake.Query["state"] + "=", binding);
+        Assert.Matches("^[A-Za-z0-9_-]{43}$", binding[(binding.IndexOf('=') + 1)..]);
         var code = authority.Code(handshake.Query, defect);
         using var response = await Callback(client, handshake, code);
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);

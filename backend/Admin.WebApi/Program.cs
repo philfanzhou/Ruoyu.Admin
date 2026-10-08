@@ -38,7 +38,7 @@ catch (Exception error)
         var safeKey = error is InvalidOperationException && error.Message is
             "AdminOidc:Enabled" or "AdminOidc:UseSessionForAdminApi" or "AdminOidc:UseSessionForLogout"
             or "AdminOidc:UseSessionForIdentityProxy" or "AdminOidc:UseSessionForPortalProxies"
-            or "AdminOidc:RedirectUri" or "AdminOidc:PostLogoutRedirectUri"
+            or "AdminOidc:RedirectUri" or "AdminOidc:PostLogoutRedirectUri" or "AdminOidc:IntranetHttpOrigins"
             or "IdentityService:Authority" or "IdentityService:AppId" or "IdentityService:AppSecret"
             or "IdentityService:ClockSkewSeconds" or "MistakeService:UseSessionToken" or "MistakeService:Url" ? error.Message : "RUOYU_ADMIN_AUTH_CONFIG_INVALID";
         throw new InvalidOperationException(safeKey);

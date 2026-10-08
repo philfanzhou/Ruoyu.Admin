@@ -350,12 +350,17 @@ public sealed class ServiceMantleSecurityResponseHeadersTests : ServiceMantleInt
         Assert.Equal(HttpStatusCode.Redirect, start.StatusCode);
         var query = QueryHelpers.ParseQuery(start.Headers.Location!.Query).ToDictionary(p => p.Key, p => p.Value.ToString());
 
-        // The pending sign-in lives server-side: the start response sets no cookie at all.
+        // The pending sign-in lives server-side; the only start cookie is the package's per-state
+        // browser binding (0.1.14+), which the callback must present with the state.
+        var binding = string.Join("; ", start.Headers.TryGetValues("Set-Cookie", out var values)
+            ? values.Select(value => value.Split(';')[0]) : Array.Empty<string>());
         var callbackUri = QueryHelpers.AddQueryString(AdminOidcSettings.CallbackPath, new Dictionary<string, string?>
         {
             ["code"] = authority.Code(query), ["state"] = query["state"], ["iss"] = OidcTestAuthority.Issuer,
         });
-        using var callback = await client.GetAsync(callbackUri);
+        using var callbackRequest = new HttpRequestMessage(HttpMethod.Get, callbackUri);
+        if (!string.IsNullOrEmpty(binding)) callbackRequest.Headers.Add("Cookie", binding);
+        using var callback = await client.SendAsync(callbackRequest);
         Assert.Equal(HttpStatusCode.Redirect, callback.StatusCode);
         AssertNoSecurityBaseline(callback);
         return callback.Headers.GetValues("Set-Cookie")

@@ -113,6 +113,13 @@ internal sealed class AdminHostedLoginResponseWriter : ISignaCoreHostedLoginResp
     private static string AuthError(SignaCoreSignInReason reason) => reason switch
     {
         SignaCoreSignInReason.AuthorityUnreachable => "identity_unavailable",
+        // Since 0.1.14 the package splits the legacy AccessDenied into UserCanceled (the user
+        // rejected the authorization upstream) and PreSignInDenied (the optional gate denied,
+        // timed out, or failed); the browser-facing mapping keeps them one value so the gate
+        // never reveals whether an account exists. Legacy AccessDenied stays mapped for old
+        // failure-page links.
+        SignaCoreSignInReason.UserCanceled => "cancelled",
+        SignaCoreSignInReason.PreSignInDenied => "cancelled",
         SignaCoreSignInReason.AccessDenied => "cancelled",
         _ => "sign_in_failed"
     };

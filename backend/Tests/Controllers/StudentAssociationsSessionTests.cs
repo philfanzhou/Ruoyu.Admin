@@ -14,7 +14,7 @@ namespace Admin.WebApi.Tests.Controllers;
 
 public sealed class StudentAssociationsSessionTests
 {
-    private static readonly AdminOidcSettings Settings = new("", "", "", "", false, TimeSpan.Zero);
+    private static readonly AdminOidcSettings Settings = new("", "", "", "", false, new HashSet<string>(StringComparer.Ordinal), TimeSpan.Zero);
     private static StudentAssociationsController Controller(IServiceProvider services, IHttpClientFactory clients, IStudentHttpClient student, string token = "server-token", CancellationToken cancellation = default)
     {
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
