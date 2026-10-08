@@ -36,6 +36,12 @@ internal static class AdminOidcRegistration
             options.AntiforgeryHeaderName = AdminSessionBoundary.CsrfHeader;
             options.PostLogoutRedirectUri = settings.PostLogoutRedirectUri;
             options.PostLogoutReturnPath = "/login";
+            // The explicit intranet HTTP deployment opt-in: the canonicalized origins parsed by
+            // AdminOidcSettings.Read are handed to the package, whose own options validation
+            // (and cookie profile) then applies the same list to Authority, redirects, and every
+            // Discovery endpoint. Loopback origins never enter the list; they keep the package's
+            // dev/Testing exception.
+            options.IntranetHttpOrigins.AddRange(settings.IntranetHttpOrigins);
         });
         // The package's shared backchannel joins the correlation contract of every other
         // internal client (issue #90): an ambient request correlation id travels with the
@@ -57,14 +63,16 @@ internal static class AdminOidcRegistration
             });
         // The shared antiforgery pair keeps the Admin cookie contract: the package defaults
         // (name-less Strict cookie, Always secure) would rename the browser cookie and break
-        // token issuance on the dev loopback origin.
+        // token issuance on the dev loopback origin. SecurePolicy follows the effective entry
+        // scheme: any admitted HTTP entry origin (dev/Testing numeric loopback or the explicit
+        // intranet opt-in) maps to SameAsRequest; HTTPS paths keep Always.
         services.PostConfigure<AntiforgeryOptions>(options =>
         {
             options.Cookie.Name = "adminCsrf";
             options.Cookie.Path = "/";
             options.Cookie.HttpOnly = true;
             options.Cookie.SameSite = SameSiteMode.Lax;
-            options.Cookie.SecurePolicy = settings.InsecureLoopback ? CookieSecurePolicy.SameAsRequest : CookieSecurePolicy.Always;
+            options.Cookie.SecurePolicy = settings.InsecureHttp ? CookieSecurePolicy.SameAsRequest : CookieSecurePolicy.Always;
         });
         // No default authenticate scheme: every inbound authenticated surface resolves the
         // server ticket through AdminSessionAccessor/AdminSessionBoundary exclusively, which

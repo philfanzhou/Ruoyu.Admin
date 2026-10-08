@@ -34,6 +34,101 @@ public sealed partial class AdminAuthConfigCliTests
     }
 
     [Theory]
+    [InlineData("http://192.168.55.10:5020", "Production", 0, new[] { "http://192.168.55.10:5020" })]
+    [InlineData("http://10.1.2.3:5020", "Production", 0, new[] { "http://10.1.2.3:5020", "http://172.16.5.6:5002" })]
+    [InlineData("http://[fd00::10]:5020", "Production", 0, new[] { "http://[FD00::10]:5020" })]
+    [InlineData("http://192.168.55.10:5020", "Testing", 2, new[] { "http://192.168.55.10:5002" })]
+    [InlineData("http://192.168.55.10:5020", "Production", 2, new[] { "http://192.168.55.11:5020" })]
+    [InlineData("http://admin.example.test:5020", "Production", 2, new[] { "http://192.168.55.10:5020" })]
+    [InlineData("http://127.0.0.1:5020", "Development", 0, new[] { "http://192.168.55.10:5020" })]
+    [InlineData("http://127.0.0.1:5020", "Production", 2, new[] { "http://127.0.0.1:5020" })]
+    public async Task PreflightAdmitsExplicitIntranetHttpOriginsByExactOriginOnly(string origin, string environment, int exit, string[] list)
+    {
+        using var fixture = new CliFixture();
+        var config = AdminSessionDisabledTests.ValidConfiguration();
+        config["IdentityService:Authority"] = origin;
+        config["AdminOidc:RedirectUri"] = origin + "/api/auth/oidc/callback";
+        config["AdminOidc:PostLogoutRedirectUri"] = origin + AdminOidcSettings.LogoutReturnPath;
+        config["ConnectionStrings:AuditDb"] = "deliberately-unparsable-secret-canary";
+        for (var index = 0; index < list.Length; index++) config["AdminOidc:IntranetHttpOrigins:" + index] = list[index];
+        fixture.WriteSettings(config);
+        var result = await fixture.Run(new() { ["ASPNETCORE_ENVIRONMENT"] = environment, ["DOTNET_ENVIRONMENT"] = environment });
+        Assert.Equal(exit, result.Exit);
+        Assert.Equal(exit == 0 ? "RUOYU_ADMIN_AUTH_CONFIG_VALID\n" : "", result.Out);
+        Assert.Equal(exit == 0 ? "" : "RUOYU_ADMIN_AUTH_CONFIG_INVALID\n", result.Error);
+        Assert.False(Directory.Exists(Path.Combine(fixture.Root, "data")));
+    }
+
+    [Fact]
+    public async Task PreflightAdmitsSplitIntranetAuthorityAndRedirectOrigins()
+    {
+        using var fixture = new CliFixture();
+        var config = AdminSessionDisabledTests.ValidConfiguration();
+        config["IdentityService:Authority"] = "http://192.168.55.10:5002";
+        config["AdminOidc:RedirectUri"] = "http://192.168.55.10:5020/api/auth/oidc/callback";
+        config["AdminOidc:PostLogoutRedirectUri"] = "http://192.168.55.10:5020" + AdminOidcSettings.LogoutReturnPath;
+        config["AdminOidc:IntranetHttpOrigins:0"] = "http://192.168.55.10:5002";
+        config["AdminOidc:IntranetHttpOrigins:1"] = "http://192.168.55.10:5020";
+        config["ConnectionStrings:AuditDb"] = "deliberately-unparsable-secret-canary";
+        fixture.WriteSettings(config);
+        var result = await fixture.Run(); // Production by default.
+        Assert.Equal(0, result.Exit);
+        Assert.Equal("RUOYU_ADMIN_AUTH_CONFIG_VALID\n", result.Out);
+        Assert.Equal("", result.Error);
+    }
+
+    public static TheoryData<string[]> MalformedIntranetLists() => new()
+    {
+        { new[] { "http://192.168.055.10:5020" } },
+        { new[] { "http://[fe80::1]:5020" } },
+        { new[] { "http://[::ffff:192.168.55.10]:5020" } },
+        { new[] { "http://192.168.55.10:0" } },
+        { new[] { "http://192.168.55.10:65536" } },
+        { new[] { "http://192.168.55.10:5020/api" } },
+        { new[] { "https://192.168.55.10:5020" } },
+        { new[] { "http://8.8.8.8:5020" } },
+        { new[] { "http://admin.intranet.test:5020" } },
+        { new[] { "http://192.168.55.10" } },
+        { new[] { " http://192.168.55.10:5020" } },
+        { new[] { "http://user@192.168.55.10:5020" } },
+        { new[] { "" } },
+        { new[] { "http://192.168.55.10:5020", "http://192.168.55.10:5020" } },
+        { new[] { "http://192.168.55.10:5020", "http://192.168.55.10:05020" } },
+    };
+
+    [Theory]
+    [MemberData(nameof(MalformedIntranetLists))]
+    public async Task PreflightRejectsMalformedIntranetHttpOriginListWithFixedOutputOnly(string[] list)
+    {
+        using var fixture = new CliFixture();
+        var config = AdminSessionDisabledTests.ValidConfiguration();
+        config["ConnectionStrings:AuditDb"] = "deliberately-unparsable-secret-canary";
+        for (var index = 0; index < list.Length; index++) config["AdminOidc:IntranetHttpOrigins:" + index] = list[index];
+        fixture.WriteSettings(config);
+        var result = await fixture.Run();
+        Assert.Equal(2, result.Exit);
+        Assert.Equal("", result.Out);
+        Assert.Equal("RUOYU_ADMIN_AUTH_CONFIG_INVALID\n", result.Error);
+        foreach (var entry in list.Where(entry => entry.Length > 0))
+            Assert.DoesNotContain(entry, result.Error); // only the fixed code, never a configured value
+        Assert.False(Directory.Exists(Path.Combine(fixture.Root, "data")));
+    }
+
+    [Fact]
+    public async Task PreflightRejectsScalarShapedIntranetHttpOriginList()
+    {
+        using var fixture = new CliFixture();
+        var config = AdminSessionDisabledTests.ValidConfiguration();
+        config["AdminOidc:IntranetHttpOrigins"] = "http://192.168.55.10:5020";
+        config["ConnectionStrings:AuditDb"] = "deliberately-unparsable-secret-canary";
+        fixture.WriteSettings(config);
+        var result = await fixture.Run();
+        Assert.Equal(2, result.Exit);
+        Assert.Equal("", result.Out);
+        Assert.Equal("RUOYU_ADMIN_AUTH_CONFIG_INVALID\n", result.Error);
+    }
+
+    [Theory]
     [InlineData(null, 0)][InlineData("true", 0)]
     [InlineData("false", 2)][InlineData("bad-secret-canary", 2)]
     public async Task PreflightExitsWithFixedOutputBeforeDatabaseWorkerOrListener(string? legacy, int exit)
