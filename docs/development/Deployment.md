@@ -9,7 +9,7 @@
 - 容器：`ruoyu-admin`，容器内监听 5020，默认映射到宿主机 5020（宿主端口与容器端口一致，与平台其他 API 的映射惯例相同；monorepo 时代的 10901 已废弃）。
 - 容器使用 Docker 默认 bridge，不依赖 `ruoyu-net` 或容器名解析；跨主机依赖通过 Consul KV 中的局域网地址访问。
 - Dockerfile 的构建上下文是**仓库根**，受仓库根 `.dockerignore` 约束。
-- 发布镜像：推送 `X.Y.Z-rc.N`（测试版）或 `X.Y.Z`（正式版）tag 后，CI（`.github/workflows/ci.yml`）会把镜像发布到 GHCR：`ghcr.io/philfanzhou/ruoyu.admin`。正式版同时移动 `X.Y` 与 `latest`；rc 只保留不可变版本标签。部署主机可以不从源码构建，直接 `docker pull ghcr.io/philfanzhou/ruoyu.admin:<version>`。
+- 发布镜像：推送 `vX.Y.Z-rc.N`（测试版）或 `vX.Y.Z`（正式版）tag 后，CI（`.github/workflows/ci.yml`）会把镜像发布到 GHCR：`ghcr.io/philfanzhou/ruoyu.admin`。镜像 tag 不带 `v` 前缀（保持 `X.Y.Z` 形态），GitHub Release 标题即 tag 本身。正式版同时移动 `X.Y` 与 `latest`；rc 只保留不可变版本标签。部署主机可以不从源码构建，直接 `docker pull ghcr.io/philfanzhou/ruoyu.admin:<version>`。
 - 历史注：monorepo 继承的独立前端镜像（`frontend/Dockerfile` + `scripts/build-web.sh`，产物 `ruoyu.admin.web`）已于 2026-09-25 移除——前后端分离模式从未被任何部署使用，产品形态就是 API+SPA 单容器。
 
 ### 服务标识
