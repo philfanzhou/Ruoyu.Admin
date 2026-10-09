@@ -181,14 +181,16 @@ npm run build
 
 ## Releases
 
-Push a tag to publish container images to GHCR. Tags carry no `v` prefix and are
-validated against `MAJOR.MINOR.PATCH(-rc.N)`; images are published only after
-`Build & Test` passes on the tag.
+Push a tag to publish container images to GHCR. Tags carry a `v` prefix and are
+validated against `vMAJOR.MINOR.PATCH(-rc.N)`; the GitHub Release title is the
+bare tag (no repository-name prefix), while the published image tags drop the
+leading `v` to keep their historical unprefixed form. Images are published only
+after `Build & Test` passes on the tag.
 
 | Tag | Published tags per image | Channel |
 |-----|--------------------------|---------|
-| `X.Y.Z-rc.N` | `X.Y.Z-rc.N` only | Test build. Immutable tag, never moves a production tag; GitHub Release marked pre-release |
-| `X.Y.Z` | `X.Y.Z`, `X.Y`, `latest` | Stable release; GitHub Release marked latest |
+| `vX.Y.Z-rc.N` | `X.Y.Z-rc.N` only | Test build. Immutable tag, never moves a production tag; GitHub Release marked pre-release |
+| `vX.Y.Z` | `X.Y.Z`, `X.Y`, `latest` | Stable release; GitHub Release marked latest |
 
 Image: `ghcr.io/philfanzhou/ruoyu.admin` — the unified API + SPA single
 container (`backend/Admin.WebApi/Dockerfile`, repository root as context),
