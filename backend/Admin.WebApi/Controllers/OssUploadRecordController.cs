@@ -444,9 +444,9 @@ public class OssUploadRecordController : ControllerBase
     }
 
     /// <summary>
-    /// 运维兜底接口：清理审核完毕但上传记录未删除的遗留数据。
-    /// 在目标流程中，每次审核后 gRPC 层会自动编排状态检查和清理，
-    /// 正常流程不应遗留需要此接口处理的场景。
+    /// 手动清理审核完毕但上传记录未删除的遗留数据。
+    /// 先检查关联错题的审核状态，再通过 Mistake HTTP 客户端完成审核；成功后
+    /// 移除返回的图片路径，并通过 Student HTTP 客户端删除审核后的上传记录。
     /// </summary>
     [HttpPost("legacy-clean/{id}")]
     public async Task<IActionResult> LegacyClean(string id, CancellationToken cancellationToken = default)

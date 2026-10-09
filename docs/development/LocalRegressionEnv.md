@@ -33,7 +33,7 @@ Teacher Portal（5004）与 Assistant Portal（5021）不在本配方内：#24 �
 
 1. 启动本地 PostgreSQL（示例：`docker run -d --name ruoyu-admin-pg -p 5432:5432 -e POSTGRES_PASSWORD=ruoyu-dev postgres:16`）。
 2. 先手工创建数据库 `ruoyu_admin`，或在本地显式设置 `Database__AllowCreate=true` 允许共享启动门创建缺库（默认 false，拒绝码 `database_target_preparation.creation_not_allowed`）。建表由共享 `StartupDatabaseGate` 在真实 advisory lock 下调用 `AuditMigrationExecutor` 执行 EF Core 基线迁移；种子脚本只在启动门完成后写入夹具。
-3. `appsettings.json` 的兜底连接串硬编码 `Username=phil`，**必须**按机器用环境变量覆盖（Admin.WebApi 与种子脚本读同一个键）：
+3. `appsettings.json` 的默认连接串硬编码 `Username=phil`，**必须**按机器用环境变量覆盖（Admin.WebApi 与种子脚本读同一个键）：
 
 ```bash
 export ConnectionStrings__AuditDb="Host=localhost;Port=5432;Database=ruoyu_admin;Username=ruoyu-dev;Password=ruoyu-dev"

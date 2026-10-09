@@ -9,7 +9,7 @@ Ruoyu.Admin 是 Ruoyu.Study 平台的管理后台服务，负责学生管理、�
 | [overview/](./overview/README.md) | 服务级总览 |
 | [modules/](./modules/README.md) | 内部业务功能 |
 | [Integration/](./Integration/README.md) | 外部系统交互 |
-| [database/](./database/README.md) | 数据结构与数据主责 |
+| [database/](./database/README.md) | 数据结构与维护责任 |
 | [development/](./development/README.md) | 开发执行支持 |
 | [pending-decisions.md](./pending-decisions.md) | 本仓库唯一的未决设计入口 |
 | [api.md](./api.md) | 补充接口文档 |
@@ -31,11 +31,11 @@ Ruoyu.Admin 是 Ruoyu.Study 平台的管理后台服务，负责学生管理、�
 
 ## 外部契约归属
 
-Student、Mistake、Homework、Teacher Portal、Assistant Portal 与 Identity 的接口定义**不由本仓库主责**，均在 Ruoyu.Study 与 [SignaCore](https://github.com/philfanzhou/SignaCore) 仓库内。`backend/Ruoyu.Admin.ServiceClients` 中的 DTO 是这些 HTTP 契约的手写镜像副本：上游字段变更不会在本仓库产生编译错误，只会产生运行时反序列化偏差，因此上游变更必须同步修改 ServiceClients 并补充 Controller 单测。
+Student、Mistake、Homework、Teacher Portal、Assistant Portal 与 Identity 的接口定义**不由本仓库维护**：前五者由 Ruoyu.Study 维护，Identity 由 [SignaCore](https://github.com/philfanzhou/SignaCore) 维护。`backend/Ruoyu.Admin.ServiceClients` 中的 DTO 是这些 HTTP 契约的手写镜像副本：上游字段变更不会在本仓库产生编译错误，只会产生运行时反序列化偏差，因此上游变更必须同步修改 ServiceClients 并补充 Controller 单测。
 
-## 当前契约阻塞
+## 受管指派接口进展
 
-[IKJKML](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKJKML) 要求受管指派的同原图不同 crop，并同时固定 POST upload / paths-only 且排除上游协议扩展。固定 provider 的 upload wire 不表达 bbox；真实重复 atom 分组正确返回409。受管实现作为草稿保留，待明确并完成该上游/消费契约前置后再验收完整 Feature。详情及已实现边界见[受管集成契约](./Integration/ManagedAssignment.md)。
+[IKJKML](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKJKML) 曾要求同原图的两组不同裁剪，但旧 POST upload 的整图路径输入无法表达矩形。上游新增 `SourceRegions` 后，[PR #77](https://github.com/philfanzhou/Ruoyu.Admin/pull/77) 已于 2026-10-07 合并，Admin 支持 `sourcePaths` 与 `sourceRegions` 二选一；原六项真实验收记录见该 PR。当前部署环境回归继续由 [#24](https://github.com/philfanzhou/Ruoyu.Admin/issues/24) 跟踪。接口、分组判定和恢复规则见[受管指派说明](./Integration/ManagedAssignment.md)。
 
 ## 已知文档债（自 monorepo 继承）
 
@@ -50,7 +50,7 @@ Student、Mistake、Homework、Teacher Portal、Assistant Portal 与 Identity �
 
 ## Storage Audit
 
-当前行为与验证入口见 [StorageAudit](./modules/OssAudit/StorageAudit.md)。v1扫描仅产出只读观察，所有删除入口拒绝；旧审计历史和对象保留，startup不再清理旧review图或旧桶记录。
+当前行为与验证入口见 [StorageAudit](./modules/OssAudit/StorageAudit.md)。v1 扫描仅新增只读观察，所有审计删除入口均拒绝；旧审计记录和对象保留，启动时不再清理旧 review 图或旧桶记录。
 
 ## 待补的继承缺陷
 
@@ -66,7 +66,7 @@ Student、Mistake、Homework、Teacher Portal、Assistant Portal 与 Identity �
 
 ### `Ruoyu.Admin.ServiceClients` 含未使用的下游方法
 
-该库在 monorepo 中由 Mistake 服务与多个 Portal 共用，本仓库只消费其中一部分：Student 25 个方法用到 20 个，Mistake 14 个方法用到 7 个。`CreateReturnedRecordRequest` 等 mistake→student 调用的 DTO 块在本仓库完全未被引用。未裁剪，属于开源仓库的死代码清理项。
+该库在 monorepo 中由 Mistake 服务与多个 Portal 共用，本仓库只调用其中一部分：Student 25 个方法用到 20 个，Mistake 14 个方法用到 7 个。`CreateReturnedRecordRequest` 等 mistake→student 调用的 DTO 块在本仓库完全未被引用。未裁剪，属于开源仓库的死代码清理项。
 
 ### `Ruoyu.Admin.Common.Constants.OssPathPrefixConstants` 在本仓库未被引用
 
@@ -74,6 +74,6 @@ Student、Mistake、Homework、Teacher Portal、Assistant Portal 与 Identity �
 
 它的 `All` 只列 `uploads/`、`mistakes/`、`homework/`，与 `OssBucket` 的四个值（`Uploads`、`Mistakes`、`Questions`、`Documents`）并不对应。**不要**把它当作审计范围的依据——审计范围由 `OssAuditWorker.AuditedBuckets` 定义。
 
-另外 `homework/` 这个前缀本身具有误导性：Homework 服务没有 OSS 集成，作业图片实际由 Student 存放在 `uploads/homework/` 之下（旧startup清理曾处理这个路径，当前v1已停止该破坏性路径并保留对象），源码注释也标明该常量是「reserved for future homework-service image upload」。判断某类对象归谁所有时，应以实际写入方为准，不要以这个常量为准。
+另外 `homework/` 这个前缀本身具有误导性：Homework 服务没有 OSS 集成，作业图片实际由 Student 存放在 `uploads/homework/` 之下（旧启动清理曾处理这个路径，当前 v1 已停止该清理并保留对象），源码注释也标明该常量是「reserved for future homework-service image upload」。判断某类对象归谁所有时，应以实际写入方为准，不要以这个常量为准。
 
 处理选项：删除该文件，或补注释说明其真实归属与 `homework/` 的保留状态。

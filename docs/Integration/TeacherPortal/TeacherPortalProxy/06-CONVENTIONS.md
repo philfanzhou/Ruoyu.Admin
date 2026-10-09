@@ -8,7 +8,7 @@ TeacherPortalProxyMiddleware 采用反向代理模式，与 IdentityProxyMiddlew
 - 拦截特定路径前缀的请求
 - 重写路径后转发到下游服务
 - 自动注入认证信息
-- 透传响应给客户端
+- 原样转发响应给客户端
 
 ### 路径重写约定
 
@@ -18,7 +18,7 @@ TeacherPortalProxyMiddleware 采用反向代理模式，与 IdentityProxyMiddlew
 |------|---------|---------|------|
 | admin | `/api/teacher-portal/admin` | `/api/admin` | 管理接口 |
 | auth | `/api/teacher-portal/auth` | `/api/auth` | 认证接口 |
-| 默认 | `/api/teacher-portal/其他` | `/api/admin` | 兜底路由 |
+| 默认 | `/api/teacher-portal/其他` | `/api/admin` | 默认路由 |
 
 **设计意图**：教师门户的接口分为管理接口和认证接口两类，非认证路径统一归为管理路径[推断]。
 

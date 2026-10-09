@@ -1,6 +1,6 @@
 # Ruoyu.Admin 协作规范
 
-Ruoyu.Admin 是 Ruoyu.Study 平台的管理后台：.NET BFF API、Vue 3 / Element Plus 管理端、单容器部署。它几乎不持有业务数据，只主责 Storage Audit（存储审计）一个领域。
+Ruoyu.Admin 是 Ruoyu.Study 平台的管理后台：.NET BFF API、Vue 3 / Element Plus 管理端、单容器部署。它几乎不持有业务数据，只负责维护 Storage Audit（存储审计）数据。
 
 ## 维护方式
 
@@ -13,6 +13,7 @@ Ruoyu.Admin 是 Ruoyu.Study 平台的管理后台：.NET BFF API、Vue 3 / Eleme
 ## 文档与沟通语言
 
 - 流程与约束文档、GitHub issue/PR 正文和 review 使用中文；Issue 标题使用中文。
+- 使用自然、具体的中文，直接说明对象、动作、条件和结果。避免生硬翻译、抽象流程黑话及不必要的中英混写；必要的专业术语首次出现时解释其含义。
 - PR 标题和 commit message 使用英文 conventional commit 格式（`feat:` / `fix:` / `docs:` / `test:` / `refactor:` / `chore:` 等）。
 - 面向使用者的根 `README.md` 保持英文。
 - `docs/` 与 `CONTEXT.md` 是从 Ruoyu.Study monorepo 继承的中文文档，保持中文；翻译为英文是独立后续项。
@@ -21,22 +22,22 @@ Ruoyu.Admin 是 Ruoyu.Study 平台的管理后台：.NET BFF API、Vue 3 / Eleme
 ## 项目边界与架构
 
 - `backend/Ruoyu.Admin.Common`、`backend/Ruoyu.Admin.Consul`、`backend/Ruoyu.Admin.ServiceClients` 是类库，不得反向引用 `backend/Admin.WebApi`。
-- `backend/Admin.WebApi` 负责 HTTP、认证、配置、代理中间件和宿主组合。Controller 不得直接构造 `HttpClient`，一律通过 `Ruoyu.Admin.ServiceClients` 的接口或 `IHttpClientFactory` 命名客户端。
-- 认证只使用 AdminSession +托管 OIDC；五旧键只检验缺省/规范 true，false/畸形在启动前拒绝，无入站 Bearer/JWT Cookie scheme。`--validate-auth-config` 加载正式相同配置后固定安全退出，Consul cache只读；`start.sh` 在 stop/rm 前使用目标集成镜像预检。
+- `backend/Admin.WebApi` 负责 HTTP、认证、配置、代理中间件和应用启动时的服务组合。Controller 不得直接构造 `HttpClient`，一律通过 `Ruoyu.Admin.ServiceClients` 的接口或 `IHttpClientFactory` 命名客户端。
+- 认证只使用 `AdminSession` 和托管 OIDC。五个旧配置键仅允许缺省或规范的 `true`；`false` 和格式错误的值必须在启动前拒绝。不注册入站 Bearer 或 JWT Cookie 认证方案。`--validate-auth-config` 加载与正式启动相同的配置后，以固定且不含敏感值的结果退出，只读取 Consul 缓存；`start.sh` 必须在停止或删除旧容器前使用目标集成镜像检查配置。
 - API 监听端口 **5020 是硬编码的**（`Program.cs` 中的 `const int httpPort`），不是配置项。改端口属于部署契约变更，必须同步 `start.sh`、`frontend/vite.config.js` 和部署文档。
-- 数据库只有 `ruoyu_admin`，只有 `OssAuditRuns` 和 `OssAuditRecords` 两张表，结构由确切 EF Core 迁移链（`Persistence/Migrations`）管理，启动时由 ServiceMantle 共享 `StartupDatabaseGate`（配置边界和部署声明位于 `Admin.WebApi/Database`）调用 `AuditMigrationExecutor` 及共享迁移编排（PostgreSQL advisory lock 多实例串行化；旧库接管、结构拒绝规则见 `docs/database/migrations.md`）。新增或修改迁移必须同步 `AuditMigrationExecutor.KnownMigrationIds` 契约；「结构未知即拒绝（`RUOYU_ADMIN_DB_SCHEMA_INCOMPATIBLE`）」「缺库默认拒绝创建（`Database:AllowCreate` 默认 false）」语义不得放宽。
-- Storage Audit v1使用三个完整持久引用快照，只产生Status3只读观察。`deletionAuthorized=false`恒定；所有single/batch resolve状态都经shared collector后拒绝（完整409、不可用502），不执行Delete/Copy/审计record删除。触及聚合、判定或任何删除路径必须有测试。
-- **审计不变量：三个provider完整验证后才允许OSS列举。** 任一不可达、不全、坏合同或取消必须整轮失败，零S3列举/删除/复制与新观察。无旧gRPC/offset/空集fallback；不把capture事实当未来删除许可。
-- 扫描只含`Uploads`、`Mistakes`。Questions/Documents没有完整引用来源不纳入。startup旧正则图片清理与旧桶record清理停止；历史pins与审计记录保持，不能因旧Status绕过共同门禁。唯一合同与消费者职责见`docs/modules/OssAudit/StorageAudit.md`。
+- 数据库只有 `ruoyu_admin`，只有 `OssAuditRuns` 和 `OssAuditRecords` 两张表，结构由编号和顺序严格匹配的 EF Core 迁移链（`Persistence/Migrations`）管理，启动时由 ServiceMantle 共享 `StartupDatabaseGate`（配置边界和部署声明位于 `Admin.WebApi/Database`）调用 `AuditMigrationExecutor` 及共享迁移执行组件（通过 PostgreSQL advisory lock 使多个实例依次执行迁移；旧库接管、结构拒绝规则见 `docs/database/migrations.md`）。新增或修改迁移必须同步 `AuditMigrationExecutor.KnownMigrationIds` 契约；「结构未知即拒绝（`RUOYU_ADMIN_DB_SCHEMA_INCOMPATIBLE`）」「缺库默认拒绝创建（`Database:AllowCreate` 默认 false）」语义不得放宽。
+- Storage Audit v1 使用三个服务持久保存的完整引用快照，只新增 `Status=3` 的只读观察。`deletionAuthorized` 恒为 `false`。已有单条记录和非空批量 `resolve` 请求，不论记录状态，都经同一个引用收集器检查后拒绝：引用完整时返回 409，引用不可用时返回 502。不执行对象 Delete、Copy 或审计记录删除。触及聚合、判定或任何删除路径必须有测试。
+- **审计不变量：Student、Mistake、Homework 三个引用提供服务的快照全部验证成功后，才允许列举 OSS 对象。** 任一服务不可达、引用不完整、响应不符合接口规范或操作被取消，必须整轮失败，不列举、删除或复制 S3 对象，也不发布本轮新观察。不回退到旧 gRPC、offset 分页或空集合；采集时的引用状态不能作为未来的删除许可。
+- 扫描只包含 `Uploads`、`Mistakes`。`Questions`、`Documents` 没有完整引用来源，不纳入扫描。启动时不再执行旧正则图片清理或旧桶记录清理。历史业务快照、回执与尝试记录持续保留的对象引用（上游称 `pins`）以及审计记录必须保留；旧记录的 `Status` 不能绕过所有删除请求必须通过的引用检查和拒删规则。接口规范与 Admin 的调用责任见 `docs/modules/OssAudit/StorageAudit.md`。
 - `/` 与所有非 `/api` 路由必须允许匿名访问，否则 SPA 登录页无法加载（未登录 → 拿不到页面 → 无法登录的死锁）。静态文件与 SPA 回退必须注册在 `UseAuthentication()` 之前。
 
 ## 外部契约归属
 
-Student、Mistake、Homework、Teacher Portal、Assistant Portal 的接口由 Ruoyu.Study 主责，Identity 由 [SignaCore](https://github.com/philfanzhou/SignaCore) 主责。本仓库无编译期依赖。
+Student、Mistake、Homework、Teacher Portal、Assistant Portal 的接口由 Ruoyu.Study 维护，Identity 由 [SignaCore](https://github.com/philfanzhou/SignaCore) 维护。本仓库无编译期依赖。
 
 - `backend/Ruoyu.Admin.ServiceClients` 中的 DTO 是下游 HTTP 契约的**手写镜像副本**。上游字段变更不会在本仓库产生编译错误，只会产生运行时反序列化偏差。
 - 因此下游契约变更必须同步修改 ServiceClients，并补充对应 Controller 单测。
-- 不得为了让编译通过而在 DTO 上加宽容的可选字段来掩盖上游契约漂移；应确认上游事实后显式对齐。
+- 不得为了让编译通过而在 DTO 上添加宽松的可选字段来掩盖上游接口变化造成的不一致；应确认上游定义后同步修改 DTO 和对应测试。
 - 三个代理中间件（Identity / Teacher Portal / Assistant Portal）只使用服务器票据内 token，拒绝入站 Authorization，剥离浏览器 Cookie/CSRF/Host 与下游 Set-Cookie。`IdentityProxyMiddleware` 会剥离入站的 `X-Admin-AppSecret` 再注入本服务自己的值——不得移除这个剥离逻辑，否则调用方可以伪造网关凭据。
 
 ## 安全与变更纪律
@@ -45,14 +46,14 @@ Student、Mistake、Homework、Teacher Portal、Assistant Portal 的接口由 Ru
 - `StartupDiagnosticsFormatter` 的脱敏方法（`MaskSecret` / `SummarizePassword`）是启动日志的唯一出口。新增启动诊断日志必须走它，不得直接打印配置值。
 - `appsettings.json` 中的 OSS 凭据是本地开发用的 mock 值；生产凭据只来自 Consul KV 或环境变量。不得把真实凭据写进任何 `appsettings*.json`。
 - 认证、授权、审计删除、代理和 CORS 的行为变化必须有针对性测试和文档说明。
-- 提交前检查文档链接、secret 和仓库状态。
+- 提交前检查文档链接、敏感信息和仓库状态。
 
 ## 未决事项
 
 - 仓库级尚未做出的决定只写入 `docs/pending-decisions.md`，不得创建分散的 `HumanReview.md` 或在能力文档里夹带待办。
 - 待决事项只阻塞文件中声明的范围，不冻结无关任务。
 - 决定形成后迁入 ADR、能力文档或实施 Issue，并从 pending 文件移除。
-- 主责在 Ruoyu.Study 的跨仓库契约问题记录在该仓库，本仓库只保留 Admin 侧取舍。
+- 由 Ruoyu.Study 负责的跨仓库接口问题记录在该仓库，本仓库只保留 Admin 侧取舍。
 - 完成记录、测试结果、普通缺陷和代码卫生建议不得写入 pending 文件；已知缺陷记录在 `docs/README.md`。
 
 ## 已知文档债

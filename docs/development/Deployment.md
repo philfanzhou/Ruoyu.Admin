@@ -45,7 +45,7 @@ Admin API 启动时通过 Consul `config/ruoyu/*` 加载 PostgreSQL、OSS 和下
 
 ### 认证只读预检与升级
 
-`dotnet Admin.WebApi.dll --validate-auth-config` 先读取正式启动相同的 appsettings/environment/command-line 和 Consul 有效配置，再复用同一认证校验；成功 stdout 固定 `RUOYU_ADMIN_AUTH_CONFIG_VALID`、exit0，失败 stderr 固定 `RUOYU_ADMIN_AUTH_CONFIG_INVALID`、exit2。不创建宿主、迁移、worker、监听或会话。允许读取 Consul/既有 cache，禁止预检刷新或改写 cache，配置值不进入输出。正式启动仍按原合同缓存成功 Consul snapshot；Consul 不可达时使用已有 cache，否则 appsettings，environment/command-line 始终覆盖 snapshot。
+`dotnet Admin.WebApi.dll --validate-auth-config` 先读取正式启动相同的 appsettings/environment/command-line 和 Consul 有效配置，再复用同一认证校验；成功 stdout 固定 `RUOYU_ADMIN_AUTH_CONFIG_VALID`、exit0，失败 stderr 固定 `RUOYU_ADMIN_AUTH_CONFIG_INVALID`、exit2。不创建宿主、迁移、worker、监听或会话。允许读取 Consul/既有 cache，禁止预检刷新或改写 cache，配置值不进入输出。正式启动仍按现有规则缓存成功取得的 Consul 配置快照；Consul 不可达时使用已有缓存，无缓存时使用 appsettings，环境变量与命令行配置始终覆盖快照。
 
 先由部署角色取得已有注册码及 secret，按精确 URI 注册 Code+PKCE 和 Logout，确认正常 CA/SAN 与同源 HTTPS 到 BFF；移除五旧键、通过目标集成镜像预检后再替换。`start.sh` 使用 `--image`（或 `IMAGE_NAME`）选择具体版本，`--container` 选择精确实例，`--authority`、`--redirect-uri`、`--post-logout-redirect-uri` 提供外部 URI。凭据沿环境或受限 `--env-file` 注入，`--config-file` 可挂载明确 appsettings 文件；`--cache-dir` 可省略，提供时指向已有 cache 目录，预检只读挂载，正式使用同目录写原 cache。脚本支持系统 Bash 3.2，包括省略 cache 的启动。不存在目录或无效路径直接失败，不创建目录。预检在任何旧容器停止/删除前使用同一目标 image 与同组配置；失败保留原容器。旧容器须有本 launcher label 或原 Ruoyu.Admin 产品 image 身份，防止误换其他应用；成功仍仅替换显式实例并保留5020。此认证预检不证明 DB、下游、网络或生产平台注册已可用。
 
@@ -79,7 +79,7 @@ Kestrel__Endpoints__AdminHttps__Certificate__Password=<private environment value
 
 代理使用 `proxy_pass https://admin:5022`、`proxy_ssl_verify on` 与 `proxy_ssl_trusted_certificate`，并设置与证书 SAN 匹配的 `proxy_ssl_name`。证书/PFX 只挂载到本实例，CA 只信任本实例及自有浏览器，不全局导入、不跳过验证。注册 callback 仍为浏览器的 HTTPS 同源地址，5020 仍保留；上述 HTTPS 监听不替代认证必需配置。实际联合验证还须确认 `/api/auth/csrf` 与 `/api/auth/oidc/csrf` 都返回 200，不能把托管登录成功当成 CSRF 可用。
 
-反向代理必须避免 callback query（尤其 code）进入 access log/analytics，并保证原始单值 query 透传。Admin 协议 handler 禁用可能包含 token/URL/Cookie 的框架详细日志；启用 OIDC 时另外抑制会记录原始 query 的 `Microsoft.AspNetCore.Hosting.Diagnostics` 请求日志（包含其余路由的此类日志），OIDC 入口不导出 ASP.NET Core trace；应用调用方仍不得将敏感值插入自由文本。AppSecret 只通过环境变量/user-secrets/Consul 安全配置，不提交配置文件。
+反向代理必须避免 callback query（尤其 code）进入 access log/analytics，并保证原始单值 query 原样转发。Admin 协议 handler 禁用可能包含 token/URL/Cookie 的框架详细日志；启用 OIDC 时另外抑制会记录原始 query 的 `Microsoft.AspNetCore.Hosting.Diagnostics` 请求日志（包含其余路由的此类日志），OIDC 入口不导出 ASP.NET Core trace；应用调用方仍不得将敏感值插入自由文本。AppSecret 只通过环境变量/user-secrets/Consul 安全配置，不提交配置文件。
 
 单实例内存 state 最长 5 分钟、43 字符随机引用、单次原子消费；票据 8 小时绝对到期、不滑动，所有 token 留服务器。两类存储各最多 4096 项、每分钟回收；满载固定失败，重启丢失，不能多副本共用会话。数据保护 keys 即使还在也不会恢复已丢失 ticket；无新表/迁移。没有 refresh；prepared logout 使用现有服务器 ID token 与专用退出 CSRF，具体边界见下文。不要将前端显示状态作为管理员授权证明。
 
@@ -117,7 +117,7 @@ Kestrel__Endpoints__AdminHttps__Certificate__Password=<private environment value
 
 启用前配置 `MistakeService:Url=https://mistake.example.com`，只能是显式根 API origin，无 userinfo、query、fragment 或子路径。传输安全是部署决策（issue #94）：http 与 https 同等接受（结构规则不变），禁止 localhost；公网部署应使用 HTTPS 与正常 CA/SAN（建议而非强制），无隐式回退。只读 `--validate-auth-config` 与正式启动共同验证这两个键；`start.sh` 在停止旧实例前以目标 image 的同组配置预检，不刷新 cache、不创建目录。此处沿用实际 CLI 名称，不增加 `--validate-admin-oidc-config` 别名。
 
-`true` 为全部 14 个既有 typed 方法使用专用 handler：每次发送从当前 `HttpContext.RequestServices` 重新认证并重读服务器 ticket，校验 issuer/sub/stamp、当前白名单、token 和严格截止时间，包括同请求框架认证已缓存后的换票/撤票。只向配置 origin 的既有 method/path 发送当前 server Bearer；禁止 Cookie、CSRF、入站 Authorization、AppSecret、ID/refresh token 或密码透传。无当前请求则零发送。传输禁用 redirect、Cookie 容器、客户端 logger 和出站 telemetry，不向 S3 或浏览器附加 Bearer。
+`true` 为全部 14 个既有 typed 方法使用专用 handler：每次发送从当前 `HttpContext.RequestServices` 重新认证并重读服务器 ticket，校验 issuer/sub/stamp、当前白名单、token 和严格截止时间，包括同请求框架认证已缓存后的换票/撤票。只向配置 origin 的既有 method/path 发送当前 server Bearer；禁止 Cookie、CSRF、入站 Authorization、AppSecret、ID/refresh token 或密码转发。无当前请求则零发送。传输禁用 redirect、Cookie 容器、客户端 logger 和出站 telemetry，不向 S3 或浏览器附加 Bearer。
 
 下游 401/403/3xx、协议/JSON 错误、TLS/网络/超时和未知写结果统一安全 502；合法业务失败为安全 400/409，真实详情 GET 404 与合法空列表保留。调用者取消直接传播，不转成普通 500；每个 unsafe 方法最多应用发送一次，无 refresh、retry、replay 或匿名回落。失败/取消后不继续 Student 或 S3 写，但不能证明已发送写未提交。LegacyClean 仍使用 `admin-legacy-cleanup`，严格 reviewer 不匹配会失败，不能因此改 reviewer 或放宽 SourceIntake/managed immutable/pins 保护。
 
@@ -142,7 +142,7 @@ ServiceMantle 0.3.0 的共享生命周期门先于 WebHost 和 `OssAuditWorker.S
 
 ## 健康检查
 
-ServiceMantle 健康端点（随 #34 落地，#54 起具备真实就绪证据源；匿名可达，不受 SPA 回退影响）：
+ServiceMantle 健康端点（随 #34 加入，#54 起具备真实就绪证据源；匿名可达，不受 SPA 回退影响）：
 
 ```bash
 curl -s http://localhost:5020/health/live
@@ -167,7 +167,7 @@ curl -s -o /dev/null -w "%{http_code}\n" http://localhost:5020/api/admin/student
 
 ## StorageReferences v1 报告启用
 
-专属key/三个HTTPS provider配置与迁移/回退门禁见[StorageAudit](../modules/OssAudit/StorageAudit.md)。默认关闭，仅owned隔离环境显式启用；先provider升级再新consumer。startup不再删除旧Homework reviews图片或旧桶record；历史保留，所有resolve固定拒删。停用新能力保留数据，不能滚回旧destructiveconsumer作为清理路线。
+专属密钥、三个引用提供服务的 HTTPS 配置，以及迁移和回退检查见 [StorageAudit](../modules/OssAudit/StorageAudit.md)。能力默认关闭，仅在由执行者负责的隔离环境中显式启用；先升级引用提供服务，再部署新版 Admin。启动时不再删除旧 Homework reviews 图片或旧桶记录；保留历史，所有 `resolve` 均拒绝删除。停用新能力必须保留数据，不能通过回滚到旧版可删除对象的 Admin 来执行清理。
 
 ## 数据库备份与恢复
 
@@ -198,7 +198,7 @@ Teacher/Assistant 全代理前缀始终在认证/授权前共用管理员/CSRF �
 
 全 `/api/identity` 前缀（大小写、根和尾斜线）在认证/授权前经过共享管理员与 CSRF 边界。拒绝任何入站 Authorization；合法 access token 到期时返回 `401 reauthentication_required` 且零出站；只转发服务器票据内有效 access token，剥离浏览器 Cookie、Host、X-CSRF-TOKEN 与伪造 gateway 头后注入本服务 AppId/AppSecret。下游 Set-Cookie 不传给浏览器；401/403/结构化503和 Retry-After 原样，网络失败502，取消传递且不重放。AppSecret 剥离始终保持，三个代理共用相同会话边界。生产平台注册不由本项执行；正式组合门禁归 #75。专项 `FullyQualifiedName~IdentitySession_` 使用 fake HTTP 与隔离数据库，无生产 OSS 删除。
 
-Identity 代理退役浏览器凭据兼容（#73）：middleware 的 settings 为必需依赖，直接调用缺 TrustedSessionKey/有效服务器 token 也401拒绝。所有路径使用 StartsWithSegments remaining 映射 `/api`，根/尾斜线/大小写/query/body 保持；始终 RequestAborted，预取消/发送中取消传播且无应用层重试。非代理的 IdentityAccountsController 不在此切片范围。中间镜像不部署，最终须包含 #41/#75；回滚只选择明确旧完整镜像，不复活票据。
+Identity 代理退役浏览器凭据兼容（#73）：middleware 的 settings 为必需依赖，直接调用缺 TrustedSessionKey/有效服务器 token 也401拒绝。所有路径使用 StartsWithSegments remaining 映射 `/api`，根/尾斜线/大小写/query/body 保持；始终 RequestAborted，预取消/发送中取消传播且无应用层重试。非代理的 `IdentityAccountsController` 不在本次修改范围。中间镜像不部署，最终须包含 #41/#75；回滚只选择明确旧完整镜像，不复活票据。
 
 门户传输退役浏览器凭据兼容（#74）：两 middleware 只接受 TrustedSessionKey 的有效 server token，settings 为必需依赖，直接调用缺可信项也401。统一 remaining 的 admin/auth/其他三类映射，始终 RequestAborted、剥离浏览器Authorization/Cookie/Host/CSRF/gateway，隔离Set-Cookie；取消传播且无应用层重试。关联查询只随API-session，即使门户proxy开关false也用server token；当前账户筛选、单侧失败保另一侧、无关联短路与Student失败响应保持。此中间镜像不部署，最终须组合#41/#75；整版回滚不恢复本版浏览器凭据路径或复活撤票。
 

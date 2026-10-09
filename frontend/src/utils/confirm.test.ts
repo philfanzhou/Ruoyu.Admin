@@ -4,7 +4,7 @@ import { confirmDanger } from './confirm'
 
 /**
  * 单条/批量删除等破坏性操作的二次确认门（#24 语义模型：确认框点遮罩不发请求、
- * Enter 不触发删除、Esc/取消不发请求）。此处直接锁定 confirmDanger 透传给
+ * Enter 不触发删除、Esc/取消不发请求）。此处直接检查 confirmDanger 原样传给
  * ElMessageBox.confirm 的选项；组件级用例只驱动确认/取消两条路径。
  */
 describe('confirmDanger', () => {

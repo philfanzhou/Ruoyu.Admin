@@ -1,6 +1,6 @@
 # UploadRecordManagement 约定
 
-当前调用链是 HTTP ServiceClients，以下旧 gRPC 名称与 index-based 流程保留为 legacy 迁移背景。受管分支遵循[受管集成契约](../../../Integration/ManagedAssignment.md)：只发精确 POST upload，经当前 session/CSRF 或已验证 Bearer 管线取 caller token，安全 errorkind 代替原 provider 文本；不写 receipt、不移图/删源/自动 seal，固定请求在页面内恢复，producer 是唯一 durable authority。
+当前调用使用 HTTP ServiceClients；以下旧 gRPC 名称与按 index 选择图片的流程，仅保留为 legacy 迁移背景。受管模式遵循[受管指派说明](../../../Integration/ManagedAssignment.md)：只调用固定 `POST /api/mistakes/upload`，从已验证管理员权限和 CSRF 的服务器会话取 access token，以不含敏感值的 `errorKind` 代替下游原始文本。Admin 不写回执、不移图或删除来源、不主动封闭来源（seal，交接后拒绝新分组）；页面内可恢复固定请求，永久结果由 Mistake 保存。
 
 ## 命名约定
 

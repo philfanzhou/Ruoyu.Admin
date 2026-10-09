@@ -10,12 +10,12 @@
 
 ## 补充约束
 
-1. **幂等性**：legacyfalse 兼容原入口；managed-v1 固定 revision/requestKey/payload，同组重放返回 Mistake 保存的原 IDs。
-2. **并发**：managed 由 Mistake canonical alias 与来源 lease/guard 决定，不能只按来源去重。当前 upload wire 仅 whole-image paths；共享原图不同 crop 的原验收存在明确契约前置阻塞，见集成契约。
-3. **事务边界**：逐组 HTTP 调用，不提供整批跨请求原子性；部分/Unknown 保留原请求并由用户显式重试。
+1. **幂等性**：legacy 模式保留原入口；managed-v1 固定 revision、requestKey 和载荷，同组重放返回 Mistake 保存的原 IDs。
+2. **并发**：受管模式由 Mistake 按规范分组、同组请求关联（canonical alias）及来源锁租约和保护规则判断，不能只按来源去重。当前支持整图路径或区域输入二选一，同原图不同合法裁剪的接口限制已随 #77 解除，具体定义和历史验收见受管指派说明。
+3. **事务边界**：逐组 HTTP 调用，不提供整批跨请求原子性；部分成功或 Unknown 时保留原请求，由用户显式重试。
 4. **失败降级**：查询学生姓名失败时回退显示 studentId
 5. **已审核图片保护**：已审核通过的图片不能再次被分配
-6. **图片索引**：legacy 取当前记录索引；managed 的索引仅用于可信详情选择，发送精确固定 sourcePaths，后续不按 current 重映射。
+6. **图片索引**：legacy 使用当前记录索引；受管模式的索引只用于可信详情中的选择，发送精确固定的 `sourcePaths` 或 `sourceRegions`，后续不按刷新后的记录重新映射。
 7. **跨学科分配**：多个 assignment 可分别指定不同的 subject/grade
 
 ## 关键验收条件摘要

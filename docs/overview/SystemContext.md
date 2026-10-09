@@ -2,7 +2,7 @@
 
 ## 服务定位
 
-Admin Portal 是 Ruoyu.Study 平台的**管理后台服务**，为管理员提供统一的学生管理、错题管理、OSS 审计和上传记录管理等操作入口。它本身不持有核心业务数据，而是作为聚合层代理和编排下游微服务。
+Admin Portal 是 Ruoyu.Study 平台的**管理后台服务**，为管理员提供统一的学生管理、错题管理、OSS 审计和上传记录管理等操作入口。它本身不持有核心业务数据，而是作为聚合层代理下游微服务，并按操作顺序调用它们。
 
 **核心职责**：
 - 学生 CRUD 及身份账户关联管理
@@ -133,7 +133,7 @@ Admin Portal 是 Ruoyu.Study 平台的**管理后台服务**，为管理员提�
 | 路由映射 | `/api/teacher-portal/admin/*` → `{Url}/api/admin/*` |
 |  | `/api/teacher-portal/auth/*` → `{Url}/api/auth/*` |
 |  | `/api/teacher-portal/*` → `{Url}/api/admin/*` |
-| 认证方式 | 透传调用方 `Authorization: Bearer`（下游 `[Authorize(Roles="admin")]` 校验） |
+| 认证方式 | 发送服务器票据内 access token，拒绝入站 Authorization（下游 `[Authorize(Roles="admin")]` 校验） |
 | 超时 | 10 秒 |
 | 未配置时行为 | 返回 503 + `{"message":"Teacher portal not configured"}` |
 | 不可用时行为 | 返回 502 + `{"message":"Teacher portal service unreachable"}` |
