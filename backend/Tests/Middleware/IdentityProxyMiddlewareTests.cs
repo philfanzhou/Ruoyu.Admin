@@ -13,7 +13,7 @@ namespace Admin.WebApi.Tests.Middleware;
 
 public class IdentityProxyMiddlewareTests
 {
-    private static readonly AdminOidcSettings SessionSettings = new("", "", "", "", false, new HashSet<string>(StringComparer.Ordinal), TimeSpan.Zero);
+    private static readonly AdminOidcSettings SessionSettings = new("", "", "", "", false, TimeSpan.Zero);
     private static DefaultHttpContext TrustedContext()
     {
         var context = new DefaultHttpContext();

@@ -14,14 +14,21 @@ public sealed partial class AdminAuthConfigCliTests
     [InlineData("true", "https://mistake.example.test", "Production", 0)]
     [InlineData("true", "http://127.0.0.1:5007", "Testing", 0)]
     [InlineData("true", "http://[::1]:5007/", "Development", 0)]
+    // Transport security is a deployment decision (issue #94): the session-token origin is
+    // accepted over http in every environment name, with the structural rules unchanged.
+    [InlineData("true", "http://127.0.0.1:5007", "Production", 0)]
+    [InlineData("true", "http://192.168.55.10:5007", "Production", 0)]
+    [InlineData("true", "http://192.168.55.10:5007", "Testing", 0)]
+    [InlineData("true", "http://mistake.intranet.example:5007", "Production", 0)]
     [InlineData("yes", "https://mistake.example.test", "Production", 2)]
     [InlineData("", "https://mistake.example.test", "Production", 2)]
     [InlineData("true", null, "Testing", 2)]
-    [InlineData("true", "http://127.0.0.1:5007", "Production", 2)]
-    [InlineData("true", "http://192.168.55.10:5007", "Testing", 2)]
+    [InlineData("true", "http://localhost:5007", "Production", 2)]
+    [InlineData("true", "http://user@192.168.55.10:5007", "Production", 2)]
     [InlineData("true", "https://LOCALHOST.", "Testing", 2)]
     [InlineData("true", "https://user:secret-canary@mistake.example.test", "Production", 2)]
     [InlineData("true", "https://mistake.example.test/api", "Production", 2)]
+    [InlineData("true", "http://192.168.55.10:5007/api", "Production", 2)]
     [InlineData("true", "https://mistake.example.test?secret-canary", "Production", 2)]
     [InlineData("true", "https://mistake.example.test#secret-canary", "Production", 2)]
     public async Task MistakePreflightUsesActualReadOnlyCommandBeforeHostAndCacheCreate(string? mode, string? url, string environment, int exit)
@@ -36,25 +43,6 @@ public sealed partial class AdminAuthConfigCliTests
         Assert.Equal(exit == 0 ? "RUOYU_ADMIN_AUTH_CONFIG_VALID\n" : "", result.Out);
         Assert.Equal(exit == 0 ? "" : "RUOYU_ADMIN_AUTH_CONFIG_INVALID\n", result.Error);
         Assert.False(Directory.Exists(cache)); Assert.False(Directory.Exists(Path.Combine(fixture.Root, "data")));
-    }
-
-    [Theory]
-    [InlineData("true", "http://192.168.55.10:5007/", "Production", "http://192.168.55.10:5007", 0)]
-    [InlineData("true", "http://[fd12::34]:5007/", "Production", "http://[FD12::34]:5007", 0)]
-    [InlineData("true", "http://192.168.55.10:5007", "Testing", "http://192.168.55.10:5020", 2)]
-    [InlineData("true", "http://192.168.55.10:5007", "Production", null, 2)]
-    [InlineData("false", "http://192.168.55.10:5007", "Production", null, 0)]
-    public async Task MistakePreflightAdmitsOnlyListedIntranetHttpOrigin(string? mode, string url, string environment, string? listed, int exit)
-    {
-        using var fixture = new CliFixture(); var config = AdminSessionDisabledTests.ValidConfiguration();
-        config["MistakeService:UseSessionToken"] = mode;
-        config["MistakeService:Url"] = url;
-        if (listed is not null) config["AdminOidc:IntranetHttpOrigins:0"] = listed;
-        config["ConnectionStrings:AuditDb"] = "deliberately-unparsable-secret-canary"; fixture.WriteSettings(config);
-        var result = await fixture.Run(new() { ["ASPNETCORE_ENVIRONMENT"] = environment, ["DOTNET_ENVIRONMENT"] = environment });
-        Assert.Equal(exit, result.Exit);
-        Assert.Equal(exit == 0 ? "RUOYU_ADMIN_AUTH_CONFIG_VALID\n" : "", result.Out);
-        Assert.Equal(exit == 0 ? "" : "RUOYU_ADMIN_AUTH_CONFIG_INVALID\n", result.Error);
     }
 }
 

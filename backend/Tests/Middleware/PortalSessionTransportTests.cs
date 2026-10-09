@@ -10,7 +10,7 @@ namespace Admin.WebApi.Tests.Middleware;
 
 public sealed class PortalSessionTransportTests
 {
-    private static readonly AdminOidcSettings Settings = new("", "", "", "", false, new HashSet<string>(StringComparer.Ordinal), TimeSpan.Zero);
+    private static readonly AdminOidcSettings Settings = new("", "", "", "", false, TimeSpan.Zero);
     private static Func<HttpContext, Task> Proxy(string portal, IHttpClientFactory clients, bool enabled = true, string url = "https://portal.example.test")
         => portal == "teacher"
             ? new TeacherPortalProxyMiddleware(_ => throw new InvalidOperationException("No fallthrough"), clients,

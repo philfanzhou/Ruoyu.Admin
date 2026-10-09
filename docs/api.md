@@ -34,7 +34,7 @@ Admin Portal 采用 **mode-1 集成部署**：同一容器（端口 5020）既�
 
 返回目标只允许绝对站内路径，拒绝外部、编码外部、控制字符、反斜线与 `/api/auth/*`、`/login` 循环；错误目标回退 `/dashboard`。取消返回 `/login?authError=cancelled`；start 的 Discovery/JWKS 不可用返回 `identity_unavailable`；回调协议/兑换/签名等失败统一 `sign_in_failed`，不反射 error_description 或异常。state 无论成功/失败都不重用；失败兑换必须重新 start，不能重试旧 code。入口和 redirect 响应均 no-store/no-cache/no-referrer。
 
-会话 Cookie（名 `adminSession`）为 HttpOnly、Path=/、SameSite=Lax、Secure（`AdminOidc:IntranetHttpOrigins` 清单生效的内网 HTTP profile 下包 Cookie 不带 Secure，切换 profile 需重新登录），值即包内票据存储的不透明键；access/id token、票据主体与截止时间只在单进程内存。会话寿命不超过 access token 到期；到期票据由存储在读时回收，过期与不存在不可区分。请求取消不发布部分票据；存储有界（默认容量 10000）并定期回收，重启/多副本不支持状态延续。展示名取 nickname/name，缺失时 null；ID Token 角色不进入业务边界主体（accessor 只重建 iss/sub/display_name）。挑战/拒绝由包 session scheme 处理（challenge 重定向 start、forbid 403），业务面短路仍为 401/403 JSON。基础 Code 请求不包含 offline_access/refresh；SPA 退出走下文的 prepared logout。
+会话 Cookie（名 `adminSession`）为 HttpOnly、Path=/、SameSite=Lax、Secure（http 入口 scheme 下包 Cookie 不带 Secure，切换入口 scheme 需重新登录），值即包内票据存储的不透明键；access/id token、票据主体与截止时间只在单进程内存。会话寿命不超过 access token 到期；到期票据由存储在读时回收，过期与不存在不可区分。请求取消不发布部分票据；存储有界（默认容量 10000）并定期回收，重启/多副本不支持状态延续。展示名取 nickname/name，缺失时 null；ID Token 角色不进入业务边界主体（accessor 只重建 iss/sub/display_name）。挑战/拒绝由包 session scheme 处理（challenge 重定向 start、forbid 403），业务面短路仍为 401/403 JSON。基础 Code 请求不包含 offline_access/refresh；SPA 退出走下文的 prepared logout。
 
 ### 管理员会话与 CSRF（#42）
 
@@ -42,7 +42,7 @@ API 始终使用 AdminSession；旧键仅用于启动迁移检验，不能恢复
 
 管理路径先显式读取服务器 AdminSession 票据，要求唯一 `iss/sub` 与已验证票据 stamp 相同，issuer 与 Authority 严格相同；只按**当前** `AdminPortal:AdminUserIds`（ID 大小写不敏感）授权，不信任 ID Token role 或浏览器头。任何入站 `Authorization`（空、重复、合法或非法）固定 401，不回落新 Cookie 或旧 `adminAuthToken`。无/过期/丢失票据、缺 access token、无效/到期 `expires_at` 为 `401 {"error":"unauthorized"}`；有效身份不在白名单为 `403 {"error":"forbidden"}`；均为 JSON，不 redirect HTML。8 小时票据寿命不能延长 access token 期限，当前不 refresh。
 
-`GET /api/auth/csrf` 要求相同管理员会话与有效 token，拒绝 Authorization。成功 `200 {"requestToken":"..."}`，no-store/no-cache，并设置独立 `adminCsrf` Cookie（HttpOnly、Path=/、SameSite=Lax；生产 Secure，允许 HTTP 入口的仅开发数字 loopback 与 `AdminOidc:IntranetHttpOrigins` 清单生效的内网 profile，两者均 `SameAsRequest`）。request token 绑定主体与 CSRF Cookie，不输出服务器 access/id token。
+`GET /api/auth/csrf` 要求相同管理员会话与有效 token，拒绝 Authorization。成功 `200 {"requestToken":"..."}`，no-store/no-cache，并设置独立 `adminCsrf` Cookie（HttpOnly、Path=/、SameSite=Lax；Secure 策略按配置入口 scheme 派生：https 入口 Secure，http 入口 `SameAsRequest`）。request token 绑定主体与 CSRF Cookie，不输出服务器 access/id token。
 
 所有管理写方法（GET/HEAD/OPTIONS/TRACE 之外，包括 POST/PUT/PATCH/DELETE 与 OSS trigger/resolve/batch-resolve）在 Controller/业务/出站/删除前显式验证框架 antiforgery，要求单值 `X-CSRF-TOKEN`。缺/错/重复 header、错 Cookie、异主体 token、只提交 form token 为 `400 {"error":"csrf_invalid"}`；CSRF 成功只继续本次请求，不重放写请求。审计所有resolve状态都执行三provider共同collector，完整v1为409，来源不可达502，恒拒删；匿名 claims/OIDC callback 不套此浏览器 CSRF 边界。默认 CORS 不变，不启用跨源 Cookie。
 
@@ -969,7 +969,7 @@ API 始终使用 AdminSession；旧键仅用于启动迁移检验，不能恢复
 
 ### Prepared logout（#46，#83 起由包承担）
 
-退出始终使用 prepared logout，由包端点 `POST /api/auth/oidc/logout` 处理。必需的 `AdminOidc:PostLogoutRedirectUri` 与 RedirectUri 同 origin，路径固定 `/api/auth/oidc/logout/return`、生产 HTTPS、无 query/fragment/userinfo；维护者需在 SignaCore 应用注册把 PostLogout 回调改为该值。数字 loopback 开发例外沿 OIDC；`AdminOidc:IntranetHttpOrigins` 清单内 origin 同样豁免 HTTP。非 POST logout 固定405（本地守卫先于授权管线），且每次 POST 尝试都清理旧 `adminAuthToken` Cookie。
+退出始终使用 prepared logout，由包端点 `POST /api/auth/oidc/logout` 处理。必需的 `AdminOidc:PostLogoutRedirectUri` 与 RedirectUri 同 origin，路径固定 `/api/auth/oidc/logout/return`、无 query/fragment/userinfo；维护者需在 SignaCore 应用注册把 PostLogout 回调改为该值。http 与 https 同等接受（结构规则不变），公网部署应使用 HTTPS（建议而非强制）。非 POST logout 固定405（本地守卫先于授权管线），且每次 POST 尝试都清理旧 `adminAuthToken` Cookie。
 
 SPA 先 GET `/api/auth/oidc/csrf`（公开签发，响应 `{"token":"..."}` 并轮换共享 `adminCsrf` Cookie；user-neutral 对，与业务面 principal 绑定对共用同一 Cookie），再以导航式 form POST 提交 `__RequestVerificationToken` 到 `/api/auth/oidc/logout`；antiforgery 校验同时接受单值 `X-CSRF-TOKEN` header。缺/错 token 为固定 `400 {"outcome":"csrf_rejected"}`，不触碰会话。登出本身不以 access token 期限或管理员白名单阻止本人退出（票据存在即可）；无会话 Cookie 时直接 `200 {"outcome":"local_only"}`。
 

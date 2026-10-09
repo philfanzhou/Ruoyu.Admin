@@ -25,8 +25,7 @@
 | `Database:Name` | `ruoyu_admin` | 数据库名（与 Consul `PostgreSql:*` 合成连接串时使用） |
 | `StudentService:Url` | `http://localhost:5005` | Student HTTP 服务 |
 | `MistakeService:Url` | `http://localhost:5007` | Mistake HTTP 服务 |
-| `MistakeService:UseSessionToken` | `false` | 仅 Mistake 出站会话 opt-in；启用需显式正常 HTTPS 根 origin，Development/Testing 仅数字 loopback 可 HTTP（或 `AdminOidc:IntranetHttpOrigins` 清单内精确 origin） |
-| `AdminOidc:IntranetHttpOrigins` | （缺省=HTTPS 强制） | 内网 HTTP 部署显式 opt-in：`http://` + RFC1918 IPv4 / 方括号 IPv6 ULA 字面量 + 显式端口 1–65535 的精确 origin 数组，同时作用于登录/登出回调、`IdentityService:Authority` 与启用时的 `MistakeService:Url`；非法项或重复项启动拒绝（`RUOYU_ADMIN_AUTH_CONFIG_INVALID`） |
+| `MistakeService:UseSessionToken` | `false` | 仅 Mistake 出站会话 opt-in；启用需显式根 origin（path 为 `/`），http 与 https 同等接受，公网部署应使用 HTTPS（部署建议，非代码强制） |
 | `IdentityService:Authority` | （无；Development 默认 `http://localhost:5002`，见 `appsettings.Development.json`） | Identity 托管 OIDC discovery +服务器会话 HTTP 代理。`appsettings.json` 不含 `IdentityService` 节，本地必须经环境变量 / user-secrets 注入 `AppId`、`AppSecret` 等 |
 | `TeacherPortal:Url` | `http://localhost:5004` | Teacher Portal HTTP 服务 |
 | `AssistantPortal:Url` | `http://localhost:5021` | Assistant Portal HTTP 服务 |
@@ -35,7 +34,7 @@
 
 当前版本只运行服务器会话托管登录。必须配置 `IdentityService:Authority/AppId/AppSecret`、`AdminOidc:RedirectUri/PostLogoutRedirectUri`、当前管理员白名单与 ADMIN 应用 audience，并完成真实下游信任及精确 Code/Logout 注册。五个旧键 `AdminOidc:Enabled/UseSessionForAdminApi/UseSessionForLogout/UseSessionForIdentityProxy/UseSessionForPortalProxies` 不再选择运行模式：应删除；仅缺省或规范小写 `true` 可通过迁移检验，显式 `false`、空值或畸形值在所有环境启动拒绝。密码入口永久 `410 legacy_login_disabled`，API/图片/三个代理/关联查询始终使用同一管理员会话与 CSRF 边界，任何入站 Authorization 固定401；不存在关闭能力或浏览器 JWT 回退模式。
 
-开发 SPA 使用 `http://127.0.0.1:8090`，完整 `/api/*` 由 Vite 代理到后端硬编码 5020。注册与 BFF 配置必须使用浏览器原点的 `http://127.0.0.1:8090/api/auth/oidc/callback` 与 `/api/auth/oidc/logout/return`，不能注册内部 5020、localhost 或通配符。集成模式改用其实际同源地址；生产仅 HTTPS 与正常 CA，纯内网受控网络的显式例外为 `AdminOidc:IntranetHttpOrigins`（语法、边界与回滚见 [Deployment.md](./Deployment.md#signacore-托管登录唯一模式)；SignaCore Host 侧须同样放行本服务的 HTTP redirect origin）。复用 `IdentityService:Authority/AppId/AppSecret` 的 Confidential、PerApplication ADMIN audience、Code + openid profile + S256 客户端，不启用 refresh；Secret 只通过环境变量或 user-secrets 注入。
+开发 SPA 使用 `http://127.0.0.1:8090`，完整 `/api/*` 由 Vite 代理到后端硬编码 5020。注册与 BFF 配置必须使用浏览器原点的 `http://127.0.0.1:8090/api/auth/oidc/callback` 与 `/api/auth/oidc/logout/return`，不能注册内部 5020、localhost 或通配符。集成模式改用其实际同源地址。传输安全是部署决策：配置层 http 与 https 同等接受（结构规则不变，`localhost` 主机名仍拒绝），公网部署应使用 HTTPS 与正常 CA（建议而非强制）；SignaCore Host 0.1.16 起同样无 HTTP origin 门，更早的 Host 版本须按其自身 Testing 门放行本服务的 HTTP redirect origin（部署侧事实）。复用 `IdentityService:Authority/AppId/AppSecret` 的 Confidential、PerApplication ADMIN audience、Code + openid profile + S256 客户端，不启用 refresh；Secret 只通过环境变量或 user-secrets 注入。
 
 Cookie 只含不透明引用，ticket 8 小时绝对期限、token 到期显式重新登录，重启丢失。unsafe 请求由共享客户端单飞取普通 CSRF；退出使用独立 logout CSRF，即使 token 到期或被移出白名单仍允许本人退出。三个代理和图片均依赖当前服务器授权。完整 TLS、白名单、日志、单实例限制与回退条件见 [Deployment.md](./Deployment.md#signacore-托管登录唯一模式)。
 
@@ -116,7 +115,7 @@ Admin Portal 依赖以下下游服务运行：
 
 ### Prepared logout（#46，#83 起由 SignaCore 包承担）
 
-退出始终使用 prepared logout，端点为包拥有的 `POST /api/auth/oidc/logout`。必需的 `AdminOidc:PostLogoutRedirectUri` 与 RedirectUri 同 origin，路径固定 `/api/auth/oidc/logout/return`、生产 HTTPS、无 query/fragment/userinfo；SignaCore 应用注册的 PostLogout 回调需由维护者改为该值。数字 loopback 开发例外沿 OIDC；`AdminOidc:IntranetHttpOrigins` 清单内 origin 同样豁免 HTTP。非 POST logout 固定405，每次 POST 尝试都清理旧 `adminAuthToken` Cookie。
+退出始终使用 prepared logout，端点为包拥有的 `POST /api/auth/oidc/logout`。必需的 `AdminOidc:PostLogoutRedirectUri` 与 RedirectUri 同 origin，路径固定 `/api/auth/oidc/logout/return`、无 query/fragment/userinfo；SignaCore 应用注册的 PostLogout 回调需由维护者改为该值。http 与 https 同等接受（结构规则不变），公网部署应使用 HTTPS（建议而非强制）。非 POST logout 固定405，每次 POST 尝试都清理旧 `adminAuthToken` Cookie。
 
 SPA 先 GET `/api/auth/oidc/csrf`（公开签发 `{"token":"..."}`，轮换共享 `adminCsrf` Cookie），再以导航式 form POST 提交 `__RequestVerificationToken`（或单值 `X-CSRF-TOKEN` header）。缺/错 token 固定 `400 {"outcome":"csrf_rejected"}` 且不触碰会话；登出不以 access token 期限或管理员白名单阻止本人退出。包在按会话键串行的门内先移除票据、删除会话 Cookie，再向 Authority `/oauth2/logout/requests` 发 HTTP Basic 认证 + 服务器 id_token_hint + PostLogout URI + 一次性 state，不重试不跟随 redirect；成功 302 验证过的同源 logout_uri，失败/超时/取消固定 `200 {"outcome":"local_only"}`。回跳 `/api/auth/oidc/logout/return?state=...` 以绑定 Cookie（5 分钟）原子单用，正确 302 `/login`，其余固定 400 HTML。
 

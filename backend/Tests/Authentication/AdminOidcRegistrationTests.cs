@@ -11,52 +11,51 @@ using Xunit;
 namespace Admin.WebApi.Tests.Authentication;
 
 // The hosted-login protocol stores and endpoints are owned by the package; this file pins the
-// Admin wiring consequences of the explicit intranet HTTP opt-in: the antiforgery cookie
-// SecurePolicy follows the effective entry scheme, and the same canonical origin list satisfies
-// the package's own options validation (resolving IOptions<SignaCoreHostedLoginOptions> runs it).
+// Admin wiring consequences of scheme-derived cookie policy (issue #94: transport security is
+// a deployment decision): the antiforgery cookie SecurePolicy follows the configured entry
+// scheme, and plain-HTTP configuration passes the package's own options validation (resolving
+// IOptions<SignaCoreHostedLoginOptions> runs it).
 public sealed class AdminOidcRegistrationTests
 {
     [Fact]
-    public void IntranetHttpProfileUsesSameAsRequestCookiesAndPassesPackageValidation()
+    public void HttpEntryProfileUsesSameAsRequestCookiesAndPassesPackageValidation()
     {
         var provider = BuildProvider(new Dictionary<string, string?>
         {
             ["IdentityService:Authority"] = "http://192.168.55.10:5002",
             ["AdminOidc:RedirectUri"] = "http://192.168.55.10:5020/api/auth/oidc/callback",
             ["AdminOidc:PostLogoutRedirectUri"] = "http://192.168.55.10:5020" + AdminOidcSettings.LogoutReturnPath,
-            ["AdminOidc:IntranetHttpOrigins:0"] = "http://192.168.55.10:5002",
-            ["AdminOidc:IntranetHttpOrigins:1"] = "http://192.168.55.10:5020",
         }, "Production");
         var antiforgery = provider.GetRequiredService<IOptions<AntiforgeryOptions>>().Value;
         Assert.Equal("adminCsrf", antiforgery.Cookie.Name);
         Assert.Equal(CookieSecurePolicy.SameAsRequest, antiforgery.Cookie.SecurePolicy);
-        // Resolving .Value runs the package's options validator: the canonical list must satisfy
-        // it identically (grammar and duplicates) instead of failing the host later.
+        // Resolving .Value runs the package's options validator: SignaCore.Client.AspNetCore
+        // 0.1.16 accepts http and https equally, so the plain-HTTP intranet configuration must
+        // satisfy it instead of failing the host later.
         var login = provider.GetRequiredService<IOptions<SignaCoreHostedLoginOptions>>().Value;
-        Assert.Equal(new[] { "http://192.168.55.10:5002", "http://192.168.55.10:5020" }, login.IntranetHttpOrigins.Order().ToArray());
         Assert.Equal(AdminOidcSettings.SessionCookie, login.SessionCookieName); // no prefix: profile-compatible
     }
 
     [Fact]
-    public void HttpsProfileKeepsAlwaysSecureCookiesAndEmptyPackageList()
+    public void HttpsProfileKeepsAlwaysSecureCookies()
     {
         var provider = BuildProvider(null, "Production");
         var antiforgery = provider.GetRequiredService<IOptions<AntiforgeryOptions>>().Value;
         Assert.Equal(CookieSecurePolicy.Always, antiforgery.Cookie.SecurePolicy);
-        Assert.Empty(provider.GetRequiredService<IOptions<SignaCoreHostedLoginOptions>>().Value.IntranetHttpOrigins);
+        _ = provider.GetRequiredService<IOptions<SignaCoreHostedLoginOptions>>().Value;
     }
 
     [Fact]
-    public void LoopbackDevProfileKeepsSameAsRequestCookies()
+    public void HttpLoopbackEntryProfileUsesSameAsRequestCookiesInProduction()
     {
         var provider = BuildProvider(new Dictionary<string, string?>
         {
             ["AdminOidc:RedirectUri"] = "http://127.0.0.1:5020/api/auth/oidc/callback",
             ["AdminOidc:PostLogoutRedirectUri"] = "http://127.0.0.1:5020" + AdminOidcSettings.LogoutReturnPath,
-        }, "Development");
+        }, "Production");
         var antiforgery = provider.GetRequiredService<IOptions<AntiforgeryOptions>>().Value;
         Assert.Equal(CookieSecurePolicy.SameAsRequest, antiforgery.Cookie.SecurePolicy);
-        Assert.Empty(provider.GetRequiredService<IOptions<SignaCoreHostedLoginOptions>>().Value.IntranetHttpOrigins);
+        _ = provider.GetRequiredService<IOptions<SignaCoreHostedLoginOptions>>().Value;
     }
 
     private static ServiceProvider BuildProvider(Dictionary<string, string?>? overrides, string environment)
