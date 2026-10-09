@@ -21,5 +21,5 @@ _Avoid_: Deleted Object、Missing Reference
 _Avoid_: Mistake Review、Homework Review
 
 **Unreferenced Observation**:
-捕获时未在完整引用集合中观察到的对象；它不是未来无引用证明，也不授予删除许可。
+采集时未在完整引用集合中观察到的对象；这不证明未来仍无引用，也不授予删除许可。
 _Avoid_: Deletion Permit、Released Object

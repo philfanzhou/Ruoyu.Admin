@@ -21,7 +21,7 @@
 | 配置键 | 默认值 | 说明 |
 |--------|--------|------|
 | `AdminApi:Port` | 5020 | API 监听端口 |
-| `ConnectionStrings:AuditDb` | `Host=localhost;Port=5432;Database=ruoyu_admin;Username=phil` | 审计数据库连接串（dev 兜底，生产由 Consul 覆盖） |
+| `ConnectionStrings:AuditDb` | `Host=localhost;Port=5432;Database=ruoyu_admin;Username=phil` | 审计数据库连接串（本地开发默认值，生产由 Consul 覆盖） |
 | `Database:Name` | `ruoyu_admin` | 数据库名（与 Consul `PostgreSql:*` 合成连接串时使用） |
 | `StudentService:Url` | `http://localhost:5005` | Student HTTP 服务 |
 | `MistakeService:Url` | `http://localhost:5007` | Mistake HTTP 服务 |
@@ -52,7 +52,7 @@ Admin Portal 通过 `SharedPostgreSqlConnectionStringFactory.BuildOrFallback` �
 4. 否则回退到本地 `ConnectionStrings:AuditDb`
 
 - 本地开发：`ConnectionStrings:AuditDb` 指向本地 PostgreSQL（`Host=localhost;Username=phil`，无密码），无需 Consul 即可运行
-- 生产环境：由 Consul 的 `PostgreSql:*` 覆盖，`ConnectionStrings:AuditDb` 仅作兜底
+- 生产环境：由 Consul 的 `PostgreSql:*` 覆盖，`ConnectionStrings:AuditDb` 仅作为未配置 Consul 时的默认值
 
 3. 环境变量覆盖（可选）：
    ```bash

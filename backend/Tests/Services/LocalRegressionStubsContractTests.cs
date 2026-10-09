@@ -11,9 +11,9 @@ using Xunit;
 namespace Admin.WebApi.Tests.Services;
 
 /// <summary>
-/// 合同测试：本地回归替身（backend/Tools/LocalRegressionStubs）的响应必须能用审计引用聚合
-/// 实际使用的 ServiceClients DTO（含其 JsonSerializerOptions）反序列化。替身与客户端任何一侧
-/// 漂移都会在这里失败，而不是在本地回归执行时（docs/development/LocalRegressionEnv.md）。
+/// 接口兼容性测试：检查本地回归替身（backend/Tools/LocalRegressionStubs）的旧列表响应
+/// 能否按指定 ServiceClients DTO 和 JsonSerializerOptions 反序列化，提前发现响应与客户端不一致。
+/// 本测试不验证当前 StorageReferences v1 引用的完整性；回归环境见 docs/development/LocalRegressionEnv.md。
 /// </summary>
 public class LocalRegressionStubsContractTests
 {

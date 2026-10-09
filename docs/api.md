@@ -44,7 +44,7 @@ API 始终使用 AdminSession；旧键仅用于启动迁移检验，不能恢复
 
 `GET /api/auth/csrf` 要求相同管理员会话与有效 token，拒绝 Authorization。成功 `200 {"requestToken":"..."}`，no-store/no-cache，并设置独立 `adminCsrf` Cookie（HttpOnly、Path=/、SameSite=Lax；Secure 策略按配置入口 scheme 派生：https 入口 Secure，http 入口 `SameAsRequest`）。request token 绑定主体与 CSRF Cookie，不输出服务器 access/id token。
 
-所有管理写方法（GET/HEAD/OPTIONS/TRACE 之外，包括 POST/PUT/PATCH/DELETE 与 OSS trigger/resolve/batch-resolve）在 Controller/业务/出站/删除前显式验证框架 antiforgery，要求单值 `X-CSRF-TOKEN`。缺/错/重复 header、错 Cookie、异主体 token、只提交 form token 为 `400 {"error":"csrf_invalid"}`；CSRF 成功只继续本次请求，不重放写请求。审计所有resolve状态都执行三provider共同collector，完整v1为409，来源不可达502，恒拒删；匿名 claims/OIDC callback 不套此浏览器 CSRF 边界。默认 CORS 不变，不启用跨源 Cookie。
+所有管理写方法（GET/HEAD/OPTIONS/TRACE 之外，包括 POST/PUT/PATCH/DELETE 与 OSS trigger/resolve/batch-resolve）在 Controller/业务/出站/删除前显式验证框架 antiforgery，要求单值 `X-CSRF-TOKEN`。缺/错/重复 header、错 Cookie、异主体 token、只提交 form token 为 `400 {"error":"csrf_invalid"}`；CSRF 成功只继续本次请求，不重放写请求。审计的已有单条记录和非空批量 `resolve` 请求都执行同一收集器对三个服务的引用检查；v1 验证完整时返回 409，引用不可用时返回 502，始终拒绝删除；匿名 claims/OIDC callback 不套此浏览器 CSRF 边界。默认 CORS 不变，不启用跨源 Cookie。
 
 `POST /api/auth/login` 在读取密码/模型绑定前固定 `410 {"error":"legacy_login_disabled"}`，不转发 Identity、不发 JWT Cookie。登出走包端点 `POST /api/auth/oidc/logout`（见 Prepared logout）；非 POST 固定405且不撤票或 prepare，并在所有 POST 尝试上清理旧 `adminAuthToken` Cookie。三个代理与关联查询只使用服务器票据内 token。SPA/非 API 继续匿名，health 语义不变。
 
@@ -92,7 +92,7 @@ API 始终使用 AdminSession；旧键仅用于启动迁移检验，不能恢复
 }
 ```
 
-> **变更**：2026 年 6 月起不再返回 `mistakeTypes` 字段，错题错误类型已下线（该字段的定义与下线记录由 Ruoyu.Study 仓库的共享常量文档主责）。
+> **变更**：2026 年 6 月起不再返回 `mistakeTypes` 字段，错题错误类型已下线（该字段的定义与下线记录由 Ruoyu.Study 仓库的共享常量文档维护）。
 
 ---
 
@@ -314,18 +314,18 @@ API 始终使用 AdminSession；旧键仅用于启动迁移检验，不能恢复
 
 ## OSS 审计
 
-详细语义见[StorageAudit](./modules/OssAudit/StorageAudit.md)，上游v1字段合同由Study主责。
+详细规则见 [StorageAudit](./modules/OssAudit/StorageAudit.md)，上游 v1 字段规范由 Ruoyu.Study 维护。
 
 | 方法与路径 | 当前行为 |
 |---|---|
-| GET `/api/admin/oss-audit/records` | page/pageSize/status/bucket分页；保留items/totalCount/statusCounts/bucketCounts，Status3为UnreferencedObservation；bucketCounts包含旧0和新3 |
-| GET `/api/admin/oss-audit/status` | isRunning、lastCompleted/lastFailed、pendingCount、observationCount、deletionAuthorized=false；完成Run包含referenceContractVersion/referenceSnapshots（三provider metadata JSON） |
-| POST `/api/admin/oss-audit/trigger` | 沿现认证/CSRF边界触发异步Run；运行中400，正常200 OperationResponse |
-| POST `/api/admin/oss-audit/records/{id}/resolve` | 已存在任何0/1/2/3状态先完整collector；v1恒409 cleanup_not_authorized，依赖不全502 references_unavailable；未知id404，零S3写和record删除 |
-| POST `/api/admin/oss-audit/records/batch-resolve` | 非空ids同collector与409/502，包括部分/全missing；空ids400，零S3写和record删除 |
-| POST `/api/admin/oss-audit/records/{id}/ignore` | body `{note}`；仅旧status0更新为2并记ResolvedAt/Note，其他状态400、未知404 |
+| GET `/api/admin/oss-audit/records` | 按 page/pageSize 分页，可用 status/bucket 筛选；保留 items/totalCount/statusCounts/bucketCounts。状态 3 为 UnreferencedObservation；bucketCounts 统计历史状态 0 和新状态 3 |
+| GET `/api/admin/oss-audit/status` | isRunning、lastCompleted/lastFailed、pendingCount、observationCount、deletionAuthorized=false；已完成的运行记录包含 referenceContractVersion/referenceSnapshots（三个服务的快照元数据 JSON） |
+| POST `/api/admin/oss-audit/trigger` | 通过现有认证与 CSRF 检查后异步启动运行；运行中返回 400，正常返回 200 OperationResponse |
+| POST `/api/admin/oss-audit/records/{id}/resolve` | 已有记录不论状态 0/1/2/3，都先用引用收集器完整检查；v1 验证成功后恒返回 409 cleanup_not_authorized，依赖不完整时返回 502 references_unavailable。未知 ID 返回 404；不写入 S3，也不删除审计记录 |
+| POST `/api/admin/oss-audit/records/batch-resolve` | 非空 IDs 使用同一收集器，按引用是否完整返回 409/502，包括部分或全部 ID 不存在的请求；空 IDs 返回 400。不写入 S3，也不删除审计记录 |
+| POST `/api/admin/oss-audit/records/{id}/ignore` | body `{note}`；仅历史状态 0 更新为 2，并记录 ResolvedAt/Note；其他状态返回 400，未知 ID 返回 404 |
 
-拒绝响应为 `{success:false,errorKind:...}`。新Run的NewZombieCount兼容字段仅表示新增只读观察数量；旧Run/version=null保留历史原意。v1不是GC或物理删除许可。
+拒绝响应为 `{success:false,errorKind:...}`。新运行记录的 `NewZombieCount` 兼容字段只表示新增只读观察数；旧运行记录（version=null）保留原历史含义。v1 不提供垃圾回收，也不授予物理删除许可。
 
 ---
 
@@ -989,12 +989,12 @@ Teacher/Assistant 全代理前缀始终在认证/授权前共用管理员/CSRF �
 
 全 `/api/identity` 前缀（大小写、根和尾斜线）在认证/授权前经过共享管理员与 CSRF 边界。拒绝任何入站 Authorization；合法 access token 到期时返回 `401 reauthentication_required` 且零出站；只转发服务器票据内有效 access token，剥离浏览器 Cookie、Host、X-CSRF-TOKEN 与伪造 gateway 头后注入本服务 AppId/AppSecret。下游 Set-Cookie 不传给浏览器；401/403/结构化503和 Retry-After 原样，网络失败502，取消传递且不重放。AppSecret 剥离始终保持，三个代理共用相同会话边界。生产平台注册不由本项执行；正式组合门禁归 #75。专项 `FullyQualifiedName~IdentitySession_` 使用 fake HTTP 与隔离数据库，无生产 OSS 删除。
 
-Identity 代理退役浏览器凭据兼容（#73）：middleware 的 settings 为必需依赖，直接调用缺 TrustedSessionKey/有效服务器 token 也401拒绝。所有路径使用 StartsWithSegments remaining 映射 `/api`，根/尾斜线/大小写/query/body 保持；始终 RequestAborted，预取消/发送中取消传播且无应用层重试。非代理的 IdentityAccountsController 不在此切片范围。中间镜像不部署，最终须包含 #41/#75；回滚只选择明确旧完整镜像，不复活票据。
+Identity 代理退役浏览器凭据兼容（#73）：middleware 的 settings 为必需依赖，直接调用缺 TrustedSessionKey/有效服务器 token 也401拒绝。所有路径使用 StartsWithSegments remaining 映射 `/api`，根/尾斜线/大小写/query/body 保持；始终 RequestAborted，预取消/发送中取消传播且无应用层重试。非代理的 `IdentityAccountsController` 不在本次修改范围。中间镜像不部署，最终须包含 #41/#75；回滚只选择明确旧完整镜像，不复活票据。
 
 门户传输退役浏览器凭据兼容（#74）：两 middleware 只接受 TrustedSessionKey 的有效 server token，settings 为必需依赖，直接调用缺可信项也401。统一 remaining 的 admin/auth/其他三类映射，始终 RequestAborted、剥离浏览器Authorization/Cookie/Host/CSRF/gateway，隔离Set-Cookie；取消传播且无应用层重试。关联查询只随API-session，即使门户proxy开关false也用server token；当前账户筛选、单侧失败保另一侧、无关联短路与Student失败响应保持。此中间镜像不部署，最终须组合#41/#75；整版回滚不恢复本版浏览器凭据路径或复活撤票。
 
-### 管理本地会话组收敛（#72）
+### 管理接口统一使用本地会话（#72）
 
 `/api/admin/*`（含 native image）、普通 CSRF、三个代理和关联查询始终共用 AdminSession 边界，任何 Authorization401、白名单403、期限401、普通 unsafe CSRF400 与三字段会话状态保持。全局入站 Bearer handler 与 JWT Cookie 验证均未注册；默认认证和 FallbackPolicy 也只选择服务器会话。
 
-登出面（`/api/auth/oidc/csrf|logout|logout/return`）由 SignaCore 包端点拥有，不携带六头安全基线（应答自带 no-store；antiforgery 签发可附 X-Frame-Options: SAMEORIGIN）；非 POST logout405、POST 恒清理旧 adminAuthToken。退出身份不以 access 期限或管理员白名单阻止本人退出；成功/失败/取消与一次性 state 按包协议。SPA/health 匿名，不更改业务/OSS/三个代理。API+SPA 必须使用最终完整集成镜像；回滚只选择明确旧完整镜像，不复活撤票状态。
+退出登录相关接口（`/api/auth/oidc/csrf|logout|logout/return`）由 SignaCore 包提供，不携带六头安全基线（应答自带 no-store；antiforgery 签发可附 X-Frame-Options: SAMEORIGIN）；非 POST logout405、POST 恒清理旧 adminAuthToken。退出身份不以 access 期限或管理员白名单阻止本人退出；成功/失败/取消与一次性 state 按包协议。SPA/health 匿名，不更改业务/OSS/三个代理。API+SPA 必须使用最终完整集成镜像；回滚只选择明确旧完整镜像，不复活撤票状态。

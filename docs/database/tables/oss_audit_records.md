@@ -67,12 +67,12 @@ CREATE INDEX IF NOT EXISTS "IX_OssAuditRecords_Bucket" ON "OssAuditRecords" ("Bu
 CREATE INDEX IF NOT EXISTS "IX_OssAuditRecords_CreatedAt" ON "OssAuditRecords" ("CreatedAt");
 ```
 
-表结构由exact EF迁移链与ServiceMantle启动门管理，见[迁移](../migrations.md)。
+表结构由按顺序精确匹配的 EF Core 迁移链与 ServiceMantle 启动检查管理，见[迁移](../migrations.md)。
 
 ## 业务规则
 
-- ObjectPath精确UNIQUE；已有任何状态同路径不重复创建。
-- 新v1发现仅Status3，完整扫描事务提交，不产生可处置结论。
-- Resolve所有状态及非空batch均由shared collector后409或502拒删，不Delete/Copy/删除记录。
-- Ignore仅历史Status0→2，可选Note，Status3拒绝。startup不清旧review/旧桶记录。
-- 原状态语义与当前消费者保证见[StorageAudit](../../modules/OssAudit/StorageAudit.md)。
+- `ObjectPath` 有精确匹配的 UNIQUE 约束；同路径已有任意状态的记录时，不重复创建。
+- v1 只新增 `Status=3` 的只读观察，完整扫描后在同一事务中提交，不据此作出删除或其他处置决定。
+- 已有单条记录的所有状态，以及非空批量 `resolve`，均通过同一引用收集器检查后拒绝删除：引用完整时返回 409，不可用时返回 502，不执行对象 Delete、Copy 或审计记录删除。
+- `ignore` 仅允许历史状态 0 变为 2，可选填 Note，状态 3 拒绝。启动时不清理旧 review 或旧桶记录。
+- 原状态含义与当前 Admin 的行为规则见[StorageAudit](../../modules/OssAudit/StorageAudit.md)。

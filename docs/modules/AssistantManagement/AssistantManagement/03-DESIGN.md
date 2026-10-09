@@ -1,5 +1,7 @@
 # 助教管理 — 技术设计
 
+> 以下转发调用方 Authorization 的描述是历史方案。当前代理只发送服务器票据内 token，并拒绝入站 Authorization；当前规则见根目录 AGENTS.md 和 docs/api.md。
+
 ## 1. Admin Portal 后端
 
 ### 1.1 AssistantPortalProxyMiddleware
@@ -8,7 +10,7 @@
 - 模式: 与 TeacherPortalProxyMiddleware 完全对称
 - 注册: Program.cs 中 `app.UseMiddleware<AssistantPortalProxyMiddleware>()`
 - 配置: `AssistantPortalOptions`（Url）
-- 认证: 透传调用方 `Authorization: Bearer`，下游 `[Authorize(Roles="admin")]` 校验；不再注入静态 `X-Admin-Key`
+- 认证: 原样转发调用方 `Authorization: Bearer`，下游 `[Authorize(Roles="admin")]` 校验；不再注入静态 `X-Admin-Key`
 - HttpClient: 复用或新建 `IHttpClientFactory("AssistantPortal")`
 
 ### 1.2 配置变更

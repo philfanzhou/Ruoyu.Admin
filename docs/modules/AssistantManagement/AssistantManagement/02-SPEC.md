@@ -1,5 +1,7 @@
 # 助教管理 — 功能规格
 
+> 以下转发调用方 Authorization 的描述是历史方案。当前代理只发送服务器票据内 token，并拒绝入站 Authorization；当前规则见根目录 AGENTS.md 和 docs/api.md。
+
 ## 1. 助教权限管理
 
 ### 1.1 助教列表
@@ -39,7 +41,7 @@
 | `/api/assistant-portal/admin/*` | `/api/admin/*` |
 | `/api/assistant-portal/auth/*` | `/api/auth/*` |
 
-认证: 透传调用方 `Authorization: Bearer`，下游 `[Authorize(Roles="admin")]` 校验；不再使用静态 `X-Admin-Key`
+认证: 原样转发调用方 `Authorization: Bearer`，下游 `[Authorize(Roles="admin")]` 校验；不再使用静态 `X-Admin-Key`
 
 ### 2.2 配置
 

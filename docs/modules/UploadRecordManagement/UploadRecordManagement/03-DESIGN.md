@@ -1,6 +1,6 @@
 # UploadRecordManagement 数据模型
 
-当前实现使用 HTTP ServiceClients。以下 index-based 请求和旧 gRPC 映射保留为 legacy 迁移背景；managed-v1 的模式、revision、每组 requestKey/sourcePaths 与逐组结果见[受管集成契约](../../../Integration/ManagedAssignment.md)。受管 submit 不读取当前 Student、无 Admin DB migration/journal，使用独立精确 POST client 和经现有认证管线验证的 caller token。
+当前实现使用 HTTP ServiceClients。以下按 index 选择图片的请求和旧 gRPC 映射，仅保留为 legacy 迁移背景；managed-v1 的模式、revision、每组 `requestKey`、`sourcePaths` 或 `sourceRegions` 与逐组结果见[受管指派说明](../../../Integration/ManagedAssignment.md)。受管提交不重新读取当前 Student，不新增 Admin 数据库迁移或操作日志表；使用独立客户端调用固定 POST 路由，并发送服务器会话中已验证的 access token。
 
 ## 请求模型
 

@@ -36,11 +36,11 @@ frontend/src/
 │   ├── StudentView.vue          # 学生管理页面
 │   ├── TeacherView.vue          # 教师管理页面
 │   ├── AssistantView.vue        # 助教管理页面
-│   ├── UploadRecordView.vue      # 上传记录管理页面（列表与编排：状态统计卡 + 公共列表组件）
+│   ├── UploadRecordView.vue      # 上传记录管理页面（列表与操作：状态统计卡 + 公共列表组件）
 │   ├── upload-records/           # 上传记录子组件：详情抽屉、图片画廊、VL 分析卡/结果弹窗、指派表单、重置/遗留检查弹窗、状态映射
-│   ├── MistakeView.vue           # 错题管理页面（列表与编排：统计卡 + 公共列表组件）
+│   ├── MistakeView.vue           # 错题管理页面（列表与操作：统计卡 + 公共列表组件）
 │   ├── mistakes/                 # 错题子组件：详情弹窗、信息与审核信息、图片画廊（含迁移横幅）、编辑表单
-│   ├── OssAuditView.vue          # OSS 审计页面（列表、选择与删除/忽略编排）
+│   ├── OssAuditView.vue          # OSS 审计页面（列表、只读观察与历史记录忽略）
 │   └── oss-audit/                # OSS 审计子组件：只读观察状态面板、记录表格、历史忽略弹窗、扫描状态轮询（useAuditStatus）
 ├── services/
 │   ├── httpClient.ts            # 共享 axios 实例（同源会话、CSRF 与受控失效导航）
@@ -298,7 +298,7 @@ frontend/src/
 |------|------|------|
 | `PageHeader.vue` | props `title`、`description`；插槽 `#actions` | 页面标题区，主操作按钮放在 `#actions` |
 | `FilterBar.vue` | 默认插槽放 `el-form-item`；emit `search` / `reset` | 卡片容器 + `el-form inline`，自带标准「搜索」「重置」按钮，窄屏自动换行；筛选控件需显式设置宽度 |
-| `DataTableCard.vue` | props `data`、`loading`、`error: string \| null`、`emptyText`；默认插槽放 `el-table-column`；插槽 `#footer`；emit `retry`；其余属性透传给 `el-table` | 状态由 props 唯一决定：`loading` 优先（`v-loading`），其次 `error`（显示错误信息与「重试」，**不显示空态**），最后按 `data.length` 显示空态。卡片宽度跟随容器（`contain: inline-size`），宽表在卡片内横向滚动，页面本身不出现横向滚动 |
+| `DataTableCard.vue` | props `data`、`loading`、`error: string \| null`、`emptyText`；默认插槽放 `el-table-column`；插槽 `#footer`；emit `retry`；其余属性原样传给 `el-table` | 状态由 props 唯一决定：`loading` 优先（`v-loading`），其次 `error`（显示错误信息与「重试」，**不显示空态**），最后按 `data.length` 显示空态。卡片宽度跟随容器（`contain: inline-size`），宽表在卡片内横向滚动，页面本身不出现横向滚动 |
 | `ListPagination.vue` | `v-model:page`、`v-model:page-size`、`total`；emit `change` | `el-pagination`，`layout="total, sizes, prev, pager, next"`，每页 10/20/50；改变每页条数时回到第 1 页；每次交互只触发一次 `change` |
 | `SubjectTag.vue` | props `subject`、`closable`；emit `close` | 沿用 `utils/subject.ts` 的学科色映射（全局 `.adm-subj-tag`） |
 | `StatusTag.vue` | props `label`、`type: 'success' \| 'warning' \| 'danger' \| 'info' \| 'primary'` | 基于 `el-tag` 的通用状态标签 |
@@ -325,7 +325,7 @@ frontend/src/
 
 **确认**：删除图片使用 `confirmDanger`（文案说明若为最后一张，整条上传记录一并删除）；退回、重置状态为非破坏性操作，使用普通确认或弹窗；遗留清理为两步（检查结果弹窗 → 弹窗内「确认清理」）。
 
-**受管指派**：按 server assignmentProtocol 明确选择 legacy / managed-v1；缺失或未知协议不可指派。managed 展示精确 contentRevision、有序类型/path/原 index，只可选 type 严格等于 mistake。每组确认前固定 UUID requestKey、revision、精确 paths、subject/grade/comments；发送中禁改/双击，逐组展示 Completed/Failed/Unknown/NotAttempted 和真实 IDs，仅全部 Completed 才关闭并提示成功。部分/Unknown 在本页面保留原请求与已有 IDs，显式重试原 batch，不按刷新后的 index 重建；切行/关闭/迟到响应以 generation 隔离，取消只取消当前操作等待，仍可由恢复入口打开原请求。整页关闭不保证内存保留，durable authority 是 Mistake；不新增浏览器持久 journal、不自动 seal/cleanup。详见[受管集成契约](../../docs/Integration/ManagedAssignment.md)。
+**受管指派**：按服务器返回的 `assignmentProtocol` 选择 legacy 或 managed-v1；缺失或未知协议时不可指派。受管模式展示精确 `contentRevision`、有序类型与路径以及原 index，只允许选择 `type === "mistake"` 的图片。每组确认前固定 UUID `requestKey`、revision、精确 `sourcePaths` 或 `sourceRegions`，以及 subject/grade/comments。两种输入二选一；区域可指定整图或裁剪矩形，规则见[受管指派说明](../../docs/Integration/ManagedAssignment.md)。发送中禁止修改，双击只发送一次；逐组展示 Completed/Failed/Unknown/NotAttempted 和真实 IDs，仅全部 Completed 才关闭并提示成功。部分成功或 Unknown 时，在本页面保留原请求与已有 IDs，显式重试整个原批次，不按刷新后的 index 重建。切行或关闭抽屉时递增操作编号 `generation`，旧操作延迟返回的响应不能覆盖当前内容；取消只停止当前操作等待，恢复入口仍可打开原请求。整页关闭后不保证恢复内存中的记录；永久结果由 Mistake 保存。Admin 不新增浏览器持久操作日志，不主动封闭来源（seal，来源交接后拒绝新分组）或执行旧清理。
 
 **功能列表**：
 - 上传记录列表（学生搜索筛选、状态筛选、分页）
@@ -437,13 +437,13 @@ frontend/src/
 
 ### 6. OSS 审计页面 (`/oss-audit`)
 
-**所属分组**：存储审计。行为权威见 [StorageAudit](../../docs/modules/OssAudit/StorageAudit.md)，消费同一版本StorageReferences合同。
+**所属分组**：存储审计。行为规则见 [StorageAudit](../../docs/modules/OssAudit/StorageAudit.md)，调用同一版本的 StorageReferences 接口。
 
-**布局**：触发全量扫描（普通确认；运行/触发中禁用）+ 状态面板 + 状态/Bucket/当前页路径筛选 + 记录表格 + 服务端分页（10/20/50）+ 旧Pending忽略弹窗。当前视图无选择列、删除按钮、批量操作栏或resolve事件处理；不能通过旧status或伪造组件事件触发删除。
+**布局**：触发全量扫描（普通确认；运行或触发中禁用）+ 状态面板 + 状态/Bucket/当前页路径筛选 + 记录表格 + 服务端分页（10/20/50）+ 历史 Pending 忽略弹窗。当前视图无选择列、删除按钮、批量操作栏或 `resolve` 事件处理；不能通过旧 status 或伪造组件事件触发删除。
 
-**状态**：0待处理、1已删除、2已忽略保留历史；3“未观察到引用”只读观察。只有旧0显示ignore，其余操作为—。状态面板区分历史待处理和observationCount；新v1 Run显示“未观察到引用”，旧Run显示“历史发现”，不编造版本证据。只有完整且恰三份student/mistake/homework metadata才展示各provider条数和capture时间；损坏/缺失proof不显示虚假完整状态。恒定deletionAuthorized=false不作为前端可配置开关。
+**状态**：保留历史状态 0 待处理、1 已删除、2 已忽略；状态 3 为“未观察到引用”的只读观察。仅历史状态 0 显示 `ignore`，其余操作为—。状态面板区分历史待处理与 `observationCount`；新 v1 运行记录显示“未观察到引用”，旧运行记录显示“历史发现”，不编造新版本验证结果。仅当 student/mistake/homework 三份快照元数据全部完整时，才展示各服务的条数与采集时间；元数据损坏或缺失时不能显示为完整状态。`deletionAuthorized` 恒为 `false`，不作为前端可配置开关。
 
-GET status支持isRunning、lastCompleted/lastFailed、pendingCount、observationCount；lastCompleted保留NewZombieCount兼容字段并新增referenceContractVersion/referenceSnapshots。每10秒轮询，运行转完成刷新列表。API错误清空列表显示错误态与重试；路径搜索仅过滤当前页并提示匹配数，总数仍服务端总数。页面仅调用getRecords/getStatus/triggerAudit/ignoreRecord；兼容resolve API仍存在但后端统一409或502拒绝，页面不调用。
+`GET status` 支持 isRunning、lastCompleted/lastFailed、pendingCount、observationCount；lastCompleted 保留 NewZombieCount 兼容字段，并新增 referenceContractVersion/referenceSnapshots。每 10 秒轮询，运行完成时刷新列表。API 失败时清空列表，显示错误状态与重试；路径搜索只过滤当前页并提示匹配数，总数仍为服务端返回的总数。页面只调用 getRecords/getStatus/triggerAudit/ignoreRecord；兼容 `resolve` API 仍存在，但后端在完整引用检查后返回 409，引用不可用时返回 502，页面不调用。
 
 ---
 
@@ -634,7 +634,7 @@ interface EnumOptionsResponse {
 - **确认操作**：删除、撤销权限、移除授权、解除关联等破坏性操作必须使用 `src/utils/confirm.ts` 的 `confirmDanger({ title, message, confirmText })`：危险图标与危险按钮、打开时确认按钮不获得焦点（回车不会执行）、点击遮罩不关闭、Esc/取消返回 `false` 且不抛异常。文案写明对象与后果；需要强调时用 `h()` 构造 VNode，**禁止** `dangerouslyUseHTMLString`（姓名、路径来自后端数据）。调用方写 `if (!(await confirmDanger(...))) return`，API 错误在自己的 try/catch 中处理。非破坏性操作（退回、重置状态、忽略、触发扫描等）不使用危险样式。
 - **认证**：浏览器只使用同源 HttpOnly 不透明 `adminSession`，access/id token 留 BFF 内存。初始化仅尝试移除历史 `adminAuthToken`、`adminRefreshToken`、`adminUsername`，从不读取这些值作身份依据；侧栏布局偏好不受影响。
 - **共享 HTTP 客户端**：所有 API 服务复用 `services/httpClient.ts`。只允许同源 `/api/`，移除 Authorization 和 axios auth；unsafe 请求单飞取得普通 CSRF 后携带单值 `X-CSRF-TOKEN`，不自动重试任何写请求。
-- **代次与失败**：每次失效/退出推进 session generation；旧初始化和旧 API 401/403 不覆盖新会话，多项同时 401 只执行一次受控登录页导航。请求取消不会产生部分写重放。
+- **会话编号与失败**：每次会话失效或退出时递增会话编号 `generation`；旧初始化或旧 API 的 401/403 响应不能覆盖新会话，多项请求同时返回 401 时只执行一次受控登录页导航。请求取消不会重放部分写请求。
 - **图片加载**：同源 `<img>` / `<el-image>` 自动携带服务器会话 Cookie，由现有图片端点授权后重定向；不拼接 JWT、Authorization 或浏览器 token。图片与业务 API 使用同一当前管理员边界。
 - **图片端点 URL 约定**：`GET /api/admin/image?path=<ossPath>&size=<small|medium|空>`，保留现有服务端管理员会话授权，返回 302 重定向到 OSS presigned URL；浏览器随后从平台公共 `https://oss.example.com/oss/` 入口拉取图片，该入口由 User Web Nginx 统一代理。
   - 列表缩略图：`size=small`
@@ -642,4 +642,4 @@ interface EnumOptionsResponse {
   - 详情页点击放大预览：不传 `size`（返回原图）
   - 路径分流：`mistakes/` 前缀走 Mistake 服务，其他路径走 Student 服务
 
-#75 配置收敛后，后端只运行服务器会话，必需认证配置非法时启动拒绝；五旧开关仅接受缺省/规范 true 作为迁移校验，不能选择 disabled 或 JWT 模式。前端同源 Cookie/普通及退出专用 CSRF、显式托管重认证、无写请求重放行为保持；API+SPA 必须使用同一完整集成镜像。升级前使用该目标镜像的只读预检，重启使内存票据失效，回滚须完整旧镜像与匹配配置。详见 [部署契约](../../docs/development/Deployment.md#认证只读预检与升级)。
+从 #75 起，后端统一使用服务器会话，必需认证配置非法时拒绝启动；五个旧开关仅接受缺省或规范的 `true` 作为迁移检查，不能选择 disabled 或 JWT 模式。前端同源 Cookie/普通及退出专用 CSRF、显式托管重认证、无写请求重放行为保持；API+SPA 必须使用同一完整集成镜像。升级前使用该目标镜像的只读预检，重启使内存票据失效，回滚须完整旧镜像与匹配配置。详见 [部署契约](../../docs/development/Deployment.md#认证只读预检与升级)。

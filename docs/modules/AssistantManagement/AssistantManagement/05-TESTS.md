@@ -1,5 +1,7 @@
 # 助教管理 — 测试规格
 
+> 以下转发调用方 Authorization 的描述是历史方案。当前代理只发送服务器票据内 token，并拒绝入站 Authorization；当前规则见根目录 AGENTS.md 和 docs/api.md。
+
 ## 1. AssistantPortalProxyMiddleware 测试
 
 与 TeacherPortalProxyMiddleware 测试对称:
@@ -11,7 +13,7 @@
 | /api/assistant-portal/auth/check-assistant | 转发到 {Address}/api/auth/check-assistant |
 | Assistant Portal 未配置 | 返回 503 |
 | Assistant Portal 不可达 | 返回 502 |
-| Authorization Bearer 透传 | 透传调用方的 Authorization 头，下游校验 role:admin |
+| Authorization Bearer 原样转发 | 原样转发调用方的 Authorization 头，下游校验 role:admin |
 | POST 请求体转发 | 请求体正确转发 |
 
 ## 2. AssistantDbService 测试
