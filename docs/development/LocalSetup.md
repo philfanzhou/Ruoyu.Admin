@@ -26,7 +26,7 @@
 | `StudentService:Url` | `http://localhost:5005` | Student HTTP 服务 |
 | `MistakeService:Url` | `http://localhost:5007` | Mistake HTTP 服务 |
 | `MistakeService:UseSessionToken` | `false` | 仅 Mistake 出站会话 opt-in；启用需显式根 origin（path 为 `/`），http 与 https 同等接受，公网部署应使用 HTTPS（部署建议，非代码强制） |
-| `IdentityService:Authority` | （无；Development 默认 `http://localhost:5002`，见 `appsettings.Development.json`） | Identity 托管 OIDC discovery +服务器会话 HTTP 代理。`appsettings.json` 不含 `IdentityService` 节，本地必须经环境变量 / user-secrets 注入 `AppId`、`AppSecret` 等 |
+| `IdentityService:Authority` | （无；Development 默认 `http://127.0.0.1:5002`，见 `appsettings.Development.json`） | Identity 托管 OIDC discovery +服务器会话 HTTP 代理。`appsettings.json` 不含 `IdentityService` 节，本地必须经环境变量 / user-secrets 注入 `AppId`、`AppSecret` 等 |
 | `TeacherPortal:Url` | `http://localhost:5004` | Teacher Portal HTTP 服务 |
 | `AssistantPortal:Url` | `http://localhost:5021` | Assistant Portal HTTP 服务 |
 
