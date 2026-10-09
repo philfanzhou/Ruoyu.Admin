@@ -14,7 +14,7 @@
 
   <ItemGroup>
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
-    <PackageReference Include="SignaCore.Client.AspNetCore" Version="0.1.15" />
+    <PackageReference Include="SignaCore.Client.AspNetCore" Version="0.1.16" />
     <PackageReference Include="ServiceMantle.Database.PostgreSql" Version="0.3.1-rc.1" />
     <PackageReference Include="ServiceMantle.Diagnostics" Version="0.3.1-rc.1" />
     <PackageReference Include="ServiceMantle.Logging" Version="0.3.1-rc.1" />

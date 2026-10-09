@@ -132,7 +132,7 @@ worker不再执行startup旧Homework review图或非审计桶记录清理；符�
 
 ## 常见问题
 
-当前 Mistake 出站会话回归不使用上述旧匿名替身证明授权。`MistakeService:UseSessionToken` 默认 false，true 必须显式正常 HTTPS 根 origin，只有 Testing/Development 数字 loopback 可 HTTP。运行 `dotnet test backend/Ruoyu.Admin.sln --configuration Release --filter "FullyQualifiedName~MistakeSession"` 验证全 14 方法和真 Program 握手、票据缓存后换/撤票、并发、未知结果、取消与后续 Student/S3 零写；fake Authority 与 TCP receiver 仅证明自动化边界。最终版本还须在自有隔离环境用官方 SignaCore、真实当前 Mistake/Student 与实际 S3 取图。严格目标 reviewer/SourceIntake/managed immutable/pins 保护不得为回归关闭；真实目标 401/403 为 Admin 安全 502，失败/取消不自动重试，未知写结果不能声称未提交。配置及回滚见 [Deployment](./Deployment.md#mistake-出站会话ikjnxa)。
+当前 Mistake 出站会话回归不使用上述旧匿名替身证明授权。`MistakeService:UseSessionToken` 默认 false，true 必须显式根 origin（path 为 `/`），http 与 https 同等接受（结构规则不变，禁止 localhost）。运行 `dotnet test backend/Ruoyu.Admin.sln --configuration Release --filter "FullyQualifiedName~MistakeSession"` 验证全 14 方法和真 Program 握手、票据缓存后换/撤票、并发、未知结果、取消与后续 Student/S3 零写；fake Authority 与 TCP receiver 仅证明自动化边界。最终版本还须在自有隔离环境用官方 SignaCore、真实当前 Mistake/Student 与实际 S3 取图。严格目标 reviewer/SourceIntake/managed immutable/pins 保护不得为回归关闭；真实目标 401/403 为 Admin 安全 502，失败/取消不自动重试，未知写结果不能声称未提交。配置及回滚见 [Deployment](./Deployment.md#mistake-出站会话ikjnxa)。
 
 - **启动即抛 `InvalidOperationException`**：`IdentityService:AppId/AppSecret` 未注入（步骤 2）。
 - **认证校验失败提示 RequireHttpsMetadata**：Authority/Issuer 用了 `http://` 但没设 `IdentityService:RequireHttpsMetadata=false`。
@@ -153,7 +153,7 @@ Session API 专项使用合法必需认证配置与 fake OIDC：真 Program 覆�
 
 ### Prepared logout（#46，#83 起由 SignaCore 包承担）
 
-退出始终使用 prepared logout，端点为包拥有的 `POST /api/auth/oidc/logout`。必需的 `AdminOidc:PostLogoutRedirectUri` 与 RedirectUri 同 origin，路径固定 `/api/auth/oidc/logout/return`、生产 HTTPS、无 query/fragment/userinfo；SignaCore 应用注册的 PostLogout 回调需由维护者改为该值。数字 loopback 开发例外沿 OIDC；非 POST logout 固定405，每次 POST 尝试都清理旧 `adminAuthToken` Cookie。
+退出始终使用 prepared logout，端点为包拥有的 `POST /api/auth/oidc/logout`。必需的 `AdminOidc:PostLogoutRedirectUri` 与 RedirectUri 同 origin，路径固定 `/api/auth/oidc/logout/return`、无 query/fragment/userinfo；SignaCore 应用注册的 PostLogout 回调需由维护者改为该值。http 与 https 同等接受（结构规则不变），公网部署应使用 HTTPS（建议而非强制）；非 POST logout 固定405，每次 POST 尝试都清理旧 `adminAuthToken` Cookie。
 
 SPA 先 GET `/api/auth/oidc/csrf`（公开签发 `{"token":"..."}`，轮换共享 `adminCsrf` Cookie），再以导航式 form POST 提交 `__RequestVerificationToken`（或单值 `X-CSRF-TOKEN` header）。缺/错 token 固定 `400 {"outcome":"csrf_rejected"}` 且不触碰会话；登出不以 access token 期限或管理员白名单阻止本人退出。包在按会话键串行的门内先移除票据、删除会话 Cookie，再向 Authority `/oauth2/logout/requests` 发 HTTP Basic 认证 + 服务器 id_token_hint + PostLogout URI + 一次性 state，不重试不跟随 redirect；成功 302 验证过的同源 logout_uri，失败/超时/取消固定 `200 {"outcome":"local_only"}`。回跳 `/api/auth/oidc/logout/return?state=...` 以绑定 Cookie（5 分钟）原子单用，正确 302 `/login`，其余固定 400 HTML。
 

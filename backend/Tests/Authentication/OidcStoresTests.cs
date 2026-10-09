@@ -25,12 +25,18 @@ public sealed class OidcStoresTests
     [InlineData("https://admin.example.test/api/auth/oidc/callback", "Production", true)]
     [InlineData("http://127.0.0.1:5020/api/auth/oidc/callback", "Development", true)]
     [InlineData("http://[::1]:5020/api/auth/oidc/callback", "Testing", true)]
-    [InlineData("http://127.0.0.1:5020/api/auth/oidc/callback", "Production", false)]
+    // Transport security is a deployment decision (issue #94): http is accepted equally in
+    // every environment name, for any host shape except the rejected "localhost" name.
+    [InlineData("http://127.0.0.1:5020/api/auth/oidc/callback", "Production", true)]
+    [InlineData("http://192.168.55.10:5020/api/auth/oidc/callback", "Production", true)]
+    [InlineData("http://[fd00::10]:5020/api/auth/oidc/callback", "Production", true)]
+    [InlineData("http://admin.example.test:5020/api/auth/oidc/callback", "Production", true)]
+    [InlineData("http://192.168.55.10:5020/api/auth/oidc/callback", "Testing", true)]
     [InlineData("http://localhost:5020/api/auth/oidc/callback", "Development", false)]
     [InlineData("https://localhost/api/auth/oidc/callback", "Production", false)]
     [InlineData("https://LOCALHOST/api/auth/oidc/callback", "Testing", false)]
     [InlineData("https://localhost./api/auth/oidc/callback", "Development", false)]
-    public void ConfigurationEnforcesEnvironmentTlsAndNumericLoopback(string redirect, string environment, bool valid)
+    public void ConfigurationAcceptsHttpAndHttpsEquallyInEveryEnvironment(string redirect, string environment, bool valid)
     {
         var config = new Microsoft.Extensions.Configuration.ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
@@ -50,9 +56,11 @@ public sealed class OidcStoresTests
 
     [Theory]
     [InlineData("IdentityService:Authority", "https://localhost")]
+    [InlineData("IdentityService:Authority", "http://localhost:5002")]
     [InlineData("AdminOidc:PostLogoutRedirectUri", "https://localhost" + AdminOidcSettings.LogoutReturnPath)]
+    [InlineData("AdminOidc:PostLogoutRedirectUri", "http://localhost:5020" + AdminOidcSettings.LogoutReturnPath)]
     [InlineData("AdminOidc:PostLogoutRedirectUri", "https://admin.example.test/api/auth/oidc/logout-callback")]
-    public void ConfigurationRejectsHttpsLocalhostAndLegacyLogoutCallbackInEveryUri(string key, string value)
+    public void ConfigurationRejectsLocalhostHostsAndLegacyLogoutCallbackInEveryUri(string key, string value)
     {
         var values = AdminSessionDisabledTests.ValidConfiguration();
         values[key] = value;
@@ -62,111 +70,74 @@ public sealed class OidcStoresTests
     }
 
     [Theory]
-    [InlineData("http://192.168.55.10:5020/api/auth/oidc/callback", "http://192.168.55.10:5020", true)]
-    [InlineData("http://10.1.2.3:5020/api/auth/oidc/callback", "http://10.1.2.4:5020", false)]
-    [InlineData("http://[fd00::10]:5020/api/auth/oidc/callback", "http://[FD00::10]:5020", true)]
-    [InlineData("http://[fd00::10]:5020/api/auth/oidc/callback", "http://[fd00::11]:5020", false)]
-    [InlineData("http://192.168.55.10:5020/api/auth/oidc/callback", "http://192.168.55.10:5002", false)]
-    [InlineData("http://192.168.55.10:5020/api/auth/oidc/callback", "http://192.168.55.10:05020", true)]
-    public void ConfigurationAdmitsExplicitIntranetHttpOriginsInEveryEnvironment(string redirect, string listed, bool valid)
+    [InlineData("http://192.168.55.10:5002")]
+    [InlineData("http://10.1.2.3:5002")]
+    [InlineData("http://[fd12::34]:5002")]
+    [InlineData("http://identity.example.test:5002")]
+    [InlineData("https://identity.example.test")]
+    public void AuthoritySurfaceAcceptsHttpAndHttpsEquallyWithoutAnyList(string authority)
     {
         var values = AdminSessionDisabledTests.ValidConfiguration();
-        values["AdminOidc:RedirectUri"] = redirect;
-        values["AdminOidc:PostLogoutRedirectUri"] = new Uri(redirect).GetLeftPart(UriPartial.Authority) + AdminOidcSettings.LogoutReturnPath;
-        values["IdentityService:Authority"] = "http://192.168.55.10:5002";
-        values["AdminOidc:IntranetHttpOrigins:0"] = listed;
-        if (!string.Equals(listed, "http://192.168.55.10:5002", StringComparison.Ordinal))
-            values["AdminOidc:IntranetHttpOrigins:1"] = "http://192.168.55.10:5002";
+        values["IdentityService:Authority"] = authority;
         var config = new ConfigurationBuilder().AddInMemoryCollection(values).Build();
         var env = new Microsoft.Extensions.Hosting.Internal.HostingEnvironment { EnvironmentName = "Production" };
-        if (valid)
-        {
-            var settings = AdminOidcSettings.Read(config, env);
-            Assert.True(settings.InsecureHttp);
-            Assert.Contains(new Uri(redirect).GetLeftPart(UriPartial.Authority), settings.IntranetHttpOrigins);
-            Assert.Contains("http://192.168.55.10:5002", settings.IntranetHttpOrigins);
-        }
-        else Assert.Equal("AdminOidc:RedirectUri", Assert.Throws<InvalidOperationException>(() => AdminOidcSettings.Read(config, env)).Message);
+        var settings = AdminOidcSettings.Read(config, env);
+        Assert.Equal(authority, settings.Authority);
+        Assert.False(settings.InsecureHttp); // the HTTPS redirect entry keeps Secure cookies
     }
 
     [Theory]
-    [InlineData("http://192.168.55.10:5002", true)]
-    [InlineData("http://192.168.55.11:5002", false)]
-    [InlineData(null, false)]
-    public void AuthoritySurfaceAdmitsOnlyListedIntranetHttpOrigin(string? listed, bool valid)
+    [InlineData("AdminOidc:RedirectUri", "https://user@admin.example.test/api/auth/oidc/callback")]
+    [InlineData("AdminOidc:RedirectUri", "http://user@192.168.55.10:5020/api/auth/oidc/callback")]
+    [InlineData("AdminOidc:RedirectUri", "https://admin.example.test/api/auth/oidc/callback?x=1")]
+    [InlineData("AdminOidc:RedirectUri", "http://192.168.55.10:5020/api/auth/oidc/callback?x=1")]
+    [InlineData("AdminOidc:RedirectUri", "https://admin.example.test/api/auth/oidc/callback#f")]
+    [InlineData("AdminOidc:RedirectUri", "http://192.168.55.10:5020/api/auth/oidc/callback#f")]
+    [InlineData("AdminOidc:RedirectUri", "https://*.example.test/api/auth/oidc/callback")]
+    [InlineData("AdminOidc:RedirectUri", "http://192.168.55.10:5020/api/auth/oidc/Callback")]
+    [InlineData("AdminOidc:RedirectUri", "http://192.168.55.10:05020/api/auth/oidc/callback")]
+    [InlineData("AdminOidc:RedirectUri", "ftp://192.168.55.10:5020/api/auth/oidc/callback")]
+    [InlineData("AdminOidc:RedirectUri", "http://192.168.55.10:5020/api/auth/oidc/callbacké")]
+    [InlineData("AdminOidc:RedirectUri", "http://192.168.55.10:5020/api/auth/oidc/callback\u0008")]
+    [InlineData("IdentityService:Authority", "ftp://192.168.55.10:5002")]
+    [InlineData("IdentityService:Authority", "http://user@192.168.55.10:5002")]
+    public void ConfigurationRejectsStructuralUriViolationsInBothSchemes(string key, string value)
     {
         var values = AdminSessionDisabledTests.ValidConfiguration();
-        values["IdentityService:Authority"] = "http://192.168.55.10:5002";
-        if (listed is not null) values["AdminOidc:IntranetHttpOrigins:0"] = listed;
-        var config = new ConfigurationBuilder().AddInMemoryCollection(values).Build();
-        var env = new Microsoft.Extensions.Hosting.Internal.HostingEnvironment { EnvironmentName = "Production" };
-        if (valid)
-        {
-            var settings = AdminOidcSettings.Read(config, env);
-            Assert.Equal("http://192.168.55.10:5002", settings.Authority);
-            Assert.False(settings.InsecureHttp); // the HTTPS redirect entry keeps Secure cookies
-        }
-        else Assert.Equal("IdentityService:Authority", Assert.Throws<InvalidOperationException>(() => AdminOidcSettings.Read(config, env)).Message);
-    }
-
-    [Theory]
-    [InlineData("http://192.168.055.10:5020")]
-    [InlineData("http://[fe80::1]:5020")]
-    [InlineData("http://[::ffff:192.168.55.10]:5020")]
-    [InlineData("http://192.168.55.10:0")]
-    [InlineData("http://192.168.55.10:65536")]
-    [InlineData("http://192.168.55.10:5020/api")]
-    [InlineData("http://192.168.55.10:5020?x=1")]
-    [InlineData("https://192.168.55.10:5020")]
-    [InlineData("http://8.8.8.8:5020")]
-    [InlineData("http://172.32.0.1:5020")]
-    [InlineData("http://admin.intranet.test:5020")]
-    [InlineData("http://192.168.55.10")]
-    [InlineData(" http://192.168.55.10:5020")]
-    [InlineData("http://user@192.168.55.10:5020")]
-    [InlineData("http://192.168.55.10:5020%20")]
-    [InlineData("")]
-    [InlineData("http://127.0.0.1:5020")]
-    public void ConfigurationRejectsMalformedIntranetHttpOriginListEntries(string entry)
-    {
-        var values = AdminSessionDisabledTests.ValidConfiguration();
-        values["AdminOidc:IntranetHttpOrigins:0"] = entry;
+        values[key] = value;
         var config = new ConfigurationBuilder().AddInMemoryCollection(values).Build();
         var env = new Microsoft.Extensions.Hosting.Internal.HostingEnvironment { EnvironmentName = "Production" };
         var error = Assert.Throws<InvalidOperationException>(() => AdminOidcSettings.Read(config, env));
-        Assert.Equal("AdminOidc:IntranetHttpOrigins", error.Message);
-        if (entry.Length > 0) Assert.DoesNotContain(entry, error.ToString()); // key only, never a value
+        Assert.Equal(key, error.Message);
+        Assert.DoesNotContain(value, error.ToString()); // key only, never a value
     }
 
     [Fact]
-    public void ConfigurationRejectsDuplicateIntranetHttpOriginsAfterNormalization()
+    public void ConfigurationRejectsRedirectsLongerThanFiveHundredCharacters()
     {
+        // Path and spelling stay exactly canonical so only the length rule rejects.
+        var tooLong = "https://" + new string('a', 500) + ".test/api/auth/oidc/callback";
+        Assert.True(tooLong.Length > 500);
         var values = AdminSessionDisabledTests.ValidConfiguration();
-        values["AdminOidc:IntranetHttpOrigins:0"] = "http://192.168.55.10:5020";
-        values["AdminOidc:IntranetHttpOrigins:1"] = "http://192.168.55.10:05020";
+        values["AdminOidc:RedirectUri"] = tooLong;
+        values["AdminOidc:PostLogoutRedirectUri"] = "https://" + new string('a', 500) + ".test" + AdminOidcSettings.LogoutReturnPath;
         var config = new ConfigurationBuilder().AddInMemoryCollection(values).Build();
         var env = new Microsoft.Extensions.Hosting.Internal.HostingEnvironment { EnvironmentName = "Production" };
-        Assert.Equal("AdminOidc:IntranetHttpOrigins",
-            Assert.Throws<InvalidOperationException>(() => AdminOidcSettings.Read(config, env)).Message);
+        Assert.Equal("AdminOidc:RedirectUri", Assert.Throws<InvalidOperationException>(() => AdminOidcSettings.Read(config, env)).Message);
     }
 
     [Fact]
-    public void ConfigurationRejectsScalarShapedIntranetHttpOriginList()
+    public void ResidualRetiredIntranetHttpOriginKeyIsNotRead()
     {
+        // Leftover entries of the retired 0.1.15 opt-in list — even ones its grammar would
+        // have rejected — never reach the parser and never block startup.
         var values = AdminSessionDisabledTests.ValidConfiguration();
+        values["AdminOidc:IntranetHttpOrigins:0"] = "not-even-a-uri";
+        values["AdminOidc:IntranetHttpOrigins:1"] = "http://192.168.55.10:5020";
         values["AdminOidc:IntranetHttpOrigins"] = "http://192.168.55.10:5020";
         var config = new ConfigurationBuilder().AddInMemoryCollection(values).Build();
-        var env = new Microsoft.Extensions.Hosting.Internal.HostingEnvironment { EnvironmentName = "Production" };
-        Assert.Equal("AdminOidc:IntranetHttpOrigins",
-            Assert.Throws<InvalidOperationException>(() => AdminOidcSettings.Read(config, env)).Message);
-    }
-
-    [Fact]
-    public void MissingListKeepsHttpsOnlyEnforcementAndEmptyCanonicalSet()
-    {
-        var config = new ConfigurationBuilder().AddInMemoryCollection(AdminSessionDisabledTests.ValidConfiguration()).Build();
         var settings = AdminOidcSettings.Read(config, new Microsoft.Extensions.Hosting.Internal.HostingEnvironment { EnvironmentName = "Production" });
-        Assert.Empty(settings.IntranetHttpOrigins);
+        Assert.Equal("https://admin.example.test/api/auth/oidc/callback", settings.RedirectUri);
         Assert.False(settings.InsecureHttp);
     }
 }

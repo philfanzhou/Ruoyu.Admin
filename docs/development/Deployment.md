@@ -63,9 +63,9 @@ Admin API 启动时通过 Consul `config/ruoyu/*` 加载 PostgreSQL、OSS 和下
 
 当前版本只运行服务器会话托管登录。必须配置 `IdentityService:Authority/AppId/AppSecret`、`AdminOidc:RedirectUri/PostLogoutRedirectUri`、当前管理员白名单与 ADMIN 应用 audience，并完成真实下游信任及精确 Code/Logout 注册。五个旧键 `AdminOidc:Enabled/UseSessionForAdminApi/UseSessionForLogout/UseSessionForIdentityProxy/UseSessionForPortalProxies` 不再选择运行模式：应删除；仅缺省或规范小写 `true` 可通过迁移检验，显式 `false`、空值或畸形值在所有环境启动拒绝。密码入口永久 `410 legacy_login_disabled`，API/图片/三个代理/关联查询始终使用同一管理员会话与 CSRF 边界，任何入站 Authorization 固定401；不存在关闭能力或浏览器 JWT 回退模式。
 
-必需 `IdentityService:Authority/AppId/AppSecret` 与 `AdminOidc:RedirectUri/PostLogoutRedirectUri`，精确注册 `https://admin.example.com/api/auth/oidc/callback`（占位示例）。URI 必须与配置 byte-for-byte 相同，路径固定、无 query/fragment/userinfo/wildcard；生产 HTTPS。只有 Development/Testing 允许 `http://127.0.0.1:<port>/api/auth/oidc/callback` 或 `http://[::1]:<port>/api/auth/oidc/callback`；不允许 localhost。内网 HTTP 部署可显式配置 `AdminOidc:IntranetHttpOrigins`（issue #94）：`http://` + RFC1918 IPv4 字面量或方括号 IPv6 ULA 字面量 + 显式端口 1–65535 的精确 origin 清单，任一环境（含 Production）仅对清单内 origin 豁免 HTTP；清单同时作用于登录/登出回调、`IdentityService:Authority` 与启用 `MistakeService:UseSessionToken` 时的 `MistakeService:Url`。非法项（域名、公网地址、回环、前导零 IPv4、IPv4-mapped、端口越界、带 path/query/userinfo、`https://` 项、规范化后重复）与不可绑定为字符串数组的形状启动即拒（固定安全代码 `AdminOidc:IntranetHttpOrigins`）。缺失或空清单维持现状 HTTPS 强制，默认行为不变；回滚=清空清单重启，无迁移、无状态转换，切换 Cookie profile 需重新登录。清单是部署意图声明，不是网络访问控制：仅用于不受公网可达的受控隔离网络（如划分 VLAN 的管理服务），不与高信任 HTTPS 部署共享主机/Cookie 域。SignaCore Host 侧须同样放行本服务的 HTTP redirect origin（其 Testing 门允许清单，0.1.12+ 已交付）。Authority 去结尾 `/` 后与 Discovery issuer 严格相同；OIDC 不使用 JWT AdditionalValidIssuers 放宽信任。错误配置启动失败，公开输出固定安全代码，配置校验内部只使用键名。
+必需 `IdentityService:Authority/AppId/AppSecret` 与 `AdminOidc:RedirectUri/PostLogoutRedirectUri`，精确注册 `https://admin.example.com/api/auth/oidc/callback`（占位示例）。URI 必须与配置 byte-for-byte 相同，路径固定、无 query/fragment/userinfo/wildcard；不允许 localhost。传输安全是部署决策（issue #94，对齐 SignaCore #566）：代码层 http 与 https 同等接受，任意环境名（含 Production）、任意 host 形态（数字 loopback、私网/公网 IP 或域名）无差别，仅保留结构性 URI 规则；同一语义作用于登录/登出回调、`IdentityService:Authority` 与启用 `MistakeService:UseSessionToken` 时的 `MistakeService:Url`。公网部署应使用 TLS（反向代理 / TLS 终止 / 网络分区，建议而非强制，职责在部署侧）；回滚=改回 HTTPS URI 配置并重启，无迁移、无状态转换，切换 Cookie Secure 派生需重新登录。0.1.15 部署若残留旧的内网 HTTP origin 清单键，直接删除即可：残留键不被读取、不阻断启动。SignaCore Host 0.1.16 起同样移除 HTTP origin 门；更早的 Host 版本须按其自身 Testing 门放行本服务的 HTTP redirect origin（部署侧事实）。Authority 去结尾 `/` 后与 Discovery issuer 严格相同；OIDC 不使用 JWT AdditionalValidIssuers 放宽信任。错误配置启动失败，公开输出固定安全代码，配置校验内部只使用键名。
 
-按 [SignaCore HostedLogin](https://github.com/philfanzhou/SignaCore/blob/52c68c812335dd6a967cb90042ac91c21543d387/docs/integrations/HostedLogin.md) 注册 Confidential、PerApplication audience、精确 Redirect URI 和 Code + openid profile + S256，不启用 refresh。Admin 从 Discovery 取授权/token/JWKS 端点，不发送 PAR、prompt 或其他不支持字段；兑换为 client_secret_basic（凭据只在 Authorization 头，0.1.14+ 并以零时钟偏差的严格默认校验 token 期限与未来 `iat`，本仓不放宽），固定外部 RedirectUri 与原 verifier，不信任入站 Host/X-Forwarded-Host 拼地址。浏览器原点与 BFF 处理 CSRF 的请求都必须保持 HTTPS——唯一例外是显式配置的 `AdminOidc:IntranetHttpOrigins` 清单（见上）：清单生效（http 入口 origin，含开发数字 loopback 与清单命中）时本仓 `adminCsrf` 使用 `CookieSecurePolicy.SameAsRequest`，SignaCore.Client.AspNetCore 0.1.15 起包自身全部 Cookie 不带 Secure（内网 profile，与本仓传入的规范化清单同一套校验）；HTTPS 路径保持 `Always`。当前服务不处理任意转发头，不能仅由外层 TLS 终止后把 HTTP 转给 5020，再依赖 `X-Forwarded-Proto` 声称安全；生产 `CookieSecurePolicy.Always` 会拒绝这种 CSRF 配置。保留硬编码 HTTP 5020，可通过标准 `Kestrel:Endpoints` 配置增加内部 HTTPS 监听，代理以正常 CA 验证 HTTPS 上游，不改端口契约或扩大转发头信任。
+按 [SignaCore HostedLogin](https://github.com/philfanzhou/SignaCore/blob/52c68c812335dd6a967cb90042ac91c21543d387/docs/integrations/HostedLogin.md) 注册 Confidential、PerApplication audience、精确 Redirect URI 和 Code + openid profile + S256，不启用 refresh。Admin 从 Discovery 取授权/token/JWKS 端点，不发送 PAR、prompt 或其他不支持字段；兑换为 client_secret_basic（凭据只在 Authorization 头，0.1.14+ 并以零时钟偏差的严格默认校验 token 期限与未来 `iat`，本仓不放宽），固定外部 RedirectUri 与原 verifier，不信任入站 Host/X-Forwarded-Host 拼地址。Cookie Secure 标志按配置入口 URI 的实际 scheme 派生（SignaCore.Client.AspNetCore 0.1.16 起两侧同语义）：http 入口时本仓 `adminCsrf` 使用 `CookieSecurePolicy.SameAsRequest`、包自身全部 Cookie 不带 Secure；https 入口保持 `Always`/Secure。公网部署应让浏览器原点与 BFF 处理 CSRF 的请求都保持 HTTPS（建议而非强制）。当前服务不处理任意转发头，不能仅由外层 TLS 终止后把 HTTP 转给 5020，再依赖 `X-Forwarded-Proto` 声称安全；生产 `CookieSecurePolicy.Always` 会拒绝这种 CSRF 配置。保留硬编码 HTTP 5020，可通过标准 `Kestrel:Endpoints` 配置增加内部 HTTPS 监听，代理以正常 CA 验证 HTTPS 上游，不改端口契约或扩大转发头信任。
 
 受控 HTTPS 联调的配置例（端口和证书路径由部署选择，密码只注入受限环境）：
 
@@ -75,7 +75,7 @@ Kestrel__Endpoints__AdminHttps__Certificate__Path=/tls/server.pfx
 Kestrel__Endpoints__AdminHttps__Certificate__Password=<private environment value>
 ```
 
-纯内网受控网络（无 TLS 终止设施、划分 VLAN 的管理面）的替代方案是上文的 `AdminOidc:IntranetHttpOrigins` 显式清单（例如同时列出 `http://192.168.55.10:5002` 与 `http://192.168.55.10:5020` 两个 origin），不再需要此 HTTPS 监听；两种模式互斥于部署选择，清单仅放行清单内精确 origin，完整 URI 仍须逐项精确注册。
+纯内网受控网络（无 TLS 终止设施、划分 VLAN 的管理面）不需要此 HTTPS 监听：代码层 http 与 https 同等接受，URI 直接配置内网明文地址（例如 `http://192.168.55.10:5020/api/auth/oidc/callback` 与 `http://192.168.55.10:5002` 的 Authority），无需任何额外开关；是否 TLS 由部署选择，完整 URI 仍须逐项精确注册。
 
 代理使用 `proxy_pass https://admin:5022`、`proxy_ssl_verify on` 与 `proxy_ssl_trusted_certificate`，并设置与证书 SAN 匹配的 `proxy_ssl_name`。证书/PFX 只挂载到本实例，CA 只信任本实例及自有浏览器，不全局导入、不跳过验证。注册 callback 仍为浏览器的 HTTPS 同源地址，5020 仍保留；上述 HTTPS 监听不替代认证必需配置。实际联合验证还须确认 `/api/auth/csrf` 与 `/api/auth/oidc/csrf` 都返回 200，不能把托管登录成功当成 CSRF 可用。
 
@@ -83,7 +83,7 @@ Kestrel__Endpoints__AdminHttps__Certificate__Password=<private environment value
 
 单实例内存 state 最长 5 分钟、43 字符随机引用、单次原子消费；票据 8 小时绝对到期、不滑动，所有 token 留服务器。两类存储各最多 4096 项、每分钟回收；满载固定失败，重启丢失，不能多副本共用会话。数据保护 keys 即使还在也不会恢复已丢失 ticket；无新表/迁移。没有 refresh；prepared logout 使用现有服务器 ID token 与专用退出 CSRF，具体边界见下文。不要将前端显示状态作为管理员授权证明。
 
-服务器会话为唯一模式，非法配置在启动期失败。新会话管理员身份为已验证 Authority 的唯一 iss/sub 与服务器 stamp，白名单为空或当前移除即 403；入站 Authorization、缺票据/服务器 token 或到期期限为 JSON 401。unsafe 管理请求必须先 GET `/api/auth/csrf`，携带其独立 `adminCsrf` Cookie 与单值 `X-CSRF-TOKEN`；错误为 JSON 400，业务/OSS 删除前拒绝。生产 CSRF Cookie 同为 Secure/HttpOnly/Path=/、SameSite=Lax；允许 HTTP 入口的仅开发数字 loopback 与 `AdminOidc:IntranetHttpOrigins` 清单生效的内网 profile（`SameAsRequest`）；不更改 CORS、不增加跨域凭据。详细响应见 [API 契约](../api.md#管理员会话与-csrf42)。
+服务器会话为唯一模式，非法配置在启动期失败。新会话管理员身份为已验证 Authority 的唯一 iss/sub 与服务器 stamp，白名单为空或当前移除即 403；入站 Authorization、缺票据/服务器 token 或到期期限为 JSON 401。unsafe 管理请求必须先 GET `/api/auth/csrf`，携带其独立 `adminCsrf` Cookie 与单值 `X-CSRF-TOKEN`；错误为 JSON 400，业务/OSS 删除前拒绝。CSRF Cookie 为 HttpOnly/Path=/、SameSite=Lax，Secure 策略按配置入口 scheme 派生（http 入口 `SameAsRequest`，https 入口 Secure）；不更改 CORS、不增加跨域凭据。详细响应见 [API 契约](../api.md#管理员会话与-csrf42)。
 
 任何配置下密码 login 固定 `410 legacy_login_disabled`，不读取/转发密码。当前 SPA 退出使用专用 logout CSRF，服务器先原子撤销本地票据再准备上游退出；失败/丢失响应只查询本地事实，不自动重放，不宣称上游注销完成。非POST退出405。Student关联查询与三个代理始终使用服务器token边界。旧键不能恢复浏览器凭据路径；整版回滚也不能复活已撤销或丢失票据。
 
@@ -115,7 +115,7 @@ Kestrel__Endpoints__AdminHttps__Certificate__Password=<private environment value
 
 `MistakeService:UseSessionToken` 缺省为 `false`；显式值必须可解析为布尔值。它只选择 Admin 到 Mistake 的出站传输，入站管理 API 永久使用 AdminSession。`false` 保留原匿名下游、DTO 与异常兼容行为，不恢复浏览器 Bearer。
 
-启用前配置 `MistakeService:Url=https://mistake.example.com`，只能是显式根 API origin，无 userinfo、query、fragment 或子路径。生产需要 HTTPS 与正常 CA/SAN；仅 Development/Testing 允许数字 loopback HTTP，禁止 localhost、LAN HTTP 和隐式回退。只读 `--validate-auth-config` 与正式启动共同验证这两个键；`start.sh` 在停止旧实例前以目标 image 的同组配置预检，不刷新 cache、不创建目录。此处沿用实际 CLI 名称，不增加 `--validate-admin-oidc-config` 别名。
+启用前配置 `MistakeService:Url=https://mistake.example.com`，只能是显式根 API origin，无 userinfo、query、fragment 或子路径。传输安全是部署决策（issue #94）：http 与 https 同等接受（结构规则不变），禁止 localhost；公网部署应使用 HTTPS 与正常 CA/SAN（建议而非强制），无隐式回退。只读 `--validate-auth-config` 与正式启动共同验证这两个键；`start.sh` 在停止旧实例前以目标 image 的同组配置预检，不刷新 cache、不创建目录。此处沿用实际 CLI 名称，不增加 `--validate-admin-oidc-config` 别名。
 
 `true` 为全部 14 个既有 typed 方法使用专用 handler：每次发送从当前 `HttpContext.RequestServices` 重新认证并重读服务器 ticket，校验 issuer/sub/stamp、当前白名单、token 和严格截止时间，包括同请求框架认证已缓存后的换票/撤票。只向配置 origin 的既有 method/path 发送当前 server Bearer；禁止 Cookie、CSRF、入站 Authorization、AppSecret、ID/refresh token 或密码透传。无当前请求则零发送。传输禁用 redirect、Cookie 容器、客户端 logger 和出站 telemetry，不向 S3 或浏览器附加 Bearer。
 
@@ -178,7 +178,7 @@ gunzip -c backup_admin.sql.gz | docker exec -i ruoyu-postgres psql -U postgres -
 
 ### Prepared logout（#46，#83 起由 SignaCore 包承担）
 
-退出始终使用 prepared logout，端点为包拥有的 `POST /api/auth/oidc/logout`。必需的 `AdminOidc:PostLogoutRedirectUri` 与 RedirectUri 同 origin，路径固定 `/api/auth/oidc/logout/return`、生产 HTTPS、无 query/fragment/userinfo；SignaCore 应用注册的 PostLogout 回调需由维护者改为该值。数字 loopback 开发例外沿 OIDC；非 POST logout 固定405，每次 POST 尝试都清理旧 `adminAuthToken` Cookie。
+退出始终使用 prepared logout，端点为包拥有的 `POST /api/auth/oidc/logout`。必需的 `AdminOidc:PostLogoutRedirectUri` 与 RedirectUri 同 origin，路径固定 `/api/auth/oidc/logout/return`、无 query/fragment/userinfo；SignaCore 应用注册的 PostLogout 回调需由维护者改为该值。http 与 https 同等接受（结构规则不变），公网部署应使用 HTTPS（建议而非强制）；非 POST logout 固定405，每次 POST 尝试都清理旧 `adminAuthToken` Cookie。
 
 SPA 先 GET `/api/auth/oidc/csrf`（公开签发 `{"token":"..."}`，轮换共享 `adminCsrf` Cookie），再以导航式 form POST 提交 `__RequestVerificationToken`（或单值 `X-CSRF-TOKEN` header）。缺/错 token 固定 `400 {"outcome":"csrf_rejected"}` 且不触碰会话；登出不以 access token 期限或管理员白名单阻止本人退出。包在按会话键串行的门内先移除票据、删除会话 Cookie，再向 Authority `/oauth2/logout/requests` 发 HTTP Basic 认证 + 服务器 id_token_hint + PostLogout URI + 一次性 state，不重试不跟随 redirect；成功 302 验证过的同源 logout_uri，失败/超时/取消固定 `200 {"outcome":"local_only"}`。回跳 `/api/auth/oidc/logout/return?state=...` 以绑定 Cookie（5 分钟）原子单用，正确 302 `/login`，其余固定 400 HTML。
 
