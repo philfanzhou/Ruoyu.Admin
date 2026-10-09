@@ -41,11 +41,12 @@ export ConnectionStrings__AuditDb="Host=localhost;Port=5432;Database=ruoyu_admin
 
 ## 步骤 2：SignaCore Identity 本地实例（登录回归的必要组成）
 
-#24 的第一项就是登录/登出，且所有 `/api/*` 都在 FallbackPolicy 保护下，因此 Identity 不是可选项。按 [SignaCore](https://github.com/philfanzhou/SignaCore) 仓库的 `docs/development/LocalSetup.md` 与 `FirstRunSetup.md` 启动其本地实例（默认 `http://localhost:5002`），并：
+#24 的第一项就是登录/登出，且所有 `/api/*` 都在 FallbackPolicy 保护下，因此 Identity 不是可选项。按 [SignaCore](https://github.com/philfanzhou/SignaCore) 仓库的 `docs/development/LocalSetup.md` 与 `FirstRunSetup.md` 启动其本地实例（监听 5002 端口，`localhost` 与 `127.0.0.1` 均可达），并：
 
-1. 在 Identity 侧注册 `admin_portal` 应用，取得本地 `AppId` / `AppSecret`。
-2. 创建一个本地测试用户，记下其 Identity **user id**（GUID）。
-3. 把该 user id 加入 `AdminPortal:AdminUserIds` 白名单——`AdminAuthController.Callback` 只对白名单内用户返回 `role:admin`；白名单外用户能登录但拿不到 admin 角色。
+1. 首次 Setup Mode 的 public base URL / issuer 配为 `http://127.0.0.1:5002`（SignaCore 存于数据库，见其 `docs/development/LocalSetup.md`）。其客户端包要求 discovery issuer 与本服务配置的 `IdentityService:Authority` 精确一致（本仓 `AdminOidcTests` 即 Authority==Issuer==discovery issuer，issuer 偏移为失败用例），两侧都不能用 `localhost` 主机名——本仓 `IsSafeUri` 对 `localhost` 主机名结构性拒绝（见「常见问题」）。监听地址不变，改的只是对外的 base URL / issuer。
+2. 在 Identity 侧注册 `admin_portal` 应用，取得本地 `AppId` / `AppSecret`。
+3. 创建一个本地测试用户，记下其 Identity **user id**（GUID）。
+4. 把该 user id 加入 `AdminPortal:AdminUserIds` 白名单——`AdminAuthController.Callback` 只对白名单内用户返回 `role:admin`；白名单外用户能登录但拿不到 admin 角色。
 
 Admin.WebApi 的两个启动硬门必须同时满足：
 
@@ -57,14 +58,18 @@ Admin.WebApi 的两个启动硬门必须同时满足：
 ```bash
 export IdentityService__AppId="<本地 AppId>"
 export IdentityService__AppSecret="<本地 AppSecret>"
-export IdentityService__Authority="http://localhost:5002"
-export IdentityService__Issuer="http://localhost:5002"
+export IdentityService__Authority="http://127.0.0.1:5002"
+export IdentityService__Issuer="http://127.0.0.1:5002"
 export IdentityService__Audience="PlatformAudience"   # 须与 SignaCore 签发 JWT 的 aud 一致
 export IdentityService__RequireHttpsMetadata="false"
+export AdminOidc__RedirectUri="http://127.0.0.1:8090/api/auth/oidc/callback"
+export AdminOidc__PostLogoutRedirectUri="http://127.0.0.1:8090/api/auth/oidc/logout/return"
 export AdminPortal__AdminUserIds='["<本地测试用户的 Identity user id>"]'
 ```
 
-或 user-secrets（在 `backend/Admin.WebApi/` 下 `dotnet user-secrets set "IdentityService:AppId" ...`）。注意 `appsettings.json` **不含** `IdentityService` 节；`appsettings.Development.json` 已含 Authority/Issuer/Audience/RequireHttpsMetadata 的本地默认值，以 Development 环境启动时只需再补 AppId/AppSecret。
+`AdminOidc__RedirectUri` / `AdminOidc__PostLogoutRedirectUri` 是必填键：`appsettings.json` 的 `AdminOidc` 为空节、`appsettings.Development.json` 无该节，缺失启动即抛 `AdminOidc:RedirectUri`。两者必须同 origin，且路径固定为 `/api/auth/oidc/callback` 与 `/api/auth/oidc/logout/return`。取值按浏览器实际访问原点二选一，并与 SignaCore 侧注册精确一致：前端 dev 服务器（步骤 3）为 `http://127.0.0.1:8090/...`，与 [LocalSetup.md](./LocalSetup.md#托管登录开发配置)「不能注册内部 5020、localhost 或通配符」的既有立场一致；集成模式（构建产物拷入 `wwwroot/`）改用其实际同源地址（如 `http://127.0.0.1:5020/api/auth/oidc/callback`）。
+
+或 user-secrets（在 `backend/Admin.WebApi/` 下 `dotnet user-secrets set "IdentityService:AppId" ...`）。注意 `appsettings.json` **不含** `IdentityService` 节；`appsettings.Development.json` 已含 Authority/Issuer/Audience/RequireHttpsMetadata 的本地默认值（`http://127.0.0.1:5002`），以 Development 环境启动时只需再补 AppId/AppSecret 与 `AdminOidc:RedirectUri` / `AdminOidc:PostLogoutRedirectUri`。
 
 ## 步骤 3：启动 Admin.WebApi（本地 OSS 模式）
 
@@ -135,6 +140,7 @@ worker不再执行startup旧Homework review图或非审计桶记录清理；符�
 当前 Mistake 出站会话回归不使用上述旧匿名替身证明授权。`MistakeService:UseSessionToken` 默认 false，true 必须显式根 origin（path 为 `/`），http 与 https 同等接受（结构规则不变，禁止 localhost）。运行 `dotnet test backend/Ruoyu.Admin.sln --configuration Release --filter "FullyQualifiedName~MistakeSession"` 验证全 14 方法和真 Program 握手、票据缓存后换/撤票、并发、未知结果、取消与后续 Student/S3 零写；fake Authority 与 TCP receiver 仅证明自动化边界。最终版本还须在自有隔离环境用官方 SignaCore、真实当前 Mistake/Student 与实际 S3 取图。严格目标 reviewer/SourceIntake/managed immutable/pins 保护不得为回归关闭；真实目标 401/403 为 Admin 安全 502，失败/取消不自动重试，未知写结果不能声称未提交。配置及回滚见 [Deployment](./Deployment.md#mistake-出站会话ikjnxa)。
 
 - **启动即抛 `InvalidOperationException`**：`IdentityService:AppId/AppSecret` 未注入（步骤 2）。
+- **启动抛 `InvalidOperationException: IdentityService:Authority`（或 `AdminOidc:RedirectUri`）**：Authority/Issuer/Redirect 用了 `localhost` 主机名——`IsSafeUri` 结构规则在任何环境拒绝该主机名，改用 `127.0.0.1`；若根本没导出 `AdminOidc__RedirectUri` / `AdminOidc__PostLogoutRedirectUri` 也会抛后一异常（两个键必填，见步骤 2）。
 - **认证校验失败提示 RequireHttpsMetadata**：Authority/Issuer 用了 `http://` 但没设 `IdentityService:RequireHttpsMetadata=false`。
 - **登录成功但接口 403 / 无 admin 权限**：测试用户不在 `AdminPortal:AdminUserIds` 白名单。
 - **种子失败「表不存在」**：先完成步骤 3 让共享启动门完成基线迁移建表。
