@@ -1,4 +1,3 @@
-using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -14,27 +13,6 @@ namespace Ruoyu.Admin.ServiceClients;
 // so an upstream contract change surfaces as a deserialization mismatch, not a build error.
 
 // ===== DTOs matching student service HTTP response payload (the "data" portion) =====
-
-public class StageImageResult
-{
-    public bool Success { get; set; }
-    public string StagingPath { get; set; } = string.Empty;
-    public string ErrorMessage { get; set; } = string.Empty;
-}
-
-public class HomeworkImagesResult
-{
-    public bool Success { get; set; }
-    public List<string> ImagePaths { get; set; } = new();
-    public string ErrorMessage { get; set; } = string.Empty;
-}
-
-public class HomeworkImageContentResult
-{
-    public bool Success { get; set; }
-    public byte[] Data { get; set; } = Array.Empty<byte>();
-    public string ContentType { get; set; } = "image/jpeg";
-}
 
 public class ImageEntryDto
 {
@@ -68,26 +46,6 @@ public class DuplicateImageInfoDto
     public int ImageIndex { get; set; }
     public string UploadRecordId { get; set; } = string.Empty;
     public string CreatedAt { get; set; } = string.Empty;
-}
-
-public class UploadImagesResult
-{
-    public bool Success { get; set; }
-    public UploadRecordDto? Record { get; set; }
-    public List<DuplicateImageInfoDto> Duplicates { get; set; } = new();
-}
-
-public class ImageExistenceInfoDto
-{
-    public int ImageIndex { get; set; }
-    public bool Exists { get; set; }
-    public string UploadRecordId { get; set; } = string.Empty;
-    public string CreatedAt { get; set; } = string.Empty;
-}
-
-public class CheckImagesExistResult
-{
-    public List<ImageExistenceInfoDto> Items { get; set; } = new();
 }
 
 public class PresignedUrlResult
@@ -151,12 +109,6 @@ public class StudentInfoDto
 public class StudentsByAccountResult
 {
     public List<StudentInfoDto> Students { get; set; } = new();
-}
-
-public class SetDefaultResult
-{
-    public bool Success { get; set; }
-    public string ErrorMessage { get; set; } = string.Empty;
 }
 
 public class OpenSubjectItemDto
@@ -223,13 +175,6 @@ public class RemoveImagesResult
 
 // ===== DTOs for mistake→student calls (added per ADR-001-mistake-webapi-only) =====
 
-public class CreateReturnedRecordRequest
-{
-    public List<ImageEntryDto> ImageEntries { get; set; } = new();
-    public string? Comments { get; set; }
-    public string? ReturnReason { get; set; }
-}
-
 public class RemoveProcessedImagesResult
 {
     public bool Success { get; set; }
@@ -247,14 +192,7 @@ public class AccountIdsResult
 
 public interface IStudentHttpClient
 {
-    Task<StageImageResult> StageImageAsync(byte[] imageData, string contentType, CancellationToken ct = default);
-    Task<HomeworkImagesResult> PromoteHomeworkImagesAsync(string studentId, string homeworkId, List<string> partIds, CancellationToken ct = default);
-    Task DeleteHomeworkImagesAsync(string studentId, string homeworkId, List<string> imagePaths, CancellationToken ct = default);
-    Task<HomeworkImageContentResult> DownloadHomeworkImageAsync(string objectPath, CancellationToken ct = default);
-    Task<UploadImagesResult> UploadImagesByPathsAsync(string studentId, List<string> stagingPaths, List<string>? clientHashes, string? comments, CancellationToken ct = default);
-    Task<CheckImagesExistResult> CheckImagesExistAsync(string studentId, List<string> imageHashes, CancellationToken ct = default);
     Task<PresignedUrlResult> GetPresignedUrlAsync(string objectPath, int expirySeconds, string? size, CancellationToken ct = default);
-    Task<UploadRecordsPage> GetUploadRecordsAsync(string studentId, int status, int page, int pageSize, CancellationToken ct = default);
     Task<UploadRecordDto> GetUploadRecordAsync(string studentId, string recordId, CancellationToken ct = default);
     Task<RemoveImageResult> RemoveImageFromRecordAsync(string studentId, string recordId, int imageIndex, CancellationToken ct = default);
     Task<DeleteRecordResult> DeleteUploadRecordAsync(string studentId, string recordId, bool deleteOssFiles, CancellationToken ct = default);
@@ -262,7 +200,6 @@ public interface IStudentHttpClient
     Task<ResetStatusResult> ResetUploadRecordStatusAsync(string studentId, string recordId, int targetStatus, CancellationToken ct = default);
     Task MarkUploadRecordAsReturnedAsync(string studentId, string recordId, string? comments, string? returnReason, CancellationToken ct = default);
     Task<StudentsByAccountResult> GetStudentsByIdentityAccountIdAsync(string accountId, CancellationToken ct = default);
-    Task<SetDefaultResult> SetDefaultStudentAsync(string studentId, string identityAccountId, CancellationToken ct = default);
     Task<OpenSubjectsResult> GetStudentOpenSubjectsAsync(string studentId, bool activeOnly, CancellationToken ct = default);
 
     // ===== Admin portal extensions =====
@@ -282,8 +219,6 @@ public interface IStudentHttpClient
     Task DeleteUploadRecordAfterReviewAsync(string studentId, string recordId, CancellationToken ct = default);
 
     // ===== Mistake service extensions (mistake→student calls per ADR-001-mistake-webapi-only) =====
-    Task CreateReturnedRecordAsync(string studentId, List<ImageEntryDto> imageEntries, string? comments, string? returnReason, CancellationToken ct = default);
-    Task<UploadRecordsPage> GetProcessingUploadRecordsAsync(int page, int pageSize, CancellationToken ct = default);
     Task<RemoveProcessedImagesResult> RemoveProcessedImagesAsync(string recordId, List<string> imagePaths, CancellationToken ct = default);
 }
 
@@ -307,140 +242,6 @@ public class StudentHttpClient : IStudentHttpClient
         _logger = logger;
     }
 
-    public async Task<StageImageResult> StageImageAsync(byte[] imageData, string contentType, CancellationToken ct = default)
-    {
-        try
-        {
-            using var form = new MultipartFormDataContent();
-            var fileContent = new ByteArrayContent(imageData);
-            fileContent.Headers.ContentType = new MediaTypeHeaderValue(string.IsNullOrWhiteSpace(contentType) ? "image/jpeg" : contentType);
-            form.Add(fileContent, "file", "upload.jpg");
-
-            using var response = await _httpClient.PostAsync("/api/oss/stage-image", form, ct);
-            var envelope = await response.Content.ReadFromJsonAsync<ApiEnvelope<StageImageResult>>(JsonOptions, ct);
-            if (!response.IsSuccessStatusCode || envelope is null || !envelope.Success)
-            {
-                var msg = envelope?.Message ?? "StageImage failed";
-                _logger.LogWarning("StageImage failed: {Message}, Status: {Status}", msg, response.StatusCode);
-                return new StageImageResult { Success = false, ErrorMessage = msg };
-            }
-
-            return envelope.Data ?? new StageImageResult { Success = false, ErrorMessage = "Empty response data" };
-        }
-        catch (HttpRequestException ex)
-        {
-            _logger.LogError(ex, "StageImage HTTP request failed");
-            return new StageImageResult { Success = false, ErrorMessage = ex.Message };
-        }
-    }
-
-    public async Task<HomeworkImagesResult> PromoteHomeworkImagesAsync(
-        string studentId, string homeworkId, List<string> partIds, CancellationToken ct = default)
-    {
-        try
-        {
-            var body = new { studentId, homeworkId, partIds };
-            using var response = await _httpClient.PostAsJsonAsync("/api/oss/homework-images/promote", body, JsonOptions, ct);
-            var envelope = await response.Content.ReadFromJsonAsync<ApiEnvelope<HomeworkImagesResult>>(JsonOptions, ct);
-            if (!response.IsSuccessStatusCode || envelope is null || !envelope.Success)
-            {
-                var message = envelope?.Message ?? "PromoteHomeworkImages failed";
-                _logger.LogWarning("PromoteHomeworkImages failed: {Message}, Status: {Status}", message, response.StatusCode);
-                return new HomeworkImagesResult { Success = false, ErrorMessage = message };
-            }
-            return envelope.Data ?? new HomeworkImagesResult { Success = false, ErrorMessage = "Empty response data" };
-        }
-        catch (Exception ex) when (ex is HttpRequestException or JsonException)
-        {
-            _logger.LogError(ex, "PromoteHomeworkImages request failed");
-            return new HomeworkImagesResult { Success = false, ErrorMessage = ex.Message };
-        }
-    }
-
-    public async Task DeleteHomeworkImagesAsync(
-        string studentId, string homeworkId, List<string> imagePaths, CancellationToken ct = default)
-    {
-        try
-        {
-            var body = new { studentId, homeworkId, imagePaths };
-            using var response = await _httpClient.PostAsJsonAsync("/api/oss/homework-images/delete", body, JsonOptions, ct);
-            if (!response.IsSuccessStatusCode)
-                _logger.LogWarning("DeleteHomeworkImages compensation failed with status {Status}", response.StatusCode);
-        }
-        catch (HttpRequestException ex)
-        {
-            _logger.LogError(ex, "DeleteHomeworkImages compensation request failed");
-        }
-    }
-
-    public async Task<HomeworkImageContentResult> DownloadHomeworkImageAsync(
-        string objectPath, CancellationToken ct = default)
-    {
-        try
-        {
-            using var response = await _httpClient.GetAsync(
-                $"/api/oss/homework-image-content?objectPath={Uri.EscapeDataString(objectPath)}", ct);
-            if (!response.IsSuccessStatusCode) return new HomeworkImageContentResult();
-            return new HomeworkImageContentResult
-            {
-                Success = true,
-                Data = await response.Content.ReadAsByteArrayAsync(ct),
-                ContentType = response.Content.Headers.ContentType?.MediaType ?? "image/jpeg"
-            };
-        }
-        catch (HttpRequestException ex)
-        {
-            _logger.LogError(ex, "Homework image download failed");
-            return new HomeworkImageContentResult();
-        }
-    }
-
-    public async Task<UploadImagesResult> UploadImagesByPathsAsync(string studentId, List<string> stagingPaths, List<string>? clientHashes, string? comments, CancellationToken ct = default)
-    {
-        try
-        {
-            var body = new { stagingPaths, clientHashes, comments };
-            using var response = await _httpClient.PostAsJsonAsync($"/api/students/{studentId}/uploads/by-paths", body, JsonOptions, ct);
-            var envelope = await response.Content.ReadFromJsonAsync<ApiEnvelope<UploadImagesResult>>(JsonOptions, ct);
-            if (!response.IsSuccessStatusCode || envelope is null || !envelope.Success)
-            {
-                var msg = envelope?.Message ?? "UploadImagesByPaths failed";
-                _logger.LogWarning("UploadImagesByPaths failed: {Message}, Status: {Status}", msg, response.StatusCode);
-                return new UploadImagesResult { Success = false };
-            }
-
-            return envelope.Data ?? new UploadImagesResult { Success = false };
-        }
-        catch (HttpRequestException ex)
-        {
-            _logger.LogError(ex, "UploadImagesByPaths HTTP request failed");
-            return new UploadImagesResult { Success = false };
-        }
-    }
-
-    public async Task<CheckImagesExistResult> CheckImagesExistAsync(string studentId, List<string> imageHashes, CancellationToken ct = default)
-    {
-        try
-        {
-            var body = new { imageHashes };
-            using var response = await _httpClient.PostAsJsonAsync($"/api/students/{studentId}/uploads/check-images", body, JsonOptions, ct);
-            var envelope = await response.Content.ReadFromJsonAsync<ApiEnvelope<CheckImagesExistResult>>(JsonOptions, ct);
-            if (!response.IsSuccessStatusCode || envelope is null || !envelope.Success)
-            {
-                var msg = envelope?.Message ?? "CheckImagesExist failed";
-                _logger.LogWarning("CheckImagesExist failed: {Message}, Status: {Status}", msg, response.StatusCode);
-                return new CheckImagesExistResult();
-            }
-
-            return envelope.Data ?? new CheckImagesExistResult();
-        }
-        catch (HttpRequestException ex)
-        {
-            _logger.LogError(ex, "CheckImagesExist HTTP request failed");
-            return new CheckImagesExistResult();
-        }
-    }
-
     public async Task<PresignedUrlResult> GetPresignedUrlAsync(string objectPath, int expirySeconds, string? size, CancellationToken ct = default)
     {
         try
@@ -461,29 +262,6 @@ public class StudentHttpClient : IStudentHttpClient
         {
             _logger.LogError(ex, "GetPresignedUrl HTTP request failed");
             return new PresignedUrlResult();
-        }
-    }
-
-    public async Task<UploadRecordsPage> GetUploadRecordsAsync(string studentId, int status, int page, int pageSize, CancellationToken ct = default)
-    {
-        try
-        {
-            var url = $"/api/students/{studentId}/uploads?status={status}&page={page}&pageSize={pageSize}";
-            using var response = await _httpClient.GetAsync(url, ct);
-            var envelope = await response.Content.ReadFromJsonAsync<ApiEnvelope<UploadRecordsPage>>(JsonOptions, ct);
-            if (!response.IsSuccessStatusCode || envelope is null || !envelope.Success)
-            {
-                var msg = envelope?.Message ?? "GetUploadRecords failed";
-                _logger.LogWarning("GetUploadRecords failed: {Message}, Status: {Status}", msg, response.StatusCode);
-                return new UploadRecordsPage();
-            }
-
-            return envelope.Data ?? new UploadRecordsPage();
-        }
-        catch (HttpRequestException ex)
-        {
-            _logger.LogError(ex, "GetUploadRecords HTTP request failed");
-            return new UploadRecordsPage();
         }
     }
 
@@ -637,28 +415,6 @@ public class StudentHttpClient : IStudentHttpClient
         {
             _logger.LogError(ex, "GetStudentsByIdentityAccountId HTTP request failed");
             return new StudentsByAccountResult();
-        }
-    }
-
-    public async Task<SetDefaultResult> SetDefaultStudentAsync(string studentId, string identityAccountId, CancellationToken ct = default)
-    {
-        try
-        {
-            using var response = await _httpClient.PutAsync($"/api/students/{studentId}/default-account/{identityAccountId}", content: null, ct);
-            var envelope = await response.Content.ReadFromJsonAsync<ApiEnvelope<object>>(JsonOptions, ct);
-            if (!response.IsSuccessStatusCode || envelope is null || !envelope.Success)
-            {
-                var msg = envelope?.Message ?? "SetDefaultStudent failed";
-                _logger.LogWarning("SetDefaultStudent failed: {Message}, Status: {Status}", msg, response.StatusCode);
-                return new SetDefaultResult { Success = false, ErrorMessage = msg };
-            }
-
-            return new SetDefaultResult { Success = true };
-        }
-        catch (HttpRequestException ex)
-        {
-            _logger.LogError(ex, "SetDefaultStudent HTTP request failed");
-            return new SetDefaultResult { Success = false, ErrorMessage = ex.Message };
         }
     }
 
@@ -924,52 +680,6 @@ public class StudentHttpClient : IStudentHttpClient
     }
 
     // ===== Mistake service extensions (mistake→student calls per ADR-001-mistake-webapi-only) =====
-
-    public async Task CreateReturnedRecordAsync(string studentId, List<ImageEntryDto> imageEntries, string? comments, string? returnReason, CancellationToken ct = default)
-    {
-        try
-        {
-            var body = new CreateReturnedRecordRequest
-            {
-                ImageEntries = imageEntries,
-                Comments = comments,
-                ReturnReason = returnReason
-            };
-            using var response = await _httpClient.PostAsJsonAsync($"/api/students/{studentId}/uploads/returned", body, JsonOptions, ct);
-            var envelope = await response.Content.ReadFromJsonAsync<ApiEnvelope<object>>(JsonOptions, ct);
-            if (!response.IsSuccessStatusCode || envelope is null || !envelope.Success)
-            {
-                var msg = envelope?.Message ?? "CreateReturnedRecord failed";
-                _logger.LogWarning("CreateReturnedRecord failed: {Message}, Status: {Status}", msg, response.StatusCode);
-            }
-        }
-        catch (HttpRequestException ex)
-        {
-            _logger.LogError(ex, "CreateReturnedRecord HTTP request failed");
-        }
-    }
-
-    public async Task<UploadRecordsPage> GetProcessingUploadRecordsAsync(int page, int pageSize, CancellationToken ct = default)
-    {
-        try
-        {
-            using var response = await _httpClient.GetAsync($"/api/uploads/processing?page={page}&pageSize={pageSize}", ct);
-            var envelope = await response.Content.ReadFromJsonAsync<ApiEnvelope<UploadRecordsPage>>(JsonOptions, ct);
-            if (!response.IsSuccessStatusCode || envelope is null || !envelope.Success)
-            {
-                var msg = envelope?.Message ?? "GetProcessingUploadRecords failed";
-                _logger.LogWarning("GetProcessingUploadRecords failed: {Message}, Status: {Status}", msg, response.StatusCode);
-                return new UploadRecordsPage();
-            }
-
-            return envelope.Data ?? new UploadRecordsPage();
-        }
-        catch (HttpRequestException ex)
-        {
-            _logger.LogError(ex, "GetProcessingUploadRecords HTTP request failed");
-            return new UploadRecordsPage();
-        }
-    }
 
     public async Task<RemoveProcessedImagesResult> RemoveProcessedImagesAsync(string recordId, List<string> imagePaths, CancellationToken ct = default)
     {
