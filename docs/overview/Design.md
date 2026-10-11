@@ -108,7 +108,6 @@ ServiceClients   Common        Consul      Middleware       AssistantPortalProxy
      │              │  ListObjects / Delete / CopyObject
      │              │
      │              ├─ DatabaseInitializer
-     │              ├─ Authentication (AddRuoyuJwtBearer)
      │              │
      │              └─ Constants
      │                 ├─ GradeConstants

@@ -51,7 +51,7 @@ export ConnectionStrings__AuditDb="Host=localhost;Port=5432;Database=ruoyu_admin
 Admin.WebApi 的两个启动硬门必须同时满足：
 
 - `IdentityService:AppId` / `AppSecret` 缺失 → 启动即抛 `InvalidOperationException`（`Program.cs`）。
-- Authority 或 Issuer 用 `http://` 且 `RequireHttpsMetadata=true` → `IdentityAuthenticationOptionsValidator` 校验失败。本地一律设 `IdentityService:RequireHttpsMetadata=false`。
+- Authority 或 Issuer 用 `http://` 且 `RequireHttpsMetadata=true` → 旧 `IdentityAuthenticationOptionsValidator` 校验已随 #103 删除；现行硬门是 `AdminOidcSettings.Read` / `MistakeSessionSettings.Read` 的结构校验（`http://` 与 `https://` 同等接受，`localhost` 主机名结构性拒绝），另有 `Mistake:ManagedAssignmentEnabled=true` 时 `ManagedAssignmentOptions` 要求 `IdentityService:RequireHttpsMetadata=false`。本地仍一律设 `IdentityService:RequireHttpsMetadata=false`。
 
 本地注入方式（二选一，均不进版本控制）：环境变量
 
