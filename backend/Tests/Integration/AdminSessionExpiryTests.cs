@@ -30,7 +30,6 @@ public sealed partial class AdminOidcTests
         foreach (var response in await Task.WhenAll(requests)) await Rejected(response, 401, "unauthorized");
         await Rejected(await Api(client, "/api/admin/session-probe", cookie), 401, "unauthorized");
         await Rejected(await Api(client, "/api/auth/csrf", cookie), 401, "unauthorized");
-        probe.Oss.Verify(s => s.DeleteAsync(It.IsAny<string>()), Times.Never);
         Assert.Equal(1, probe.Reads); Assert.Equal(0, probe.Writes); Assert.Equal(0, probe.Identity.Calls);
         Assert.Single(authority.TokenForms); Assert.Equal("authorization_code", authority.TokenForms.Single()["grant_type"]);
     }

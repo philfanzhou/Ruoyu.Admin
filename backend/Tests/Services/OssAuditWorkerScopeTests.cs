@@ -59,7 +59,6 @@ public sealed class OssAuditWorkerScopeTests
         Assert.All(records,record=>Assert.Equal(3,record.Status));
         fixture.Oss.Verify(oss=>oss.ListObjectsWithBucketAsync(OssBucket.Questions,It.IsAny<string?>()),Times.Never);
         fixture.Oss.Verify(oss=>oss.ListObjectsWithBucketAsync(OssBucket.Documents,It.IsAny<string?>()),Times.Never);
-        fixture.Oss.Verify(oss=>oss.DeleteAsync(It.IsAny<string>()),Times.Never);
     }
 
     [Theory]
@@ -75,7 +74,6 @@ public sealed class OssAuditWorkerScopeTests
         Assert.Equal(2,run.Status); Assert.Equal("references_or_scan_unavailable",run.ErrorMessage);
         Assert.Empty(await context.OssAuditRecords.ToListAsync());
         fixture.Oss.Verify(oss=>oss.ListObjectsWithBucketAsync(It.IsAny<OssBucket>(),It.IsAny<string?>()),Times.Never);
-        fixture.Oss.Verify(oss=>oss.DeleteAsync(It.IsAny<string>()),Times.Never);
     }
 
     [Fact]
@@ -88,7 +86,6 @@ public sealed class OssAuditWorkerScopeTests
         await using var context = fixture.Context();
         Assert.Equal(2, (await context.OssAuditRuns.SingleAsync()).Status);
         Assert.Empty(await context.OssAuditRecords.ToListAsync());
-        fixture.Oss.Verify(oss => oss.DeleteAsync(It.IsAny<string>()), Times.Never);
     }
 
     [Fact]
@@ -103,7 +100,6 @@ public sealed class OssAuditWorkerScopeTests
         var run = await context.OssAuditRuns.SingleAsync();
         Assert.Equal(2, run.Status); Assert.Equal("audit_cancelled", run.ErrorMessage);
         fixture.Oss.Verify(oss => oss.ListObjectsWithBucketAsync(It.IsAny<OssBucket>(), It.IsAny<string?>()), Times.Never);
-        fixture.Oss.Verify(oss => oss.DeleteAsync(It.IsAny<string>()), Times.Never);
     }
 
     private static List<StorageReferenceMetadata> EmptyProofs() => new[] { "student", "mistake", "homework" }

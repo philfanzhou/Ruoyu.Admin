@@ -36,15 +36,12 @@ public class OssAuditWorkerTests
                 new() { ObjectPath = legacyPath },
                 new() { ObjectPath = submissionPath }
             });
-        ossService.Setup(service => service.DeleteAsync(legacyPath)).ReturnsAsync(true);
 
         var deleted = await OssAuditWorker.CleanupLegacyHomeworkReviewImagesAsync(
             ossService.Object,
             Mock.Of<ILogger>());
 
         deleted.Should().Be(0);
-        ossService.Verify(service => service.DeleteAsync(legacyPath), Times.Never);
-        ossService.Verify(service => service.DeleteAsync(submissionPath), Times.Never);
     }
 
     [Fact]
