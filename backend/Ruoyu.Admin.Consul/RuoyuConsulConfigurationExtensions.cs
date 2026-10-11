@@ -1,8 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Configuration.CommandLine;
 using Microsoft.Extensions.Configuration.EnvironmentVariables;
-using Microsoft.Extensions.DependencyInjection;
-using Steeltoe.Discovery.Consul;
 
 namespace Ruoyu.Admin.Consul;
 
@@ -84,16 +82,6 @@ public static class RuoyuConsulConfigurationExtensions
         {
             cacheService.Dispose();
         }
-    }
-
-    public static IServiceCollection AddRuoyuConsulDiscovery(
-        this IServiceCollection services,
-        IConfiguration config)
-    {
-        _ = config;
-        services.AddSingleton(RuoyuConsulRuntimeState.Instance);
-        services.AddConsulDiscoveryClient();
-        return services;
     }
 
     public static void ApplySnapshotWithExpectedPrecedence(
