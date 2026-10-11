@@ -26,8 +26,9 @@ public static class RegressionFixtures
     public const string MistakeReferencedPath = "mistakes/regression/referenced-by-mistake.jpg";
     public const string IgnoredObjectPath = "uploads/regression/ignored-object.jpg";
 
-    // Mirrors Ruoyu.Admin.Common ThumbnailHelper.SizeMap keys. Keep in sync manually; the
-    // tool intentionally does not reference Ruoyu.Admin.Common to stay dependency-light.
+    // Mirrors the thumbnail size suffixes recognized by Ruoyu.Admin.Common
+    // ThumbnailHelper.IsThumbnailPath. Keep in sync manually; the tool intentionally
+    // does not reference Ruoyu.Admin.Common to stay dependency-light.
     public static readonly string[] ThumbnailSuffixes = ["thumbnail", "small", "medium"];
 
     // A real 1x1 JPEG so image previews keep working during regression.

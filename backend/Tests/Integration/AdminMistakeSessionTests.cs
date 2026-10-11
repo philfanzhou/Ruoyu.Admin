@@ -180,7 +180,6 @@ public sealed partial class AdminOidcTests
         }
         student.Verify(s => s.RemoveImagesFromRecordAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<List<string>>(), It.IsAny<CancellationToken>()), Times.Never);
         student.Verify(s => s.DeleteUploadRecordAfterReviewAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
-        oss.Verify(s => s.DeleteAsync(It.IsAny<string>()), Times.Never); oss.Verify(s => s.CopyObjectAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
         Assert.DoesNotContain("access-token-canary", string.Join("\n", logs.Messages));
         Assert.DoesNotContain("signed-url-canary", string.Join("\n", logs.Messages));
         Assert.DoesNotContain(authority.LastAccessToken!, string.Join("\n", logs.Messages));

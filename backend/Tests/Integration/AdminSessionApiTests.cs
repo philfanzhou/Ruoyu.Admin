@@ -229,7 +229,6 @@ public sealed partial class AdminOidcTests
         Assert.Equal(401, result.StatusCode);
         Assert.Null(result.AccessToken);
         Assert.Null(result.Principal);
-        probe.Oss.Verify(s => s.DeleteAsync(It.IsAny<string>()), Times.Never);
     }
 
     [Fact]
@@ -266,7 +265,6 @@ public sealed partial class AdminOidcTests
             await Rejected(await Api(client, "/api/admin/oss-audit/records/1/resolve", forged, "POST"), 403, "forbidden");
         }
         Assert.Equal(1, probe.Reads);
-        probe.Oss.Verify(s => s.DeleteAsync(It.IsAny<string>()), Times.Never);
     }
 
     [Theory]
@@ -376,13 +374,12 @@ public sealed partial class AdminOidcTests
         HttpContent? Body() => mode == "batch" ? JsonContent.Create(new { ids = new[] { record.Id } }) : null;
         try
         {
-            // Actual session/controller/database pipeline: rejected requests never collect or delete.
+            // Actual session/controller/database pipeline: rejected requests never collect references.
             await Rejected(await Api(client, route, method: "POST", body: Body()), 401, "unauthorized");
             probe.Admins.CurrentValue.AdminUserIds.Clear();
             await Rejected(await Api(client, route, session, "POST", body: Body()), 403, "forbidden");
             probe.Admins.CurrentValue.AdminUserIds.Add("fake-subject");
             await Rejected(await Api(client, route, session, "POST", body: Body()), 400, "csrf_invalid");
-            probe.Oss.Verify(s => s.DeleteAsync(It.IsAny<string>()), Times.Never);
             probe.Student.Verify(s => s.GetAllUploadRecordsAsync(It.IsAny<int?>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
             probe.References.Verify(c => c.CollectAsync(It.IsAny<CancellationToken>()), Times.Never);
             var cookies = session + "; " + csrf.Cookie;
@@ -392,18 +389,15 @@ public sealed partial class AdminOidcTests
             using var referenced = await Api(client, route, cookies, "POST", csrf: [csrf.Token], body: Body());
             Assert.Equal(HttpStatusCode.Conflict, referenced.StatusCode);
             Assert.Equal("cleanup_not_authorized", (await referenced.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("errorKind").GetString());
-            probe.Oss.Verify(s => s.DeleteAsync(It.IsAny<string>()), Times.Never);
             probe.StudentPaths.Clear(); probe.Homework.Paths = []; probe.MistakePaths.Clear();
             probe.ReferenceFailure = source; probe.Homework.Unavailable = source == "Homework";
             using var unreachable = await Api(client, route, cookies, "POST", csrf: [csrf.Token], body: Body());
             Assert.Equal(HttpStatusCode.BadGateway, unreachable.StatusCode);
-            probe.Oss.Verify(s => s.DeleteAsync(It.IsAny<string>()), Times.Never);
             Assert.True(await db.OssAuditRecords.AsNoTracking().AnyAsync(r => r.Id == record.Id));
             probe.ReferenceFailure = null; probe.Homework.Unavailable = false;
             using var success = await Api(client, route, cookies, "POST", csrf: [csrf.Token], body: Body());
             Assert.Equal(HttpStatusCode.Conflict, success.StatusCode);
             probe.References.Verify(c => c.CollectAsync(It.IsAny<CancellationToken>()), Times.Exactly(3));
-            probe.Oss.Verify(s => s.DeleteAsync(It.IsAny<string>()), Times.Never);
             Assert.True(await db.OssAuditRecords.AsNoTracking().AnyAsync(r => r.Id == record.Id));
         }
         finally
@@ -426,7 +420,7 @@ public sealed partial class AdminOidcTests
         var before = await db.OssAuditRuns.CountAsync();
         await Rejected(await Api(client, "/api/admin/oss-audit/trigger", session, "POST"), 400, "csrf_invalid");
         Assert.Equal(before, await db.OssAuditRuns.CountAsync());
-        probe.Oss.Verify(s => s.ListObjectsAsync(It.IsAny<string>()), Times.Never);
+        probe.Oss.Verify(s => s.ListObjectsWithBucketAsync(It.IsAny<OssBucket>(), It.IsAny<string?>()), Times.Never);
         // A running sentinel lets us demonstrate controller admission without starting background work.
         var run = new OssAuditRun { StartedAt = 1, Status = 0, TriggerType = "manual" };
         db.OssAuditRuns.Add(run); await db.SaveChangesAsync();
@@ -548,7 +542,6 @@ public sealed class SessionBusinessProbe
         Mistake.Setup(s => s.GetMistakeItemListAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<MistakeReviewStatus>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(() => ReferenceFailure == "Mistake" ? throw new HttpRequestException("fake.unavailable")
                 : new MistakeItemPageResult { Items = MistakePaths.Select(p => new MistakeItemDto { SourceRegions = [new MistakeSourceRegionDto { SourceImagePath = p }] }).ToList() });
-        Oss.Setup(s => s.DeleteAsync(It.IsAny<string>())).ReturnsAsync(true);
     }
 }
 internal sealed class IdentityStub : HttpMessageHandler

@@ -88,12 +88,10 @@ public sealed class ServiceMantleProblemDetailsTests : ServiceMantleIntegrationT
     }
 
     [Fact]
-    public async Task OssResolve_DeniesCleanupWithoutCallingDeleteAndKeepsTheAuditRecord()
+    public async Task OssResolve_DeniesCleanupAndKeepsTheAuditRecord()
     {
         using var authority = new OidcTestAuthority();
         var probe = new SessionBusinessProbe();
-        probe.Oss.Setup(s => s.DeleteAsync(It.IsAny<string>()))
-            .ThrowsAsync(new IOException("secret-canary-oss-delete-failure"));
         using var factory = ProbeFactory(authority, probe);
         using var client = Browser(factory);
         var session = await LoginAsync(client, authority);
@@ -115,8 +113,6 @@ public sealed class ServiceMantleProblemDetailsTests : ServiceMantleIntegrationT
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
         var rejected = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("cleanup_not_authorized", rejected.GetProperty("errorKind").GetString());
-        probe.Oss.Verify(s => s.DeleteAsync(It.IsAny<string>()), Times.Never);
-        await AssertNoLeakAsync(response, "secret-canary-oss-delete-failure", "IOException", "Failed to delete object");
 
         // Reference proof cannot authorize deletion; its existing audit trail remains.
         await using (var scope = factory.Services.CreateAsyncScope())

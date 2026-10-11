@@ -19,20 +19,19 @@ using Xunit;
 namespace Admin.WebApi.Tests.Controllers;
 
 /// <summary>
-/// Covers the pre-delete reference revalidation in <see cref="OssAuditController"/>.
+/// Covers the reference revalidation behind resolve in <see cref="OssAuditController"/>.
 ///
-/// This is the only runtime guard between an audit finding and a permanent
-/// <see cref="IOssService.DeleteAsync"/> against production storage, so the safety
-/// properties are asserted explicitly: a referenced object is never deleted, an
-/// unreachable reference source blocks the delete instead of being treated as
-/// "no references found", and a failed delete leaves the record in place.
+/// Resolve never deletes: <see cref="IOssService"/> exposes read-only members only,
+/// so every resolve decision is a rejection — a referenced object is never removed,
+/// an unreachable reference source blocks the request instead of being treated as
+/// "no references found", and the audit record always stays in place for review.
 /// </summary>
 public class OssAuditControllerTests
 {
     // ===== ResolveRecord: lookup =====
 
     [Fact]
-    public async Task ResolveRecord_NotFound_Returns404AndDoesNotDelete()
+    public async Task ResolveRecord_NotFound_Returns404()
     {
         var f = new Fixture();
 
@@ -40,12 +39,11 @@ public class OssAuditControllerTests
 
         var error = Assert.IsType<NotFoundObjectResult>(result);
         ReadJson(error.Value).GetProperty("Message").GetString().Should().Be("Record not found.");
-        f.Oss.Verify(s => s.DeleteAsync(It.IsAny<string>()), Times.Never);
     }
 
     [Theory]
     [InlineData(0)] [InlineData(1)] [InlineData(2)] [InlineData(3)]
-    public async Task ResolveRecord_AllStatesRequireCompleteCollectionButNeverDelete(int state)
+    public async Task ResolveRecord_AllStatesRequireCompleteCollection(int state)
     {
         var f = new Fixture();
         var id = await f.SeedRecordAsync("uploads/a.jpg", status: state);
@@ -53,7 +51,7 @@ public class OssAuditControllerTests
         Assert.Equal(409, result.StatusCode);
         Assert.Equal("cleanup_not_authorized", ReadJson(result.Value).GetProperty("errorKind").GetString());
         f.References.Verify(collector => collector.CollectAsync(It.IsAny<CancellationToken>()), Times.Once);
-        await f.AssertNotDeletedAsync(id, "uploads/a.jpg");
+        await f.AssertRecordKeptAsync(id);
         Assert.Equal(state, (await f.Db.OssAuditRecords.SingleAsync()).Status);
         f.Student.VerifyNoOtherCalls(); f.Mistake.VerifyNoOtherCalls();
     }
@@ -69,7 +67,7 @@ public class OssAuditControllerTests
         var result = Assert.IsType<ObjectResult>(await f.Controller.ResolveRecord(id));
         Assert.Equal(502, result.StatusCode);
         Assert.Equal("references_unavailable", ReadJson(result.Value).GetProperty("errorKind").GetString());
-        await f.AssertNotDeletedAsync(id, "uploads/a.jpg");
+        await f.AssertRecordKeptAsync(id);
         f.Student.VerifyNoOtherCalls(); f.Mistake.VerifyNoOtherCalls();
     }
 
@@ -96,7 +94,7 @@ public class OssAuditControllerTests
     }
 
     [Fact]
-    public async Task IgnoreRecord_Pending_SetsIgnoredStatusAndNoteWithoutDeleting()
+    public async Task IgnoreRecord_Pending_SetsIgnoredStatusAndNote()
     {
         var f = new Fixture();
         var id = await f.SeedRecordAsync("uploads/keep.jpg");
@@ -108,7 +106,6 @@ public class OssAuditControllerTests
         record.Status.Should().Be(2);
         record.Note.Should().Be("still in use");
         record.ResolvedAt.Should().NotBeNull();
-        f.Oss.Verify(s => s.DeleteAsync(It.IsAny<string>()), Times.Never);
     }
 
     [Fact]
@@ -133,7 +130,6 @@ public class OssAuditControllerTests
         var result = await f.Controller.BatchResolve(new BatchResolveRequest { Ids = new List<long>() });
 
         AssertBadRequest(result, "At least one record ID is required.");
-        f.Oss.Verify(s => s.DeleteAsync(It.IsAny<string>()), Times.Never);
     }
 
     [Fact]
@@ -144,7 +140,6 @@ public class OssAuditControllerTests
         var result = await f.Controller.BatchResolve(new BatchResolveRequest { Ids = null! });
 
         AssertBadRequest(result, "At least one record ID is required.");
-        f.Oss.Verify(s => s.DeleteAsync(It.IsAny<string>()), Times.Never);
     }
 
     [Theory]
@@ -161,7 +156,6 @@ public class OssAuditControllerTests
         Assert.Equal(unavailable ? 502 : 409, result.StatusCode);
         Assert.Equal(4, await f.Db.OssAuditRecords.CountAsync());
         f.References.Verify(collector => collector.CollectAsync(It.IsAny<CancellationToken>()), Times.Once);
-        f.Oss.Verify(service => service.DeleteAsync(It.IsAny<string>()), Times.Never);
         f.Student.VerifyNoOtherCalls(); f.Mistake.VerifyNoOtherCalls();
     }
 
@@ -172,7 +166,6 @@ public class OssAuditControllerTests
         var result = Assert.IsType<ObjectResult>(await f.Controller.BatchResolve(new() { Ids = [999] }));
         Assert.Equal(409, result.StatusCode);
         f.References.Verify(collector => collector.CollectAsync(It.IsAny<CancellationToken>()), Times.Once);
-        f.Oss.Verify(service => service.DeleteAsync(It.IsAny<string>()), Times.Never);
     }
 
     [Fact]
@@ -349,7 +342,6 @@ public class OssAuditControllerTests
             Db = new AuditDbContext(options);
 
             Oss = new Mock<IOssService>();
-            Oss.Setup(s => s.DeleteAsync(It.IsAny<string>())).ReturnsAsync(true);
 
             Student = new Mock<IStudentHttpClient>();
             Student.Setup(s => s.GetAllUploadRecordsAsync(
@@ -447,9 +439,8 @@ public class OssAuditControllerTests
             return record.Id;
         }
 
-        public async Task AssertNotDeletedAsync(long id, string objectPath)
+        public async Task AssertRecordKeptAsync(long id)
         {
-            Oss.Verify(s => s.DeleteAsync(objectPath), Times.Never);
             (await Db.OssAuditRecords.AnyAsync(r => r.Id == id))
                 .Should().BeTrue("a blocked resolve must keep the record for review");
         }

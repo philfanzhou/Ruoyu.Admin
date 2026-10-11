@@ -1,9 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Threading.Tasks;
-
 namespace Ruoyu.Admin.Common.Oss;
 
 public class LocalFileOssService : IOssService
@@ -21,39 +15,6 @@ public class LocalFileOssService : IOssService
         }
     }
 
-    public Task<string> UploadAsync(Stream stream, string fileName, string contentType, OssBucket bucket = OssBucket.Uploads, string? folder = null)
-    {
-        var objectPath = GenerateObjectPath(fileName, bucket, folder);
-        var fullPath = GetFullPath(objectPath);
-        Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
-        using var fs = new FileStream(fullPath, FileMode.Create, FileAccess.Write);
-        stream.CopyTo(fs);
-        return Task.FromResult(objectPath);
-    }
-
-    public async Task<string> UploadAsync(byte[] data, string fileName, string contentType, OssBucket bucket = OssBucket.Uploads, string? folder = null)
-    {
-        using var stream = new MemoryStream(data);
-        return await UploadAsync(stream, fileName, contentType, bucket, folder);
-    }
-
-    public async Task<List<string>> UploadManyAsync(IEnumerable<(Stream stream, string fileName, string contentType)> files, OssBucket bucket = OssBucket.Uploads, string? folder = null)
-    {
-        var paths = new List<string>();
-        var index = 0;
-        foreach (var (stream, fileName, contentType) in files)
-        {
-            var objectPath = GenerateObjectPath($"{index}_{fileName}", bucket, folder);
-            var fullPath = GetFullPath(objectPath);
-            Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
-            using var fs = new FileStream(fullPath, FileMode.Create, FileAccess.Write);
-            await stream.CopyToAsync(fs);
-            paths.Add(objectPath);
-            index++;
-        }
-        return paths;
-    }
-
     public Task<Stream> DownloadAsync(string objectPath)
     {
         var fullPath = GetFullPath(objectPath);
@@ -63,86 +24,16 @@ public class LocalFileOssService : IOssService
         return Task.FromResult<Stream>(stream);
     }
 
-    public async Task<List<Stream>> DownloadManyAsync(IEnumerable<string> objectPaths)
+    public Task<List<OssObjectInfo>> ListObjectsWithBucketAsync(OssBucket bucket, string? prefix = null)
     {
-        var streams = new List<Stream>();
-        foreach (var path in objectPaths)
-            streams.Add(await DownloadAsync(path));
-        return streams;
+        var bucketPrefix = BucketToPrefix(bucket);
+        var fullPrefix = string.IsNullOrWhiteSpace(prefix)
+            ? bucketPrefix
+            : $"{bucketPrefix}/{prefix}";
+        return ListObjectsByPrefixAsync(fullPrefix);
     }
 
-    public async Task CopyObjectAsync(string sourcePath, string destPath)
-    {
-        var sourceFullPath = GetFullPath(sourcePath);
-        var destFullPath = GetFullPath(destPath);
-        if (!File.Exists(sourceFullPath))
-            throw new FileNotFoundException($"Source object not found: {sourcePath}", sourceFullPath);
-        Directory.CreateDirectory(Path.GetDirectoryName(destFullPath)!);
-        using var sourceStream = new FileStream(sourceFullPath, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, FileOptions.Asynchronous);
-        using var destStream = new FileStream(destFullPath, FileMode.Create, FileAccess.Write, FileShare.None, 4096, FileOptions.Asynchronous);
-        await sourceStream.CopyToAsync(destStream);
-    }
-
-    public Task<bool> ObjectExistsAsync(string objectPath)
-    {
-        var fullPath = GetFullPath(objectPath);
-        return Task.FromResult(File.Exists(fullPath));
-    }
-
-    public Task<bool> DeleteAsync(string objectPath)
-    {
-        var fullPath = GetFullPath(objectPath);
-        if (!File.Exists(fullPath))
-            return Task.FromResult(false);
-
-        // Match S3OssService.DeleteAsync: deleting an original also removes its derived
-        // thumbnails, so the local implementation exercises the same audit disposal
-        // semantics as production (resolve must not leave orphaned thumbnails behind).
-        if (!ThumbnailHelper.IsThumbnailPath(objectPath))
-        {
-            foreach (var thumbnailPath in ThumbnailHelper.GetAllThumbnailPaths(objectPath))
-            {
-                var thumbnailFullPath = GetFullPath(thumbnailPath);
-                if (File.Exists(thumbnailFullPath))
-                    File.Delete(thumbnailFullPath);
-            }
-        }
-
-        File.Delete(fullPath);
-        return Task.FromResult(true);
-    }
-
-    public async Task<int> DeleteManyAsync(IEnumerable<string> objectPaths)
-    {
-        var count = 0;
-        foreach (var path in objectPaths)
-        {
-            // Delegate to DeleteAsync (as S3OssService does) so the thumbnail cascade applies.
-            if (await DeleteAsync(path))
-            {
-                count++;
-            }
-        }
-        return count;
-    }
-
-    public Task<string> GetPresignedUrlAsync(string objectPath, int expirySeconds = 3600)
-    {
-        var fullPath = GetFullPath(objectPath);
-        return Task.FromResult(fullPath);
-    }
-
-    public Task<List<string>> GetPresignedUrlsAsync(IEnumerable<string> objectPaths, int expirySeconds = 3600)
-    {
-        return Task.FromResult(objectPaths.Select(p => GetFullPath(p)).ToList());
-    }
-
-    public Task<bool> CheckConnectivityAsync()
-    {
-        return Task.FromResult(Directory.Exists(_rootPath));
-    }
-
-    public Task<List<OssObjectInfo>> ListObjectsAsync(string? prefix = null)
+    private Task<List<OssObjectInfo>> ListObjectsByPrefixAsync(string? prefix)
     {
         var searchDir = _rootPath;
 
@@ -183,15 +74,6 @@ public class LocalFileOssService : IOssService
         return Task.FromResult(objects);
     }
 
-    public Task<List<OssObjectInfo>> ListObjectsWithBucketAsync(OssBucket bucket, string? prefix = null)
-    {
-        var bucketPrefix = BucketToPrefix(bucket);
-        var fullPrefix = string.IsNullOrWhiteSpace(prefix)
-            ? bucketPrefix
-            : $"{bucketPrefix}/{prefix}";
-        return ListObjectsAsync(fullPrefix);
-    }
-
     private string GetFullPath(string objectPath)
     {
         var normalized = objectPath.Replace('\\', '/').TrimStart('/');
@@ -206,13 +88,4 @@ public class LocalFileOssService : IOssService
         OssBucket.Documents => "documents",
         _ => "others"
     };
-
-    private static string GenerateObjectPath(string fileName, OssBucket bucket, string? folder = null)
-    {
-        var prefix = BucketToPrefix(bucket);
-        if (!string.IsNullOrWhiteSpace(folder))
-            return $"{prefix}/{folder}/{fileName}";
-        var now = DateTime.UtcNow;
-        return $"{prefix}/{now.Year}/{now.Month:D2}/{now.Day:D2}/{Guid.NewGuid():N}/{fileName}";
-    }
 }
