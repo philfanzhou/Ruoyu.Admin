@@ -16,7 +16,8 @@
 
   <ItemGroup>
     <!-- Keep the package version aligned with the rest of the solution
-         (Ruoyu.Admin.Common pins Npgsql 10.0.3) so restore resolves one copy. -->
+         (Admin.WebApi pins Npgsql.EntityFrameworkCore.PostgreSQL 10.0.3,
+         which resolves Npgsql 10.0.3) so restore resolves one copy. -->
     <PackageReference Include="Npgsql" Version="10.0.3" />
   </ItemGroup>
 
