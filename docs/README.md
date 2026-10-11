@@ -64,9 +64,9 @@ Student、Mistake、Homework、Teacher Portal、Assistant Portal 与 Identity �
 
 `appsettings.json` 里的 `AdminApi:Port` 没有任何代码读取。监听端口由 `Program.cs` 中的 `const int httpPort = 5020` 硬编码。删除该配置键或让端口真正可配，都需要单独决定。
 
-### `Ruoyu.Admin.ServiceClients` 含未使用的下游方法
+### `Ruoyu.Admin.ServiceClients` 仍含未使用的下游方法
 
-该库在 monorepo 中由 Mistake 服务与多个 Portal 共用，本仓库只调用其中一部分：Student 25 个方法用到 20 个，Mistake 14 个方法用到 7 个。`CreateReturnedRecordRequest` 等 mistake→student 调用的 DTO 块在本仓库完全未被引用。未裁剪，属于开源仓库的死代码清理项。
+该库在 monorepo 中由 Mistake 服务与多个 Portal 共用。#104 已删除错题评审/重分析与作业图片管理方向的无调用方法及配套 DTO（Mistake 7 个方法、Student 10 个方法及其独占 DTO，含 mistake→student 调用的返回记录请求块）。剩余盘点：Mistake 7 个方法全部在用；Student 24 个方法用到 20 个，`AppendImagesToRecordAsync`、`DeleteUploadRecordAsync`、`MarkUploadRecordAsReturnedAsync`、`RemoveProcessedImagesAsync` 及其独占 DTO 仍无调用方，属后续清理项。
 
 ### `Ruoyu.Admin.Common.Constants.OssPathPrefixConstants` 在本仓库未被引用
 

@@ -21,27 +21,6 @@ public enum MistakeReviewStatus
     Rejected = 3,
 }
 
-public enum MistakeProcessAction
-{
-    Unspecified = 0,
-    Created = 1,
-    Analyzed = 2,
-    ReviewConfirmed = 3,
-    ReviewRejected = 4,
-    Practiced = 5,
-    Mastered = 6,
-    Reanalyzed = 7,
-}
-
-public enum MistakeReanalyzeJobStatus
-{
-    Unspecified = 0,
-    Pending = 1,
-    Running = 2,
-    Completed = 3,
-    Failed = 4,
-}
-
 public class MistakeBoundingBoxDto
 {
     public int X1 { get; set; }
@@ -92,77 +71,6 @@ public class MistakeItemsByUploadResult
     public List<MistakeItemDto> Items { get; set; } = new();
 }
 
-public class PendingReviewUploadDto
-{
-    public string SourceUploadId { get; set; } = string.Empty;
-    public string StudentId { get; set; } = string.Empty;
-    public int Subject { get; set; }
-    public int Grade { get; set; }
-    public int PendingCount { get; set; }
-    public int TotalCount { get; set; }
-    public string EarliestCreatedAt { get; set; } = string.Empty;
-}
-
-public class PendingReviewUploadListResult
-{
-    public List<PendingReviewUploadDto> Uploads { get; set; } = new();
-    public MistakePageMetaDto PageMeta { get; set; } = new();
-}
-
-public class ReviewMistakeItemResult
-{
-    public bool Success { get; set; }
-    public string ErrorMessage { get; set; } = string.Empty;
-    public string SourceUploadId { get; set; } = string.Empty;
-    public string StudentId { get; set; } = string.Empty;
-    public List<string> RemovedImagePaths { get; set; } = new();
-}
-
-public class AddMistakeItemResult
-{
-    public string Id { get; set; } = string.Empty;
-}
-
-public class DeleteMistakeItemResult
-{
-    public bool Success { get; set; }
-}
-
-public class ReanalyzeMistakeItemResult
-{
-    public bool Success { get; set; }
-    public string ErrorMessage { get; set; } = string.Empty;
-    public string JobId { get; set; } = string.Empty;
-}
-
-public class ReanalyzeJobDto
-{
-    public string JobId { get; set; } = string.Empty;
-    public string ItemId { get; set; } = string.Empty;
-    public string StudentId { get; set; } = string.Empty;
-    public MistakeReanalyzeJobStatus Status { get; set; }
-    public string NewRootCause { get; set; } = string.Empty;
-    public string ErrorMessage { get; set; } = string.Empty;
-    public string CreatedAt { get; set; } = string.Empty;
-    public string StartedAt { get; set; } = string.Empty;
-    public string CompletedAt { get; set; } = string.Empty;
-    public long VlDurationMs { get; set; }
-}
-
-public class GetReanalyzeJobsResult
-{
-    public bool Success { get; set; }
-    public string ErrorMessage { get; set; } = string.Empty;
-    public List<ReanalyzeJobDto> Jobs { get; set; } = new();
-}
-
-public class GetActiveReanalyzeJobsResult
-{
-    public bool Success { get; set; }
-    public string ErrorMessage { get; set; } = string.Empty;
-    public List<ReanalyzeJobDto> Jobs { get; set; } = new();
-}
-
 public class UpdateMistakeItemResult
 {
     public string Id { get; set; } = string.Empty;
@@ -201,13 +109,6 @@ public interface IMistakeHttpClient
     Task<MistakeItemPageResult> GetMistakeItemListAsync(string studentId, int subject, int grade, MistakeReviewStatus reviewStatus, int page, int size, CancellationToken ct = default);
     Task<MistakeItemDto?> GetMistakeItemAsync(string id, CancellationToken ct = default);
     Task<MistakeItemsByUploadResult> GetMistakeItemsByUploadAsync(string sourceUploadId, CancellationToken ct = default);
-    Task<PendingReviewUploadListResult> GetPendingReviewUploadsAsync(int page, int size, IReadOnlyList<int>? subjects, CancellationToken ct = default);
-    Task<ReviewMistakeItemResult> ReviewMistakeItemAsync(string id, MistakeReviewStatus reviewStatus, string reviewerId, string? rootCause, int grade, int subject, string? returnReason, CancellationToken ct = default);
-    Task<AddMistakeItemResult> AddMistakeItemAsync(string studentId, int subject, int grade, string sourceUploadId, string? rootCause, IReadOnlyList<MistakeSourceRegionDto> sourceRegions, CancellationToken ct = default);
-    Task<DeleteMistakeItemResult> DeleteMistakeItemAsync(string id, CancellationToken ct = default);
-    Task<ReanalyzeMistakeItemResult> ReanalyzeMistakeItemAsync(string id, string reviewerId, string studentId, string? teacherDescription, CancellationToken ct = default);
-    Task<GetReanalyzeJobsResult> GetReanalyzeJobsAsync(string reviewerId, IReadOnlyList<string> jobIds, CancellationToken ct = default);
-    Task<GetActiveReanalyzeJobsResult> GetActiveReanalyzeJobsAsync(string reviewerId, CancellationToken ct = default);
     Task<UpdateMistakeItemResult> UpdateMistakeItemAsync(string id, string studentId, int subject, int grade, IReadOnlyList<MistakeSourceRegionDto>? sourceRegions, CancellationToken ct = default);
     Task<SubmitMistakeUploadResult> SubmitMistakeUploadAsync(string studentId, int subject, int grade, IReadOnlyList<string> imagePaths, string? rootCause, string sourceUploadId, CancellationToken ct = default);
     Task<CompleteUploadReviewResult> CompleteUploadReviewAsync(string sourceUploadId, string reviewerId, CancellationToken ct = default);
@@ -325,237 +226,7 @@ public class MistakeHttpClient : IMistakeHttpClient
         }
     }
 
-    // 4. GET /api/mistakes/pending-reviews
-    public async Task<PendingReviewUploadListResult> GetPendingReviewUploadsAsync(int page, int size, IReadOnlyList<int>? subjects, CancellationToken ct = default)
-    {
-        if (_useSessionToken)
-        {
-            return await SendStrictAsync<PendingReviewUploadListResult>(HttpMethod.Get, $"/api/mistakes/pending-reviews?page={page}&size={size}&subjects={Uri.EscapeDataString(string.Join(",", subjects ?? []))}", null, ct);
-        }
-
-        try
-        {
-            var query = $"?page={page}&size={size}";
-            if (subjects != null && subjects.Count > 0)
-                query += $"&subjects={Uri.EscapeDataString(string.Join(",", subjects))}";
-
-            using var response = await _httpClient.GetAsync($"/api/mistakes/pending-reviews{query}", ct);
-            var envelope = await response.Content.ReadFromJsonAsync<ApiEnvelope<PendingReviewUploadListResult>>(JsonOptions, ct);
-            if (!response.IsSuccessStatusCode || envelope is null || !envelope.Success)
-            {
-                var msg = envelope?.Message ?? "GetPendingReviewUploads failed";
-                _logger.LogWarning("GetPendingReviewUploads failed: {Message}, Status: {Status}", msg, response.StatusCode);
-                return new PendingReviewUploadListResult();
-            }
-
-            return envelope.Data ?? new PendingReviewUploadListResult();
-        }
-        catch (HttpRequestException ex)
-        {
-            _logger.LogError(ex, "GetPendingReviewUploads HTTP request failed");
-            return new PendingReviewUploadListResult();
-        }
-    }
-
-    // 5. POST /api/mistakes/{id}/review
-    public async Task<ReviewMistakeItemResult> ReviewMistakeItemAsync(string id, MistakeReviewStatus reviewStatus, string reviewerId, string? rootCause, int grade, int subject, string? returnReason, CancellationToken ct = default)
-    {
-        if (_useSessionToken)
-        {
-            return await SendStrictAsync<ReviewMistakeItemResult>(HttpMethod.Post, $"/api/mistakes/{Uri.EscapeDataString(id)}/review", new { id, reviewStatus, reviewerId, rootCause, grade, subject, returnReason }, ct);
-        }
-
-        try
-        {
-            var body = new
-            {
-                id,
-                reviewStatus,
-                reviewerId,
-                rootCause,
-                grade,
-                subject,
-                returnReason
-            };
-            using var response = await _httpClient.PostAsJsonAsync($"/api/mistakes/{id}/review", body, JsonOptions, ct);
-            var envelope = await response.Content.ReadFromJsonAsync<ApiEnvelope<ReviewMistakeItemResult>>(JsonOptions, ct);
-            if (!response.IsSuccessStatusCode || envelope is null || !envelope.Success)
-            {
-                var msg = envelope?.Message ?? "ReviewMistakeItem failed";
-                _logger.LogWarning("ReviewMistakeItem failed: {Message}, Status: {Status}", msg, response.StatusCode);
-                return new ReviewMistakeItemResult { Success = false, ErrorMessage = msg };
-            }
-
-            return envelope.Data ?? new ReviewMistakeItemResult { Success = false, ErrorMessage = "Empty response data" };
-        }
-        catch (HttpRequestException ex)
-        {
-            _logger.LogError(ex, "ReviewMistakeItem HTTP request failed");
-            return new ReviewMistakeItemResult { Success = false, ErrorMessage = ex.Message };
-        }
-    }
-
-    // 6. POST /api/mistakes
-    public async Task<AddMistakeItemResult> AddMistakeItemAsync(string studentId, int subject, int grade, string sourceUploadId, string? rootCause, IReadOnlyList<MistakeSourceRegionDto> sourceRegions, CancellationToken ct = default)
-    {
-        if (_useSessionToken)
-        {
-            var item = await SendStrictAsync<MistakeItemDto>(HttpMethod.Post, "/api/mistakes", new { studentId, subject, grade, sourceUploadId, rootCause, sourceRegions }, ct);
-            return new AddMistakeItemResult { Id = item.Id };
-        }
-
-        try
-        {
-            var body = new
-            {
-                studentId,
-                subject,
-                grade,
-                sourceUploadId,
-                rootCause,
-                sourceRegions
-            };
-            using var response = await _httpClient.PostAsJsonAsync("/api/mistakes", body, JsonOptions, ct);
-            var envelope = await response.Content.ReadFromJsonAsync<ApiEnvelope<MistakeItemDto>>(JsonOptions, ct);
-            if (!response.IsSuccessStatusCode || envelope is null || !envelope.Success)
-            {
-                var msg = envelope?.Message ?? "AddMistakeItem failed";
-                _logger.LogWarning("AddMistakeItem failed: {Message}, Status: {Status}", msg, response.StatusCode);
-                return new AddMistakeItemResult();
-            }
-
-            var item = envelope.Data;
-            return new AddMistakeItemResult { Id = item?.Id ?? string.Empty };
-        }
-        catch (HttpRequestException ex)
-        {
-            _logger.LogError(ex, "AddMistakeItem HTTP request failed");
-            return new AddMistakeItemResult();
-        }
-    }
-
-    // 7. DELETE /api/mistakes/{id}
-    public async Task<DeleteMistakeItemResult> DeleteMistakeItemAsync(string id, CancellationToken ct = default)
-    {
-        if (_useSessionToken)
-        {
-            await SendStrictAsync<object>(HttpMethod.Delete, $"/api/mistakes/{Uri.EscapeDataString(id)}", null, ct, requireData: false);
-            return new DeleteMistakeItemResult { Success = true };
-        }
-
-        try
-        {
-            using var response = await _httpClient.DeleteAsync($"/api/mistakes/{id}", ct);
-            var envelope = await response.Content.ReadFromJsonAsync<ApiEnvelope<object>>(JsonOptions, ct);
-            if (!response.IsSuccessStatusCode || envelope is null || !envelope.Success)
-            {
-                var msg = envelope?.Message ?? "DeleteMistakeItem failed";
-                _logger.LogWarning("DeleteMistakeItem failed: {Message}, Status: {Status}", msg, response.StatusCode);
-                return new DeleteMistakeItemResult { Success = false };
-            }
-
-            return new DeleteMistakeItemResult { Success = true };
-        }
-        catch (HttpRequestException ex)
-        {
-            _logger.LogError(ex, "DeleteMistakeItem HTTP request failed");
-            return new DeleteMistakeItemResult { Success = false };
-        }
-    }
-
-    // 8. POST /api/mistakes/{id}/reanalyze
-    public async Task<ReanalyzeMistakeItemResult> ReanalyzeMistakeItemAsync(string id, string reviewerId, string studentId, string? teacherDescription, CancellationToken ct = default)
-    {
-        if (_useSessionToken)
-        {
-            return await SendStrictAsync<ReanalyzeMistakeItemResult>(HttpMethod.Post, $"/api/mistakes/{Uri.EscapeDataString(id)}/reanalyze", new { id, reviewerId, studentId, teacherDescription }, ct);
-        }
-
-        try
-        {
-            var body = new
-            {
-                id,
-                reviewerId,
-                studentId,
-                teacherDescription
-            };
-            using var response = await _httpClient.PostAsJsonAsync($"/api/mistakes/{id}/reanalyze", body, JsonOptions, ct);
-            var envelope = await response.Content.ReadFromJsonAsync<ApiEnvelope<ReanalyzeMistakeItemResult>>(JsonOptions, ct);
-            if (!response.IsSuccessStatusCode || envelope is null || !envelope.Success)
-            {
-                var msg = envelope?.Message ?? "ReanalyzeMistakeItem failed";
-                _logger.LogWarning("ReanalyzeMistakeItem failed: {Message}, Status: {Status}", msg, response.StatusCode);
-                return new ReanalyzeMistakeItemResult { Success = false, ErrorMessage = msg };
-            }
-
-            return envelope.Data ?? new ReanalyzeMistakeItemResult { Success = false, ErrorMessage = "Empty response data" };
-        }
-        catch (HttpRequestException ex)
-        {
-            _logger.LogError(ex, "ReanalyzeMistakeItem HTTP request failed");
-            return new ReanalyzeMistakeItemResult { Success = false, ErrorMessage = ex.Message };
-        }
-    }
-
-    // 9. POST /api/mistakes/reanalyze/jobs
-    public async Task<GetReanalyzeJobsResult> GetReanalyzeJobsAsync(string reviewerId, IReadOnlyList<string> jobIds, CancellationToken ct = default)
-    {
-        if (_useSessionToken)
-        {
-            return await SendStrictAsync<GetReanalyzeJobsResult>(HttpMethod.Post, "/api/mistakes/reanalyze/jobs", new { reviewerId, jobIds }, ct);
-        }
-
-        try
-        {
-            var body = new { reviewerId, jobIds };
-            using var response = await _httpClient.PostAsJsonAsync("/api/mistakes/reanalyze/jobs", body, JsonOptions, ct);
-            var envelope = await response.Content.ReadFromJsonAsync<ApiEnvelope<GetReanalyzeJobsResult>>(JsonOptions, ct);
-            if (!response.IsSuccessStatusCode || envelope is null || !envelope.Success)
-            {
-                var msg = envelope?.Message ?? "GetReanalyzeJobs failed";
-                _logger.LogWarning("GetReanalyzeJobs failed: {Message}, Status: {Status}", msg, response.StatusCode);
-                return new GetReanalyzeJobsResult { Success = false, ErrorMessage = msg };
-            }
-
-            return envelope.Data ?? new GetReanalyzeJobsResult();
-        }
-        catch (HttpRequestException ex)
-        {
-            _logger.LogError(ex, "GetReanalyzeJobs HTTP request failed");
-            return new GetReanalyzeJobsResult { Success = false, ErrorMessage = ex.Message };
-        }
-    }
-
-    // 10. GET /api/mistakes/reanalyze/active
-    public async Task<GetActiveReanalyzeJobsResult> GetActiveReanalyzeJobsAsync(string reviewerId, CancellationToken ct = default)
-    {
-        if (_useSessionToken)
-        {
-            return await SendStrictAsync<GetActiveReanalyzeJobsResult>(HttpMethod.Get, $"/api/mistakes/reanalyze/active?reviewerId={Uri.EscapeDataString(reviewerId)}", null, ct);
-        }
-
-        try
-        {
-            using var response = await _httpClient.GetAsync($"/api/mistakes/reanalyze/active?reviewerId={Uri.EscapeDataString(reviewerId)}", ct);
-            var envelope = await response.Content.ReadFromJsonAsync<ApiEnvelope<GetActiveReanalyzeJobsResult>>(JsonOptions, ct);
-            if (!response.IsSuccessStatusCode || envelope is null || !envelope.Success)
-            {
-                var msg = envelope?.Message ?? "GetActiveReanalyzeJobs failed";
-                _logger.LogWarning("GetActiveReanalyzeJobs failed: {Message}, Status: {Status}", msg, response.StatusCode);
-                return new GetActiveReanalyzeJobsResult { Success = false, ErrorMessage = msg };
-            }
-
-            return envelope.Data ?? new GetActiveReanalyzeJobsResult();
-        }
-        catch (HttpRequestException ex)
-        {
-            _logger.LogError(ex, "GetActiveReanalyzeJobs HTTP request failed");
-            return new GetActiveReanalyzeJobsResult { Success = false, ErrorMessage = ex.Message };
-        }
-    }
-
-    // 11. PUT /api/mistakes/{id}
+    // 4. PUT /api/mistakes/{id}
     public async Task<UpdateMistakeItemResult> UpdateMistakeItemAsync(string id, string studentId, int subject, int grade, IReadOnlyList<MistakeSourceRegionDto>? sourceRegions, CancellationToken ct = default)
     {
         if (_useSessionToken)
@@ -601,7 +272,7 @@ public class MistakeHttpClient : IMistakeHttpClient
         }
     }
 
-    // 12. POST /api/mistakes/upload
+    // 5. POST /api/mistakes/upload
     public async Task<SubmitMistakeUploadResult> SubmitMistakeUploadAsync(string studentId, int subject, int grade, IReadOnlyList<string> imagePaths, string? rootCause, string sourceUploadId, CancellationToken ct = default)
     {
         if (_useSessionToken)
@@ -638,7 +309,7 @@ public class MistakeHttpClient : IMistakeHttpClient
         }
     }
 
-    // 13. POST /api/mistakes/complete-review
+    // 6. POST /api/mistakes/complete-review
     public async Task<CompleteUploadReviewResult> CompleteUploadReviewAsync(string sourceUploadId, string reviewerId, CancellationToken ct = default)
     {
         if (_useSessionToken)
@@ -667,7 +338,7 @@ public class MistakeHttpClient : IMistakeHttpClient
         }
     }
 
-    // 14. POST /api/mistakes/presigned-url
+    // 7. POST /api/mistakes/presigned-url
     public async Task<MistakePresignedUrlResult> GetPresignedUrlAsync(string objectPath, int expirySeconds, string? size, CancellationToken ct = default)
     {
         if (_useSessionToken)
@@ -768,12 +439,7 @@ public class MistakeHttpClient : IMistakeHttpClient
         {
             MistakeItemPageResult page => Array(data, "items") && Object(data, "pageMeta") && page.Items is not null && page.PageMeta is not null && page.Items.All(ValidItem),
             MistakeItemsByUploadResult items => Array(data, "items") && items.Items is not null && items.Items.All(ValidItem),
-            PendingReviewUploadListResult page => Array(data, "uploads") && Object(data, "pageMeta") && page.Uploads is not null && page.PageMeta is not null,
             MistakeItemDto item => Nonempty(data, "id") && ValidItem(item),
-            ReviewMistakeItemResult item => Success(data) && Array(data, "removedImagePaths") && item.RemovedImagePaths is not null,
-            ReanalyzeMistakeItemResult => Success(data) && Nonempty(data, "jobId"),
-            GetReanalyzeJobsResult jobs => Success(data) && Array(data, "jobs") && jobs.Jobs is not null,
-            GetActiveReanalyzeJobsResult jobs => Success(data) && Array(data, "jobs") && jobs.Jobs is not null,
             SubmitMistakeUploadResult item => Success(data) && Array(data, "createdItemIds") && item.CreatedItemIds is not null,
             CompleteUploadReviewResult item => Success(data) && Array(data, "removedImagePaths") && item.RemovedImagePaths is not null,
             MistakePresignedUrlResult => Nonempty(data, "url"),

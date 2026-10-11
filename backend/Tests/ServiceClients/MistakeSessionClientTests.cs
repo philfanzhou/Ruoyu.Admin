@@ -16,43 +16,32 @@ namespace Admin.WebApi.Tests.ServiceClients;
 
 public sealed class MistakeSessionClientTests
 {
-    public static IEnumerable<object[]> Methods => Enumerable.Range(0, 14).Select(i => new object[] { i });
+    public static IEnumerable<object[]> Methods => Enumerable.Range(0, 7).Select(i => new object[] { i });
     internal static async Task<object?> Call(IMistakeHttpClient client, int method, CancellationToken ct = default) => method switch
     {
         0 => await client.GetMistakeItemListAsync("student & ? #", 1, 2, MistakeReviewStatus.PendingReview, 1, 10, ct),
         1 => await client.GetMistakeItemAsync("item space?#", ct),
         2 => await client.GetMistakeItemsByUploadAsync("upload space?#", ct),
-        3 => await client.GetPendingReviewUploadsAsync(1, 10, [1, 2], ct),
-        4 => await client.ReviewMistakeItemAsync("item space?#", MistakeReviewStatus.Confirmed, "reviewer", null, 2, 1, null, ct),
-        5 => await client.AddMistakeItemAsync("student", 1, 2, "upload", null, [], ct),
-        6 => await client.DeleteMistakeItemAsync("item space?#", ct),
-        7 => await client.ReanalyzeMistakeItemAsync("item space?#", "reviewer", "student", null, ct),
-        8 => await client.GetReanalyzeJobsAsync("reviewer", ["job"], ct),
-        9 => await client.GetActiveReanalyzeJobsAsync("reviewer ?&#", ct),
-        10 => await client.UpdateMistakeItemAsync("item space?#", "student", 1, 2, null, ct),
-        11 => await client.SubmitMistakeUploadAsync("student", 1, 2, ["uploads/a.png"], null, "upload", ct),
-        12 => await client.CompleteUploadReviewAsync("upload", "admin-legacy-cleanup", ct),
-        13 => await client.GetPresignedUrlAsync("mistakes/path ?&#.png", 3600, null, ct),
+        3 => await client.UpdateMistakeItemAsync("item space?#", "student", 1, 2, null, ct),
+        4 => await client.SubmitMistakeUploadAsync("student", 1, 2, ["uploads/a.png"], null, "upload", ct),
+        5 => await client.CompleteUploadReviewAsync("upload", "admin-legacy-cleanup", ct),
+        6 => await client.GetPresignedUrlAsync("mistakes/path ?&#.png", 3600, null, ct),
         _ => throw new ArgumentOutOfRangeException(nameof(method))
     };
 
     internal static object Data(int method) => method switch
     {
         0 => new { items = Array.Empty<object>(), pageMeta = new { page = 1, size = 10, totalCount = 0, totalPages = 0 } },
-        1 or 5 or 10 => new { id = "item", studentId = "student", sourceRegions = Array.Empty<object>() },
+        1 or 3 => new { id = "item", studentId = "student", sourceRegions = Array.Empty<object>() },
         2 => new { items = Array.Empty<object>() },
-        3 => new { uploads = Array.Empty<object>(), pageMeta = new { page = 1, size = 10 } },
-        4 or 12 => new { success = true, removedImagePaths = Array.Empty<string>() },
-        6 => new { success = true },
-        7 => new { success = true, jobId = "job" },
-        8 or 9 => new { success = true, jobs = Array.Empty<object>() },
-        11 => new { success = true, createdItemIds = new[] { "item" } },
-        13 => new { url = "https://s3.example.test/bucket/key?signature=valid", expirySeconds = 3600 },
+        4 => new { success = true, createdItemIds = new[] { "item" } },
+        5 => new { success = true, removedImagePaths = Array.Empty<string>() },
+        6 => new { url = "https://s3.example.test/bucket/key?signature=valid", expirySeconds = 3600 },
         _ => throw new ArgumentOutOfRangeException(nameof(method))
     };
 
     [Theory, MemberData(nameof(Methods))]
-    public async Task All14_RealHttpSuccessAndFailureMatrixNeverDegradesOrReplays(int method)
+    public async Task All7_RealHttpSuccessAndFailureMatrixNeverDegradesOrReplays(int method)
     {
         await using var receiver = await Receiver.StartAsync();
         using var http = new HttpClient { BaseAddress = receiver.Origin, Timeout = TimeSpan.FromSeconds(2) };
@@ -90,11 +79,6 @@ public sealed class MistakeSessionClientTests
         await Assert.ThrowsAsync<MistakeDownstreamException>(() => Call(client, method));
         receiver.Body = "{\"success\":true,\"data\":{\"success\":false,\"errorMessage\":\"secret-canary\"}}";
         await Assert.ThrowsAsync<MistakeBadRequestException>(() => Call(client, method));
-        if (method == 6)
-        {
-            receiver.Body = "{\"success\":true}";
-            Assert.NotNull(await Call(client, method));
-        }
         receiver.Status = 404; receiver.Body = "not-json";
         if (method == 1) Assert.Null(await Call(client, method));
         else await Assert.ThrowsAsync<MistakeDownstreamException>(() => Call(client, method));
@@ -111,7 +95,7 @@ public sealed class MistakeSessionClientTests
     }
 
     [Theory, MemberData(nameof(Methods))]
-    public async Task All14_RealConnectionRefusedAndTlsErrorsAreSafe(int method)
+    public async Task All7_RealConnectionRefusedAndTlsErrorsAreSafe(int method)
     {
         using var listener = new System.Net.Sockets.TcpListener(IPAddress.Loopback, 0); listener.Start();
         var port = ((IPEndPoint)listener.LocalEndpoint).Port; listener.Stop();

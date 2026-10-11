@@ -87,7 +87,7 @@ public sealed partial class AdminOidcTests
     }
 
     [Fact]
-    public async Task MistakeSession_All14UseScopedStoreTicketEvenWithForgedPrincipalAndItems()
+    public async Task MistakeSession_All7UseScopedStoreTicketEvenWithForgedPrincipalAndItems()
     {
         using var authority = new OidcTestAuthority(); var capture = new MistakeSessionCapture();
         var admins = new MutableAdmins(); var student = MistakeStudent(); var oss = new Mock<IOssService>();
@@ -103,7 +103,7 @@ public sealed partial class AdminOidcTests
             // the downstream credential: the store ticket alone carries the token.
             context.Items[AdminSessionBoundary.TrustedSessionKey] = new AdminSessionResult(200, context.User, "forged-items-token");
             var client = scope.ServiceProvider.GetRequiredService<IMistakeHttpClient>();
-            for (var method = 0; method < 14; method++)
+            for (var method = 0; method < 7; method++)
             {
                 capture.MethodData = method;
                 Assert.NotNull(await MistakeSessionClientTests.Call(client, method));
@@ -219,7 +219,7 @@ public sealed partial class AdminOidcTests
     }
 
     [Fact]
-    public async Task MistakeSession_All14RequestDisconnectsPropagateWithoutFallbackOrReplay()
+    public async Task MistakeSession_All7RequestDisconnectsPropagateWithoutFallbackOrReplay()
     {
         using var authority = new OidcTestAuthority(); var capture = new MistakeSessionCapture { Delay = true };
         using var factory = MistakeFactory(authority, capture, new MutableAdmins(), MistakeStudent(), new Mock<IOssService>()); using var browser = Browser(factory);
@@ -231,7 +231,7 @@ public sealed partial class AdminOidcTests
         try
         {
             var client = scope.ServiceProvider.GetRequiredService<IMistakeHttpClient>();
-            for (var method = 0; method < 14; method++)
+            for (var method = 0; method < 7; method++)
             {
                 using var before = new CancellationTokenSource(); before.Cancel(); context.RequestAborted = before.Token;
                 var count = capture.Requests.Count;
@@ -293,7 +293,7 @@ internal sealed class MistakeSessionCapture : HttpMessageHandler
         object data = MethodData is { } index ? MistakeSessionClientTests.Data(index) : uri.AbsolutePath switch
         {
             "/api/mistakes" => MistakeSessionClientTests.Data(0),
-            "/api/mistakes/presigned-url" => MistakeSessionClientTests.Data(13),
+            "/api/mistakes/presigned-url" => MistakeSessionClientTests.Data(6),
             _ when uri.AbsolutePath.StartsWith("/api/mistakes/by-upload/") => new { items = new[] { new { id = "item", studentId = "student", reviewStatus = 2, sourceRegions = Array.Empty<object>() } } },
             _ => MistakeSessionClientTests.Data(1)
         };
