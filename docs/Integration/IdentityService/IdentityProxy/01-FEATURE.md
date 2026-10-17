@@ -1,42 +1,42 @@
-# 身份服务代理 (IdentityProxy)
+# Identity Service Proxy (IdentityProxy)
 
-## 功能名称和一句话概括
+## Feature name and one-line summary
 
-**IdentityProxy** — 管理后台代理转发身份服务请求并自动注入认证信息。
+**IdentityProxy** — the admin console proxies identity-service requests and injects authentication automatically.
 
-## 核心用户故事
+## Core user stories
 
-作为管理员，我希望通过管理后台统一访问身份服务功能且无需手动处理认证，以便简化身份账户的统一管理。
+As an administrator, I want to access identity-service functionality uniformly through the admin console without handling authentication manually, to simplify unified identity-account management.
 
-## 补充约束
+## Supplementary constraints
 
-1. **幂等性**：代理转发为无状态操作，GET 请求天然幂等，POST/PUT/DELETE 遵循下游服务语义
-2. **并发**：无并发限制，每个请求独立转发
-3. **事务边界**：单次请求-响应，无跨请求事务
-4. **失败降级**：身份服务不可达时返回 502 Bad Gateway
-5. **路径重写**：`/api/identity` 前缀替换为 `/api`，例如 `/api/identity/users` → `/api/users`
-6. **认证注入**：转发请求时自动添加 `X-Admin-AppId` 和 `X-Admin-AppSecret` 请求头
-7. **配置依赖**：需配置 IdentityServiceOptions（Address, AppId, AppSecret）
+1. **Idempotency**: proxy forwarding is stateless; GET requests are naturally idempotent, and POST/PUT/DELETE follow the downstream service's semantics
+2. **Concurrency**: no concurrency limit; each request is forwarded independently
+3. **Transaction boundary**: a single request-response with no cross-request transactions
+4. **Failure degradation**: returns 502 Bad Gateway when the identity service is unreachable
+5. **Path rewriting**: the `/api/identity` prefix is replaced with `/api`, for example `/api/identity/users` → `/api/users`
+6. **Authentication injection**: forwarded requests automatically get the `X-Admin-AppId` and `X-Admin-AppSecret` headers
+7. **Configuration dependency**: IdentityServiceOptions (Address, AppId, AppSecret) must be configured
 
-## 关键验收条件摘要
+## Key acceptance conditions summary
 
-1. 所有 `/api/identity/*` 请求被中间件拦截并转发到身份服务
-2. 路径重写正确：`/api/identity` 前缀替换为 `/api`
-3. 转发请求自动附加 `X-Admin-AppId` 和 `X-Admin-AppSecret` 请求头
-4. 身份服务不可达时返回 502 Bad Gateway
-5. 非身份服务路径不受中间件影响
+1. All `/api/identity/*` requests are intercepted by the middleware and forwarded to the identity service
+2. Path rewriting is correct: the `/api/identity` prefix is replaced with `/api`
+3. Forwarded requests automatically carry the `X-Admin-AppId` and `X-Admin-AppSecret` headers
+4. A 502 Bad Gateway is returned when the identity service is unreachable
+5. Non-identity-service paths are unaffected by the middleware
 
-## 范围外
+## Out of scope
 
-- 身份服务的业务逻辑实现
-- 管理员认证/授权流程
-- 请求/响应的缓存
-- 请求限流与熔断
+- The identity service's business-logic implementation
+- The administrator authentication/authorization flow
+- Request/response caching
+- Request rate limiting and circuit breaking
 
-## 文档索引
+## Document index
 
-- [02-SPEC.md](./02-SPEC.md) — 详细需求与验收标准清单
-- [03-DESIGN.md](./03-DESIGN.md) — 架构设计、接口签名与数据流
-- [04-TASKS.md](./04-TASKS.md) — 开发/验证任务列表
-- [05-TESTS.md](./05-TESTS.md) — 单元测试与集成测试计划
-- [06-CONVENTIONS.md](./06-CONVENTIONS.md) — 命名约定、日志安全与代码风格
+- [02-SPEC.md](./02-SPEC.md) — detailed requirements and acceptance criteria list
+- [03-DESIGN.md](./03-DESIGN.md) — architecture design, interface signatures, and data flow
+- [04-TASKS.md](./04-TASKS.md) — development/verification task list
+- [05-TESTS.md](./05-TESTS.md) — unit and integration test plan
+- [06-CONVENTIONS.md](./06-CONVENTIONS.md) — naming conventions, log safety, and code style

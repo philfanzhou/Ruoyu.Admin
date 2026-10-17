@@ -1,33 +1,33 @@
-# IdentityProxy 数据模型
+# IdentityProxy Data Models
 
-## 配置数据
+## Configuration data
 
 ### IdentityServiceOptions
 
-中间件所需的配置选项，通过依赖注入获取。
+The configuration options the middleware needs, obtained through dependency injection.
 
-| 属性 | 类型 | 说明 |
+| Property | Type | Description |
 |------|------|------|
-| Address | string | IdentityService 的基础地址（如 `http://identity-service:8080`） |
-| AppId | string | 管理后台在身份服务中注册的应用ID |
-| AppSecret | string | 管理后台在身份服务中注册的应用密钥 |
+| Address | string | the IdentityService's base address (for example `http://identity-service:8080`) |
+| AppId | string | the application ID the admin console registered with the identity service |
+| AppSecret | string | the application secret the admin console registered with the identity service |
 
-## 请求头
+## Request headers
 
-中间件在转发请求时注入以下请求头：
+The middleware injects the following headers when forwarding requests:
 
-| 请求头 | 来源 | 说明 |
+| Header | Source | Description |
 |--------|------|------|
-| X-Admin-AppId | IdentityServiceOptions.AppId | 标识管理后台应用身份 |
-| X-Admin-AppSecret | IdentityServiceOptions.AppSecret | 管理后台应用认证密钥 |
+| X-Admin-AppId | IdentityServiceOptions.AppId | identifies the admin console application |
+| X-Admin-AppSecret | IdentityServiceOptions.AppSecret | the admin console application's authentication secret |
 
-## 响应状态码
+## Response status codes
 
-| 状态码 | 场景 |
+| Status code | Scenario |
 |--------|------|
-| 2xx | 成功转发并收到身份服务正常响应 |
-| 502 | IdentityService 不可达 |
+| 2xx | forwarded successfully and a normal identity-service response was received |
+| 502 | the IdentityService is unreachable |
 
-## 无持久化数据
+## No persisted data
 
-IdentityProxyMiddleware 本身不涉及数据库操作，所有数据由下游 IdentityService 处理。IdentityAccountsController 的数据模型[待确认]。
+IdentityProxyMiddleware itself involves no database operations; all data is handled by the downstream IdentityService. IdentityAccountsController's data models [to confirm].

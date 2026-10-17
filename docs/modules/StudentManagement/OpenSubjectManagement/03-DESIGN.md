@@ -1,6 +1,6 @@
-# OpenSubjectManagement — 设计说明 (DESIGN)
+# OpenSubjectManagement — Design Notes (DESIGN)
 
-## 本功能在项目中的目录与文件结构
+## Directory and file structure of this capability in the project
 
 ```
 
@@ -9,12 +9,12 @@
 │   │   └── StudentsController.cs              # GetStudentOpenSubjects, SetStudentOpenSubjects
 │   └── Models/
 │       ├── OpenSubjectDtos.cs                  # OpenSubjectDto, SetOpenSubjectsRequest, SubjectItem, SubjectOption
-│       ├── OperationResponse.cs               # 操作结果响应（record，共享）
-│       └── ErrorResponse.cs                   # 错误响应（record，共享）
+│       ├── OperationResponse.cs               # operation-result response (record, shared)
+│       └── ErrorResponse.cs                   # error response (record, shared)
 ├── test/
 │   └── Admin.WebApi.Tests/
 │       └── Models/
-│           └── ModelTests.cs                  # 模型构造函数测试
+│           └── ModelTests.cs                  # model constructor tests
 └── docs/modules/StudentManagement/OpenSubjectManagement/
     ├── 01-FEATURE.md
     ├── 02-SPEC.md
@@ -24,9 +24,9 @@
     └── 06-CONVENTIONS.md
 ```
 
-## 关键接口签名和数据结构定义
+## Key interface signatures and data structure definitions
 
-### API 控制器
+### API controller
 
 ```csharp
 // backend/Controllers/StudentsController.cs
@@ -37,7 +37,7 @@ public async Task<IActionResult> GetStudentOpenSubjects(Guid studentId, [FromQue
 public async Task<IActionResult> SetStudentOpenSubjects(Guid studentId, [FromBody] SetOpenSubjectsRequest request)
 ```
 
-### 数据模型
+### Data models
 
 ```csharp
 // backend/Models/OpenSubjectDtos.cs
@@ -55,75 +55,75 @@ public record SubjectItem(int Subject, string OpenStartDate, string? OpenEndDate
 public record SubjectOption(int Value, string Name, string DisplayName);
 ```
 
-### 注入的外部依赖
+### Injected external dependencies
 
 ```csharp
-// 构造函数签名（StudentsController 共享）
+// Constructor signature (shared by StudentsController)
 public StudentsController(
     SProto.StudentManagementGrpcService.StudentManagementGrpcServiceClient grpcClient,
     ILogger<StudentsController> logger)
 ```
 
-- `StudentManagementGrpcServiceClient`：提供 GetStudentOpenSubjects、SetStudentOpenSubjects 方法。
-- `ILogger<StudentsController>`：日志记录器。
+- `StudentManagementGrpcServiceClient`: provides the GetStudentOpenSubjects and SetStudentOpenSubjects methods.
+- `ILogger<StudentsController>`: the logger.
 
-### 外部常量依赖
+### External constant dependencies
 
 ```csharp
 // Ruoyu.Admin.Common.Constants.SubjectConstants
-SubjectConstants.IsValid(int subject)  // 校验科目值是否有效
-SubjectConstants.DateFormat            // 日期格式字符串[推断]
+SubjectConstants.IsValid(int subject)  // checks whether a subject value is valid
+SubjectConstants.DateFormat            // date format string [inferred]
 ```
 
-## 数据流描述（步骤序列）
+## Data flow description (step sequences)
 
-### 查询学生开放科目 (GetStudentOpenSubjects)
+### Query a student's open subjects (GetStudentOpenSubjects)
 
-1. 接收 studentId（Guid 路由参数）和 activeOnly（bool? 查询参数，默认 false）。
-2. 构建 gRPC `GetStudentOpenSubjectsRequest`，设置 `StudentId` 和 `ActiveOnly`。
-3. 调用 `_grpcClient.GetStudentOpenSubjectsAsync(request)`。
-4. 将 gRPC 响应中的 Subjects 映射为 `List<OpenSubjectDto>`：
+1. Receive studentId (Guid route parameter) and activeOnly (bool? query parameter, default false).
+2. Build the gRPC `GetStudentOpenSubjectsRequest`, setting `StudentId` and `ActiveOnly`.
+3. Call `_grpcClient.GetStudentOpenSubjectsAsync(request)`.
+4. Map the Subjects of the gRPC response to `List<OpenSubjectDto>`:
    - `Id` ← `s.Id`
    - `Subject` ← `s.Subject`
    - `OpenStartDate` ← `s.OpenStartDate`
-   - `OpenEndDate` ← `s.OpenEndDate`（空字符串时转为 null）
+   - `OpenEndDate` ← `s.OpenEndDate` (an empty string becomes null)
    - `IsActive` ← `s.IsActive`
-5. 返回 200 `List<OpenSubjectDto>`。
+5. Return 200 `List<OpenSubjectDto>`.
 
-### 设置学生开放科目 (SetStudentOpenSubjects)
+### Set a student's open subjects (SetStudentOpenSubjects)
 
-1. 接收 studentId（Guid 路由参数）和 `SetOpenSubjectsRequest` body。
-2. 构建 gRPC `SetOpenSubjectsRequest`，设置 `StudentId`。
-3. 若 `request.Subjects` 非空且非空列表，遍历每个 SubjectItem：
-   a. 校验科目有效性：`SubjectConstants.IsValid(subject.Subject)`，无效返回 400。
-   b. 校验 OpenStartDate 非空：`string.IsNullOrEmpty(subject.OpenStartDate)`，为空返回 400。
-   c. 校验 OpenStartDate 格式：`DateOnly.TryParse(subject.OpenStartDate, out _)`，非法返回 400。
-   d. 校验 OpenEndDate 格式（若非空）：`DateOnly.TryParse(subject.OpenEndDate, out var parsed)`，非法返回 400。
-   e. 构建 gRPC `OpenSubjectItem`，OpenEndDate 使用 `SubjectConstants.DateFormat` 格式化（若非空）或空字符串。
-   f. 添加到 gRPC 请求的 Subjects 列表。
-4. 调用 `_grpcClient.SetStudentOpenSubjectsAsync(grpcRequest)`。
-5. 若 gRPC 返回 `Success=false` → 返回 400 `ErrorResponse(ErrorMessage)`。
-6. 捕获 `RpcException(InvalidArgument)` → 返回 400。
-7. 返回 `OperationResponse(true, "Open subjects updated successfully.")`。
+1. Receive studentId (Guid route parameter) and the `SetOpenSubjectsRequest` body.
+2. Build the gRPC `SetOpenSubjectsRequest`, setting `StudentId`.
+3. If `request.Subjects` is non-null and non-empty, iterate over each SubjectItem:
+   a. Validate the subject: `SubjectConstants.IsValid(subject.Subject)`; invalid returns 400.
+   b. Validate OpenStartDate is non-empty: `string.IsNullOrEmpty(subject.OpenStartDate)`; empty returns 400.
+   c. Validate the OpenStartDate format: `DateOnly.TryParse(subject.OpenStartDate, out _)`; illegal returns 400.
+   d. Validate the OpenEndDate format (when non-empty): `DateOnly.TryParse(subject.OpenEndDate, out var parsed)`; illegal returns 400.
+   e. Build the gRPC `OpenSubjectItem`, formatting OpenEndDate with `SubjectConstants.DateFormat` (when non-empty) or as an empty string.
+   f. Add it to the gRPC request's Subjects list.
+4. Call `_grpcClient.SetStudentOpenSubjectsAsync(grpcRequest)`.
+5. When gRPC returns `Success=false` → return 400 `ErrorResponse(ErrorMessage)`.
+6. Catch `RpcException(InvalidArgument)` → return 400.
+7. Return `OperationResponse(true, "Open subjects updated successfully.")`.
 
-## 错误处理策略
+## Error handling strategy
 
-- **参数校验**：在 Controller 层逐项校验每个 SubjectItem，校验失败立即返回 400 `ErrorResponse`。
-- **gRPC 错误映射**：
+- **Parameter validation**: the Controller layer validates each SubjectItem item by item; a failed check returns 400 `ErrorResponse` immediately.
+- **gRPC error mapping**:
   - `RpcException(StatusCode.InvalidArgument)` → 400 Bad Request
-  - gRPC 返回 `Success=false` → 400 Bad Request（注意：与 CRUD 操作返回 404 不同）
-- **GetStudentOpenSubjects**：无显式 try-catch，gRPC 异常将向上传播[推断]。
+  - gRPC returns `Success=false` → 400 Bad Request (note: unlike CRUD operations, which return 404)
+- **GetStudentOpenSubjects**: no explicit try-catch; gRPC exceptions propagate upward [inferred].
 
-## 依赖的外部模块接口
+## Interfaces of external modules this depends on
 
-| 接口 | 提供能力 | 所在模块 |
+| Interface | Capabilities provided | Module |
 | --- | --- | --- |
 | `StudentManagementGrpcServiceClient` | GetStudentOpenSubjects, SetStudentOpenSubjects | `Ruoyu.Study.Student.Contract.Protos` |
 | `SubjectConstants` | IsValid(int), DateFormat | `Ruoyu.Admin.Common.Constants` |
 
-## 可测试性设计
+## Testability design
 
-- **依赖注入接口化**：`StudentManagementGrpcServiceClient` 通过构造函数注入，可被 Moq 替换[推断]。
-- **校验逻辑可间接测试**：`SubjectConstants.IsValid` 为外部静态方法，通过 Controller 公共 API 间接测试。
-- **日期解析可测试**：`DateOnly.TryParse` 为 .NET 标准库方法，传入各种格式字符串可验证校验行为。
-- **失败路径可触发**：Mock gRPC Client 抛出 `RpcException` 或返回 `Success=false` 可模拟各种错误场景。
+- **Dependency-injection interfaces**: `StudentManagementGrpcServiceClient` is constructor-injected and replaceable by Moq [inferred].
+- **Validation logic is indirectly testable**: `SubjectConstants.IsValid` is an external static method, tested indirectly through the Controller's public API.
+- **Date parsing is testable**: `DateOnly.TryParse` is a .NET standard-library method; passing various format strings verifies the validation behavior.
+- **Failure paths are triggerable**: a Mock gRPC client throwing `RpcException` or returning `Success=false` simulates the various error scenarios.

@@ -1,25 +1,25 @@
-# StudentCRUD — 设计说明 (DESIGN)
+# StudentCRUD — Design Notes (DESIGN)
 
-## 本功能在项目中的目录与文件结构
+## Directory and file structure of this capability in the project
 
 ```
 
 ├── backend/
 │   ├── Controllers/
-│   │   └── StudentsController.cs          # API 控制器（CRUD + GetGrades + GetSubjectOptions）
+│   │   └── StudentsController.cs          # API controller (CRUD + GetGrades + GetSubjectOptions)
 │   └── Models/
-│       ├── StudentDto.cs                   # 学生 DTO（record）
-│       ├── CreateStudentRequest.cs         # 创建请求（record）
-│       ├── UpdateStudentRequest.cs         # 更新请求（record）
-│       ├── GradeOption.cs                  # 年级选项（record）
-│       ├── SubjectOption.cs                # 科目选项（record）[推断，定义于 OpenSubjectDtos.cs]
-│       ├── PagedResponse.cs               # 分页响应泛型（record）
-│       ├── OperationResponse.cs           # 操作结果响应（record）
-│       └── ErrorResponse.cs               # 错误响应（record）
+│       ├── StudentDto.cs                   # student DTO (record)
+│       ├── CreateStudentRequest.cs         # create request (record)
+│       ├── UpdateStudentRequest.cs         # update request (record)
+│       ├── GradeOption.cs                  # grade option (record)
+│       ├── SubjectOption.cs                # subject option (record) [inferred, defined in OpenSubjectDtos.cs]
+│       ├── PagedResponse.cs               # paged response generic (record)
+│       ├── OperationResponse.cs           # operation-result response (record)
+│       └── ErrorResponse.cs               # error response (record)
 ├── test/
 │   └── Admin.WebApi.Tests/
 │       └── Models/
-│           └── ModelTests.cs              # 模型构造函数测试
+│           └── ModelTests.cs              # model constructor tests
 └── docs/modules/StudentManagement/StudentCRUD/
     ├── 01-FEATURE.md
     ├── 02-SPEC.md
@@ -29,9 +29,9 @@
     └── 06-CONVENTIONS.md
 ```
 
-## 关键接口签名和数据结构定义
+## Key interface signatures and data structure definitions
 
-### API 控制器
+### API controller
 
 ```csharp
 // backend/Controllers/StudentsController.cs
@@ -66,7 +66,7 @@ public class StudentsController : ControllerBase
 }
 ```
 
-### 数据模型
+### Data models
 
 ```csharp
 // backend/Models/StudentDto.cs
@@ -97,107 +97,107 @@ public sealed record OperationResponse(bool Success, string Message);
 public sealed record ErrorResponse(string Message);
 ```
 
-### 年级静态映射
+### Static grade mapping
 
 ```csharp
 private static readonly Dictionary<int, string> GradeLabels = new()
 {
-    [1] = "小学一年级",  [2] = "小学二年级",  [3] = "小学三年级",
-    [4] = "小学四年级",  [5] = "小学五年级",  [6] = "小学六年级",
-    [7] = "初中一年级",  [8] = "初中二年级",  [9] = "初中三年级",
-    [10] = "高中一年级", [11] = "高中二年级", [12] = "高中三年级",
+    [1] = "Primary 1",  [2] = "Primary 2",  [3] = "Primary 3",
+    [4] = "Primary 4",  [5] = "Primary 5",  [6] = "Primary 6",
+    [7] = "Junior 1",   [8] = "Junior 2",   [9] = "Junior 3",
+    [10] = "Senior 1",  [11] = "Senior 2",  [12] = "Senior 3",
 };
 ```
 
-### 注入的外部依赖
+### Injected external dependencies
 
 ```csharp
-// 构造函数签名
+// Constructor signature
 public StudentsController(
     SProto.StudentManagementGrpcService.StudentManagementGrpcServiceClient grpcClient,
     ILogger<StudentsController> logger)
 ```
 
-- `StudentManagementGrpcServiceClient`：Student 服务的 gRPC 客户端，提供 ListStudents、GetStudent、CreateStudent、UpdateStudent、DeleteStudent、GetAvailableSubjects 方法。
-- `ILogger<StudentsController>`：日志记录器。
+- `StudentManagementGrpcServiceClient`: the Student service's gRPC client, providing ListStudents, GetStudent, CreateStudent, UpdateStudent, DeleteStudent, and GetAvailableSubjects.
+- `ILogger<StudentsController>`: the logger.
 
-## 数据流描述（步骤序列）
+## Data flow description (step sequences)
 
-### 查询学生列表 (ListStudents)
+### Query the student list (ListStudents)
 
-1. 接收查询参数 name、grade、page、pageSize。
-2. 规范化分页参数：page < 1 时修正为 1，pageSize 使用 `Math.Clamp(value, 1, 100)`。
-3. 构建 gRPC `ListStudentsRequest`：grade > 0 时转为 Grade 枚举，否则为 Unspecified。
-4. 调用 `_grpcClient.ListStudentsAsync(request)`。
-5. 将 gRPC 响应中的每个 Item 通过 `ToDto` 转换为 `StudentDto`。
-6. 返回 `PagedResponse<StudentDto>`。
+1. Receive the query parameters name, grade, page, and pageSize.
+2. Normalize the pagination parameters: page < 1 is corrected to 1; pageSize uses `Math.Clamp(value, 1, 100)`.
+3. Build the gRPC `ListStudentsRequest`: grade > 0 converts to the Grade enum, otherwise Unspecified.
+4. Call `_grpcClient.ListStudentsAsync(request)`.
+5. Convert each Item of the gRPC response to `StudentDto` via `ToDto`.
+6. Return `PagedResponse<StudentDto>`.
 
-### 获取学生详情 (GetStudent)
+### Get student details (GetStudent)
 
-1. 接收 studentId（Guid 路由参数）。
-2. 构建 gRPC `GetStudentRequest`。
-3. 调用 `_grpcClient.GetStudentAsync(request)`。
-4. 捕获 `RpcException(NotFound)` → 返回 404；捕获 `RpcException(InvalidArgument)` → 返回 400。
-5. 将 gRPC 响应通过 `ToDto` 转换并返回 200。
+1. Receive studentId (Guid route parameter).
+2. Build the gRPC `GetStudentRequest`.
+3. Call `_grpcClient.GetStudentAsync(request)`.
+4. Catch `RpcException(NotFound)` → return 404; catch `RpcException(InvalidArgument)` → return 400.
+5. Convert the gRPC response via `ToDto` and return 200.
 
-### 创建学生 (CreateStudent)
+### Create a student (CreateStudent)
 
-1. 接收 `CreateStudentRequest` body。
-2. 校验：姓名非空白、年级有效（1-12）、IdentityAccountIds 非空、所有 ID 为合法 GUID。
-3. 校验失败返回 400 `ErrorResponse`。
-4. 构建 gRPC `CreateStudentRequest`，姓名 Trim 后传入。
-5. 调用 `_grpcClient.CreateStudentAsync(grpcRequest)`。
-6. 捕获 `RpcException(InvalidArgument)` → 返回 400。
-7. 将 gRPC 响应通过 `ToDto` 转换并返回 200。
+1. Receive the `CreateStudentRequest` body.
+2. Validate: the name is not whitespace, the grade is valid (1-12), IdentityAccountIds is non-empty, and all IDs are legal GUIDs.
+3. On validation failure return 400 `ErrorResponse`.
+4. Build the gRPC `CreateStudentRequest`, passing the name after Trim.
+5. Call `_grpcClient.CreateStudentAsync(grpcRequest)`.
+6. Catch `RpcException(InvalidArgument)` → return 400.
+7. Convert the gRPC response via `ToDto` and return 200.
 
-### 更新学生 (UpdateStudent)
+### Update a student (UpdateStudent)
 
-1. 接收 studentId（Guid 路由参数）和 `UpdateStudentRequest` body。
-2. 校验：姓名非空白、年级有效、若提供 IdentityAccountIds 则每个 ID 为合法 GUID。
-3. 构建 gRPC `UpdateStudentRequest`，若 IdentityAccountIds 非空则 AddRange。
-4. 调用 `_grpcClient.UpdateStudentAsync(grpcRequest)`。
-5. 若 gRPC 返回 `Success=false` → 返回 404 `ErrorResponse(ErrorMessage)`。
-6. 捕获 `RpcException(InvalidArgument)` → 返回 400。
-7. 返回 `OperationResponse(true, "Student updated successfully.")`。
+1. Receive studentId (Guid route parameter) and the `UpdateStudentRequest` body.
+2. Validate: the name is not whitespace, the grade is valid, and when IdentityAccountIds is provided every ID is a legal GUID.
+3. Build the gRPC `UpdateStudentRequest`, AddRange-ing IdentityAccountIds when non-empty.
+4. Call `_grpcClient.UpdateStudentAsync(grpcRequest)`.
+5. When gRPC returns `Success=false` → return 404 `ErrorResponse(ErrorMessage)`.
+6. Catch `RpcException(InvalidArgument)` → return 400.
+7. Return `OperationResponse(true, "Student updated successfully.")`.
 
-### 删除学生 (DeleteStudent)
+### Delete a student (DeleteStudent)
 
-1. 接收 studentId（Guid 路由参数）。
-2. 构建 gRPC `DeleteStudentRequest`。
-3. 调用 `_grpcClient.DeleteStudentAsync(request)`。
-4. 若 gRPC 返回 `Success=false` → 返回 404 `ErrorResponse(ErrorMessage)`。
-5. 捕获 `RpcException(InvalidArgument)` → 返回 400。
-6. 返回 `OperationResponse(true, "Student deleted.")`。
+1. Receive studentId (Guid route parameter).
+2. Build the gRPC `DeleteStudentRequest`.
+3. Call `_grpcClient.DeleteStudentAsync(request)`.
+4. When gRPC returns `Success=false` → return 404 `ErrorResponse(ErrorMessage)`.
+5. Catch `RpcException(InvalidArgument)` → return 400.
+6. Return `OperationResponse(true, "Student deleted.")`.
 
-### 获取年级选项 (GetGrades)
+### Get grade options (GetGrades)
 
-1. 从静态字典 `GradeLabels` 生成 `List<GradeOption>`。
-2. 按 Value 排序后返回 200。
+1. Generate `List<GradeOption>` from the static dictionary `GradeLabels`.
+2. Sort by Value and return 200.
 
-### 获取科目选项 (GetSubjectOptions)
+### Get subject options (GetSubjectOptions)
 
-1. 构建 gRPC `Empty` 请求。
-2. 调用 `_grpcClient.GetAvailableSubjectsAsync(request)`。
-3. 将 gRPC 响应中的 Subjects 映射为 `List<SubjectOption>`。
-4. 返回 200。
+1. Build the gRPC `Empty` request.
+2. Call `_grpcClient.GetAvailableSubjectsAsync(request)`.
+3. Map the Subjects of the gRPC response to `List<SubjectOption>`.
+4. Return 200.
 
-## 错误处理策略
+## Error handling strategy
 
-- **参数校验**：在 Controller 层前置判空与格式检查，无效参数直接返回 400 `ErrorResponse`。
-- **gRPC 错误映射**：
+- **Parameter validation**: up-front null and format checks in the Controller layer; invalid parameters return 400 `ErrorResponse` directly.
+- **gRPC error mapping**:
   - `RpcException(StatusCode.InvalidArgument)` → 400 Bad Request
   - `RpcException(StatusCode.NotFound)` → 404 Not Found
-- **gRPC 业务失败**：Update/Delete 操作 gRPC 返回 `Success=false` 时，使用 `ErrorMessage` 返回 404。
-- **未捕获的 gRPC 异常**：未被 `when` 子句过滤的 `RpcException` 将向上传播，由 ASP.NET Core 中间件处理[推断]。
+- **gRPC business failure**: when an Update/Delete operation gets `Success=false` from gRPC, return 404 using `ErrorMessage`.
+- **Uncaught gRPC exceptions**: `RpcException`s not filtered by a `when` clause propagate upward and are handled by the ASP.NET Core middleware [inferred].
 
-## 依赖的外部模块接口
+## Interfaces of external modules this depends on
 
-| 接口 | 提供能力 | 所在模块 |
+| Interface | Capabilities provided | Module |
 | --- | --- | --- |
 | `StudentManagementGrpcServiceClient` | ListStudents, GetStudent, CreateStudent, UpdateStudent, DeleteStudent, GetAvailableSubjects | `Ruoyu.Study.Student.Contract.Protos` |
 
-## 可测试性设计
+## Testability design
 
-- **依赖注入接口化**：`StudentManagementGrpcServiceClient` 通过构造函数注入，可被 Moq 替换[推断，需验证 gRPC Client 是否可 Mock]。
-- **静态方法可测试**：`ToDto`、`IsValidGuid`、`IsValidGrade` 为 private static 方法，可通过公共 API 间接测试。
-- **失败路径可触发**：Mock gRPC Client 抛出 `RpcException` 可模拟各种错误场景。
+- **Dependency-injection interfaces**: `StudentManagementGrpcServiceClient` is injected through the constructor and can be replaced by Moq [inferred; verify whether the gRPC client is mockable].
+- **Static methods are testable**: `ToDto`, `IsValidGuid`, and `IsValidGrade` are private static methods, testable indirectly through the public API.
+- **Failure paths are triggerable**: a Mock gRPC client throwing `RpcException` simulates the various error scenarios.

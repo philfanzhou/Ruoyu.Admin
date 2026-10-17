@@ -1,93 +1,93 @@
-# UploadRecordManagement 数据模型
+# UploadRecordManagement Data Models
 
-当前实现使用 HTTP ServiceClients。以下按 index 选择图片的请求和旧 gRPC 映射，仅保留为 legacy 迁移背景；managed-v1 的模式、revision、每组 `requestKey`、`sourcePaths` 或 `sourceRegions` 与逐组结果见[受管指派说明](../../../Integration/ManagedAssignment.md)。受管提交不重新读取当前 Student，不新增 Admin 数据库迁移或操作日志表；使用独立客户端调用固定 POST 路由，并发送服务器会话中已验证的 access token。
+The current implementation uses HTTP ServiceClients. The index-based image-selection requests and the old gRPC mapping below are retained only as legacy migration background; for the managed-v1 mode, revision, per-group `requestKey`, `sourcePaths` or `sourceRegions`, and per-group results see the [managed assignment notes](../../../Integration/ManagedAssignment.md). Managed submission does not re-read the current Student and adds no Admin database migrations or operation-log tables; it uses a dedicated client calling the fixed POST route, sending the access token already verified in the server session.
 
-## 请求模型
+## Request models
 
 ### RotateImageRequest
 
-| 字段 | 类型 | 必需 | 说明 |
+| Field | Type | Required | Description |
 |------|------|------|------|
-| StudentId | string | 是 | 学生 ID |
-| ImageIndex | int | 是 | 图片索引 |
-| Rotation | int | 是 | 旋转角度 |
+| StudentId | string | yes | student ID |
+| ImageIndex | int | yes | image index |
+| Rotation | int | yes | rotation angle |
 
-定义位置：`backend/Controllers/OssUploadRecordController.cs`
+Defined in: `backend/Controllers/OssUploadRecordController.cs`
 
 ### ResetStatusRequest
 
-| 字段 | 类型 | 必需 | 说明 |
+| Field | Type | Required | Description |
 |------|------|------|------|
-| StudentId | string | 是 | 学生 ID |
-| TargetStatus | int | 是 | 目标状态（对应 UploadStatus 枚举） |
+| StudentId | string | yes | student ID |
+| TargetStatus | int | yes | target status (corresponds to the UploadStatus enum) |
 
-定义位置：`backend/Controllers/OssUploadRecordController.cs`
+Defined in: `backend/Controllers/OssUploadRecordController.cs`
 
 ### ImageAssignment
 
-| 字段 | 类型 | 必需 | 说明 |
+| Field | Type | Required | Description |
 |------|------|------|------|
-| ImageIndices | List\<int\> | 是 | 该 assignment 引用的图片索引列表，至少 1 个元素 |
-| Subject | int | 是 | 学科 |
-| Grade | int | 是 | 年级 |
-| Comments | string? | 否 | 备注 |
+| ImageIndices | List\<int\> | yes | the list of image indices this assignment references, at least 1 element |
+| Subject | int | yes | subject |
+| Grade | int | yes | grade |
+| Comments | string? | no | remark |
 
-定义位置：`backend/Controllers/OssUploadRecordController.cs`
+Defined in: `backend/Controllers/OssUploadRecordController.cs`
 
 ### AssignUploadRecordRequest
 
-| 字段 | 类型 | 必需 | 说明 |
+| Field | Type | Required | Description |
 |------|------|------|------|
-| StudentId | string | 是 | 学生 ID |
-| Assignments | List\<ImageAssignment\> | 是 | 分配条目列表 |
+| StudentId | string | yes | student ID |
+| Assignments | List\<ImageAssignment\> | yes | the assignment entry list |
 
-定义位置：`backend/Controllers/OssUploadRecordController.cs`
+Defined in: `backend/Controllers/OssUploadRecordController.cs`
 
-## gRPC 消息映射
+## gRPC message mapping
 
-### 上传记录查询
+### Upload-record queries
 
-| Admin API 请求 | gRPC 请求 | gRPC 服务 |
+| Admin API request | gRPC request | gRPC service |
 |----------------|-----------|-----------|
 | GetAllUploadRecords | GetAllUploadRecordsRequest | StudentManagement |
-| GetUploadRecord (assign 内部) | GetUploadRecordRequest | StudentLearning |
+| GetUploadRecord (inside assign) | GetUploadRecordRequest | StudentLearning |
 | ResetUploadRecordStatus | ResetUploadRecordStatusRequest | StudentLearning |
 | MarkUploadRecordCompleted | MarkUploadRecordCompletedRequest | StudentLearning |
 | RotateUploadImage | RotateUploadImageRequest | StudentLearning |
 | RemoveImageFromRecord | RemoveImageFromRecordRequest | StudentLearning |
 | AnalyzeUploadRecord | AnalyzeUploadRecordRequest | StudentManagement |
 
-### 错题创建
+### Mistake creation
 
-| Admin API 请求 | gRPC 请求 | gRPC 服务 |
+| Admin API request | gRPC request | gRPC service |
 |----------------|-----------|-----------|
-| SubmitMistakeUpload (assign 内部) | SubmitMistakeUploadRequest | Mistake |
+| SubmitMistakeUpload (inside assign) | SubmitMistakeUploadRequest | Mistake |
 
-## 枚举值
+## Enum values
 
 ### UploadStatus
 
-| 值 | 名称 | 说明 |
+| Value | Name | Description |
 |----|------|------|
-| 0 | Unspecified | 未指定 |
-| 1 | Uploaded | 已上传 |
+| 0 | Unspecified | unspecified |
+| 1 | Uploaded | uploaded |
 
-[待确认] 完整的 UploadStatus 枚举值列表
+[to confirm] The complete list of UploadStatus enum values
 
 ### Subject / Grade
 
-通过 `GET /api/admin/enum-options` 获取完整枚举选项。
+Fetch the complete enum options via `GET /api/admin/enum-options`.
 
-## 响应模型说明
+## Response model notes
 
-### GetAllUploadRecords 响应
+### GetAllUploadRecords response
 
-- `studentName`：通过批量查询 StudentManagement.GetStudent 获取，查询失败时回退为 studentId
-- `createdAt` / `updatedAt`：从 gRPC Timestamp 解析为 Unix 秒数，支持数字字符串和 ISO 8601 格式
+- `studentName`: fetched through batch queries to StudentManagement.GetStudent, falling back to the studentId when the query fails
+- `createdAt` / `updatedAt`: parsed from the gRPC Timestamp into Unix seconds, supporting numeric strings and ISO 8601 formats
 
-### AssignUploadRecord 响应
+### AssignUploadRecord response
 
-- `createdItems`：每个 assignment 对应一个元素，包含 `itemId`（新创建的 mistake_item ID）
-- `remainingImageCount`：分配后 `image_upload_record.image_paths` 中剩余的图片数量
-- `totalImageCount`：上传记录原始总图片数
-- `warnings`：部分 assignment 失败时的警告信息列表
+- `createdItems`: one element per assignment, containing `itemId` (the newly created mistake_item ID)
+- `remainingImageCount`: the number of images remaining in `image_upload_record.image_paths` after the assignment
+- `totalImageCount`: the upload record's original total image count
+- `warnings`: the warning list when some assignments fail

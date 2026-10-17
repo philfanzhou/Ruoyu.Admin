@@ -1,43 +1,43 @@
-# 教师门户代理 (TeacherPortalProxy)
+# Teacher Portal Proxy (TeacherPortalProxy)
 
-## 功能名称和一句话概括
+## Feature name and one-line summary
 
-**TeacherPortalProxy** — 管理后台代理转发教师门户请求并自动注入管理密钥。
+**TeacherPortalProxy** — the admin console proxies teacher-portal requests and injects the admin key automatically.
 
-## 核心用户故事
+## Core user stories
 
-作为管理员，我希望通过管理后台统一访问教师门户功能且无需手动处理认证，以便简化教师权限的统一管理。
+As an administrator, I want to access teacher-portal functionality uniformly through the admin console without handling authentication manually, to simplify unified teacher-permission management.
 
-## 补充约束
+## Supplementary constraints
 
-1. **幂等性**：代理转发为无状态操作，GET 请求天然幂等，POST/PUT/DELETE 遵循下游服务语义
-2. **并发**：无并发限制，每个请求独立转发
-3. **事务边界**：单次请求-响应，无跨请求事务
-4. **失败降级**：教师门户服务不可达时返回 502 Bad Gateway；未配置时返回 503 Service Unavailable
-5. **路径重写规则**：`/api/teacher-portal/admin` → `/api/admin`；`/api/teacher-portal/auth` → `/api/auth`；其他 `/api/teacher-portal/*` → `/api/admin`
-6. **认证注入**：转发请求时自动添加 `X-Admin-Key` 请求头
-7. **配置依赖**：需配置 TeacherPortalProxyOptions（Address, AdminApiKey）
+1. **Idempotency**: proxy forwarding is stateless; GET requests are naturally idempotent, and POST/PUT/DELETE follow the downstream service's semantics
+2. **Concurrency**: no concurrency limit; each request is forwarded independently
+3. **Transaction boundary**: a single request-response with no cross-request transactions
+4. **Failure degradation**: returns 502 Bad Gateway when the teacher-portal service is unreachable; returns 503 Service Unavailable when not configured
+5. **Path rewriting rules**: `/api/teacher-portal/admin` → `/api/admin`; `/api/teacher-portal/auth` → `/api/auth`; other `/api/teacher-portal/*` → `/api/admin`
+6. **Authentication injection**: forwarded requests automatically get the `X-Admin-Key` header
+7. **Configuration dependency**: TeacherPortalProxyOptions (Address, AdminApiKey) must be configured
 
-## 关键验收条件摘要
+## Key acceptance conditions summary
 
-1. 所有 `/api/teacher-portal/*` 请求被中间件拦截并转发到教师门户服务
-2. 路径重写规则正确：admin → `/api/admin`，auth → `/api/auth`，其他 → `/api/admin`
-3. 转发请求自动附加 `X-Admin-Key` 请求头
-4. 教师门户服务不可达时返回 502 Bad Gateway
-5. 未配置代理时返回 503 Service Unavailable
-6. 非教师门户路径不受中间件影响
+1. All `/api/teacher-portal/*` requests are intercepted by the middleware and forwarded to the teacher-portal service
+2. The path rewriting rules are correct: admin → `/api/admin`, auth → `/api/auth`, others → `/api/admin`
+3. Forwarded requests automatically carry the `X-Admin-Key` header
+4. A 502 Bad Gateway is returned when the teacher-portal service is unreachable
+5. A 503 Service Unavailable is returned when the proxy is not configured
+6. Non-teacher-portal paths are unaffected by the middleware
 
-## 范围外
+## Out of scope
 
-- 教师门户的业务逻辑实现
-- 管理员认证/授权流程
-- 请求/响应的缓存
-- 请求限流与熔断
+- The teacher portal's business-logic implementation
+- The administrator authentication/authorization flow
+- Request/response caching
+- Request rate limiting and circuit breaking
 
-## 文档索引
+## Document index
 
-- [02-SPEC.md](./02-SPEC.md) — 详细需求与验收标准清单
-- [03-DESIGN.md](./03-DESIGN.md) — 架构设计、接口签名与数据流
-- [04-TASKS.md](./04-TASKS.md) — 开发/验证任务列表
-- [05-TESTS.md](./05-TESTS.md) — 单元测试与集成测试计划
-- [06-CONVENTIONS.md](./06-CONVENTIONS.md) — 命名约定、日志安全与代码风格
+- [02-SPEC.md](./02-SPEC.md) — detailed requirements and acceptance criteria list
+- [03-DESIGN.md](./03-DESIGN.md) — architecture design, interface signatures, and data flow
+- [04-TASKS.md](./04-TASKS.md) — development/verification task list
+- [05-TESTS.md](./05-TESTS.md) — unit and integration test plan
+- [06-CONVENTIONS.md](./06-CONVENTIONS.md) — naming conventions, log safety, and code style

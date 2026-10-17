@@ -1,33 +1,33 @@
-# 助教管理
+# Assistant Management
 
-## 概述
+## Overview
 
-Admin Portal 新增助教管理功能，允许管理员在统一入口管理助教账号，包括授予/撤销助教权限、管理助教科目。
+The Admin Portal adds an assistant management capability, letting administrators manage assistant accounts from a unified entry point, including granting/revoking assistant permissions and managing assistant subjects.
 
-## 背景
+## Background
 
-- 教师管理已通过 TeacherPortalProxyMiddleware 接入 Admin Portal
-- 助教 Portal（AssistantWebApi）已有完整的 Admin API（grant/revoke/subjects），但 Admin Portal 未接入
-- 助教与学生的关联管理统一在学生管理页"关联账户"对话框完成，不在助教管理页提供
+- Teacher management is already wired into the Admin Portal through TeacherPortalProxyMiddleware
+- The Assistant Portal (AssistantWebApi) already has complete Admin APIs (grant/revoke/subjects), but the Admin Portal was not wired to them
+- Assistant-student association management is done uniformly in the "Linked accounts" dialog on the student management page, not on the assistant management page
 
-## 目标
+## Goals
 
-1. Admin Portal 可管理助教权限（授予、撤销、科目管理）
-2. 与教师管理保持一致的交互模式
+1. The Admin Portal can manage assistant permissions (grant, revoke, subject management)
+2. Keep the interaction patterns consistent with teacher management
 
-## 范围
+## Scope
 
-### 包含
+### Included
 
-- Admin 后端：AssistantPortalProxyMiddleware，代理 /api/assistant-portal/* → Assistant Portal
-- Admin 前端：AssistantView.vue 页面 + assistantPortalApi.ts 客户端
+- Admin backend: AssistantPortalProxyMiddleware, proxying /api/assistant-portal/* → the Assistant Portal
+- Admin frontend: AssistantView.vue page + assistantPortalApi.ts client
 
-### 不包含
+### Not included
 
-- 助教-学生关联管理（统一在学生管理页"关联账户"对话框完成，详见 [StudentManagement/AccountLinking](../../StudentManagement/AccountLinking/01-FEATURE.md)）
-- 助教 Portal 前端改造（独立迭代）
+- Assistant-student association management (done uniformly in the "Linked accounts" dialog on the student management page; see [StudentManagement/AccountLinking](../../StudentManagement/AccountLinking/01-FEATURE.md))
+- Assistant Portal frontend changes (a separate iteration)
 
-## 已移除功能
+## Removed features
 
-- **助教-学生关联**：原设计在助教管理页提供"关联学生"列和管理按钮。已于 2026-07-27 删除前后端实现，关联管理统一在学生管理页完成。
-- **关联账户管理（PUT /api/admin/assistants/{userId}/user-id）**：原设计提供"关联/更换 Identity 账户"功能。已于 2026-07-27 删除。
+- **Assistant-student association**: the original design provided a "Linked students" column and a Manage button on the assistant management page. The frontend and backend implementations were deleted on 2026-07-27; association management is done uniformly on the student management page.
+- **Linked-account management (PUT /api/admin/assistants/{userId}/user-id)**: the original design offered "link/change Identity account". Deleted on 2026-07-27.

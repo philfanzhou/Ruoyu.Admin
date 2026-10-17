@@ -1,173 +1,173 @@
-# AccountLinking — 测试计划 (TESTS)
+# AccountLinking — Test Plan (TESTS)
 
-测试工具：`xUnit + Moq + FluentAssertions`。现有模型测试文件：`test/Admin.WebApi.Tests/Models/ModelTests.cs`。
+Test tooling: `xUnit + Moq + FluentAssertions`. The existing model test file: `test/Admin.WebApi.Tests/Models/ModelTests.cs`.
 
-## 现有测试
+## Existing tests
 
-### 模型构造函数测试（已实现）
+### Model constructor tests (implemented)
 
-| 测试类 | 测试方法 | 验证内容 |
+| Test class | Test method | What it verifies |
 | --- | --- | --- |
-| `LinkUserRequestTests` | `Constructor_ShouldSetPropertiesCorrectly` | LinkUserRequest.IdentityAccountId 正确赋值 |
-| `IdentityAccountDtoTests` | `Constructor_ShouldSetPropertiesCorrectly` | IdentityAccountDto 所有属性正确赋值 |
-| `IdentityAccountDtoTests` | `Constructor_WithEmptyValues_ShouldAcceptEmptyStrings` | 所有字段为空字符串时正常工作 |
+| `LinkUserRequestTests` | `Constructor_ShouldSetPropertiesCorrectly` | LinkUserRequest.IdentityAccountId assigned correctly |
+| `IdentityAccountDtoTests` | `Constructor_ShouldSetPropertiesCorrectly` | all IdentityAccountDto properties assigned correctly |
+| `IdentityAccountDtoTests` | `Constructor_WithEmptyValues_ShouldAcceptEmptyStrings` | works when all fields are empty strings |
 
-## 已实现测试
+## Implemented tests
 
-### AccountLinkingTests（StudentsController 关联/解关联）
+### AccountLinkingTests (StudentsController link/unlink)
 
-| 测试方法 | 验证内容 |
+| Test method | What it verifies |
 | --- | --- |
-| `GetIdentityAccountsByStudentId_Success` | UT-01 查询学生关联的身份账户 ID 成功 |
-| `LinkIdentityAccountToStudent_Success` | UT-02 关联身份账户成功 |
-| `LinkIdentityAccount_EmptyIdentityAccountId_Returns400` | UT-03 关联身份账户 — IdentityAccountId 为空 |
-| `LinkIdentityAccount_InvalidGuid_Returns400` | UT-04 关联身份账户 — 非法 GUID 格式 |
-| `LinkIdentityAccount_GrpcSuccessFalse_Returns404` | UT-05 关联身份账户 — gRPC 返回 Success=false |
-| `LinkIdentityAccount_GrpcInvalidArgument_Returns400` | UT-06 关联身份账户 — gRPC InvalidArgument |
-| `UnlinkIdentityAccount_Success` | UT-07 解除身份账户关联成功 |
-| `UnlinkIdentityAccount_GrpcSuccessFalse_Returns404` | UT-08 解除关联 — gRPC 返回 Success=false |
-| `UnlinkIdentityAccount_GrpcInvalidArgument_Returns400` | UT-09 解除关联 — gRPC InvalidArgument |
-| `LinkIdentityAccount_WhitespaceOnlyIdentityAccountId_Returns400` | EX-01 IdentityAccountId 为纯空格 → 返回 400 |
+| `GetIdentityAccountsByStudentId_Success` | UT-01 querying a student's linked identity account IDs succeeds |
+| `LinkIdentityAccountToStudent_Success` | UT-02 linking an identity account succeeds |
+| `LinkIdentityAccount_EmptyIdentityAccountId_Returns400` | UT-03 linking — empty IdentityAccountId |
+| `LinkIdentityAccount_InvalidGuid_Returns400` | UT-04 linking — illegal GUID format |
+| `LinkIdentityAccount_GrpcSuccessFalse_Returns404` | UT-05 linking — gRPC returns Success=false |
+| `LinkIdentityAccount_GrpcInvalidArgument_Returns400` | UT-06 linking — gRPC InvalidArgument |
+| `UnlinkIdentityAccount_Success` | UT-07 unlinking an identity account succeeds |
+| `UnlinkIdentityAccount_GrpcSuccessFalse_Returns404` | UT-08 unlinking — gRPC returns Success=false |
+| `UnlinkIdentityAccount_GrpcInvalidArgument_Returns400` | UT-09 unlinking — gRPC InvalidArgument |
+| `LinkIdentityAccount_WhitespaceOnlyIdentityAccountId_Returns400` | EX-01 whitespace-only IdentityAccountId → 400 |
 
 ### IdentityAccountsControllerTests
 
-| 测试方法 | 验证内容 |
+| Test method | What it verifies |
 | --- | --- |
-| `GetIdentityAccountsBatch_NullInput_ReturnsEmptyAccountsWithNoFailure` | 输入为 null 时返回空列表 |
-| `GetIdentityAccountsBatch_EmptyInput_ReturnsEmptyAccountsWithNoFailure` | 输入为空列表时返回空列表 |
-| `GetIdentityAccountsBatch_MissingCredentials_ReturnsEmptyAccountsWithNoFailure` | AppId 未配置时返回空列表 |
-| `GetIdentityAccountsBatch_Success_ReturnsFilteredAccounts` | 批量查询成功返回过滤后的账户 |
-| `GetIdentityAccountsBatch_FiltersOutUsersNotInTargetIds` | 过滤不在 targetIds 中的用户 |
-| `GetIdentityAccountsBatch_CaseInsensitiveMatching` | 大小写不敏感匹配 |
-| `GetIdentityAccountsBatch_NullFieldsDefaultToEmptyString` | null 字段降级为空字符串 |
-| `GetIdentityAccountsBatch_NonSuccessStatusCode_ReturnsEmptyAccountsWithNoFailure` | HTTP 请求失败时返回空列表 |
-| `GetIdentityAccountsBatch_NullDeserializedResponse_ReturnsEmptyAccountsWithNoFailure` | 反序列化响应为 null 时返回空列表 |
-| `GetIdentityAccountsBatch_ExceptionDuringHttp_ReturnsPartialFailureWithWarning` | HTTP 异常时返回部分失败并记录警告 |
-| `GetStudentsByIdentityAccountId_Success_ReturnsStudentDtos` | 通过身份账户反查学生成功 |
-| `GetStudentsByIdentityAccountId_GrpcException_Propagates` | gRPC 异常向上传播 |
+| `GetIdentityAccountsBatch_NullInput_ReturnsEmptyAccountsWithNoFailure` | null input returns an empty list |
+| `GetIdentityAccountsBatch_EmptyInput_ReturnsEmptyAccountsWithNoFailure` | empty-list input returns an empty list |
+| `GetIdentityAccountsBatch_MissingCredentials_ReturnsEmptyAccountsWithNoFailure` | unconfigured AppId returns an empty list |
+| `GetIdentityAccountsBatch_Success_ReturnsFilteredAccounts` | a successful batch query returns the filtered accounts |
+| `GetIdentityAccountsBatch_FiltersOutUsersNotInTargetIds` | filters out users not in targetIds |
+| `GetIdentityAccountsBatch_CaseInsensitiveMatching` | case-insensitive matching |
+| `GetIdentityAccountsBatch_NullFieldsDefaultToEmptyString` | null fields degrade to empty strings |
+| `GetIdentityAccountsBatch_NonSuccessStatusCode_ReturnsEmptyAccountsWithNoFailure` | a failed HTTP request returns an empty list |
+| `GetIdentityAccountsBatch_NullDeserializedResponse_ReturnsEmptyAccountsWithNoFailure` | a null deserialized response returns an empty list |
+| `GetIdentityAccountsBatch_ExceptionDuringHttp_ReturnsPartialFailureWithWarning` | an HTTP exception returns partial failure with a warning logged |
+| `GetStudentsByIdentityAccountId_Success_ReturnsStudentDtos` | reverse student lookup by identity account succeeds |
+| `GetStudentsByIdentityAccountId_GrpcException_Propagates` | gRPC exceptions propagate upward |
 
-## 单元测试 — Given-When-Then 格式
+## Unit tests — Given-When-Then format
 
-### StudentsController 关联/解关联测试
+### StudentsController link/unlink tests
 
-#### UT-01 查询学生关联的身份账户 ID 成功（验证 SPEC FR-01）
+#### UT-01 Query a student's linked identity account IDs successfully (verifies SPEC FR-01)
 
-- **Given**：Mock `_grpcClient.GetIdentityAccountsByStudentIdAsync` 返回包含 2 个 AccountId 的响应。
-- **When**：调用 `GetIdentityAccountsByStudentId(validGuid)`。
-- **Then**：返回 200，body 为 `IReadOnlyList<string>`，Count == 2。
+- **Given**: Mock `_grpcClient.GetIdentityAccountsByStudentIdAsync` returns a response with 2 AccountIds.
+- **When**: `GetIdentityAccountsByStudentId(validGuid)` is called.
+- **Then**: returns 200 with an `IReadOnlyList<string>` body, Count == 2.
 
-#### UT-02 关联身份账户成功（验证 SPEC FR-02）
+#### UT-02 Link an identity account successfully (verifies SPEC FR-02)
 
-- **Given**：Mock `_grpcClient.LinkIdentityAccountToStudentAsync` 返回 `Success=true`。
-- **When**：调用 `LinkIdentityAccountToStudent(validGuid, new LinkUserRequest(validAccountId))`。
-- **Then**：返回 200，body 为 `OperationResponse(true, "Identity account linked to student successfully.")`。
+- **Given**: Mock `_grpcClient.LinkIdentityAccountToStudentAsync` returns `Success=true`.
+- **When**: `LinkIdentityAccountToStudent(validGuid, new LinkUserRequest(validAccountId))` is called.
+- **Then**: returns 200 with body `OperationResponse(true, "Identity account linked to student successfully.")`.
 
-#### UT-03 关联身份账户 — IdentityAccountId 为空（验证 SPEC FR-02）
+#### UT-03 Link an identity account — empty IdentityAccountId (verifies SPEC FR-02)
 
-- **Given**：`LinkUserRequest.IdentityAccountId` 为空字符串。
-- **When**：调用 `LinkIdentityAccountToStudent`。
-- **Then**：返回 400，body 为 `ErrorResponse("Identity Account ID is required.")`。
+- **Given**: `LinkUserRequest.IdentityAccountId` is an empty string.
+- **When**: `LinkIdentityAccountToStudent` is called.
+- **Then**: returns 400 with body `ErrorResponse("Identity Account ID is required.")`.
 
-#### UT-04 关联身份账户 — 非法 GUID 格式（验证 SPEC FR-02）
+#### UT-04 Link an identity account — illegal GUID format (verifies SPEC FR-02)
 
-- **Given**：`LinkUserRequest.IdentityAccountId` 为 "not-a-guid"。
-- **When**：调用 `LinkIdentityAccountToStudent`。
-- **Then**：返回 400，body 为 `ErrorResponse("Invalid Identity Account ID format. Must be a valid GUID.")`。
+- **Given**: `LinkUserRequest.IdentityAccountId` is "not-a-guid".
+- **When**: `LinkIdentityAccountToStudent` is called.
+- **Then**: returns 400 with body `ErrorResponse("Invalid Identity Account ID format. Must be a valid GUID.")`.
 
-#### UT-05 关联身份账户 — gRPC 返回 Success=false（验证 SPEC FR-06）
+#### UT-05 Link an identity account — gRPC returns Success=false (verifies SPEC FR-06)
 
-- **Given**：Mock `_grpcClient.LinkIdentityAccountToStudentAsync` 返回 `Success=false, ErrorMessage="Account not found"`。
-- **When**：调用 `LinkIdentityAccountToStudent`。
-- **Then**：返回 404，body 为 `ErrorResponse("Account not found")`。
+- **Given**: Mock `_grpcClient.LinkIdentityAccountToStudentAsync` returns `Success=false, ErrorMessage="Account not found"`.
+- **When**: `LinkIdentityAccountToStudent` is called.
+- **Then**: returns 404 with body `ErrorResponse("Account not found")`.
 
-#### UT-06 关联身份账户 — gRPC InvalidArgument（验证 SPEC FR-07）
+#### UT-06 Link an identity account — gRPC InvalidArgument (verifies SPEC FR-07)
 
-- **Given**：Mock `_grpcClient.LinkIdentityAccountToStudentAsync` 抛出 `RpcException(StatusCode.InvalidArgument, "Already linked")`。
-- **When**：调用 `LinkIdentityAccountToStudent`。
-- **Then**：返回 400，body 为 `ErrorResponse("Already linked")`。
+- **Given**: Mock `_grpcClient.LinkIdentityAccountToStudentAsync` throws `RpcException(StatusCode.InvalidArgument, "Already linked")`.
+- **When**: `LinkIdentityAccountToStudent` is called.
+- **Then**: returns 400 with body `ErrorResponse("Already linked")`.
 
-#### UT-07 解除身份账户关联成功（验证 SPEC FR-03）
+#### UT-07 Unlink an identity account successfully (verifies SPEC FR-03)
 
-- **Given**：Mock `_grpcClient.UnlinkIdentityAccountFromStudentAsync` 返回 `Success=true`。
-- **When**：调用 `UnlinkIdentityAccountFromStudent(validStudentId, validAccountId)`。
-- **Then**：返回 200，body 为 `OperationResponse(true, "Identity account unlinked from student.")`。
+- **Given**: Mock `_grpcClient.UnlinkIdentityAccountFromStudentAsync` returns `Success=true`.
+- **When**: `UnlinkIdentityAccountFromStudent(validStudentId, validAccountId)` is called.
+- **Then**: returns 200 with body `OperationResponse(true, "Identity account unlinked from student.")`.
 
-#### UT-08 解除关联 — gRPC 返回 Success=false（验证 SPEC FR-08）
+#### UT-08 Unlink — gRPC returns Success=false (verifies SPEC FR-08)
 
-- **Given**：Mock `_grpcClient.UnlinkIdentityAccountFromStudentAsync` 返回 `Success=false, ErrorMessage="Mapping not found"`。
-- **When**：调用 `UnlinkIdentityAccountFromStudent`。
-- **Then**：返回 404，body 为 `ErrorResponse("Mapping not found")`。
+- **Given**: Mock `_grpcClient.UnlinkIdentityAccountFromStudentAsync` returns `Success=false, ErrorMessage="Mapping not found"`.
+- **When**: `UnlinkIdentityAccountFromStudent` is called.
+- **Then**: returns 404 with body `ErrorResponse("Mapping not found")`.
 
-#### UT-09 解除关联 — gRPC InvalidArgument（验证 SPEC FR-09）
+#### UT-09 Unlink — gRPC InvalidArgument (verifies SPEC FR-09)
 
-- **Given**：Mock `_grpcClient.UnlinkIdentityAccountFromStudentAsync` 抛出 `RpcException(StatusCode.InvalidArgument)`。
-- **When**：调用 `UnlinkIdentityAccountFromStudent`。
-- **Then**：返回 400。
+- **Given**: Mock `_grpcClient.UnlinkIdentityAccountFromStudentAsync` throws `RpcException(StatusCode.InvalidArgument)`.
+- **When**: `UnlinkIdentityAccountFromStudent` is called.
+- **Then**: returns 400.
 
-### IdentityAccountsController 测试
+### IdentityAccountsController tests
 
-#### UT-10 批量查询身份账户成功（验证 SPEC FR-04）
+#### UT-10 Batch-query identity accounts successfully (verifies SPEC FR-04)
 
-- **Given**：Mock `IHttpClientFactory` 返回的 HttpClient 发送请求后获得包含 2 个用户的成功响应。
-- **When**：调用 `GetIdentityAccountsBatch(["id1", "id2"])`。
-- **Then**：返回 200，body 为 `List<IdentityAccountDto>`，Count == 2。
+- **Given**: the HttpClient returned by the Mock `IHttpClientFactory` gets a successful response with 2 users after sending the request.
+- **When**: `GetIdentityAccountsBatch(["id1", "id2"])` is called.
+- **Then**: returns 200 with a `List<IdentityAccountDto>` body, Count == 2.
 
-#### UT-11 批量查询 — 空 accountIds（验证 SPEC FR-10）
+#### UT-11 Batch query — empty accountIds (verifies SPEC FR-10)
 
-- **Given**：accountIds 为空列表。
-- **When**：调用 `GetIdentityAccountsBatch([])`。
-- **Then**：返回 200，body 为空列表。
+- **Given**: accountIds is an empty list.
+- **When**: `GetIdentityAccountsBatch([])` is called.
+- **Then**: returns 200 with an empty-list body.
 
-#### UT-12 批量查询 — AppId 未配置（验证 SPEC FR-11）
+#### UT-12 Batch query — AppId not configured (verifies SPEC FR-11)
 
-- **Given**：`IdentityServiceOptions.AppId` 为空字符串。
-- **When**：调用 `GetIdentityAccountsBatch(["id1"])`。
-- **Then**：返回 200，body 为空列表；不发起 HTTP 请求。
+- **Given**: `IdentityServiceOptions.AppId` is an empty string.
+- **When**: `GetIdentityAccountsBatch(["id1"])` is called.
+- **Then**: returns 200 with an empty-list body; no HTTP request is made.
 
-#### UT-13 批量查询 — HTTP 请求失败（验证 SPEC FR-10）
+#### UT-13 Batch query — HTTP request failure (verifies SPEC FR-10)
 
-- **Given**：Mock HttpClient 返回 500 状态码。
-- **When**：调用 `GetIdentityAccountsBatch(["id1"])`。
-- **Then**：返回 200，body 为空列表。
+- **Given**: the Mock HttpClient returns a 500 status code.
+- **When**: `GetIdentityAccountsBatch(["id1"])` is called.
+- **Then**: returns 200 with an empty-list body.
 
-#### UT-14 批量查询 — 异常捕获（验证 SPEC FR-10）
+#### UT-14 Batch query — exception catch (verifies SPEC FR-10)
 
-- **Given**：Mock HttpClient 发送请求时抛出 `HttpRequestException`。
-- **When**：调用 `GetIdentityAccountsBatch(["id1"])`。
-- **Then**：返回 200，body 为空列表；ILogger 收到 Warning 日志。
+- **Given**: the Mock HttpClient throws `HttpRequestException` when sending.
+- **When**: `GetIdentityAccountsBatch(["id1"])` is called.
+- **Then**: returns 200 with an empty-list body; ILogger receives a Warning.
 
-#### UT-15 批量查询 — targetIds 过滤（验证 SPEC FR-12）
+#### UT-15 Batch query — targetIds filtering (verifies SPEC FR-12)
 
-- **Given**：请求 `["id1", "id2"]`，但 Identity Service 返回 3 个用户（id1, id2, id3）。
-- **When**：调用 `GetIdentityAccountsBatch(["id1", "id2"])`。
-- **Then**：返回 200，body 仅包含 id1 和 id2 对应的 DTO。
+- **Given**: the request is `["id1", "id2"]`, but the Identity Service returns 3 users (id1, id2, id3).
+- **When**: `GetIdentityAccountsBatch(["id1", "id2"])` is called.
+- **Then**: returns 200 with only the DTOs for id1 and id2 in the body.
 
-#### UT-16 通过身份账户反查学生（验证 SPEC FR-05）
+#### UT-16 Reverse-look-up students by identity account (verifies SPEC FR-05)
 
-- **Given**：Mock `grpcClient.GetStudentsByIdentityAccountIdAsync` 返回包含 2 个学生的响应。
-- **When**：调用 `GetStudentsByIdentityAccountId(validGuid, grpcClient)`。
-- **Then**：返回 200，body 为 `IReadOnlyList<StudentDto>`，Count == 2。
+- **Given**: Mock `grpcClient.GetStudentsByIdentityAccountIdAsync` returns a response with 2 students.
+- **When**: `GetStudentsByIdentityAccountId(validGuid, grpcClient)` is called.
+- **Then**: returns 200 with an `IReadOnlyList<StudentDto>` body, Count == 2.
 
-## 边界和异常测试
+## Boundary and exception tests
 
-- EX-01 IdentityAccountId 为纯空格 → 返回 400（`IsNullOrWhiteSpace` 校验）。
-- EX-02 批量查询中 Identity Service 返回的用户字段为 null → DTO 中对应字段为空字符串（`?? string.Empty`）。
-- EX-03 批量查询大小写不敏感匹配 → 请求 "ID1" 可匹配 Identity Service 返回的 "id1"。
-- EX-04 GetStudentsByIdentityAccountId gRPC 异常 → 未被捕获，向上传播[推断]。
+- EX-01 whitespace-only IdentityAccountId → 400 (`IsNullOrWhiteSpace` check).
+- EX-02 a user field returned by the Identity Service in a batch query is null → the corresponding DTO field is an empty string (`?? string.Empty`).
+- EX-03 case-insensitive batch-query matching → requesting "ID1" matches the "id1" returned by the Identity Service.
+- EX-04 a gRPC exception in GetStudentsByIdentityAccountId → not caught, propagates upward [inferred].
 
-## 现有测试映射（到 SPEC 功能要求）
+## Existing test mapping (to the SPEC requirements)
 
-### 模型测试
+### Model tests
 
-| 测试方法 | 验证 SPEC 项 |
+| Test method | SPEC items verified |
 | --- | --- |
-| `LinkUserRequestTests.Constructor_ShouldSetPropertiesCorrectly` | FR-02（模型层） |
-| `IdentityAccountDtoTests.Constructor_ShouldSetPropertiesCorrectly` | FR-04（模型层） |
-| `IdentityAccountDtoTests.Constructor_WithEmptyValues_ShouldAcceptEmptyStrings` | FR-04（模型层，null 降级为空字符串） |
+| `LinkUserRequestTests.Constructor_ShouldSetPropertiesCorrectly` | FR-02 (model layer) |
+| `IdentityAccountDtoTests.Constructor_ShouldSetPropertiesCorrectly` | FR-04 (model layer) |
+| `IdentityAccountDtoTests.Constructor_WithEmptyValues_ShouldAcceptEmptyStrings` | FR-04 (model layer, null degrades to an empty string) |
 
-### Controller 测试
+### Controller tests
 
-| 测试方法 | 验证 SPEC 项 |
+| Test method | SPEC items verified |
 | --- | --- |
 | `GetIdentityAccountsByStudentId_Success` | FR-01 |
 | `LinkIdentityAccountToStudent_Success` | FR-02 |

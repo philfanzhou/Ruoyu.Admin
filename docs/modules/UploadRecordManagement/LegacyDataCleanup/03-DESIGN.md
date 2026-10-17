@@ -1,76 +1,76 @@
-# LegacyDataCleanup 数据模型
+# LegacyDataCleanup Data Models
 
-## gRPC 消息映射
+## gRPC message mapping
 
 ### LegacyCheck
 
-| 步骤 | gRPC 请求 | gRPC 服务 | 说明 |
+| Step | gRPC request | gRPC service | Description |
 |------|-----------|-----------|------|
-| 1 | GetMistakeItemsByUploadRequest | Mistake | 获取上传记录关联的所有错题 |
+| 1 | GetMistakeItemsByUploadRequest | Mistake | fetch all the mistakes associated with the upload record |
 
 ### LegacyClean
 
-| 步骤 | gRPC 请求 | gRPC 服务 | 说明 |
+| Step | gRPC request | gRPC service | Description |
 |------|-----------|-----------|------|
-| 1 | GetMistakeItemsByUploadRequest | Mistake | 获取关联错题，验证前置条件 |
-| 2 | CompleteUploadReviewRequest | Mistake | 完成审核流程 |
-| 3 | RemoveImagesFromRecordRequest | StudentLearning | 移除已审核图片（可选步骤） |
-| 4 | DeleteUploadRecordAfterReviewRequest | StudentLearning | 删除上传记录 |
+| 1 | GetMistakeItemsByUploadRequest | Mistake | fetch the associated mistakes and verify the preconditions |
+| 2 | CompleteUploadReviewRequest | Mistake | complete the review flow |
+| 3 | RemoveImagesFromRecordRequest | StudentLearning | remove the reviewed images (optional step) |
+| 4 | DeleteUploadRecordAfterReviewRequest | StudentLearning | delete the upload record |
 
-## 关键 gRPC 请求/响应字段
+## Key gRPC request/response fields
 
 ### CompleteUploadReviewRequest
 
-| 字段 | 类型 | 说明 |
+| Field | Type | Description |
 |------|------|------|
-| SourceUploadId | string | 上传记录 ID |
-| ReviewerId | string | 审核者 ID（LegacyClean 中固定为 "admin-legacy-cleanup"） |
+| SourceUploadId | string | upload record ID |
+| ReviewerId | string | reviewer ID (fixed to "admin-legacy-cleanup" in LegacyClean) |
 
 ### CompleteUploadReviewResponse
 
-| 字段 | 类型 | 说明 |
+| Field | Type | Description |
 |------|------|------|
-| Success | bool | 是否成功 |
-| ErrorMessage | string | 失败时的错误消息 |
-| RemovedImagePaths | repeated string | 需要从上传记录中移除的图片路径列表 |
+| Success | bool | whether it succeeded |
+| ErrorMessage | string | the error message on failure |
+| RemovedImagePaths | repeated string | the list of image paths to remove from the upload record |
 
 ### DeleteUploadRecordAfterReviewRequest
 
-| 字段 | 类型 | 说明 |
+| Field | Type | Description |
 |------|------|------|
-| RecordId | string | 上传记录 ID |
-| StudentId | string | 学生 ID |
+| RecordId | string | upload record ID |
+| StudentId | string | student ID |
 
 ### RemoveImagesFromRecordRequest
 
-| 字段 | 类型 | 说明 |
+| Field | Type | Description |
 |------|------|------|
-| RecordId | string | 上传记录 ID |
-| StudentId | string | 学生 ID |
-| ImagePaths | repeated string | 要移除的图片路径列表 |
+| RecordId | string | upload record ID |
+| StudentId | string | student ID |
+| ImagePaths | repeated string | the list of image paths to remove |
 
-## 枚举值
+## Enum values
 
 ### ReviewStatus (MistakeProto)
 
-| 值 | 名称 | 说明 |
+| Value | Name | Description |
 |----|------|------|
-| 0 | PendingReview | 待审核 |
-| 1 | Confirmed | 已确认 |
-| 2 | Rejected | 已拒绝 |
+| 0 | PendingReview | pending review |
+| 1 | Confirmed | confirmed |
+| 2 | Rejected | rejected |
 
-LegacyCheck/LegacyClean 中判断"已审核"的条件：ReviewStatus 为 Confirmed 或 Rejected。
+The condition for "reviewed" in LegacyCheck/LegacyClean: ReviewStatus is Confirmed or Rejected.
 
-## 数据流
+## Data flow
 
 ```
 LegacyCheck:
-  GetMistakeItemsByUpload → Items → 判断 allReviewed / hasPending → 返回 isLegacy
+  GetMistakeItemsByUpload → Items → decide allReviewed / hasPending → return isLegacy
 
 LegacyClean:
-  GetMistakeItemsByUpload → 验证前置条件
+  GetMistakeItemsByUpload → verify preconditions
     → CompleteUploadReview → RemovedImagePaths?
-      → 有: RemoveImagesFromRecord
-      → 无: 跳过
-    → DeleteUploadRecordAfterReview → 返回结果
+      → yes: RemoveImagesFromRecord
+      → no: skip
+    → DeleteUploadRecordAfterReview → return the result
 ```

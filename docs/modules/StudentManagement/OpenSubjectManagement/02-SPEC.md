@@ -1,51 +1,51 @@
-# OpenSubjectManagement — 详细需求规格 (SPEC)
+# OpenSubjectManagement — Detailed Requirements Specification (SPEC)
 
-## 功能概述和用户故事
+## Feature overview and user stories
 
-**概述**：开放科目管理功能允许管理员配置学生可学习的学科及其开放时间范围，通过 gRPC 调用 Student 服务完成数据持久化。管理员可以查看学生的开放科目列表（支持按活跃状态筛选），并全量设置学生的开放科目配置。
+**Overview**: open subject management lets administrators configure which subjects a student may study and the time range during which each is open, persisting the data through gRPC calls to the Student service. Administrators can view a student's open-subject list (filterable by active status) and fully set a student's open-subject configuration.
 
-**用户故事 1（管理员查看开放科目）**：作为管理员，我要查看学生的开放科目列表，了解该学生当前可以学习哪些学科，以及每个科目的开放起止日期和活跃状态。
+**User story 1 (administrator views open subjects)**: as an administrator, I want to view a student's open-subject list to learn which subjects the student can currently study, plus each subject's open start/end dates and active status.
 
-**用户故事 2（管理员筛选活跃科目）**：作为管理员，我希望仅查看当前活跃的科目，以便快速了解学生当前可用的学科。
+**User story 2 (administrator filters active subjects)**: as an administrator, I want to view only the currently active subjects to quickly see the subjects available to the student right now.
 
-**用户故事 3（管理员设置开放科目）**：作为管理员，我要设置学生的开放科目配置，指定每个科目的开放开始日期和可选的结束日期，以便控制学生可以学习哪些学科。
+**User story 3 (administrator sets open subjects)**: as an administrator, I want to set a student's open-subject configuration, specifying each subject's open start date and optional end date, to control which subjects the student may study.
 
-## 功能要求清单（可独立测试）
+## Requirements list (independently testable)
 
-- [x] FR-01 能查询学生的开放科目列表。
-- [x] FR-02 查询时支持 activeOnly 参数筛选，仅返回当前活跃的科目。
-- [x] FR-03 能全量设置学生的开放科目，每个科目包含 Subject、OpenStartDate、可选 OpenEndDate。
-- [x] FR-04 科目值必须通过 SubjectConstants.IsValid 校验，无效科目返回 400。
-- [x] FR-05 OpenStartDate 必填，不能为空，否则返回 400。
-- [x] FR-06 OpenStartDate 必须为合法 DateOnly 格式，否则返回 400。
-- [x] FR-07 OpenEndDate 可选，若提供则必须为合法 DateOnly 格式，否则返回 400。
-- [x] FR-08 设置时若 gRPC 返回 Success=false，API 返回 400。
-- [x] FR-09 设置时若 gRPC 返回 InvalidArgument，API 返回 400。
-- [x] FR-10 查询返回的每个 OpenSubjectDto 包含 Id、Subject、OpenStartDate、OpenEndDate（可空）、IsActive。
+- [x] FR-01 Can query a student's open-subject list.
+- [x] FR-02 The query supports an activeOnly parameter filter that returns only the currently active subjects.
+- [x] FR-03 Can fully set a student's open subjects; each entry contains Subject, OpenStartDate, and optional OpenEndDate.
+- [x] FR-04 Subject values must pass the SubjectConstants.IsValid check; an invalid subject returns 400.
+- [x] FR-05 OpenStartDate is required and must not be empty, otherwise 400.
+- [x] FR-06 OpenStartDate must be a legal DateOnly format, otherwise 400.
+- [x] FR-07 OpenEndDate is optional; when provided it must be a legal DateOnly format, otherwise 400.
+- [x] FR-08 When setting and gRPC returns Success=false, the API returns 400.
+- [x] FR-09 When setting and gRPC returns InvalidArgument, the API returns 400.
+- [x] FR-10 Every OpenSubjectDto returned by the query contains Id, Subject, OpenStartDate, OpenEndDate (nullable), and IsActive.
 
-## 详细的验收标准（可自动验证）
+## Detailed acceptance criteria (automatically verifiable)
 
-- AC-FR-01：调用 `GET /api/admin/students/{studentId}/open-subjects` 返回 `List<OpenSubjectDto>`。
-- AC-FR-02：调用 `GET /api/admin/students/{studentId}/open-subjects?activeOnly=true` 时，gRPC 请求中 `ActiveOnly=true`。
-- AC-FR-03：调用 `PUT /api/admin/students/{studentId}/open-subjects` 传入 `SetOpenSubjectsRequest`，成功返回 `OperationResponse(true, "Open subjects updated successfully.")`。
-- AC-FR-04：设置时传入无效科目值（如 Subject=-1），返回 400 `ErrorResponse("Invalid subject value: -1")`。
-- AC-FR-05：设置时 OpenStartDate 为空字符串，返回 400 `ErrorResponse("Open start date is required")`。
-- AC-FR-06：设置时 OpenStartDate 为非法日期格式（如 "not-a-date"），返回 400 `ErrorResponse("Invalid start date format: not-a-date")`。
-- AC-FR-07：设置时 OpenEndDate 为非法日期格式，返回 400 `ErrorResponse("Invalid end date format: {value}")`。
-- AC-FR-08：设置时 gRPC 返回 `Success=false`，API 返回 400 `ErrorResponse(ErrorMessage)`。
-- AC-FR-09：设置时 gRPC 抛出 `RpcException(InvalidArgument)`，API 返回 400。
-- AC-FR-10：查询返回的 OpenSubjectDto 中 OpenEndDate 为 null 时 JSON 中不出现该字段或为 null；IsActive 为 bool 类型。
+- AC-FR-01: calling `GET /api/admin/students/{studentId}/open-subjects` returns `List<OpenSubjectDto>`.
+- AC-FR-02: calling `GET /api/admin/students/{studentId}/open-subjects?activeOnly=true` sends `ActiveOnly=true` in the gRPC request.
+- AC-FR-03: calling `PUT /api/admin/students/{studentId}/open-subjects` with `SetOpenSubjectsRequest` returns `OperationResponse(true, "Open subjects updated successfully.")` on success.
+- AC-FR-04: when setting, an invalid subject value (for example Subject=-1) returns 400 `ErrorResponse("Invalid subject value: -1")`.
+- AC-FR-05: when setting, an empty-string OpenStartDate returns 400 `ErrorResponse("Open start date is required")`.
+- AC-FR-06: when setting, an illegal date format for OpenStartDate (for example "not-a-date") returns 400 `ErrorResponse("Invalid start date format: not-a-date")`.
+- AC-FR-07: when setting, an illegal date format for OpenEndDate returns 400 `ErrorResponse("Invalid end date format: {value}")`.
+- AC-FR-08: when setting and gRPC returns `Success=false`, the API returns 400 `ErrorResponse(ErrorMessage)`.
+- AC-FR-09: when setting and gRPC throws `RpcException(InvalidArgument)`, the API returns 400.
+- AC-FR-10: in the returned OpenSubjectDto, a null OpenEndDate is absent from or null in the JSON; IsActive is a bool.
 
-## 非功能需求
+## Non-functional requirements
 
-- **性能**：查询和设置操作 P95 < 500ms（含 gRPC 调用）。
-- **安全**：仅管理员可操作（由上层 Identity 代理中间件负责鉴权）。
-- **可靠性**：依赖 Student gRPC 服务的可用性；gRPC 不可用时返回 502。
-- **可观测性**：关键错误应通过 `ILogger` 记录。
+- **Performance**: query and set operations P95 < 500ms (including the gRPC call).
+- **Security**: only administrators may operate (authorization is handled by the upper Identity proxy middleware).
+- **Reliability**: depends on the availability of the Student gRPC service; when gRPC is unavailable, returns 502.
+- **Observability**: key errors should be logged through `ILogger`.
 
-## 测试策略
+## Test strategy
 
-- **覆盖率目标**：StudentsController 中开放科目相关方法代码行覆盖率 ≥ 80%。
-- **必须测试的错误路径**：无效科目值、空 OpenStartDate、非法日期格式（开始和结束）、gRPC InvalidArgument、gRPC Success=false。
-- **测试环境要求**：使用 `xUnit + Moq`；gRPC Client 通过 Mock 替换。
-- **禁止事项**：不得在单元测试中连接真实 gRPC 服务。
+- **Coverage target**: ≥ 80% line coverage of the open-subject-related methods in StudentsController.
+- **Error paths that must be tested**: invalid subject value, empty OpenStartDate, illegal date formats (start and end), gRPC InvalidArgument, gRPC Success=false.
+- **Test environment requirements**: unit tests with `xUnit + Moq`; the gRPC client is replaced with a Mock.
+- **Prohibitions**: unit tests must not connect to a real gRPC service.

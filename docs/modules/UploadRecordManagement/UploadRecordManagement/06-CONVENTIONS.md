@@ -1,54 +1,54 @@
-# UploadRecordManagement 约定
+# UploadRecordManagement Conventions
 
-当前调用使用 HTTP ServiceClients；以下旧 gRPC 名称与按 index 选择图片的流程，仅保留为 legacy 迁移背景。受管模式遵循[受管指派说明](../../../Integration/ManagedAssignment.md)：只调用固定 `POST /api/mistakes/upload`，从已验证管理员权限和 CSRF 的服务器会话取 access token，以不含敏感值的 `errorKind` 代替下游原始文本。Admin 不写回执、不移图或删除来源、不主动封闭来源（seal，交接后拒绝新分组）；页面内可恢复固定请求，永久结果由 Mistake 保存。
+The current calls use HTTP ServiceClients; the old gRPC names and the index-based image-selection flow below are retained only as legacy migration background. The managed mode follows the [managed assignment notes](../../../Integration/ManagedAssignment.md): it calls only the fixed `POST /api/mistakes/upload`, takes the access token from the server session that has already verified administrator permission and CSRF, and uses the sensitive-value-free `errorKind` instead of raw downstream text. Admin writes no receipts, moves or deletes no images or sources, and does not proactively seal sources (after handover, new groups are rejected); the in-page view can recover the fixed request, and Mistake stores the permanent results.
 
-## 命名约定
+## Naming conventions
 
-- Controller 路由：`api/admin/oss-upload-records`（kebab-case）
-- 请求模型：PascalCase，定义在 Controller 文件内（如 `RotateImageRequest`、`ResetStatusRequest`、`ImageAssignment`、`AssignUploadRecordRequest`）
-- 响应字段：camelCase（匿名对象属性）
+- Controller route: `api/admin/oss-upload-records` (kebab-case)
+- Request models: PascalCase, defined inside the Controller file (for example `RotateImageRequest`, `ResetStatusRequest`, `ImageAssignment`, `AssignUploadRecordRequest`)
+- Response fields: camelCase (anonymous-object properties)
 
-## 错误处理约定
+## Error handling conventions
 
-- 所有 endpoint 使用 try-catch 包裹，异常统一返回 500 + `ErrorResponse`
-- gRPC 返回 `Success=false` 时返回 400 + `ErrorResponse`
-- 参数校验失败返回 400 + `ErrorResponse`
-- `ErrorResponse` 格式：`{ "message": "错误描述" }`
+- Every endpoint is wrapped in try-catch; exceptions uniformly return 500 + `ErrorResponse`
+- A gRPC `Success=false` returns 400 + `ErrorResponse`
+- A failed parameter check returns 400 + `ErrorResponse`
+- `ErrorResponse` format: `{ "message": "error description" }`
 
-## gRPC 调用约定
+## gRPC calling conventions
 
-- 上传记录操作优先通过 `StudentLearningGrpcServiceClient`（通用接口）调用
-- 以下操作仍通过 `StudentManagementGrpcServiceClient`（Admin 专用接口）调用，待 Task 4.6 迁移至通用接口：
-  - `GetAllUploadRecords`：管理端分页查询所有上传记录（无需 studentId）
-  - `AnalyzeUploadRecord`：管理端 VL 分析（Admin 专用调试接口）
-  - `GetStudent`：查询学生姓名（用于 GetAllUploadRecords 返回数据中填充 studentName）
-- 错题创建通过 `MistakeGrpcServiceClient` 调用
-- 学生姓名通过逐个调用 `StudentManagement.GetStudent` 获取（非批量），查询失败时回退为 studentId
-- 图片操作通过 `IOssService` 调用
+- Upload-record operations preferably go through `StudentLearningGrpcServiceClient` (the generic interface)
+- The following operations still go through `StudentManagementGrpcServiceClient` (an Admin-only interface), to be migrated to the generic interface in Task 4.6:
+  - `GetAllUploadRecords`: the admin-side paged query over all upload records (no studentId needed)
+  - `AnalyzeUploadRecord`: admin-side VL analysis (an Admin-only debug interface)
+  - `GetStudent`: fetches student names (to fill studentName in the GetAllUploadRecords response)
+- Mistake creation goes through `MistakeGrpcServiceClient`
+- Student names are fetched by calling `StudentManagement.GetStudent` one by one (not batched), falling back to the studentId when the query fails
+- Image operations go through `IOssService`
 
-## 日志约定
+## Logging conventions
 
-- 使用 `ILogger<OssUploadRecordController>` 记录日志
-- 错误日志：`_logger.LogError(ex, "Failed to ...: {RecordId}", id)`
-- 信息日志：`_logger.LogInformation("Successfully created mistake items {ItemIds} for upload record {RecordId}", ...)`
-- 日志消息使用英文
+- Log with `ILogger<OssUploadRecordController>`
+- Error logs: `_logger.LogError(ex, "Failed to ...: {RecordId}", id)`
+- Info logs: `_logger.LogInformation("Successfully created mistake items {ItemIds} for upload record {RecordId}", ...)`
+- Log messages are in English
 
-## 数据转换约定
+## Data conversion conventions
 
-- gRPC Timestamp 到 Unix 秒数：通过 `ParseTimestampToUnixSeconds` 私有方法，支持数字字符串和 ISO 8601 格式
-- UploadStatus 枚举：前端传入 int，转换为 `SProto.UploadStatus` 枚举
-- Content-Type：根据文件扩展名自动判断，默认 `application/octet-stream`
+- gRPC Timestamp to Unix seconds: via the private `ParseTimestampToUnixSeconds` method, supporting numeric strings and ISO 8601 formats
+- UploadStatus enum: the frontend passes an int, converted to the `SProto.UploadStatus` enum
+- Content-Type: inferred from the file extension, defaulting to `application/octet-stream`
 
-## 分配流程约定
+## Assignment flow conventions
 
-1. 先获取上传记录（GetUploadRecord）
-2. 按图片索引提取路径
-3. 逐个 assignment 调用 SubmitMistakeUpload
-4. 最后调用 MarkUploadRecordCompleted
-5. 返回 createdItems、remainingImageCount、totalImageCount
+1. First fetch the upload record (GetUploadRecord)
+2. Extract paths by image index
+3. Call SubmitMistakeUpload per assignment
+4. Finally call MarkUploadRecordCompleted
+5. Return createdItems, remainingImageCount, totalImageCount
 
-## 安全约定
+## Security conventions
 
-- RotateImage 验证 recordId 必须为合法 GUID
-- RemoveImageFromRecord 要求 studentId 查询参数
-- GetImage 要求 path 查询参数非空
+- RotateImage validates that recordId is a legal GUID
+- RemoveImageFromRecord requires the studentId query parameter
+- GetImage requires a non-empty path query parameter

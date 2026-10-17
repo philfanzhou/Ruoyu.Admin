@@ -1,49 +1,49 @@
-# 助教管理 — 功能规格
+# Assistant Management — Functional Specification
 
-> 以下转发调用方 Authorization 的描述是历史方案。当前代理只发送服务器票据内 token，并拒绝入站 Authorization；当前规则见根目录 AGENTS.md 和 docs/api.md。
+> The description below about forwarding the caller's Authorization is a historical design. The current proxy sends only the in-ticket server token and rejects inbound Authorization; the current rules are in the root AGENTS.md and docs/api.md.
 
-## 1. 助教权限管理
+## 1. Assistant permission management
 
-### 1.1 助教列表
+### 1.1 Assistant list
 
 - API: `GET /api/assistant-portal/admin/assistants`
-- 返回所有助教账号，含 userId、phone、username、subjects、isActive、createdAt、updatedAt
-- 表格列：User ID、手机号、用户名、备注、科目（Tag 列表）、创建时间、操作
+- Returns all assistant accounts, including userId, phone, username, subjects, isActive, createdAt, updatedAt
+- Table columns: User ID, phone number, username, remark, subjects (Tag list), creation time, actions
 
-### 1.2 授予助教权限
+### 1.2 Grant assistant permission
 
 - API: `POST /api/assistant-portal/admin/identity-users/{userId}/grant-assistant`
-- 请求体: `{ subjects: number[] }`
-- 交互: 弹窗搜索 Identity 用户 → 选择 → 选科目 → 确认授予
+- Request body: `{ subjects: number[] }`
+- Interaction: a dialog searches Identity users → select → choose subjects → confirm the grant
 
-### 1.3 撤销助教权限
+### 1.3 Revoke assistant permission
 
 - API: `POST /api/assistant-portal/admin/identity-users/{userId}/revoke-assistant`
-- 交互: 行操作"撤销权限"按钮，二次确认
+- Interaction: a row-level "Revoke permission" button with a confirmation step
 
-### 1.4 科目管理
+### 1.4 Subject management
 
-- 查询: `GET /api/assistant-portal/admin/assistants/{userId}/subjects`
-- 整体设置: `PUT /api/assistant-portal/admin/assistants/{userId}/subjects`
-- 添加: `POST /api/assistant-portal/admin/assistants/{userId}/subjects/{subject}`
-- 删除: `DELETE /api/assistant-portal/admin/assistants/{userId}/subjects/{subject}`
-- 可用科目: `GET /api/assistant-portal/admin/available-subjects`
-- 交互: Tag closable 删除单个 + "管理"按钮弹窗批量编辑
+- Query: `GET /api/assistant-portal/admin/assistants/{userId}/subjects`
+- Full set: `PUT /api/assistant-portal/admin/assistants/{userId}/subjects`
+- Add: `POST /api/assistant-portal/admin/assistants/{userId}/subjects/{subject}`
+- Remove: `DELETE /api/assistant-portal/admin/assistants/{userId}/subjects/{subject}`
+- Available subjects: `GET /api/assistant-portal/admin/available-subjects`
+- Interaction: a closable Tag removes a single subject, plus a "Manage" button opening a dialog for batch editing
 
-## 2. Admin Portal 代理
+## 2. Admin Portal proxy
 
 ### 2.1 AssistantPortalProxyMiddleware
 
-路径映射规则（与 TeacherPortalProxyMiddleware 对称）：
+Path mapping rules (symmetric with TeacherPortalProxyMiddleware):
 
-| Admin 请求路径 | 转发到 Assistant Portal |
+| Admin request path | Forwarded to the Assistant Portal |
 |---------------|------------------------|
 | `/api/assistant-portal/admin/*` | `/api/admin/*` |
 | `/api/assistant-portal/auth/*` | `/api/auth/*` |
 
-认证: 原样转发调用方 `Authorization: Bearer`，下游 `[Authorize(Roles="admin")]` 校验；不再使用静态 `X-Admin-Key`
+Authentication: forwards the caller's `Authorization: Bearer` verbatim; downstream checks `[Authorize(Roles="admin")]`; the static `X-Admin-Key` is no longer used
 
-### 2.2 配置
+### 2.2 Configuration
 
 ```json
 {
@@ -53,11 +53,11 @@
 }
 ```
 
-### 2.3 环境变量
+### 2.3 Environment variables
 
 - `AssistantPortal__Url`
 
-## 3. 已移除功能
+## 3. Removed features
 
-- **关联账户管理（PUT /api/assistant-portal/admin/assistants/{userId}/user-id）**：原设计在助教管理页提供"关联/更换 Identity 账户"功能。该功能未被要求且引入了额外的 userId 变更复杂度，已于 2026-07-27 删除前后端实现。助教的 `userId` 在 `grant-assistant` 授予时绑定，不再支持事后更换。
-- **助教-学生关联（GET/POST/DELETE /api/admin/assistants/{userId}/students[/{studentId}]）**：原设计在助教管理页提供"关联学生"列展示学生数量并提供"管理"按钮。该功能与学生管理页"关联账户"对话框语义重复，且数量加载采用 N+1 查询存在性能问题，已于 2026-07-27 删除前后端实现。关联管理统一在学生管理页"关联账户"对话框完成，详见 [StudentManagement/AccountLinking](../../StudentManagement/AccountLinking/01-FEATURE.md)。
+- **Linked-account management (PUT /api/assistant-portal/admin/assistants/{userId}/user-id)**: the original design offered "link/change Identity account" on the assistant management page. That function was never requested and introduced extra userId-change complexity; its frontend and backend implementations were deleted on 2026-07-27. An assistant's `userId` is bound at `grant-assistant` grant time and can no longer be changed afterwards.
+- **Assistant-student association (GET/POST/DELETE /api/admin/assistants/{userId}/students[/{studentId}])**: the original design provided a "Linked students" column on the assistant management page showing a student count plus a "Manage" button. That function duplicated the semantics of the student management page's "Linked accounts" dialog, and its count loading used N+1 queries, a performance problem; the frontend and backend implementations were deleted on 2026-07-27. Association management is done uniformly in the "Linked accounts" dialog on the student management page; see [StudentManagement/AccountLinking](../../StudentManagement/AccountLinking/01-FEATURE.md).

@@ -1,5 +1,5 @@
-# 助教管理 — 约定
+# Assistant Management — Conventions
 
-- 与教师管理保持完全对称的代理模式和前端交互
-- 助教与学生的关联管理统一在学生管理页"关联账户"对话框完成，不在助教管理页提供
-- Admin Portal 不直接操作助教数据库，通过代理中间件转发
+- Keep the proxy pattern and frontend interactions fully symmetric with teacher management
+- Assistant-student association management is done uniformly in the "Linked accounts" dialog on the student management page, not on the assistant management page
+- The Admin Portal does not touch the assistant database directly; everything goes through the proxy middleware

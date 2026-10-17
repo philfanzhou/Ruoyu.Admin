@@ -1,77 +1,77 @@
-# MistakeManagement 测试
+# MistakeManagement Tests
 
-## 现有测试覆盖
+## Existing test coverage
 
-### MistakeControllerTests（已实现）
+### MistakeControllerTests (implemented)
 
-| 测试方法 | 验证内容 |
+| Test method | What it verifies |
 | --- | --- |
-| `GetMistakeItems_Success_ReturnsPaginatedItemsWithStudentNames` | GetMistakeItems 返回分页数据和学生姓名 |
-| `GetMistakeItems_StudentQueryFails_FallsBackToStudentId` | 学生查询失败时回退为 studentId |
-| `GetMistakeItems_Page0_ResetsTo1` | page=0 时重置为 1 |
-| `GetMistakeItems_Size0_ResetsTo10` | size=0 时重置为 10 |
-| `GetMistakeItems_Size200_ClampedTo100` | size=200 时限制为 100 |
-| `GetMistakeItems_ReviewStatus1_SendsConfirmedInGrpcRequest` | reviewStatus=1 时 gRPC 请求为 Confirmed |
-| `GetMistakeItems_GrpcException_Returns500` | gRPC 异常返回 500 |
-| `GetMistakeItem_Success_ReturnsItemWithSourceRegionsAndBoundingBox` | GetMistakeItem 返回包含 sourceRegions 和 boundingBox 的详情 |
-| `GetMistakeItem_BoundingBoxNull_InResponseStillNull` | boundingBox 为 null 时响应中也为 null |
-| `GetMistakeItem_StudentQueryFails_FallsBackToStudentId` | 学生查询失败时回退为 studentId |
-| `GetMistakeItem_GrpcException_Returns500` | gRPC 异常返回 500 |
-| `GetMistakesByUploadId_Success_ReturnsItemsWithStudentNames` | GetMistakesByUploadId 返回错题列表和学生姓名 |
-| `GetMistakesByUploadId_GrpcException_Returns500` | gRPC 异常返回 500 |
-| `UpdateMistakeItem_Success_ReturnsItemWithStudentName` | UpdateMistakeItem 返回更新结果和学生姓名 |
-| `UpdateMistakeItem_NullFields_SendsEmptyStringAndZeroInGrpcRequest` | null 字段在 gRPC 请求中为空字符串或 0 |
-| `UpdateMistakeItem_GrpcException_Returns500` | gRPC 异常返回 500 |
-| `MigrateImages_AllPathsAlreadyInMistakes_ReturnsMigratedCount0` | 所有路径已在 mistakes/ 下时 migratedCount=0 |
-| `MigrateImages_PathsInUploads_CallsMigrateGrpc_ReturnsMigratedCount` | 有路径在 uploads/ 下时调用 gRPC 迁移并返回 migratedCount |
-| `MigrateImages_SameOldPathMultipleTimes_MigratedOnlyOnce` | 同一旧路径出现多次时只迁移一次 |
-| `MigrateImages_MigrateGrpcThrows_Returns500` | MigrateImagesToMistake gRPC 异常返回 500 |
-| `MigrateImages_GetMistakeItemThrows_Returns500` | GetMistakeItem 异常返回 500 |
-| `MigrateImages_UpdateMistakeItemThrows_Returns500` | UpdateMistakeItem 异常返回 500 |
+| `GetMistakeItems_Success_ReturnsPaginatedItemsWithStudentNames` | GetMistakeItems returns paged data and student names |
+| `GetMistakeItems_StudentQueryFails_FallsBackToStudentId` | falls back to the studentId when the student query fails |
+| `GetMistakeItems_Page0_ResetsTo1` | page=0 resets to 1 |
+| `GetMistakeItems_Size0_ResetsTo10` | size=0 resets to 10 |
+| `GetMistakeItems_Size200_ClampedTo100` | size=200 is capped at 100 |
+| `GetMistakeItems_ReviewStatus1_SendsConfirmedInGrpcRequest` | reviewStatus=1 sends Confirmed in the gRPC request |
+| `GetMistakeItems_GrpcException_Returns500` | a gRPC exception returns 500 |
+| `GetMistakeItem_Success_ReturnsItemWithSourceRegionsAndBoundingBox` | GetMistakeItem returns details with sourceRegions and boundingBox |
+| `GetMistakeItem_BoundingBoxNull_InResponseStillNull` | a null boundingBox stays null in the response |
+| `GetMistakeItem_StudentQueryFails_FallsBackToStudentId` | falls back to the studentId when the student query fails |
+| `GetMistakeItem_GrpcException_Returns500` | a gRPC exception returns 500 |
+| `GetMistakesByUploadId_Success_ReturnsItemsWithStudentNames` | GetMistakesByUploadId returns the mistake list and student names |
+| `GetMistakesByUploadId_GrpcException_Returns500` | a gRPC exception returns 500 |
+| `UpdateMistakeItem_Success_ReturnsItemWithStudentName` | UpdateMistakeItem returns the update result and the student name |
+| `UpdateMistakeItem_NullFields_SendsEmptyStringAndZeroInGrpcRequest` | null fields become the empty string or 0 in the gRPC request |
+| `UpdateMistakeItem_GrpcException_Returns500` | a gRPC exception returns 500 |
+| `MigrateImages_AllPathsAlreadyInMistakes_ReturnsMigratedCount0` | migratedCount=0 when every path is already under mistakes/ |
+| `MigrateImages_PathsInUploads_CallsMigrateGrpc_ReturnsMigratedCount` | calls the gRPC migration and returns migratedCount when paths are under uploads/ |
+| `MigrateImages_SameOldPathMultipleTimes_MigratedOnlyOnce` | the same old path appearing multiple times is migrated only once |
+| `MigrateImages_MigrateGrpcThrows_Returns500` | a MigrateImagesToMistake gRPC exception returns 500 |
+| `MigrateImages_GetMistakeItemThrows_Returns500` | a GetMistakeItem exception returns 500 |
+| `MigrateImages_UpdateMistakeItemThrows_Returns500` | an UpdateMistakeItem exception returns 500 |
 
-## 单元测试 — Given-When-Then 格式
+## Unit tests — Given-When-Then format
 
 ### GetMistakeItems
 
-- **Given** Mistake.GetMistakeItemList 返回分页数据，**When** 调用 GetMistakeItems，**Then** 返回 200 和包含学生姓名的错题列表
-- **Given** Mistake.GetMistakeItemList 返回分页数据且部分学生查询失败，**When** 调用 GetMistakeItems，**Then** 失败学生的 studentName 回退为 studentId
-- **Given** page=0，**When** 调用 GetMistakeItems，**Then** page 被重置为 1
-- **Given** size=0，**When** 调用 GetMistakeItems，**Then** size 被重置为 10
-- **Given** size=200，**When** 调用 GetMistakeItems，**Then** size 被限制为 100
-- **Given** 传入 reviewStatus=1，**When** 调用 GetMistakeItems，**Then** gRPC 请求的 ReviewStatus 为 Confirmed
-- **Given** Mistake.GetMistakeItemList 抛出异常，**When** 调用 GetMistakeItems，**Then** 返回 500
+- **Given** Mistake.GetMistakeItemList returns paged data, **When** GetMistakeItems is called, **Then** it returns 200 and the mistake list including student names
+- **Given** Mistake.GetMistakeItemList returns paged data and some student queries fail, **When** GetMistakeItems is called, **Then** the failed students' studentName falls back to the studentId
+- **Given** page=0, **When** GetMistakeItems is called, **Then** page is reset to 1
+- **Given** size=0, **When** GetMistakeItems is called, **Then** size is reset to 10
+- **Given** size=200, **When** GetMistakeItems is called, **Then** size is capped at 100
+- **Given** reviewStatus=1 is passed, **When** GetMistakeItems is called, **Then** the gRPC request's ReviewStatus is Confirmed
+- **Given** Mistake.GetMistakeItemList throws, **When** GetMistakeItems is called, **Then** it returns 500
 
 ### GetMistakeItem
 
-- **Given** Mistake.GetMistakeItem 返回包含 sourceRegions 和 boundingBox 的数据，**When** 调用 GetMistakeItem，**Then** 返回 200 和包含 sourceRegions 的详情
-- **Given** Mistake.GetMistakeItem 返回 boundingBox 为 null 的 region，**When** 调用 GetMistakeItem，**Then** 返回的 boundingBox 为 null
-- **Given** 学生查询失败，**When** 调用 GetMistakeItem，**Then** studentName 回退为 studentId
-- **Given** Mistake.GetMistakeItem 抛出异常，**When** 调用 GetMistakeItem，**Then** 返回 500
+- **Given** Mistake.GetMistakeItem returns data with sourceRegions and boundingBox, **When** GetMistakeItem is called, **Then** it returns 200 and the details including sourceRegions
+- **Given** Mistake.GetMistakeItem returns a region whose boundingBox is null, **When** GetMistakeItem is called, **Then** the returned boundingBox is null
+- **Given** the student query fails, **When** GetMistakeItem is called, **Then** studentName falls back to the studentId
+- **Given** Mistake.GetMistakeItem throws, **When** GetMistakeItem is called, **Then** it returns 500
 
 ### GetMistakesByUploadId
 
-- **Given** Mistake.GetMistakeItemsByUpload 返回错题列表，**When** 调用 GetMistakesByUploadId，**Then** 返回 200 和包含学生姓名的错题列表
-- **Given** Mistake.GetMistakeItemsByUpload 抛出异常，**When** 调用 GetMistakesByUploadId，**Then** 返回 500
+- **Given** Mistake.GetMistakeItemsByUpload returns a mistake list, **When** GetMistakesByUploadId is called, **Then** it returns 200 and the mistake list including student names
+- **Given** Mistake.GetMistakeItemsByUpload throws, **When** GetMistakesByUploadId is called, **Then** it returns 500
 
 ### UpdateMistakeItem
 
-- **Given** Mistake.UpdateMistakeItem 返回更新后的数据，**When** 调用 UpdateMistakeItem，**Then** 返回 200 和包含学生姓名的更新结果
-- **Given** 请求中 StudentId/Subject/Grade 为 null，**When** 调用 UpdateMistakeItem，**Then** gRPC 请求中对应字段为空字符串或 0
-- **Given** Mistake.UpdateMistakeItem 抛出异常，**When** 调用 UpdateMistakeItem，**Then** 返回 500
+- **Given** Mistake.UpdateMistakeItem returns the updated data, **When** UpdateMistakeItem is called, **Then** it returns 200 and the update result including the student name
+- **Given** StudentId/Subject/Grade are null in the request, **When** UpdateMistakeItem is called, **Then** the corresponding gRPC request fields are the empty string or 0
+- **Given** Mistake.UpdateMistakeItem throws, **When** UpdateMistakeItem is called, **Then** it returns 500
 
 ### MigrateImages
 
-- **Given** 所有图片路径已在 mistakes/ 下，**When** 调用 MigrateImages，**Then** 返回 200，migratedCount=0
-- **Given** 有图片在 uploads/ 下，**When** 调用 MigrateImages，**Then** 调用 StudentLearning gRPC MigrateImagesToMistake，更新 sourceRegions，返回 migratedCount
-- **Given** 同一旧路径出现多次，**When** 调用 MigrateImages，**Then** 只迁移一次（使用缓存）
-- **Given** MigrateImagesToMistake gRPC 抛出异常，**When** 调用 MigrateImages，**Then** 返回 500
-- **Given** GetMistakeItem 抛出异常，**When** 调用 MigrateImages，**Then** 返回 500
-- **Given** UpdateMistakeItem（更新 sourceRegions）抛出异常，**When** 调用 MigrateImages，**Then** 返回 500
+- **Given** every image path is already under mistakes/, **When** MigrateImages is called, **Then** it returns 200 with migratedCount=0
+- **Given** some images are under uploads/, **When** MigrateImages is called, **Then** it calls StudentLearning gRPC MigrateImagesToMistake, updates the sourceRegions, and returns migratedCount
+- **Given** the same old path appears multiple times, **When** MigrateImages is called, **Then** it migrates only once (using the cache)
+- **Given** the MigrateImagesToMistake gRPC throws, **When** MigrateImages is called, **Then** it returns 500
+- **Given** GetMistakeItem throws, **When** MigrateImages is called, **Then** it returns 500
+- **Given** UpdateMistakeItem (updating sourceRegions) throws, **When** MigrateImages is called, **Then** it returns 500
 
-## 鉴权回归测试（已实现）
+## Authorization regression tests (implemented)
 
-测试代码位于 `Tests/Controllers/ControllerAuthorizationTests.cs`，通过反射验证 controller 级 `[Authorize]` 属性存在，防止重构时误删导致鉴权失效。默认 FallbackPolicy 授权策略不能替代显式标注（项目约定：所有 `/api/admin/*` controller 必须显式 `[Authorize]`，作为后续 `[Authorize(Roles = "admin")]` 收紧的扩展点）。
+The test code lives in `Tests/Controllers/ControllerAuthorizationTests.cs`; it verifies through reflection that the controller-level `[Authorize]` attribute exists, preventing accidental removal during refactoring from breaking authorization. The default FallbackPolicy authorization policy cannot replace explicit annotation (project convention: every `/api/admin/*` controller must carry an explicit `[Authorize]`, as the extension point for a later `[Authorize(Roles = "admin")]` tightening).
 
-| 测试方法 | 验证内容 |
+| Test method | What it verifies |
 | --- | --- |
-| `MistakeController_HasAuthorizeAttribute` | MistakeController 必须携带 `[Authorize]` 属性（错题列表/审核/迁移为管理员操作） |
+| `MistakeController_HasAuthorizeAttribute` | MistakeController must carry the `[Authorize]` attribute (mistake list/review/migration are administrator operations) |

@@ -1,55 +1,55 @@
-# 身份账户关联 (AccountLinking)
+# Identity Account Linking (AccountLinking)
 
-## 功能名称和一句话概括
+## Feature name and one-line summary
 
-**AccountLinking** — 管理员将身份账户与学生档案进行关联、解关联及双向查询。
+**AccountLinking** — administrators link identity accounts to student profiles, unlink them, and query in both directions.
 
-## 核心用户故事
+## Core user stories
 
-作为管理员，我希望将身份账户关联到学生档案并支持关联管理与反查，以便学生可以通过不同身份登录系统且管理员能追溯关联关系。关联管理统一在学生管理页面"关联账户"对话框完成，不区分账户角色（教师/助教/普通用户均可），教师/助教管理页面不再提供关联学生功能。
+As an administrator, I want to link identity accounts to student profiles with association management and reverse lookup, so that students can sign in to the system with different identities and administrators can trace the associations. Association management is done uniformly in the "Linked accounts" dialog on the student management page, without distinguishing account roles (teachers/assistants/regular users are all allowed); the teacher/assistant management pages no longer offer a link-students function.
 
-## 补充约束
+## Supplementary constraints
 
-1. **幂等性**：关联操作非幂等（重复关联同一账户到同一学生由 Student HTTP 服务层保证唯一性）
-2. **并发**：关联唯一性由 Student HTTP 服务层保证，Admin Portal 不做额外并发控制
-3. **事务边界**：关联/解关联为单次 HTTP 调用，无跨服务事务
-4. **失败降级**：Identity Service 不可用时，批量查询身份账户信息返回空列表而非错误
-5. **关联校验**：IdentityAccountId 必须为合法 GUID 格式且不能为空
-6. **解关联参数**：需同时提供 studentId 和 accountId，均为 GUID 路由参数
-7. **统一入口**：关联关系的增删仅在学生管理页"关联账户"对话框发起，调用 admin_portal 的 `GET/POST/DELETE /api/admin/students/{studentId}/accounts` 端点，可关联任意 Identity 账户（教师、助教、普通用户均可），不按角色区分
+1. **Idempotency**: linking is not idempotent (uniqueness of linking the same account to the same student is guaranteed by the Student HTTP service layer)
+2. **Concurrency**: link uniqueness is guaranteed by the Student HTTP service layer; the Admin Portal adds no extra concurrency control
+3. **Transaction boundary**: link/unlink is a single HTTP call with no cross-service transaction
+4. **Failure degradation**: when the Identity Service is unavailable, the batch query of identity account information returns an empty list instead of an error
+5. **Link validation**: IdentityAccountId must be a legal GUID format and must not be empty
+6. **Unlink parameters**: studentId and accountId must both be provided, both as GUID route parameters
+7. **Single entry point**: creating and deleting associations happens only from the "Linked accounts" dialog on the student management page, calling admin_portal's `GET/POST/DELETE /api/admin/students/{studentId}/accounts` endpoints; any Identity account can be linked (teachers, assistants, and regular users alike), with no distinction by role
 
-## 关键验收条件摘要
+## Key acceptance conditions summary
 
-1. 可查看学生已关联的身份账户 ID 列表
-2. 可将新的身份账户关联到学生档案，IdentityAccountId 必须为合法 GUID
-3. 同一身份账户不能重复关联到同一学生
-4. 可解除身份账户与学生档案的关联
-5. 批量查询身份账户信息通过 Identity Service HTTP API 实现
-6. Identity Service 不可用时批量查询返回空列表
-7. 可通过身份账户 ID 反查关联的学生列表
-8. 学生管理页面"关联账户"列提供"管理"按钮，点击后弹出对话框展示该学生已关联的全部 Identity 账户（不区分角色），并支持搜索任意 Identity 用户进行添加/移除（调用 `GET /api/admin/students/{studentId}/accounts`、`POST /api/admin/students/{studentId}/accounts`、`DELETE /api/admin/students/{studentId}/accounts/{accountId}`）
+1. The list of identity account IDs already linked to a student can be viewed
+2. A new identity account can be linked to a student profile; IdentityAccountId must be a legal GUID
+3. The same identity account cannot be linked twice to the same student
+4. An identity account can be unlinked from a student profile
+5. The batch query of identity account information goes through the Identity Service HTTP API
+6. When the Identity Service is unavailable, the batch query returns an empty list
+7. The list of students linked to an identity account ID can be looked up in reverse
+8. The "Linked accounts" column on the student management page provides a "Manage" button; clicking it opens a dialog showing all Identity accounts linked to that student (regardless of role) and supports searching any Identity user to add/remove (calling `GET /api/admin/students/{studentId}/accounts`, `POST /api/admin/students/{studentId}/accounts`, `DELETE /api/admin/students/{studentId}/accounts/{accountId}`)
 
-## 已移除功能
+## Removed features
 
-- **学生列表"关联账户"（Identity 绑定状态）列**：原设计在学生列表单独一列展示 `identityAccountIds[0]`（首个绑定的 Identity 账户）及"关联账户"按钮打开单选关联对话框。该列与"关联教师/助教"列语义重复，已于 2026-07-27 合并：学生列表仅保留一列"关联账户"（原"关联教师/助教"列改名），点击"管理"按钮弹出的对话框统一管理该学生的全部 Identity 账户关联关系。
-- **学生列表"关联教师/助教"数量标签**：原设计在学生列表显示"X人/无"数量标签，由于数据为点击"管理"按钮后的懒加载，列表初次加载时全部显示"无"，存在误导。已于 2026-07-27 移除数量标签，仅保留"管理"按钮，数量在点击后弹出的对话框内展示。
-- **教师/助教管理页"关联账户"列**：原设计在教师/助教管理页提供"关联/更换 Identity 账户"功能（`PUT /api/{teacher-portal|assistant-portal}/admin/{role}s/{userId}/user-id`）。该功能未被要求且引入了额外的 userId 变更复杂度，已于 2026-07-27 删除前后端实现。教师/助教的 `userId` 在 `grant-teacher` / `grant-assistant` 授予时绑定，不再支持事后更换。
-- **教师/助教管理页"关联学生"列与管理按钮**：原设计在教师/助教管理页提供"关联学生"列展示学生数量并提供"管理"按钮打开 `StudentAssociationDrawer`。该功能与学生管理页"关联账户"对话框语义重复，且数量加载采用 N+1 查询（每个教师/助教一次 HTTP 请求）存在性能问题。已于 2026-07-27 删除前后端实现：
-  - 前端：删除 `StudentAssociationDrawer.vue` 组件、`studentLinkApi.ts` 服务、TeacherView/AssistantView 的"关联学生"列与相关函数。
-  - 后端：删除 `teacher_portal`/`assistant_portal` 的 `GET/POST/DELETE /api/admin/{role}s/{userId}/students[/{studentId}]` 端点及单元测试。
-  - 关联管理统一在学生管理页"关联账户"对话框完成。
+- **The student-list "Linked accounts" (Identity binding status) column**: the original design showed `identityAccountIds[0]` (the first bound Identity account) in a dedicated student-list column plus a "Linked accounts" button opening a single-select linking dialog. That column duplicated the semantics of the "Linked teachers/assistants" column and was merged on 2026-07-27: the student list keeps only one "Linked accounts" column (the renamed former "Linked teachers/assistants" column), and the dialog opened by the "Manage" button uniformly manages all of that student's Identity account associations.
+- **The student-list "Linked teachers/assistants" count badge**: the original design showed an "X people/none" count badge in the student list; because the data was lazily loaded after clicking "Manage", every row initially displayed "none", which was misleading. On 2026-07-27 the count badge was removed, keeping only the "Manage" button; the count is shown inside the dialog opened on click.
+- **The teacher/assistant management page "Linked accounts" column**: the original design offered "link/change Identity account" on the teacher/assistant management page (`PUT /api/{teacher-portal|assistant-portal}/admin/{role}s/{userId}/user-id`). That function was never requested and introduced extra userId-change complexity; its frontend and backend implementations were deleted on 2026-07-27. A teacher/assistant's `userId` is bound at `grant-teacher` / `grant-assistant` grant time and can no longer be changed afterwards.
+- **The teacher/assistant management page "Linked students" column and Manage button**: the original design provided a "Linked students" column on the teacher/assistant management page showing a student count, plus a "Manage" button opening `StudentAssociationDrawer`. That function duplicated the semantics of the student management page's "Linked accounts" dialog, and its count loading used N+1 queries (one HTTP request per teacher/assistant), a performance problem. The frontend and backend implementations were deleted on 2026-07-27:
+  - Frontend: deleted the `StudentAssociationDrawer.vue` component, the `studentLinkApi.ts` service, and the "Linked students" column and related functions of TeacherView/AssistantView.
+  - Backend: deleted `teacher_portal`/`assistant_portal`'s `GET/POST/DELETE /api/admin/{role}s/{userId}/students[/{studentId}]` endpoints and their unit tests.
+  - Association management is done uniformly in the student management page's "Linked accounts" dialog.
 
-## 范围外
+## Out of scope
 
-- 身份账户的创建、修改和删除
-- 身份账户密码管理
-- 身份认证流程（登录/登出）
-- 跨租户身份账户关联
+- Creating, updating, and deleting identity accounts
+- Identity account password management
+- The authentication flow (login/logout)
+- Cross-tenant identity account linking
 
-## 文档索引
+## Document index
 
-- [02-SPEC.md](./02-SPEC.md) — 详细需求与验收标准清单
-- [03-DESIGN.md](./03-DESIGN.md) — 架构设计、接口签名与数据流
-- [04-TASKS.md](./04-TASKS.md) — 开发/验证任务列表
-- [05-TESTS.md](./05-TESTS.md) — 单元测试与集成测试计划
-- [06-CONVENTIONS.md](./06-CONVENTIONS.md) — 命名约定、日志安全与代码风格
+- [02-SPEC.md](./02-SPEC.md) — detailed requirements and acceptance criteria list
+- [03-DESIGN.md](./03-DESIGN.md) — architecture design, interface signatures, and data flow
+- [04-TASKS.md](./04-TASKS.md) — development/verification task list
+- [05-TESTS.md](./05-TESTS.md) — unit and integration test plan
+- [06-CONVENTIONS.md](./06-CONVENTIONS.md) — naming conventions, log safety, and code style

@@ -1,52 +1,52 @@
-# TeacherPortalProxy 约定与模式
+# TeacherPortalProxy Conventions and Patterns
 
-## 中间件模式
+## Middleware patterns
 
-### 请求拦截与转发
+### Request interception and forwarding
 
-TeacherPortalProxyMiddleware 采用反向代理模式，与 IdentityProxyMiddleware 模式一致：
-- 拦截特定路径前缀的请求
-- 重写路径后转发到下游服务
-- 自动注入认证信息
-- 原样转发响应给客户端
+TeacherPortalProxyMiddleware uses the reverse-proxy pattern, consistent with IdentityProxyMiddleware:
+- Intercepts requests with a specific path prefix
+- Rewrites the path and forwards to the downstream service
+- Injects authentication automatically
+- Forwards the response to the client verbatim
 
-### 路径重写约定
+### Path rewriting conventions
 
-与 IdentityProxyMiddleware 的简单前缀替换不同，TeacherPortalProxyMiddleware 使用多规则路径重写：
+Unlike IdentityProxyMiddleware's simple prefix replacement, TeacherPortalProxyMiddleware uses multi-rule path rewriting:
 
-| 规则 | 原始前缀 | 目标前缀 | 说明 |
+| Rule | Original prefix | Target prefix | Description |
 |------|---------|---------|------|
-| admin | `/api/teacher-portal/admin` | `/api/admin` | 管理接口 |
-| auth | `/api/teacher-portal/auth` | `/api/auth` | 认证接口 |
-| 默认 | `/api/teacher-portal/其他` | `/api/admin` | 默认路由 |
+| admin | `/api/teacher-portal/admin` | `/api/admin` | admin interface |
+| auth | `/api/teacher-portal/auth` | `/api/auth` | authentication interface |
+| default | `/api/teacher-portal/other` | `/api/admin` | default routing |
 
-**设计意图**：教师门户的接口分为管理接口和认证接口两类，非认证路径统一归为管理路径[推断]。
+**Design intent**: the teacher portal's interfaces fall into two classes, admin and authentication; non-authentication paths are uniformly classified as admin paths [inferred].
 
-### 认证头约定
+### Authentication header conventions
 
-使用单一自定义请求头传递认证信息：
-- `X-Admin-Key`：管理后台API密钥
+Authentication is passed through a single custom header:
+- `X-Admin-Key`: the admin console's API key
 
-与 IdentityProxy 的双头认证（AppId + AppSecret）不同，TeacherPortal 使用单密钥认证模式。
+Unlike IdentityProxy's two-header authentication (AppId + AppSecret), the TeacherPortal uses a single-key authentication pattern.
 
-## 错误处理约定
+## Error handling conventions
 
-| 场景 | HTTP状态码 | 说明 |
+| Scenario | HTTP status code | Description |
 |------|-----------|------|
-| 配置未就绪 | 503 Service Unavailable | 服务暂时不可用 |
-| 下游服务不可达 | 502 Bad Gateway | 网关错误 |
+| Configuration not ready | 503 Service Unavailable | the service is temporarily unavailable |
+| Downstream service unreachable | 502 Bad Gateway | gateway error |
 
-**与 IdentityProxy 的区别**：TeacherPortal 增加了 503 状态码用于配置缺失场景，表明这是可恢复的服务不可用（配置后即可使用）。
+**Difference from IdentityProxy**: TeacherPortal adds the 503 status code for the missing-configuration case, signaling a recoverable unavailability (usable once configured).
 
-## 配置约定
+## Configuration conventions
 
-### Options 模式
+### The Options pattern
 
-使用 ASP.NET Core 的 Options 模式：
-- `TeacherPortalOptions` 通过依赖注入获取
-- 配置项从 appsettings.json 或环境变量加载
+Uses ASP.NET Core's Options pattern:
+- `TeacherPortalOptions` is obtained through dependency injection
+- Configuration items load from appsettings.json or environment variables
 
-### 配置结构
+### Configuration structure
 
 ```json
 {
@@ -57,18 +57,18 @@ TeacherPortalProxyMiddleware 采用反向代理模式，与 IdentityProxyMiddlew
 }
 ```
 
-## 安全约定
+## Security conventions
 
-- AdminApiKey 属于敏感配置，不应记录到日志中
-- 代理中间件不应对请求体内容进行解析或记录[推断]
-- 所有到 TeacherPortal 的通信应使用 HTTPS[推断]
+- AdminApiKey is sensitive configuration and must not be logged
+- The proxy middleware should not parse or log request-body contents [inferred]
+- All communication to the TeacherPortal should use HTTPS [inferred]
 
-## 代理中间件对比
+## Proxy middleware comparison
 
-| 特性 | IdentityProxy | TeacherPortalProxy |
+| Property | IdentityProxy | TeacherPortalProxy |
 |------|--------------|-------------------|
-| 拦截路径 | `/api/identity/*` | `/api/teacher-portal/*` |
-| 路径重写 | 单一前缀替换 | 多规则 + 默认路由 |
-| 认证方式 | AppId + AppSecret（双头） | AdminApiKey（单头） |
-| 未配置响应 | [待确认] | 503 |
-| 不可达响应 | 502 | 502 |
+| Intercepted paths | `/api/identity/*` | `/api/teacher-portal/*` |
+| Path rewriting | single prefix replacement | multi-rule + default routing |
+| Authentication | AppId + AppSecret (two headers) | AdminApiKey (single header) |
+| Unconfigured response | [to confirm] | 503 |
+| Unreachable response | 502 | 502 |

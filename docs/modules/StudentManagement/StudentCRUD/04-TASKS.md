@@ -1,85 +1,85 @@
-# StudentCRUD — 任务清单 (TASKS)
+# StudentCRUD — Task List (TASKS)
 
-> 说明：本功能代码已实现完成，下列任务为 **代码评审与自动化验证** 任务。
+> Note: this capability's code is already implemented; the tasks below are **code review and automated verification** tasks.
 
 ```json
 [
   {
     "id": "REVIEW-01",
     "depends_on": [],
-    "action": "评审 StudentsController.cs 中 ListStudents 方法：确认分页参数规范化逻辑（page < 1 → 1, pageSize Clamp(1,100)）、gRPC 请求构建（Grade 枚举转换）、响应映射（ToDto + PagedResponse）与 SPEC 一致。",
+    "action": "Review the ListStudents method in StudentsController.cs: confirm that the pagination normalization logic (page < 1 → 1, pageSize Clamp(1,100)), the gRPC request construction (Grade enum conversion), and the response mapping (ToDto + PagedResponse) match the SPEC.",
     "files": ["backend/Controllers/StudentsController.cs"],
-    "acceptance": "代码阅读签名与 SPEC FR-01/FR-10 一致；编译通过 dotnet build。",
-    "notes": "Grade 为 0 或负数时应转为 Unspecified，不作为筛选条件。",
+    "acceptance": "Code reading signed off as consistent with SPEC FR-01/FR-10; dotnet build compiles.",
+    "notes": "Grade 0 or negative converts to Unspecified and is not used as a filter.",
     "status": "implemented"
   },
   {
     "id": "REVIEW-02",
     "depends_on": [],
-    "action": "评审 StudentsController.cs 中 GetStudent 方法：确认 NotFound 和 InvalidArgument 的 RpcException 捕获逻辑与 SPEC FR-12/FR-11 一致。",
+    "action": "Review the GetStudent method in StudentsController.cs: confirm the RpcException catch logic for NotFound and InvalidArgument matches SPEC FR-12/FR-11.",
     "files": ["backend/Controllers/StudentsController.cs"],
-    "acceptance": "编译通过；异常捕获顺序正确（NotFound 在前，InvalidArgument 在后）。",
+    "acceptance": "Compiles; the exception catch order is correct (NotFound first, InvalidArgument second).",
     "notes": "",
     "status": "implemented"
   },
   {
     "id": "REVIEW-03",
     "depends_on": [],
-    "action": "评审 StudentsController.cs 中 CreateStudent 方法：确认参数校验逻辑（姓名非空白、年级有效、IdentityAccountIds 非空、GUID 格式校验）与 SPEC FR-03/FR-08 一致。",
+    "action": "Review the CreateStudent method in StudentsController.cs: confirm the parameter validation logic (non-whitespace name, valid grade, non-empty IdentityAccountIds, GUID format checks) matches SPEC FR-03/FR-08.",
     "files": ["backend/Controllers/StudentsController.cs"],
-    "acceptance": "编译通过；所有 InvalidArgument 场景均有覆盖。",
-    "notes": "GUID 格式校验必须列出所有非法 ID。",
+    "acceptance": "Compiles; every InvalidArgument scenario is covered.",
+    "notes": "The GUID format check must list all illegal IDs.",
     "status": "implemented"
   },
   {
     "id": "REVIEW-04",
     "depends_on": [],
-    "action": "评审 StudentsController.cs 中 UpdateStudent 方法：确认参数校验逻辑（姓名非空白、年级有效、可选 IdentityAccountIds 的 GUID 校验）与 SPEC FR-04/FR-09 一致；确认 gRPC 返回 Success=false 时返回 404 与 SPEC FR-13 一致。",
+    "action": "Review the UpdateStudent method in StudentsController.cs: confirm the parameter validation logic (non-whitespace name, valid grade, GUID checks on the optional IdentityAccountIds) matches SPEC FR-04/FR-09; confirm that a gRPC Success=false returns 404 per SPEC FR-13.",
     "files": ["backend/Controllers/StudentsController.cs"],
-    "acceptance": "编译通过；IdentityAccountIds 为 null 时跳过校验与 AddRange。",
+    "acceptance": "Compiles; when IdentityAccountIds is null, validation and AddRange are skipped.",
     "notes": "",
     "status": "implemented"
   },
   {
     "id": "REVIEW-05",
     "depends_on": [],
-    "action": "评审 StudentsController.cs 中 DeleteStudent 方法：确认 gRPC 返回 Success=false 时返回 404 与 SPEC FR-13 一致。",
+    "action": "Review the DeleteStudent method in StudentsController.cs: confirm that a gRPC Success=false returns 404 per SPEC FR-13.",
     "files": ["backend/Controllers/StudentsController.cs"],
-    "acceptance": "编译通过；InvalidArgument 和 Success=false 均正确处理。",
+    "acceptance": "Compiles; InvalidArgument and Success=false are both handled correctly.",
     "notes": "",
     "status": "implemented"
   },
   {
     "id": "REVIEW-06",
     "depends_on": [],
-    "action": "评审 StudentsController.cs 中 GetGrades 和 GetSubjectOptions 方法：确认年级标签为静态字典（1-12）、科目选项通过 gRPC GetAvailableSubjects 获取。",
+    "action": "Review the GetGrades and GetSubjectOptions methods in StudentsController.cs: confirm the grade labels come from a static dictionary (1-12) and the subject options come from gRPC GetAvailableSubjects.",
     "files": ["backend/Controllers/StudentsController.cs"],
-    "acceptance": "编译通过；GradeLabels 包含 12 个条目；GetSubjectOptions 正确映射 SubjectOption。",
+    "acceptance": "Compiles; GradeLabels contains 12 entries; GetSubjectOptions maps SubjectOption correctly.",
     "notes": "",
     "status": "implemented"
   },
   {
     "id": "REVIEW-07",
     "depends_on": [],
-    "action": "评审 Models 目录下 StudentDto、CreateStudentRequest、UpdateStudentRequest、GradeOption、PagedResponse、OperationResponse、ErrorResponse 的 record 定义：确认字段命名和类型与 API 文档一致。",
+    "action": "Review the record definitions of StudentDto, CreateStudentRequest, UpdateStudentRequest, GradeOption, PagedResponse, OperationResponse, and ErrorResponse under the Models directory: confirm the field names and types match the API documentation.",
     "files": ["backend/Models/StudentDto.cs", "backend/Models/CreateStudentRequest.cs", "backend/Models/UpdateStudentRequest.cs", "backend/Models/GradeOption.cs", "backend/Models/PagedResponse.cs", "backend/Models/OperationResponse.cs", "backend/Models/ErrorResponse.cs"],
-    "acceptance": "编译通过；record 字段与 SPEC 验收标准一致。",
+    "acceptance": "Compiles; the record fields match the SPEC acceptance criteria.",
     "notes": "",
     "status": "implemented"
   },
   {
     "id": "TEST-01",
     "depends_on": ["REVIEW-01", "REVIEW-02", "REVIEW-03", "REVIEW-04", "REVIEW-05", "REVIEW-06", "REVIEW-07"],
-    "action": "为 StudentsController 编写单元测试：覆盖 ListStudents 分页参数规范化、GetStudent 正常/NotFound/InvalidArgument、CreateStudent 参数校验与成功路径、UpdateStudent 参数校验与 Success=false、DeleteStudent 成功与 NotFound、GetGrades 返回 12 个选项、GetSubjectOptions 正确映射。",
+    "action": "Write unit tests for StudentsController: cover ListStudents pagination normalization, GetStudent normal/NotFound/InvalidArgument, CreateStudent parameter validation and the success path, UpdateStudent parameter validation and Success=false, DeleteStudent success and NotFound, GetGrades returning 12 options, and GetSubjectOptions mapping correctly.",
     "files": ["test/Admin.WebApi.Tests/Controllers/StudentsControllerTests.cs"],
     "acceptance": "dotnet test --filter FullyQualifiedName~StudentsControllerTests",
-    "notes": "当前无 Controller 级别测试，需新建测试文件。",
+    "notes": "There are currently no Controller-level tests; a new test file is needed.",
     "status": "todo"
   },
   {
     "id": "TEST-02",
     "depends_on": ["TEST-01"],
-    "action": "执行边界测试：page=0 修正为 1、pageSize=0 修正为 1、pageSize=200 修正为 100、姓名仅含空格返回 400、年级=0 返回 400、年级=13 返回 400。",
+    "action": "Run boundary tests: page=0 corrected to 1, pageSize=0 corrected to 1, pageSize=200 corrected to 100, a whitespace-only name returns 400, grade=0 returns 400, grade=13 returns 400.",
     "files": ["test/Admin.WebApi.Tests/Controllers/StudentsControllerTests.cs"],
     "acceptance": "dotnet test --filter FullyQualifiedName~StudentsControllerTests",
     "notes": "",
@@ -88,10 +88,10 @@
   {
     "id": "BUILD-01",
     "depends_on": ["TEST-01", "TEST-02"],
-    "action": "在 Release 配置下编译解决方案并运行所有测试，打印覆盖率摘要。",
+    "action": "Build the solution in the Release configuration and run all tests, printing a coverage summary.",
     "files": ["backend/*.csproj", "backend/Tests/**/*.cs"],
     "acceptance": "dotnet test --configuration Release",
-    "notes": "必须零警告，无测试失败。",
+    "notes": "Must be zero warnings with no test failures.",
     "status": "todo"
   }
 ]

@@ -2,17 +2,17 @@
 [
   {
     "id": "task-1",
-    "title": "检查遗留数据状态",
-    "description": "管理员检查某条上传记录是否属于遗留数据，了解关联错题审核状态和图片路径情况",
+    "title": "Check legacy-data status",
+    "description": "The administrator checks whether an upload record is legacy data, learning the associated mistakes' review status and the image-path situation",
     "endpoint": "GET /api/admin/oss-upload-records/legacy-check/{id}",
-    "userStory": "作为管理员，我希望检查上传记录是否为遗留数据，以便决定是否需要清理"
+    "userStory": "As an administrator, I want to check whether an upload record is legacy data to decide whether cleanup is needed"
   },
   {
     "id": "task-2",
-    "title": "清理遗留数据",
-    "description": "管理员清理遗留的上传记录数据，完成审核流程、移除图片、删除记录",
+    "title": "Clean up legacy data",
+    "description": "The administrator cleans up legacy upload-record data, completing the review flow, removing images, and deleting the record",
     "endpoint": "POST /api/admin/oss-upload-records/legacy-clean/{id}",
-    "userStory": "作为管理员，我希望清理遗留的上传记录数据，以便保持系统数据一致性"
+    "userStory": "As an administrator, I want to clean up leftover upload-record data to keep the system's data consistent"
   }
 ]
 ```

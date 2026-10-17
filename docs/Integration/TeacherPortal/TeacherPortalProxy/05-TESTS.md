@@ -1,67 +1,67 @@
-# TeacherPortalProxy 测试用例
+# TeacherPortalProxy Test Cases
 
-## 当前状态：[已实现]
+## Current status: [implemented]
 
-以下为基于中间件行为的建议测试用例。
+The following are test cases based on the middleware's behavior.
 
 ---
 
-## TeacherPortalProxyMiddleware 测试
+## TeacherPortalProxyMiddleware tests
 
 ```gherkin
-Feature: 教师门户代理
+Feature: Teacher portal proxy
 
-  Scenario: 成功转发admin路径请求
-    Given TeacherPortal可用
-    And TeacherPortalOptions已正确配置
-    When 发送 GET /api/teacher-portal/admin/teachers
-    Then 请求路径重写为 /api/admin/teachers
-    And 请求头包含 X-Admin-Key
-    And 返回教师门户的响应
+  Scenario: Successfully forward an admin-path request
+    Given the TeacherPortal is available
+    And TeacherPortalOptions is configured correctly
+    When a GET /api/teacher-portal/admin/teachers is sent
+    Then the request path is rewritten to /api/admin/teachers
+    And the request headers contain X-Admin-Key
+    And the teacher portal's response is returned
 
-  Scenario: 成功转发auth路径请求
-    Given TeacherPortal可用
-    And TeacherPortalOptions已正确配置
-    When 发送 POST /api/teacher-portal/auth/login
-    Then 请求路径重写为 /api/auth/login
-    And 请求头包含 X-Admin-Key
-    And 返回教师门户的响应
+  Scenario: Successfully forward an auth-path request
+    Given the TeacherPortal is available
+    And TeacherPortalOptions is configured correctly
+    When a POST /api/teacher-portal/auth/login is sent
+    Then the request path is rewritten to /api/auth/login
+    And the request headers contain X-Admin-Key
+    And the teacher portal's response is returned
 
-  Scenario: 其他路径默认路由到admin
-    Given TeacherPortal可用
-    And TeacherPortalOptions已正确配置
-    When 发送 GET /api/teacher-portal/dashboard
-    Then 请求路径重写为 /api/admin/dashboard
-    And 请求头包含 X-Admin-Key
-    And 返回教师门户的响应
+  Scenario: Other paths default to admin
+    Given the TeacherPortal is available
+    And TeacherPortalOptions is configured correctly
+    When a GET /api/teacher-portal/dashboard is sent
+    Then the request path is rewritten to /api/admin/dashboard
+    And the request headers contain X-Admin-Key
+    And the teacher portal's response is returned
 
-  Scenario: 教师门户不可达时返回502
-    Given TeacherPortal不可用
-    And TeacherPortalOptions已正确配置
-    When 发送 GET /api/teacher-portal/admin/teachers
-    Then 返回502 Bad Gateway
+  Scenario: Return 502 when the teacher portal is unreachable
+    Given the TeacherPortal is unavailable
+    And TeacherPortalOptions is configured correctly
+    When a GET /api/teacher-portal/admin/teachers is sent
+    Then a 502 Bad Gateway is returned
 
-  Scenario: 未配置时返回503
-    Given TeacherPortalOptions未配置
-    When 发送 GET /api/teacher-portal/admin/teachers
-    Then 返回503 Service Unavailable
+  Scenario: Return 503 when not configured
+    Given TeacherPortalOptions is not configured
+    When a GET /api/teacher-portal/admin/teachers is sent
+    Then a 503 Service Unavailable is returned
 
-  Scenario: 非teacher-portal路径不被拦截
-    Given 请求路径为 /api/admin/users
-    When 请求经过中间件
-    Then 请求不被拦截，继续正常处理
+  Scenario: Non-teacher-portal paths are not intercepted
+    Given the request path is /api/admin/users
+    When the request passes through the middleware
+    Then it is not intercepted and continues processing normally
 
-  Scenario: 路径重写保留查询参数
-    Given TeacherPortal可用
-    And TeacherPortalOptions已正确配置
-    When 发送 GET /api/teacher-portal/admin/teachers?page=1
-    Then 请求路径重写为 /api/admin/teachers?page=1
-    And 查询参数被保留
+  Scenario: Path rewriting preserves query parameters
+    Given the TeacherPortal is available
+    And TeacherPortalOptions is configured correctly
+    When a GET /api/teacher-portal/admin/teachers?page=1 is sent
+    Then the request path is rewritten to /api/admin/teachers?page=1
+    And the query parameters are preserved
 
-  Scenario: 路径重写保留请求体
-    Given TeacherPortal可用
-    And TeacherPortalOptions已正确配置
-    When 发送 POST /api/teacher-portal/admin/teachers
-    And 请求体包含教师创建数据
-    Then 请求体被完整转发到教师门户
+  Scenario: Path rewriting preserves the request body
+    Given the TeacherPortal is available
+    And TeacherPortalOptions is configured correctly
+    When a POST /api/teacher-portal/admin/teachers is sent
+    And the request body contains teacher-creation data
+    Then the request body is forwarded to the teacher portal in full
 ```
