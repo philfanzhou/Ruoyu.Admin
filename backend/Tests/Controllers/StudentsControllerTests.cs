@@ -11,7 +11,7 @@ using Xunit;
 namespace Admin.WebApi.Tests.Controllers;
 
 /// <summary>
-/// StudentsController UT：覆盖 ListStudents、CreateStudent、GetStudent。
+/// StudentsController unit tests: covers ListStudents, CreateStudent, GetStudent.
 /// </summary>
 public class StudentsControllerTests
 {

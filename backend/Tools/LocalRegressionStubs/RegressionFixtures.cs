@@ -4,8 +4,9 @@ using System.Text.Json.Serialization;
 namespace Ruoyu.Admin.LocalRegressionStubs;
 
 /// <summary>
-/// 固定夹具数据：种子（写库 + 写 OSS 本地目录 + 写 fixtures JSON）与替身（serve 读同一份
-/// fixtures JSON）共享的唯一数据源。所有值都是确定性的，保证种子重复执行结果一致（幂等）。
+/// Fixed fixture data: the single data source shared by the seeder (writes the database + the local OSS
+/// directory + the fixtures JSON) and the stub server (serve mode reads the same fixtures JSON).
+/// All values are deterministic, so repeated seed runs converge to identical results (idempotent).
 /// </summary>
 public static class RegressionFixtures
 {

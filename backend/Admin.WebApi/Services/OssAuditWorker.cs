@@ -201,7 +201,8 @@ public class OssAuditWorker : BackgroundService
                 {
                     var path = obj.ObjectPath;
 
-                    // 跳过缩略图文件：缩略图与原图关联，删原图时自动清理，不应单独标记为僵尸
+                    // Skip thumbnail files: thumbnails are tied to their originals and are cleaned up automatically
+                    // when the original is deleted, so they must not be flagged as zombies on their own.
                     if (ThumbnailHelper.IsThumbnailPath(path))
                         continue;
 

@@ -258,8 +258,9 @@ builder.Services.AddServiceMantleEfCoreHealthSnapshotSource<AuditDbContext>(
     probeMode: EfCoreHealthSnapshotProbeMode.MappedSchema,
     errorCodePrefix: "ruoyu-admin");
 
-// IOssService: 仅保留 OSS 审计所需的只读能力（DownloadAsync、ListObjectsWithBucketAsync）
-// 接口上已无上传、Delete、Copy、预签名等写侧成员，「审计不改对象」由类型约束保证，而非纪律约束
+// IOssService: keep only the read-only capabilities the OSS audit needs (DownloadAsync, ListObjectsWithBucketAsync).
+// The interface no longer has upload, Delete, Copy, or presign members; "the audit never mutates objects" is
+// enforced by the type constraint rather than by discipline.
 var useLocalOss = Environment.GetEnvironmentVariable("USE_LOCAL_OSS") == "1";
 builder.Services.AddSingleton<IOssService>(sp =>
 {
@@ -270,7 +271,7 @@ builder.Services.AddSingleton<IOssService>(sp =>
     }
     var ossOptions = builder.Configuration.GetSection("Oss").Get<OssOptions>() ?? new OssOptions();
     return new S3OssService(ossOptions);
-    // 不配置 allowedPrefixes：Admin Portal 需要访问所有路径前缀（审计）
+    // Do not configure allowedPrefixes: the Admin Portal needs access to every path prefix (audit).
 });
 
 builder.Services.AddDbContext<AuditDbContext>(options =>

@@ -8,11 +8,13 @@ using Microsoft.Extensions.Logging;
 namespace Ruoyu.Admin.LocalRegressionStubs;
 
 /// <summary>
-/// 单进程本地替身：一个 Kestrel 进程按回环端口分片提供 Student（:5005）/ Mistake（:5007）/
-/// Homework（:5009）三个只读引用查询，路由与响应形状逐字镜像 OssAuditWorker /
-/// OssAuditController 聚合所用的客户端契约（StudentHttpClient.GetAllUploadRecordsAsync、
-/// MistakeHttpClient.GetMistakeItemListAsync、HomeworkReferenceClient.GetAllImagePathsAsync）。
-/// 不模拟下游鉴权、限流与错误形态；停掉进程即产生「来源不可达」分支。
+/// Single-process local stubs: one Kestrel process serves the three read-only reference queries,
+/// partitioned by loopback port — Student (:5005) / Mistake (:5007) / Homework (:5009). Routes and
+/// response shapes mirror verbatim the client contracts used by the OssAuditWorker / OssAuditController
+/// aggregation (StudentHttpClient.GetAllUploadRecordsAsync, MistakeHttpClient.GetMistakeItemListAsync,
+/// HomeworkReferenceClient.GetAllImagePathsAsync).
+/// Does not simulate downstream auth, rate limiting, or error shapes; stopping the process produces
+/// the "source unreachable" branch.
 /// </summary>
 public static class StubServer
 {

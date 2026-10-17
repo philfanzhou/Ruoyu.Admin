@@ -8,7 +8,7 @@ using Xunit;
 namespace Admin.WebApi.Tests.Controllers;
 
 /// <summary>
-/// EnumOptionsController UT：覆盖 GetAll 聚合返回所有枚举选项。
+/// EnumOptionsController unit tests: covers GetAll aggregating and returning all enum options.
 /// </summary>
 public class EnumOptionsControllerTests
 {
@@ -51,7 +51,7 @@ public class EnumOptionsControllerTests
         foreach (var option in response.Grades)
         {
             option.Name.Should().Be(GradeConstants.EnglishNames[option.Value]);
-            // 注意：Grades 使用 FullDisplayNames 而非 DisplayNames
+            // Note: Grades uses FullDisplayNames, not DisplayNames
             option.DisplayName.Should().Be(GradeConstants.FullDisplayNames[option.Value]);
         }
     }

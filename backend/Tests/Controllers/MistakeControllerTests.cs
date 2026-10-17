@@ -10,7 +10,7 @@ using Xunit;
 namespace Admin.WebApi.Tests.Controllers;
 
 /// <summary>
-/// MistakeController UT：覆盖 GetMistakeItems、UpdateMistakeItem。
+/// MistakeController unit tests: covers GetMistakeItems, UpdateMistakeItem.
 /// </summary>
 public class MistakeControllerTests
 {
@@ -138,7 +138,7 @@ public class MistakeControllerTests
         var result = await _controller.GetMistakeItems();
 
         var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
-        // 即使学生查询失败，也应返回结果（回退显示 studentId）
+        // Even when the student lookup fails, the result must still be returned (fall back to the studentId)
         var typed = okResult.Value!;
         var items = (System.Collections.IEnumerable)typed.GetType().GetProperty("items")!.GetValue(typed)!;
         items.Should().NotBeNull();

@@ -13,9 +13,9 @@ public enum OssBucket
 }
 
 /// <summary>
-/// OSS 访问接口。仅保留审计所需的只读成员（下载、按 bucket 列举对象）；
-/// 上传、删除、复制、预签名等写侧与辅助成员已随调用链退役删除，
-/// 「审计不改对象」由接口类型约束保证。
+/// OSS access interface. Keeps only the read-only members the audit needs (download, list objects per bucket);
+/// the write-side and auxiliary members (upload, delete, copy, presign) were retired and removed along with their
+/// call chains, so "the audit never mutates objects" is guaranteed by the interface's type constraint.
 /// </summary>
 public interface IOssService
 {

@@ -31,8 +31,8 @@ public class StudentAssociationsController : ControllerBase
     }
 
     /// <summary>
-    /// 获取学生关联的教师和助教列表。
-    /// 先获取学生的 identityAccountIds，再反查 TeacherPortal 和 AssistantPortal。
+    /// Gets the teachers and assistants linked to a student.
+    /// Fetches the student's identityAccountIds first, then looks them up in TeacherPortal and AssistantPortal.
     /// </summary>
     [HttpGet("{studentId:guid}/linked-accounts")]
     public async Task<IActionResult> GetLinkedAccounts(Guid studentId)
