@@ -25,7 +25,9 @@ namespace Admin.WebApi.Tests.Integration;
 /// writes, concurrent instances execute exactly once under the real advisory lock, executor
 /// failures and cancellations never fake success, and the real Program.cs host refuses to start
 /// on a missing database by default, creates it only under Database:AllowCreate=true, and
-/// surfaces orchestration failures as startup failures.
+/// surfaces orchestration failures as startup failures. The third migration (AddAppSettings,
+/// issue #118) is covered by the level-two upgrade, the AppSettings structure-refusal, and the
+/// extra-table rollback-boundary tests.
 /// </summary>
 [Collection(ServiceMantleIntegrationCollection.Name)]
 public sealed class AuditMigrationTests : ServiceMantleIntegrationTestBase, IAsyncLifetime
@@ -257,6 +259,9 @@ public sealed class AuditMigrationTests : ServiceMantleIntegrationTestBase, IAsy
                 "the InitialCreate baseline must reproduce the retired inline DDL column by column " +
                 "(types, nullability, identity kind, defaults, indexes, primary keys)");
 
+            // The third migration adds exactly the AppSettings table on top of that structure.
+            (await TableExistsAsync(TargetConnectionString, "AppSettings")).Should().BeTrue();
+
             // And the baseline is registered exactly once.
             (await ReadHistoryAsync(TargetConnectionString)).Should()
                 .Equal(AuditMigrationExecutor.KnownMigrationIds);
@@ -357,6 +362,87 @@ public sealed class AuditMigrationTests : ServiceMantleIntegrationTestBase, IAsy
     }
 
     [Fact]
+    public async Task ExactLevelTwoHistory_UpgradesToAppSettings_RetainsRows()
+    {
+        const string secondMigrationId = "20261003030002_AddReferenceObservations";
+        using (var context = CreateContext())
+            await context.GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrator>()
+                .MigrateAsync(secondMigrationId);
+        await ExecuteAsync(TargetConnectionString, """
+            INSERT INTO "OssAuditRecords" ("ObjectPath","Bucket","Status") VALUES ('uploads/settings.jpg','uploads',2);
+            INSERT INTO "OssAuditRuns" ("StartedAt","Status") VALUES (1,1);
+            """);
+        (await TableExistsAsync(TargetConnectionString, "AppSettings")).Should().BeFalse();
+
+        using (var context = CreateContext())
+        {
+            var executor = new AuditMigrationExecutor(context, NullLogger.Instance);
+            (await executor.InspectAsync()).Should().Be(AuditMigrationExecutor.DatabaseState.KnownUpgradeRequired);
+            await executor.ExecuteAsync();
+        }
+
+        (await ReadHistoryAsync(TargetConnectionString)).Should().Equal(AuditMigrationExecutor.KnownMigrationIds);
+        (await TableExistsAsync(TargetConnectionString, "AppSettings")).Should().BeTrue();
+        using (var context = CreateContext())
+        {
+            (await context.OssAuditRecords.SingleAsync()).Status.Should().Be(2);
+            // The upgraded table accepts a natural-key override row.
+            context.AppSettings.Add(new AppSetting { Key = "OssAudit:ScheduledHour", Value = "3", UpdatedAt = 1, UpdatedBy = "someone" });
+            await context.SaveChangesAsync();
+            (await context.AppSettings.SingleAsync(setting => setting.Key == "OssAudit:ScheduledHour")).Value.Should().Be("3");
+        }
+        // And the upgraded database classifies as current.
+        using (var context = CreateContext())
+            (await new AuditMigrationExecutor(context, NullLogger.Instance).InspectAsync()).Should()
+                .Be(AuditMigrationExecutor.DatabaseState.CurrentVersionCompatible);
+    }
+
+    [Fact]
+    public async Task AppSettingsStructure_ConflictsAreRefusedLikeTheAuditTables()
+    {
+        using (var context = CreateContext())
+            await new AuditMigrationExecutor(context, NullLogger.Instance).ExecuteAsync();
+        var before = await ReadStructureFingerprintAsync(TargetConnectionString);
+        var beforeHistory = await ReadHistoryAsync(TargetConnectionString);
+
+        await ExecuteAsync(TargetConnectionString, """ALTER TABLE "AppSettings" ADD COLUMN "Extra" text""");
+        using (var context = CreateContext())
+        {
+            var executor = new AuditMigrationExecutor(context, NullLogger.Instance);
+            (await executor.InspectAsync()).Should().Be(AuditMigrationExecutor.DatabaseState.InspectionFailed);
+            await Assert.ThrowsAsync<InvalidOperationException>(() => executor.ExecuteAsync());
+        }
+
+        await ExecuteAsync(TargetConnectionString, """ALTER TABLE "AppSettings" DROP COLUMN "Extra" """);
+        (await ReadStructureFingerprintAsync(TargetConnectionString)).Should().Equal(before);
+        (await ReadHistoryAsync(TargetConnectionString)).Should().Equal(beforeHistory);
+    }
+
+    [Fact]
+    public async Task ExtraTables_NeverBlockTheExpectedLevel_RollbackBoundaryPins()
+    {
+        // The comparison boundary projects only the tables the executor expects, so a table
+        // the executing version does not know (an AppSettings table left behind by an
+        // application rollback to the two-migration version, or any stray table) neither
+        // rejects the inspection nor is touched by it.
+        using (var context = CreateContext())
+            await new AuditMigrationExecutor(context, NullLogger.Instance).ExecuteAsync();
+        await ExecuteAsync(TargetConnectionString, """
+            CREATE TABLE "RollbackLeftover" ("Id" bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, "Note" text)
+            """);
+
+        using (var context = CreateContext())
+        {
+            var executor = new AuditMigrationExecutor(context, NullLogger.Instance);
+            (await executor.InspectAsync()).Should().Be(AuditMigrationExecutor.DatabaseState.CurrentVersionCompatible);
+            await executor.ExecuteAsync();
+        }
+
+        (await TableExistsAsync(TargetConnectionString, "RollbackLeftover")).Should().BeTrue(
+            "the executor never writes or drops tables outside its expected set");
+    }
+
+    [Fact]
     public async Task ExactOldKnownPrefix_UpgradesWithoutRequiringNewColumnsAndRetainsRows()
     {
         using (var context = CreateContext())
@@ -384,7 +470,11 @@ public sealed class AuditMigrationTests : ServiceMantleIntegrationTestBase, IAsy
     [Fact]
     public async Task NewHistoryWithoutBaseline_IsRefusedAndNonemptyObservationDownCannotLoseEvidence()
     {
-        using (var context = CreateContext()) await context.Database.MigrateAsync();
+        // Start at the second migration so the observation-loss guard of
+        // AddReferenceObservations.Down is the first downgrade step; the AppSettings
+        // migration (third in the chain) implements no Down on purpose.
+        using (var context = CreateContext()) await context.GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrator>()
+            .MigrateAsync("20261003030002_AddReferenceObservations");
         await ExecuteAsync(TargetConnectionString, """
             INSERT INTO "OssAuditRuns" ("StartedAt","Status","ReferenceContractVersion","ReferenceSnapshots")
               VALUES (1,1,'storage-references-v1','[]');
@@ -392,7 +482,8 @@ public sealed class AuditMigrationTests : ServiceMantleIntegrationTestBase, IAsy
         using (var context = CreateContext())
             await Assert.ThrowsAsync<PostgresException>(() => context.GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrator>()
                 .MigrateAsync(AuditMigrationExecutor.InitialCreateMigrationId));
-        (await ReadHistoryAsync(TargetConnectionString)).Should().Equal(AuditMigrationExecutor.KnownMigrationIds);
+        (await ReadHistoryAsync(TargetConnectionString)).Should()
+            .Equal(AuditMigrationExecutor.KnownMigrationIds.Take(2));
         await ExecuteAsync(TargetConnectionString, $"DELETE FROM \"__EFMigrationsHistory\" WHERE \"MigrationId\"='{AuditMigrationExecutor.InitialCreateMigrationId}'");
         using (var context = CreateContext())
             (await new AuditMigrationExecutor(context, NullLogger.Instance).InspectAsync()).Should()

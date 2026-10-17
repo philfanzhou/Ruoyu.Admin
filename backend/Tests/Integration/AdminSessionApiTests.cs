@@ -221,6 +221,8 @@ public sealed partial class AdminOidcTests
         foreach (var path in new[] { "/api/admin/session-probe", "/api/auth/csrf" })
             await Rejected(await Api(client, path, cookie), 401, "unauthorized");
         await Rejected(await Api(client, "/api/admin/oss-audit/records/1/resolve", cookie, "POST"), 401, "unauthorized");
+        await Rejected(await Api(client, "/api/admin/settings/OssAudit:ScheduledHour", cookie, "PUT",
+            body: JsonContent.Create(new { value = "3" })), 401, "unauthorized");
         Assert.Equal(0, probe.Reads);
         using var scope = factory.Services.CreateScope();
         var context = new Microsoft.AspNetCore.Http.DefaultHttpContext { RequestServices = scope.ServiceProvider };
@@ -290,6 +292,82 @@ public sealed partial class AdminOidcTests
         Assert.Equal(0, probe.Writes);
         Assert.Equal(HttpStatusCode.OK, (await Api(client, path, cookies, method, csrf: [csrf.Token])).StatusCode);
         Assert.Equal(1, probe.Writes);
+    }
+
+    [Fact]
+    public async Task SessionApi_AppSettingsManagement_CsrfGateAndLayeredRoundTripThroughTheDatabase()
+    {
+        using var authority = new OidcTestAuthority();
+        var probe = new SessionBusinessProbe();
+        using var factory = SessionFactory(authority, probe);
+        using var client = Browser(factory);
+        var session = await LoginSession(client, authority);
+        var csrf = await Csrf(client, session);
+        var cookies = session + "; " + csrf.Cookie;
+        var path = "/api/admin/settings/OssAudit:ScheduledHour";
+
+        // Missing CSRF token on the write path: rejected before the controller.
+        await Rejected(await Api(client, path, cookies, "PUT",
+            body: JsonContent.Create(new { value = "3" })), 400, "csrf_invalid");
+        await Rejected(await Api(client, path, cookies, "DELETE"), 400, "csrf_invalid");
+
+        // Valid PUT: the database override is stored and echoed with the db source and the
+        // session subject as updatedBy.
+        using (var response = await Api(client, path, cookies, "PUT", csrf: [csrf.Token],
+            body: JsonContent.Create(new { value = "3" })))
+        {
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            var saved = await response.Content.ReadFromJsonAsync<JsonElement>();
+            Assert.Equal("OssAudit:ScheduledHour", saved.GetProperty("key").GetString());
+            Assert.Equal("3", saved.GetProperty("value").GetString());
+            Assert.Equal("db", saved.GetProperty("source").GetString());
+            Assert.True(saved.GetProperty("updatedAt").GetInt64() > 0);
+            Assert.Equal("fake-subject", saved.GetProperty("updatedBy").GetString());
+        }
+
+        // The list reflects the override.
+        using (var response = await Api(client, "/api/admin/settings", cookies))
+        {
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            var items = (await response.Content.ReadFromJsonAsync<JsonElement>()).EnumerateArray().ToList();
+            Assert.Equal(2, items.Count);
+            var hour = items.Single(item => item.GetProperty("key").GetString() == "OssAudit:ScheduledHour");
+            Assert.Equal("db", hour.GetProperty("source").GetString());
+            var minute = items.Single(item => item.GetProperty("key").GetString() == "OssAudit:ScheduledMinute");
+            Assert.Equal("default", minute.GetProperty("source").GetString());
+        }
+
+        // Invalid value and unregistered key keep the 400/404 contract; neither writes.
+        using (var response = await Api(client, path, cookies, "PUT", csrf: [csrf.Token],
+            body: JsonContent.Create(new { value = "24" })))
+        {
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            var error = await response.Content.ReadFromJsonAsync<JsonElement>();
+            Assert.Equal("Setting 'OssAudit:ScheduledHour' must be an integer between 0 and 23.",
+                error.GetProperty("message").GetString());
+        }
+        using (var response = await Api(client, "/api/admin/settings/Not:ASetting", cookies, "PUT",
+            csrf: [csrf.Token], body: JsonContent.Create(new { value = "1" })))
+        {
+            Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        }
+
+        // DELETE removes the override and reports the fallback layer; deleting again is 404.
+        using (var response = await Api(client, path, cookies, "DELETE", csrf: [csrf.Token]))
+        {
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            var effective = await response.Content.ReadFromJsonAsync<JsonElement>();
+            Assert.Equal("default", effective.GetProperty("source").GetString());
+            Assert.Equal("2", effective.GetProperty("value").GetString());
+        }
+        using (var response = await Api(client, path, cookies, "DELETE", csrf: [csrf.Token]))
+        {
+            Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        }
+
+        // The database row is really gone.
+        using var scope = factory.Services.CreateScope();
+        Assert.Empty(await scope.ServiceProvider.GetRequiredService<AuditDbContext>().AppSettings.ToListAsync());
     }
 
     [Fact]

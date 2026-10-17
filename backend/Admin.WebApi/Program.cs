@@ -279,6 +279,12 @@ builder.Services.AddDbContext<AuditDbContext>(options =>
     options.UseNpgsql(connectionString);
 });
 
+// Database-hosted application settings (issue #118): the registry is the closed key
+// catalog (value domains + options-class defaults); the scoped service resolves
+// db override > static configuration > default and persists the overrides.
+builder.Services.AddSingleton<AppSettingsRegistry>();
+builder.Services.AddScoped<IAppSettingsService, AppSettingsService>();
+
 builder.Services.AddSingleton(new StorageReferenceSigningConfiguration(builder.Configuration));
 builder.Services.AddHttpClient(StorageReferenceCollector.ClientName, client => client.Timeout = TimeSpan.FromSeconds(35))
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false })

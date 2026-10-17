@@ -126,4 +126,20 @@ public class ControllerAuthorizationTests
 
         attributes.Should().NotBeEmpty();
     }
+
+    /// <summary>
+    /// AppSettingsController (issue #118) exposes the database-hosted application settings
+    /// (read effective values, upsert and delete overrides) under /api/admin/settings —
+    /// admin-only operations, so it carries [Authorize] per project convention.
+    /// </summary>
+    [Fact]
+    public void AppSettingsController_HasAuthorizeAttribute()
+    {
+        var attributes = typeof(AppSettingsController)
+            .GetCustomAttributes(typeof(AuthorizeAttribute), inherit: true);
+
+        attributes.Should().NotBeEmpty(
+            "AppSettingsController (route /api/admin/settings) must carry [Authorize] " +
+            "per project convention: all /api/admin/* controllers require explicit auth.");
+    }
 }

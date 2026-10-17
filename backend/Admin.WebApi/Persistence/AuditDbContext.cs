@@ -8,6 +8,7 @@ public class AuditDbContext : DbContext
 
     public DbSet<OssAuditRecord> OssAuditRecords => Set<OssAuditRecord>();
     public DbSet<OssAuditRun> OssAuditRuns => Set<OssAuditRun>();
+    public DbSet<AppSetting> AppSettings => Set<AppSetting>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -42,6 +43,18 @@ public class AuditDbContext : DbContext
             entity.Property(e => e.NewZombieCount).HasDefaultValue(0);
             entity.Property(e => e.TriggerType).HasDefaultValue("scheduled");
             entity.HasIndex(e => e.StartedAt);
+        });
+
+        // Introduced by the AddAppSettings migration (issue #118): the key is a natural
+        // primary key (no identity), the value is the registry-normalized text, and the
+        // timestamp follows the OssAuditRecord.CreatedAt epoch-seconds style.
+        modelBuilder.Entity<AppSetting>(entity =>
+        {
+            entity.ToTable("AppSettings");
+            entity.HasKey(e => e.Key).HasName("AppSettings_pkey");
+            entity.Property(e => e.Key).IsRequired();
+            entity.Property(e => e.Value).IsRequired();
+            entity.Property(e => e.UpdatedAt).HasDefaultValue(0);
         });
     }
 }

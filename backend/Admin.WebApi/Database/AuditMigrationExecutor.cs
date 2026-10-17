@@ -33,7 +33,8 @@ namespace Admin.WebApi.Database;
 /// Empty; creating it is the target-preparation stage's decision, not this executor's).</item>
 /// <item>CurrentVersionCompatible: the baseline is applied and the complete current schema
 /// verifies; nothing will be written.</item>
-/// <item>LegacyTakeoverRequired: both business tables are present without history and the
+/// <item>LegacyTakeoverRequired: the legacy table set (the two tables of the retired inline
+/// <c>CREATE TABLE IF NOT EXISTS</c> startup DDL) is present without history and the
 /// structure verifies — a missing model index is collected as a safe backfill to apply before
 /// stamping.</item>
 /// <item>VersionTooNew: the history contains migration ids this application does not know.</item>
@@ -65,10 +66,17 @@ public sealed class AuditMigrationExecutor : IDatabaseMigrationExecutor
     internal const string IncompatibleErrorCode = "RUOYU_ADMIN_DB_SCHEMA_INCOMPATIBLE";
 
     /// <summary>The ordered migration contract this executor supports; frozen by the issue.</summary>
-    internal static readonly IReadOnlyList<string> KnownMigrationIds = [InitialCreateMigrationId, "20261003030002_AddReferenceObservations"];
+    internal static readonly IReadOnlyList<string> KnownMigrationIds =
+        [InitialCreateMigrationId, "20261003030002_AddReferenceObservations", "20261017060000_AddAppSettings"];
 
-    /// <summary>The two business tables of the baseline.</summary>
-    internal static readonly IReadOnlyList<string> KnownTableNames = ["OssAuditRecords", "OssAuditRuns"];
+    /// <summary>The business tables of the full known chain (the current EF model).</summary>
+    internal static readonly IReadOnlyList<string> KnownTableNames = ["OssAuditRecords", "OssAuditRuns", "AppSettings"];
+
+    /// <summary>
+    /// The tables created by the retired inline startup DDL (the baseline migration's table set).
+    /// Only this exact set without history classifies as a takeable legacy database.
+    /// </summary>
+    internal static readonly IReadOnlyList<string> LegacyTakeoverTableNames = ["OssAuditRecords", "OssAuditRuns"];
 
     private const string SchemaName = "public";
 
@@ -241,8 +249,8 @@ public sealed class AuditMigrationExecutor : IDatabaseMigrationExecutor
             case DatabaseState.KnownUpgradeRequired:
             case DatabaseState.Empty:
                 _logger?.LogInformation(
-                    "Applying the {MigrationId} baseline migration to the empty database state ({Reason})",
-                    InitialCreateMigrationId, inspection.Reason);
+                    "Applying the known migration chain to the target database state ({Reason})",
+                    inspection.Reason);
                 cancellationToken.ThrowIfCancellationRequested();
                 await _context.Database.MigrateAsync(cancellationToken).ConfigureAwait(false);
                 _logger?.LogInformation("Database initialized from the migration baseline");
@@ -278,14 +286,13 @@ public sealed class AuditMigrationExecutor : IDatabaseMigrationExecutor
         var applied = evidence.AppliedMigrationIds;
         var historyFailure = InspectHistory(applied);
         if (historyFailure is not null) return historyFailure;
-        var expected = BuildExpectedTables();
         var snapshot = evidence.Snapshot!;
         var presentBusinessTables = snapshot.Tables.Select(table => table.Name).ToList();
 
         if (applied.Count == KnownMigrationIds.Count)
         {
             // The history claims the current version; the complete current schema must verify.
-            var mismatch = ValidateTables(snapshot, expected, backfills: null);
+            var mismatch = ValidateTables(snapshot, BuildExpectedTables(KnownMigrationIds.Count), backfills: null);
             return mismatch is null
                 ? DatabaseInspection.Of(
                     DatabaseState.CurrentVersionCompatible,
@@ -294,11 +301,16 @@ public sealed class AuditMigrationExecutor : IDatabaseMigrationExecutor
                     $"the history claims the current version but the schema does not verify: {mismatch.Reason}");
         }
 
-        if (applied.Count == 1)
+        if (applied.Count >= 1)
         {
-            var mismatch = ValidateTables(snapshot, BuildExpectedTables(baseline: true), backfills: null);
-            return mismatch is null ? DatabaseInspection.Of(DatabaseState.KnownUpgradeRequired,
-                "the exact baseline schema requires the reference-observation migration") : DatabaseInspection.Failed(mismatch.Reason);
+            // An exact shorter prefix of the known chain: the schema must verify at that
+            // migration level, then the remaining migrations upgrade it.
+            var mismatch = ValidateTables(snapshot, BuildExpectedTables(applied.Count), backfills: null);
+            return mismatch is null
+                ? DatabaseInspection.Of(
+                    DatabaseState.KnownUpgradeRequired,
+                    $"the applied history prefix of {applied.Count} migration(s) requires the remaining known migrations")
+                : DatabaseInspection.Failed(mismatch.Reason);
         }
 
         if (presentBusinessTables.Count == 0)
@@ -310,26 +322,35 @@ public sealed class AuditMigrationExecutor : IDatabaseMigrationExecutor
                 "no business tables and no applied migrations are present");
         }
 
+        if (presentBusinessTables.Count == LegacyTakeoverTableNames.Count
+            && LegacyTakeoverTableNames.All(presentBusinessTables.Contains))
+        {
+            // Exactly the retired inline DDL's table set, without history: verify and collect
+            // safe backfills. A no-history database that already contains AppSettings is not a
+            // legacy database and is refused below.
+            var backfills = new List<BackfillStatement>();
+            var verification = ValidateTables(snapshot, BuildExpectedTables(1), backfills);
+            if (verification is not null)
+            {
+                return DatabaseInspection.Failed(verification.Reason);
+            }
+
+            return DatabaseInspection.Of(
+                DatabaseState.LegacyTakeoverRequired,
+                "a verified legacy database without migration history requires the safe backfills and the baseline registration",
+                backfills,
+                requiresHistoryStamp: true);
+        }
+
         if (presentBusinessTables.Count != KnownTableNames.Count)
         {
             // Partial table sets without a full history are refused.
             return DatabaseInspection.Failed(
-                $"business tables are partially present: found [{Join(presentBusinessTables)}] but the baseline requires all of [{Join(KnownTableNames)}]");
+                $"business tables are partially present: found [{Join(presentBusinessTables)}] but the known chain requires all of [{Join(KnownTableNames)}]");
         }
 
-        // Both tables are present without history: verify and collect safe backfills.
-        var backfills = new List<BackfillStatement>();
-        var verification = ValidateTables(snapshot, BuildExpectedTables(baseline: true), backfills);
-        if (verification is not null)
-        {
-            return DatabaseInspection.Failed(verification.Reason);
-        }
-
-        return DatabaseInspection.Of(
-            DatabaseState.LegacyTakeoverRequired,
-            "a verified legacy database without migration history requires the safe backfills and the baseline registration",
-            backfills,
-            requiresHistoryStamp: true);
+        return DatabaseInspection.Failed(
+            "business tables are present without migration history in a combination the executor does not take over");
     }
 
     private static DatabaseInspection? InspectHistory(IReadOnlyList<string> applied)
@@ -362,7 +383,12 @@ public sealed class AuditMigrationExecutor : IDatabaseMigrationExecutor
 
     // Projection applies only this consumer's established comparison boundary. The shared
     // derivation owns EF traversal; public is the historical default schema, not a migration.
-    private ExpectedSchema BuildExpectedTables(bool baseline = false)
+    // The derivation always covers the full current model; the migration level then projects
+    // the schema as of the first <paramref name="migrationLevel"/> migrations (level 1 keeps
+    // only the baseline table set without the reference-observation columns; level 2 adds
+    // those columns; level 3 adds AppSettings). Only expected tables are ever projected, so
+    // extra tables in the snapshot never block the comparison.
+    private ExpectedSchema BuildExpectedTables(int migrationLevel)
     {
         var model = _context.GetService<IDesignTimeModel>().Model;
         var derived = EfCoreExpectedSchemaDerivation.Derive(model,
@@ -370,12 +396,22 @@ public sealed class AuditMigrationExecutor : IDatabaseMigrationExecutor
         if (derived.Tables.Count != KnownTableNames.Count ||
             derived.Tables.Any(table => !KnownTableNames.Contains(table.Name)))
             throw new InvalidOperationException($"[{IncompatibleErrorCode}] The EF model does not match the supported table contract.");
-        return new ExpectedSchema(derived.Tables.Select(table => new SchemaTable(table.Name,
-            table.Columns.Where(column => !baseline || column.Name is not
-                ("ReferenceContractVersion" or "ReferenceSnapshots")).ToArray(),
-            table.PrimaryKey, indexes: table.Indexes,
-            schema: table.Schema ?? SchemaName)).ToArray());
+        return new ExpectedSchema(derived.Tables
+            .Where(table => TableIntroducedAtLevel(table.Name) <= migrationLevel)
+            .Select(table => new SchemaTable(table.Name,
+                table.Columns.Where(column => migrationLevel >= 2 || column.Name is not
+                    ("ReferenceContractVersion" or "ReferenceSnapshots")).ToArray(),
+                table.PrimaryKey, indexes: table.Indexes,
+                schema: table.Schema ?? SchemaName)).ToArray());
     }
+
+    // The migration level at which a table first exists in the chain. The baseline created
+    // the two audit tables; AddAppSettings introduces the settings table.
+    private static int TableIntroducedAtLevel(string tableName) => tableName switch
+    {
+        "AppSettings" => 3,
+        _ => 1,
+    };
 
     private static VerificationFailure? ValidateTables(SchemaSnapshot snapshot,
         ExpectedSchema expected, List<BackfillStatement>? backfills)
