@@ -1,49 +1,49 @@
 # Storage Audit
 
-Storage Audit 使用 Ruoyu.Study 维护的 [StorageReferences v1](https://gitee.com/philfanzhou/Ruoyu.Study/blob/master/docs/integrations/StorageReferences.md) 及其 [JSON Schema](https://gitee.com/philfanzhou/Ruoyu.Study/blob/master/docs/integrations/storage-references-v1.schema.json)。本仓库只维护 Admin 调用这些接口的规则和手写 DTO 副本。引用范围、摘要的规范编码、专属 RS256 签名、分页、有效期和三个提供服务的迁移要求，均以同一版本的上游接口规范为准。
+Storage Audit uses [StorageReferences v1](https://gitee.com/philfanzhou/Ruoyu.Study/blob/master/docs/integrations/StorageReferences.md) and its [JSON Schema](https://gitee.com/philfanzhou/Ruoyu.Study/blob/master/docs/integrations/storage-references-v1.schema.json), both maintained by Ruoyu.Study. This repository maintains only the rules by which Admin calls these interfaces and its hand-written DTO copies. The reference scope, the canonical encoding of the digest, the dedicated RS256 signature, pagination, validity periods, and the migration requirements for the three provider services all follow the same version of the upstream interface specification.
 
-## 观察与持久化
+## Observation and persistence
 
-所有扫描和删除请求共用 `StorageReferenceCollector`。它收齐 Student、Mistake、Homework 三个服务的完整快照元数据（`metadata`）与所有页，验证版本、身份、引用覆盖范围、条数、排序、唯一性、终页、摘要、有效期，以及恒为 `false` 的 `deletionAuthorized` 字段。任一依赖错误、重定向、TLS 错误、超时、取消或响应不符合接口规范，都会使整轮收集失败；不回退到旧 offset 分页、gRPC 或空集合。**这些验证必须在任何 S3 对象列举前全部完成。** 命名 HttpClient 禁止重定向，使用正常 CA 信任链和主机名验证；不接受 HTTP，也不向任意路由签发凭据。S3 列举失败必须抛出错误，不能作为成功的空集合处理。
+All scans and deletion requests share `StorageReferenceCollector`. It gathers the complete snapshot metadata (`metadata`) and every page from the three services — Student, Mistake, and Homework — validating the version, identity, reference coverage, item counts, ordering, uniqueness, the final page, the digest, the validity period, and the `deletionAuthorized` field, which is always `false`. Any dependency error, redirect, TLS error, timeout, cancellation, or response that does not conform to the interface specification fails the whole collection run; there is no fallback to the old offset pagination, gRPC, or empty collections. **All of these validations must complete before any S3 object listing.** The named HttpClient forbids redirects and uses the normal CA trust chain and hostname verification; HTTP is not accepted, and no credentials are issued to arbitrary routes. An S3 listing failure must throw an error and must not be treated as a successful empty collection.
 
-`OssAuditWorker` 只列举 `uploads/` 与 `mistakes/`，继续跳过现有规则推导的缩略图。`Questions`、`Documents` 没有完整引用来源，不进入扫描。完整扫描在同一个数据库事务中提交全部新观察与已完成的运行记录；失败时回滚本轮观察，将运行记录设为 `Status=2`，只保存固定且不含敏感值的错误原因。运行记录 `Status=0/1/2` 分别表示运行中、完成、失败；保存三份 `ReferenceSnapshots` 元数据 JSON 和 `ReferenceContractVersion="storage-references-v1"`。兼容字段 `NewZombieCount` 在新版本表示新增观察数；旧运行记录保留原历史含义，不补造新版本快照或验证结果。
+`OssAuditWorker` lists only `uploads/` and `mistakes/`, and keeps skipping thumbnails derived by the existing rules. `Questions` and `Documents` have no complete reference source and are not scanned. A complete scan commits all new observations together with the finished run record in a single database transaction; on failure it rolls back the run's observations, sets the run record to `Status=2`, and saves only a fixed error reason that contains no sensitive values. Run-record `Status=0/1/2` means running, completed, and failed respectively; the run record stores the three `ReferenceSnapshots` metadata JSON blobs and `ReferenceContractVersion="storage-references-v1"`. In the new version the compatibility field `NewZombieCount` means the number of newly added observations; old run records keep their original historical meaning, and no new-version snapshots or validation results are fabricated for them.
 
-| Record.Status | 含义与操作 |
+| Record.Status | Meaning and allowed operations |
 |---|---|
-| 0 Pending | 历史待处理；仅可按原 `ignore` 操作保存备注，不能删除 |
-| 1 Resolved | 历史已删除状态；保留原记录，不能据此再删除 |
-| 2 Ignored | 历史已忽略；保留原记录 |
-| 3 UnreferencedObservation | “未观察到引用”的只读报告；不可选择、`resolve` 或 `ignore` |
+| 0 Pending | historically pending; only a note can be saved via the original `ignore` action, never deletion |
+| 1 Resolved | the historical already-deleted state; the original record is kept and cannot be used to delete again |
+| 2 Ignored | historically ignored; the original record is kept |
+| 3 UnreferencedObservation | a read-only report that "no reference was observed"; it cannot be selected or targeted by `resolve`/`ignore` |
 
-同一路径已有任意状态的记录时，不重复创建。启动时不删除历史 review 派生图或 questions/documents 记录；三个旧清理辅助方法均不产生副作用。采集之后可能出现新的业务引用，因此报告不能判定对象已经成为孤儿，也不授予删除许可。`deletionAuthorized=false` 不受配置、请求或旧状态影响。
+When a record of any status already exists for the same path, no duplicate is created. At startup, historical review-derived images and questions/documents records are not deleted; the three legacy cleanup helper methods produce no side effects. New business references may appear after collection, so the report cannot conclude that an object has already become an orphan, and it grants no deletion permission. `deletionAuthorized=false` is unaffected by configuration, requests, or old statuses.
 
-## HTTP 与当前界面
+## HTTP and the current UI
 
-现有认证和浏览器 CSRF 规则保持不变，见 [API 认证](../../api.md)。`GET records` 保留字段，支持分页及 status/bucket 筛选；`statusCounts` 包含状态 3，`bucketCounts` 统计状态 0 和 3。`GET status` 新增 `observationCount` 和恒为 `false` 的 `deletionAuthorized`；`lastCompleted` 新增版本字段和三份元数据。失败响应不公开内部异常。
+The existing authentication and browser CSRF rules are unchanged; see [API authentication](../../api.md). `GET records` keeps its fields and supports pagination plus status/bucket filtering; `statusCounts` includes status 3, and `bucketCounts` counts statuses 0 and 3. `GET status` adds `observationCount` and the always-`false` `deletionAuthorized`; `lastCompleted` adds the version field and the three metadata blobs. Failure responses expose no internal exceptions.
 
-已有单条记录及非空批量 `resolve` 请求始终经过同一个收集器，包括旧状态 0/1/2、新状态 3，以及部分或全部 ID 不存在的批量请求。引用不完整时返回 502 `references_unavailable`；完整 v1 引用验证成功后固定返回 409 `cleanup_not_authorized`。这些请求不执行对象 Delete、Copy 或审计记录删除。未知单条 ID 返回 404，空批量返回 400。`ignore` 仅允许历史状态 0，其他状态返回 400。手动触发仍使用现有进程内 `Task.Run` 与 worker 调度，运行中拒绝再次触发；这不保证持久排队或进程退出后的恢复。可靠排队、恢复与扩展策略见[现有未决项](../../pending-decisions.md)。
+Existing single-record and non-empty batch `resolve` requests always go through the same collector, covering old statuses 0/1/2, the new status 3, and batch requests in which some or all IDs do not exist. When references are incomplete they return 502 `references_unavailable`; after complete v1 reference validation succeeds they deterministically return 409 `cleanup_not_authorized`. These requests execute no object Delete, no Copy, and no audit-record deletion. An unknown single-record ID returns 404, and an empty batch returns 400. `ignore` is allowed only for historical status 0; every other status returns 400. Manual triggering still uses the existing in-process `Task.Run` and worker scheduling, and re-triggering is refused while a run is in progress; this does not guarantee persistent queuing or recovery after the process exits. For reliable queuing, recovery, and extension strategies see the [existing pending decisions](../../pending-decisions.md).
 
-当前 OSS 审计视图不显示选择、删除或批量清理操作。新运行记录显示“未观察到引用”及三个引用提供服务的条数和采集时间；旧运行记录显示“历史发现”，不编造新版本验证结果。统计分别展示“历史待处理”和新观察数；旧 Pending 仅可通过 `ignore` 保存备注。请求失败时清空列表并提供重试，扫描完成后自动刷新；搜索仍只过滤当前页。界面规范见 [frontend-spec](../../../frontend/docs/frontend-spec.md#6-oss-审计页面-oss-audit)。
+The current OSS audit view shows no selection, deletion, or batch cleanup operations. New run records display "no reference observed" together with the item counts and collection time of the three reference provider services; old run records display "historical findings", and no new-version validation results are fabricated. The statistics display "historical pending" and the new observation count separately; an old Pending record can only have a note saved via `ignore`. On request failure the list is cleared and a retry is offered, and after a scan completes the view refreshes automatically; search still filters only the current page. The UI specification is in [frontend-spec](../../../frontend/docs/frontend-spec.md#6-oss-audit-page-oss-audit).
 
-## 配置、升级、回退
+## Configuration, upgrade, rollback
 
-`StorageReferences:Enabled` 默认 `false`。启用时必须配置 issuer/audience/subject、唯一 KeyId、权限为 0600 的只读私钥挂载，以及三个固定 HTTPS 根 BaseUrl。配置值、提供服务的配置与密钥轮换、正常 TLS 和凭据外置规则，均遵循上游接口规范。不得复用 Mistake 签名器或普通用户 JWT，也不得回退到旧客户端。关闭能力不释放历史 `pins`：这些是业务来源快照、回执与尝试记录持续保留的对象引用，不是可随审计快照到期丢弃的缓存，也不是删除授权。关闭能力同样不解除 `resolve` 的拒删规则。
+`StorageReferences:Enabled` defaults to `false`. When enabling it you must configure the issuer/audience/subject, a unique KeyId, a read-only private-key mount with 0600 permissions, and three fixed HTTPS root BaseUrls. Configuration values, the provider services' configuration and key rotation, normal TLS, and the credential-externalization rules all follow the upstream interface specification. The Mistake signer or ordinary user JWTs must not be reused, and there is no falling back to the old client. Disabling the capability does not release the historical `pins`: these are object references that business source snapshots, receipts, and attempt records keep permanently retained — they are not a cache that can be discarded when an audit snapshot expires, and they are not deletion authorization. Disabling the capability likewise does not lift the delete-refusal rules of `resolve`.
 
-EF Core 迁移链在原基线后追加 `20261003030002_AddReferenceObservations`，为运行记录增加两个可空 text 列。无迁移历史的合法旧库，必须先验证旧基线结构，再登记基线迁移历史，随后执行新迁移。迁移历史必须按顺序精确匹配已知迁移编号的前缀；未知迁移和不兼容结构仍须拒绝。已有非空 `ReferenceSnapshots` 或状态 3 记录时，`Down` 拒绝执行。详见[迁移文档](../../database/migrations.md)。
+The EF Core migration chain appends `20261003030002_AddReferenceObservations` after the original baseline, adding two nullable text columns to the run records. A legal legacy database without migration history must first have the old baseline structure verified, then the baseline migration history registered, and only then the new migration executed. The migration history must exactly match, in order, a prefix of the known migration ids; unknown migrations and incompatible structures must still be refused. When non-empty `ReferenceSnapshots` or status-3 records exist, `Down` refuses to run. See the [migration documentation](../../database/migrations.md) for details.
 
-只在由执行者负责的隔离环境中验证升级：先升级引用提供服务，再部署新版 Admin，配置正常 TLS 与独立密钥，最后显式开启双方报告能力。用完整 `pg_dump` 备份数据库，包含运行记录、审计记录和迁移历史；恢复到由执行者创建并负责的新隔离数据库，逐项核对原数据、迁移历史及实际报告，不清理历史对象。停用新能力必须保留数据；禁止通过回滚到旧版可删除对象的 Admin 来执行清理。本能力不提供物理垃圾回收、`SourceReleased`、历史记录清理或业务写入与审计删除之间的全局并发协调，也不接管共享环境。
+Validate upgrades only in an isolated environment owned by whoever executes them: upgrade the reference provider services first, then deploy the new Admin, configure normal TLS and a dedicated key, and explicitly enable the reporting capability on both sides last. Back up the database with a full `pg_dump`, including the run records, the audit records, and the migration history; restore it into a new isolated database created and owned by the executor, and verify the original data, the migration history, and the actual reports item by item without cleaning up historical objects. Deactivating the new capability must preserve the data; performing cleanup by rolling back to an old Admin that can delete objects is forbidden. This capability provides no physical garbage collection, `SourceReleased`, historical-record cleanup, or global concurrency coordination between business writes and audit deletions, and it does not take over shared environments.
 
-## 验证策略与命令
+## Verification strategy and commands
 
-Controller 测试覆盖所有记录状态及缺失 ID 的统一引用检查和拒删规则；collector 测试覆盖三个服务的精确 HTTP 请求、签名、所有页的故障和边界；worker 测试覆盖验证完整后才列举、状态 3、S3 错误、取消时回滚及启动时不执行旧清理。真实 PostgreSQL 测试覆盖旧版与新版的精确迁移历史前缀、验证合法旧库后升级，以及已有新观察数据时拒绝 `Down`。前端使用真实 Element Plus DOM 验证无删除或选择操作，并检查三份元数据与历史记录的展示。
+Controller tests cover the unified reference check and delete-refusal rules for all record statuses and missing IDs; collector tests cover the exact HTTP requests to the three services, the signature, and the faults and boundaries of every page; worker tests cover listing only after validation is complete, status 3, S3 errors, rollback on cancellation, and no legacy cleanup at startup. Real PostgreSQL tests cover the exact migration-history prefixes of the old and new versions, upgrading a legal legacy database after verification, and refusing `Down` when new observation data exists. The frontend uses real Element Plus DOM to verify the absence of delete or selection operations and checks the display of the three metadata blobs and the historical records.
 
-实际联合部署验收须记录双方确切提交和镜像 digest，使用三个实际服务宿主、PG 15.18、Seaweed 4.48、正常 CA 信任链与 RS256，以及真实 worker、Controller、当前界面和完整备份恢复。测试环境由执行者创建并负责清理；单元测试的故障替身不能代替实际验收。
+Real joint-deployment acceptance must record the exact commits and image digests of both sides, use three real service hosts, PG 15.18, Seaweed 4.48, the normal CA trust chain and RS256, plus the real worker, Controllers, current UI, and a full backup restore. The test environment is created and cleaned up by whoever executes it; unit-test fault doubles cannot replace real acceptance.
 
 ```bash
 cd backend
 dotnet build Ruoyu.Admin.sln --configuration Release
 dotnet test Ruoyu.Admin.sln --configuration Release --no-build
-# ADMIN_MIGRATION_TEST_CONNECTION 从自有受限文件导入；未提供时使用原 Testcontainers。
+# ADMIN_MIGRATION_TEST_CONNECTION is imported from your own restricted file; when not provided, the original Testcontainers are used.
 cd ../frontend
 npm ci
 npm run build

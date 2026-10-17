@@ -1,6 +1,6 @@
-# 功能索引
+# Capability index
 
-| 业务域 | 功能点入口 |
+| Business domain | Capability entry points |
 |--------|------------|
 | MistakeManagement | [MistakeManagement](./MistakeManagement/MistakeManagement/01-FEATURE.md) |
 | OssAudit | [OssAudit](./OssAudit/StorageAudit.md) |
