@@ -19,9 +19,8 @@
 | 位置 | 键 | 影响 |
 |------|-----|------|
 | `Program.cs` / `AdminLoggingExtensions` | 固定 `service=Ruoyu.Admin` | Loki 日志标签。**已有的 Grafana 查询、面板和告警若按 `service="Ruoyu.Study.AdminPortal"` 过滤，必须同步改名**，否则新日志查不到 |
-| `appsettings.json` | `Consul:ServiceName` | 仅作标识。Consul KV 读取只使用 `Consul:KvPrefix`（`config/ruoyu`），`RuoyuConsulKvLoader.BuildPrefixes` 不消费 `ServiceName`，因此改名不影响配置加载 |
 
-`Consul:ServiceName` 可用环境变量 `CONSUL_SERVICE_NAME` 覆盖（见 `RuoyuConsulOptions.Bind`）。Loki 标签由代码固定，旧 `Serilog` 配置覆盖已移除，不能再用它改流标签。
+Loki 标签由代码固定，旧 `Serilog` 配置覆盖已移除，不能再用它改流标签。
 
 ### 日志管线与字段
 

@@ -13,14 +13,13 @@
 1. 复制配置文件：
    ```bash
    cd backend
-   # appsettings.json 已包含开发默认值，可直接使用
+   # Development 环境下 appsettings.Development.json 已包含开发默认值，可直接使用
    ```
 
-2. 关键配置项（`appsettings.json`）：
+2. 关键配置项（开发默认值位于 `appsettings.Development.json`，基础 `appsettings.json` 不再携带环境专用值）：
 
 | 配置键 | 默认值 | 说明 |
 |--------|--------|------|
-| `AdminApi:Port` | 5020 | API 监听端口 |
 | `ConnectionStrings:AuditDb` | `Host=localhost;Port=5432;Database=ruoyu_admin;Username=phil` | 审计数据库连接串（本地开发默认值，生产由 Consul 覆盖） |
 | `Database:Name` | `ruoyu_admin` | 数据库名（与 Consul `PostgreSql:*` 合成连接串时使用） |
 | `StudentService:Url` | `http://localhost:5005` | Student HTTP 服务 |
@@ -46,13 +45,13 @@ Mistake 出站专项用 `dotnet test Ruoyu.Admin.sln --configuration Release --f
 
 Admin Portal 通过 `SharedPostgreSqlConnectionStringFactory.BuildOrFallback` 组装连接串，与 mistake / student 等服务保持一致：
 
-1. 启动时先从 `appsettings.json` 读取 Consul 连接参数，调用 `AddRuoyuConsulConfiguration` 加载共享配置
+1. 启动时调用 `AddRuoyuConsulConfiguration` 加载共享配置（Consul 地址由 `CONSUL_*` 环境变量或 `RuoyuConsulOptions` 默认值提供，基础 `appsettings.json` 不再含 `Consul` 节）
 2. 从 Consul KV `config/ruoyu/shared.json` 获取 `PostgreSql:Host/Port/Username/Password`
 3. 当 `PostgreSql:Host`、`PostgreSql:Username`、`Database:Name` 均非空时，与本地 `Database:Name` 合成 PostgreSQL 连接串
-4. 否则回退到本地 `ConnectionStrings:AuditDb`
+4. 否则回退到本地 `ConnectionStrings:AuditDb`（仅 Development 默认提供）
 
 - 本地开发：`ConnectionStrings:AuditDb` 指向本地 PostgreSQL（`Host=localhost;Username=phil`，无密码），无需 Consul 即可运行
-- 生产环境：由 Consul 的 `PostgreSql:*` 覆盖，`ConnectionStrings:AuditDb` 仅作为未配置 Consul 时的默认值
+- 生产环境：由 Consul 的 `PostgreSql:*` 下发，基础 `appsettings.json` 不再携带本地连接串回退
 
 3. 环境变量覆盖（可选）：
    ```bash
