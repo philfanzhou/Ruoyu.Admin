@@ -1,7 +1,7 @@
-# 集成索引
+# Integration index
 
-| 外部系统 | 交互点入口 |
+| External system | Interaction entry points |
 |----------|------------|
 | IdentityService | [IdentityProxy](./IdentityService/IdentityProxy/01-FEATURE.md) |
 | TeacherPortal | [TeacherPortalProxy](./TeacherPortal/TeacherPortalProxy/01-FEATURE.md) |
-| Student / Mistake | [受管指派与专用 HTTP client](./ManagedAssignment.md) |
+| Student / Mistake | [Managed assignment and the dedicated HTTP client](./ManagedAssignment.md) |

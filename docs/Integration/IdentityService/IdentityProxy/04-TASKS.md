@@ -1,27 +1,27 @@
-# IdentityProxy 任务清单
+# IdentityProxy Task List
 
 ```json
 [
   {
     "id": "T1",
-    "title": "代理身份服务请求",
-    "description": "管理员通过 /api/identity/* 路径访问身份服务功能，中间件自动重写路径并转发到IdentityService，附加X-Admin-AppId和X-Admin-AppSecret认证头",
+    "title": "Proxy identity-service requests",
+    "description": "Administrators access identity-service functionality through /api/identity/*; the middleware automatically rewrites the path, forwards to the IdentityService, and attaches the X-Admin-AppId and X-Admin-AppSecret authentication headers",
     "endpoint": "/api/identity/*",
     "method": "*"
   },
   {
     "id": "T2",
-    "title": "处理身份服务不可用",
-    "description": "当IdentityService不可达时，中间件返回502 Bad Gateway响应",
+    "title": "Handle identity-service unavailability",
+    "description": "When the IdentityService is unreachable, the middleware returns a 502 Bad Gateway response",
     "endpoint": "/api/identity/*",
     "method": "*"
   },
   {
     "id": "T3",
-    "title": "管理用户账户",
-    "description": "管理员通过IdentityAccountsController管理用户账户[待确认具体功能]",
-    "endpoint": "[待确认]",
-    "method": "[待确认]"
+    "title": "Manage user accounts",
+    "description": "Administrators manage user accounts through IdentityAccountsController [exact functionality to confirm]",
+    "endpoint": "[to confirm]",
+    "method": "[to confirm]"
   }
 ]
 ```

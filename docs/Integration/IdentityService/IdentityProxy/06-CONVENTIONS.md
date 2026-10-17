@@ -1,44 +1,44 @@
-# IdentityProxy 约定与模式
+# IdentityProxy Conventions and Patterns
 
-## 中间件模式
+## Middleware patterns
 
-### 请求拦截与转发
+### Request interception and forwarding
 
-IdentityProxyMiddleware 采用反向代理模式：
-- 拦截特定路径前缀的请求
-- 重写路径后转发到下游服务
-- 自动注入认证信息
-- 原样转发响应给客户端
+IdentityProxyMiddleware uses the reverse-proxy pattern:
+- Intercepts requests with a specific path prefix
+- Rewrites the path and forwards to the downstream service
+- Injects authentication automatically
+- Forwards the response to the client verbatim
 
-### 路径重写约定
+### Path rewriting conventions
 
-- 前缀替换：`/api/identity` → `/api`
-- 保留原始路径的其余部分
-- 保留查询参数和请求体
+- Prefix replacement: `/api/identity` → `/api`
+- The rest of the original path is preserved
+- Query parameters and the request body are preserved
 
-### 认证头约定
+### Authentication header conventions
 
-使用自定义请求头传递应用级认证信息：
-- `X-Admin-AppId`：标识管理后台应用
-- `X-Admin-AppSecret`：应用密钥
+Application-level authentication is passed through custom headers:
+- `X-Admin-AppId`: identifies the admin console application
+- `X-Admin-AppSecret`: the application secret
 
-前缀 `X-Admin-` 表示这是管理后台级别的认证信息[推断]。
+The `X-Admin-` prefix marks this as admin-console-level authentication [inferred].
 
-## 错误处理约定
+## Error handling conventions
 
-| 场景 | HTTP状态码 | 说明 |
+| Scenario | HTTP status code | Description |
 |------|-----------|------|
-| 下游服务不可达 | 502 Bad Gateway | 标准网关错误 |
+| Downstream service unreachable | 502 Bad Gateway | the standard gateway error |
 
-## 配置约定
+## Configuration conventions
 
-### Options 模式
+### The Options pattern
 
-使用 ASP.NET Core 的 Options 模式：
-- `IdentityServiceOptions` 通过依赖注入获取
-- 配置项从 appsettings.json 或环境变量加载
+Uses ASP.NET Core's Options pattern:
+- `IdentityServiceOptions` is obtained through dependency injection
+- Configuration items load from appsettings.json or environment variables
 
-### 配置结构
+### Configuration structure
 
 ```json
 {
@@ -50,8 +50,8 @@ IdentityProxyMiddleware 采用反向代理模式：
 }
 ```
 
-## 安全约定
+## Security conventions
 
-- AppSecret 属于敏感配置，不应记录到日志中
-- 代理中间件不应对请求体内容进行解析或记录[推断]
-- 所有到 IdentityService 的通信应使用 HTTPS[推断]
+- AppSecret is sensitive configuration and must not be logged
+- The proxy middleware should not parse or log request-body contents [inferred]
+- All communication to the IdentityService should use HTTPS [inferred]

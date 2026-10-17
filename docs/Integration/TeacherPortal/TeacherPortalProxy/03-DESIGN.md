@@ -1,29 +1,29 @@
-# TeacherPortalProxy 数据模型
+# TeacherPortalProxy Data Models
 
-> 以下转发调用方 Authorization 的描述是历史方案。当前代理只发送服务器票据内 token，并拒绝入站 Authorization；当前规则见根目录 AGENTS.md 和 docs/api.md。
+> The description below about forwarding the caller's Authorization is a historical design. The current proxy sends only the in-ticket server token and rejects inbound Authorization; the current rules are in the root AGENTS.md and docs/api.md.
 
-## 配置数据
+## Configuration data
 
 ### TeacherPortalOptions
 
-中间件所需的配置选项，通过依赖注入获取。
+The configuration options the middleware needs, obtained through dependency injection.
 
-| 属性 | 类型 | 说明 |
+| Property | Type | Description |
 |------|------|------|
-| Url | string | TeacherPortal 的基础地址（如 `http://teacher-portal:8080`） |
+| Url | string | the TeacherPortal's base address (for example `http://teacher-portal:8080`) |
 
-## 请求头
+## Request headers
 
-中间件在转发请求时原样转发调用方的所有请求头（排除 `Content-*` 和 `Host`）。其中 `Authorization: Bearer` 头会被自动原样转发给 Teacher Portal，Teacher Portal 通过 `[Authorize(Roles="admin")]` 校验 JWT。不再注入静态的 `X-Admin-Key`。
+The middleware forwards all of the caller's request headers verbatim (excluding `Content-*` and `Host`). The `Authorization: Bearer` header is forwarded to the Teacher Portal as-is, and the Teacher Portal validates the JWT through `[Authorize(Roles="admin")]`. The static `X-Admin-Key` is no longer injected.
 
-## 响应状态码
+## Response status codes
 
-| 状态码 | 场景 |
+| Status code | Scenario |
 |--------|------|
-| 2xx | 成功转发并收到教师门户正常响应 |
-| 502 | TeacherPortal 不可达 |
-| 503 | TeacherPortalOptions 未配置 |
+| 2xx | forwarded successfully and a normal teacher-portal response was received |
+| 502 | the TeacherPortal is unreachable |
+| 503 | TeacherPortalOptions is not configured |
 
-## 无持久化数据
+## No persisted data
 
-TeacherPortalProxyMiddleware 本身不涉及数据库操作，所有数据由下游 TeacherPortal 处理。
+TeacherPortalProxyMiddleware itself involves no database operations; all data is handled by the downstream TeacherPortal.

@@ -1,6 +1,6 @@
-# IdentityProxy 架构
+# IdentityProxy Architecture
 
-## 组件关系
+## Component relationships
 
 ```
 ┌──────────────────────────────────────────────────────────┐
@@ -9,16 +9,16 @@
 │  ┌──────────────────────────────────────────────────────┐ │
 │  │ IdentityProxyMiddleware                               │ │
 │  │                                                       │ │
-│  │  请求流程:                                            │ │
-│  │  /api/identity/*  →  拦截  →  路径重写  →  转发       │ │
+│  │  Request flow:                                        │ │
+│  │  /api/identity/*  →  intercept  →  rewrite  →  forward │
 │  │                         ↓                             │ │
-│  │              添加 X-Admin-AppId                       │ │
-│  │              添加 X-Admin-AppSecret                   │ │
+│  │              add X-Admin-AppId                        │ │
+│  │              add X-Admin-AppSecret                    │ │
 │  └──────────────────────┬───────────────────────────────┘ │
 │                         │                                  │
 │  ┌──────────────────────┐                                 │
 │  │ IdentityAccountsController │                          │
-│  │ (补充控制器)          │                                 │
+│  │ (supplementary controller) │                          │
 │  └──────────────────────┘                                 │
 └──────────────────────────────────────────────────────────┘
                           │
@@ -27,49 +27,51 @@
                │ IdentityService      │
                │ (HTTP API)           │
                │                      │
-               │ 接收带认证头的请求    │
-               │ 处理用户管理操作      │
+               │ receives requests    │
+               │ with auth headers    │
+               │ handles user-admin   │
+               │ operations            │
                └──────────────────────┘
 ```
 
-## 请求处理流程
+## Request handling flow
 
-1. 客户端发送请求到 `/api/identity/*`
-2. IdentityProxyMiddleware 拦截请求
-3. 路径重写：移除 `/api/identity` 前缀，替换为 `/api`
-4. 创建到 IdentityService 的 HTTP 请求
-5. 添加认证头：`X-Admin-AppId` 和 `X-Admin-AppSecret`
-6. 转发请求到 IdentityService
-7. 将响应返回给客户端
-8. 若 IdentityService 不可达 → 返回 502 Bad Gateway
+1. The client sends a request to `/api/identity/*`
+2. IdentityProxyMiddleware intercepts the request
+3. Path rewrite: remove the `/api/identity` prefix, replacing it with `/api`
+4. Create the HTTP request to the IdentityService
+5. Add the authentication headers: `X-Admin-AppId` and `X-Admin-AppSecret`
+6. Forward the request to the IdentityService
+7. Return the response to the client
+8. If the IdentityService is unreachable → return 502 Bad Gateway
 
-## 路径重写规则
+## Path rewriting rules
 
-| 原始路径 | 重写后路径 |
+| Original path | Rewritten path |
 |----------|-----------|
 | `/api/identity/users` | `/api/users` |
 | `/api/identity/roles` | `/api/roles` |
 | `/api/identity/accounts/login` | `/api/accounts/login` |
 
-## 配置选项
+## Configuration options
 
 ### IdentityServiceOptions
 
-| 属性 | 类型 | 说明 |
+| Property | Type | Description |
 |------|------|------|
-| Address | string | IdentityService 的基础地址 |
-| AppId | string | 管理后台的应用ID |
-| AppSecret | string | 管理后台的应用密钥 |
+| Address | string | the IdentityService's base address |
+| AppId | string | the admin console's application ID |
+| AppSecret | string | the admin console's application secret |
 
-## IdentityAccountsController 行为
+## IdentityAccountsController behavior
 
 ### POST /api/admin/identity-accounts/batch
 
-批量查询 Identity 账户信息。
+Batch-query Identity account information.
 
-**请求体**: `List<string>` — 账户 ID 列表
+**Request body**: `List<string>` — the account ID list
 
-**响应体**:
+**Response body**:
 ```json
 {
   "accounts": [
@@ -80,29 +82,29 @@
 }
 ```
 
-| 字段 | 类型 | 说明 |
+| Field | Type | Description |
 |------|------|------|
-| accounts | IdentityAccountDto[] | 匹配的账户列表（仅包含请求中存在的 userId） |
-| partialFailure | bool | Identity 服务是否不可用 |
-| warning | string? | 不可用时的提示信息，如 "Identity 服务暂时不可用，部分账户信息无法加载" |
+| accounts | IdentityAccountDto[] | the matching account list (containing only the userIds present in the request) |
+| partialFailure | bool | whether the Identity service was unavailable |
+| warning | string? | the notice when unavailable, for example "The Identity service is temporarily unavailable; some account information could not be loaded" |
 
-**行为规则**:
-1. 输入为 null 或空列表 → 返回空 accounts，partialFailure=false
-2. AppId 或 AppSecret 未配置 → 返回空 accounts，partialFailure=false
-3. Identity 服务返回非成功状态码 → 返回空 accounts，partialFailure=false
-4. Identity 服务返回 null 响应体 → 返回空 accounts，partialFailure=false
-5. Identity 服务可用且成功 → 返回过滤后的 accounts（仅包含请求中存在的 userId，大小写不敏感），partialFailure=false
-6. HTTP 调用异常 → 返回空 accounts，partialFailure=true，warning="Identity 服务暂时不可用，部分账户信息无法加载"
-7. IdentityUserItem 的 null 字段默认映射为空字符串
+**Behavior rules**:
+1. null or empty-list input → returns empty accounts, partialFailure=false
+2. AppId or AppSecret not configured → returns empty accounts, partialFailure=false
+3. The Identity service returns a non-success status code → returns empty accounts, partialFailure=false
+4. The Identity service returns a null response body → returns empty accounts, partialFailure=false
+5. The Identity service is available and succeeds → returns the filtered accounts (only the userIds present in the request, case-insensitive), partialFailure=false
+6. An HTTP call exception → returns empty accounts, partialFailure=true, warning="The Identity service is temporarily unavailable; some account information could not be loaded"
+7. Null fields of IdentityUserItem map to empty strings by default
 
 ### GET /api/admin/accounts/{accountId}/students
 
-按 Identity 账户 ID 查询关联学生。
+Query the associated students by Identity account ID.
 
-**响应体**: `IReadOnlyList<StudentDto>`
+**Response body**: `IReadOnlyList<StudentDto>`
 
-## 依赖服务
+## Service dependencies
 
-| 服务 | 协议 | 用途 | 必要性 |
+| Service | Protocol | Purpose | Necessity |
 |------|------|------|--------|
-| IdentityService | HTTP | 用户账户管理 | 必须 |
+| IdentityService | HTTP | user account management | required |

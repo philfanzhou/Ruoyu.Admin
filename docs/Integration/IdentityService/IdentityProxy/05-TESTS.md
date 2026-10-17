@@ -1,118 +1,118 @@
-# IdentityProxy 测试用例
+# IdentityProxy Test Cases
 
-## 当前状态：[待确认]
+## Current status: [to confirm]
 
-以下为基于中间件行为的建议测试用例。
+The following are suggested test cases based on the middleware's behavior.
 
 ---
 
-## IdentityProxyMiddleware 测试
+## IdentityProxyMiddleware tests
 
 ```gherkin
-Feature: 身份服务代理
+Feature: Identity service proxy
 
-  Scenario: 成功转发GET请求到身份服务
-    Given IdentityService可用
-    And IdentityServiceOptions已正确配置
-    When 发送 GET /api/identity/users
-    Then 请求路径重写为 /api/users
-    And 请求头包含 X-Admin-AppId
-    And 请求头包含 X-Admin-AppSecret
-    And 返回身份服务的响应
+  Scenario: Successfully forward a GET request to the identity service
+    Given the IdentityService is available
+    And IdentityServiceOptions is configured correctly
+    When a GET /api/identity/users is sent
+    Then the request path is rewritten to /api/users
+    And the request headers contain X-Admin-AppId
+    And the request headers contain X-Admin-AppSecret
+    And the identity service's response is returned
 
-  Scenario: 成功转发POST请求到身份服务
-    Given IdentityService可用
-    And IdentityServiceOptions已正确配置
-    When 发送 POST /api/identity/accounts
-    Then 请求路径重写为 /api/accounts
-    And 请求头包含 X-Admin-AppId 和 X-Admin-AppSecret
-    And 请求体被正确转发
-    And 返回身份服务的响应
+  Scenario: Successfully forward a POST request to the identity service
+    Given the IdentityService is available
+    And IdentityServiceOptions is configured correctly
+    When a POST /api/identity/accounts is sent
+    Then the request path is rewritten to /api/accounts
+    And the request headers contain X-Admin-AppId and X-Admin-AppSecret
+    And the request body is forwarded correctly
+    And the identity service's response is returned
 
-  Scenario: 身份服务不可达时返回502
-    Given IdentityService不可用
-    When 发送 GET /api/identity/users
-    Then 返回502 Bad Gateway
+  Scenario: Return 502 when the identity service is unreachable
+    Given the IdentityService is unavailable
+    When a GET /api/identity/users is sent
+    Then a 502 Bad Gateway is returned
 
-  Scenario: 非identity路径不被拦截
-    Given 请求路径为 /api/admin/users
-    When 请求经过中间件
-    Then 请求不被拦截，继续正常处理
+  Scenario: Non-identity paths are not intercepted
+    Given the request path is /api/admin/users
+    When the request passes through the middleware
+    Then it is not intercepted and continues processing normally
 
-  Scenario: 路径重写保留查询参数
-    Given IdentityService可用
-    When 发送 GET /api/identity/users?page=1&size=10
-    Then 请求路径重写为 /api/users?page=1&size=10
-    And 查询参数被保留
+  Scenario: Path rewriting preserves query parameters
+    Given the IdentityService is available
+    When a GET /api/identity/users?page=1&size=10 is sent
+    Then the request path is rewritten to /api/users?page=1&size=10
+    And the query parameters are preserved
 
-  Scenario: 路径重写保留请求体
-    Given IdentityService可用
-    When 发送 POST /api/identity/users
-    And 请求体包含用户创建数据
-    Then 请求体被完整转发到身份服务
+  Scenario: Path rewriting preserves the request body
+    Given the IdentityService is available
+    When a POST /api/identity/users is sent
+    And the request body contains user-creation data
+    Then the request body is forwarded to the identity service in full
 ```
 
 ---
 
-## IdentityAccountsController 测试
+## IdentityAccountsController tests
 
 ```gherkin
-Feature: 用户账户批量查询
+Feature: Batch user-account query
 
-  Scenario: 空输入返回空列表
-    When 发送 POST /api/admin/identity-accounts/batch with null or []
-    Then 返回 { accounts: [], partialFailure: false, warning: null }
+  Scenario: Empty input returns an empty list
+    When a POST /api/admin/identity-accounts/batch is sent with null or []
+    Then { accounts: [], partialFailure: false, warning: null } is returned
 
-  Scenario: 缺少凭据返回空列表
-    Given AppId 或 AppSecret 为空
-    When 发送 POST /api/admin/identity-accounts/batch with ["user-1"]
-    Then 返回 { accounts: [], partialFailure: false, warning: null }
+  Scenario: Missing credentials return an empty list
+    Given AppId or AppSecret is empty
+    When a POST /api/admin/identity-accounts/batch is sent with ["user-1"]
+    Then { accounts: [], partialFailure: false, warning: null } is returned
 
-  Scenario: 成功查询返回过滤后的账户
-    Given IdentityService可用
-    And 返回 user-1, user-2, user-3 的信息
-    When 发送 POST /api/admin/identity-accounts/batch with ["user-1", "user-3"]
-    Then 返回 { accounts: [user-1, user-3], partialFailure: false, warning: null }
+  Scenario: A successful query returns the filtered accounts
+    Given the IdentityService is available
+    And returns the information of user-1, user-2, user-3
+    When a POST /api/admin/identity-accounts/batch is sent with ["user-1", "user-3"]
+    Then { accounts: [user-1, user-3], partialFailure: false, warning: null } is returned
 
-  Scenario: 大小写不敏感匹配
-    Given IdentityService返回 userId="User-1"
-    When 发送 POST /api/admin/identity-accounts/batch with ["user-1"]
-    Then 返回 { accounts: [User-1], partialFailure: false, warning: null }
+  Scenario: Case-insensitive matching
+    Given the IdentityService returns userId="User-1"
+    When a POST /api/admin/identity-accounts/batch is sent with ["user-1"]
+    Then { accounts: [User-1], partialFailure: false, warning: null } is returned
 
-  Scenario: null字段默认为空字符串
-    Given IdentityService返回 username=null, phone=null 的用户
-    When 发送 POST /api/admin/identity-accounts/batch with ["user-1"]
-    Then 返回 accounts 中 null 字段映射为 ""
+  Scenario: Null fields default to empty strings
+    Given the IdentityService returns a user with username=null, phone=null
+    When a POST /api/admin/identity-accounts/batch is sent with ["user-1"]
+    Then the returned accounts map null fields to ""
 
-  Scenario: 服务不可用返回partialFailure
-    Given IdentityService不可用(抛出异常)
-    When 发送 POST /api/admin/identity-accounts/batch with ["user-1"]
-    Then 返回 { accounts: [], partialFailure: true, warning: "Identity 服务暂时不可用，部分账户信息无法加载" }
+  Scenario: Service unavailability returns partialFailure
+    Given the IdentityService is unavailable (throws an exception)
+    When a POST /api/admin/identity-accounts/batch is sent with ["user-1"]
+    Then { accounts: [], partialFailure: true, warning: "The Identity service is temporarily unavailable; some account information could not be loaded" } is returned
 
-  Scenario: 非成功状态码返回空列表无partialFailure
-    Given IdentityService返回 500
-    When 发送 POST /api/admin/identity-accounts/batch with ["user-1"]
-    Then 返回 { accounts: [], partialFailure: false, warning: null }
+  Scenario: A non-success status code returns an empty list without partialFailure
+    Given the IdentityService returns 500
+    When a POST /api/admin/identity-accounts/batch is sent with ["user-1"]
+    Then { accounts: [], partialFailure: false, warning: null } is returned
 
-Feature: 按账户查询学生
+Feature: Query students by account
 
-  Scenario: 成功查询返回学生列表
-    Given StudentManagement gRPC服务可用
-    When 发送 GET /api/admin/accounts/{accountId}/students
-    Then 返回 StudentDto 列表
+  Scenario: A successful query returns the student list
+    Given the StudentManagement gRPC service is available
+    When a GET /api/admin/accounts/{accountId}/students is sent
+    Then a StudentDto list is returned
 
-  Scenario: gRPC异常向上传播
-    Given StudentManagement gRPC服务抛出 NotFound
-    When 发送 GET /api/admin/accounts/{accountId}/students
-    Then 抛出 RpcException
+  Scenario: gRPC exceptions propagate upward
+    Given the StudentManagement gRPC service throws NotFound
+    When a GET /api/admin/accounts/{accountId}/students is sent
+    Then an RpcException is thrown
 ```
 
 ---
 
-## 鉴权回归测试（已实现）
+## Authorization regression tests (implemented)
 
-测试代码位于 `Tests/Controllers/ControllerAuthorizationTests.cs`，通过反射验证 controller 级 `[Authorize]` 属性存在，防止重构时误删导致鉴权失效。默认 FallbackPolicy 授权策略不能替代显式标注（项目约定：所有 `/api/admin/*` controller 必须显式 `[Authorize]`，作为后续 `[Authorize(Roles = "admin")]` 收紧的扩展点）。
+The test code lives in `Tests/Controllers/ControllerAuthorizationTests.cs`; it verifies through reflection that the controller-level `[Authorize]` attribute exists, preventing accidental removal during refactoring from breaking authorization. The default FallbackPolicy authorization policy cannot replace explicit annotation (project convention: every `/api/admin/*` controller must carry an explicit `[Authorize]`, as the extension point for a later `[Authorize(Roles = "admin")]` tightening).
 
-| 测试方法 | 验证内容 |
+| Test method | What it verifies |
 | --- | --- |
-| `IdentityAccountsController_HasAuthorizeAttribute` | IdentityAccountsController 必须携带 `[Authorize]` 属性（Identity 账号管理为管理员操作） |
+| `IdentityAccountsController_HasAuthorizeAttribute` | IdentityAccountsController must carry the `[Authorize]` attribute (Identity account management is an administrator operation) |
