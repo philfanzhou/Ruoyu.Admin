@@ -11,9 +11,11 @@ using Xunit;
 namespace Admin.WebApi.Tests.Services;
 
 /// <summary>
-/// 接口兼容性测试：检查本地回归替身（backend/Tools/LocalRegressionStubs）的旧列表响应
-/// 能否按指定 ServiceClients DTO 和 JsonSerializerOptions 反序列化，提前发现响应与客户端不一致。
-/// 本测试不验证当前 StorageReferences v1 引用的完整性；回归环境见 docs/development/LocalRegressionEnv.md。
+/// Interface compatibility tests: check that the local regression stubs' (backend/Tools/LocalRegressionStubs)
+/// legacy list responses deserialize into the designated ServiceClients DTOs with the designated
+/// JsonSerializerOptions, catching response/client drift early.
+/// These tests do not validate the integrity of the current StorageReferences v1 references;
+/// see docs/development/LocalRegressionEnv.md for the regression environment.
 /// </summary>
 public class LocalRegressionStubsContractTests
 {
@@ -113,7 +115,7 @@ public class LocalRegressionStubsContractTests
 
             // The outage simulation must fail deserialization (JsonException), not be caught
             // by MistakeHttpClient's HttpRequestException handler, so the failure propagates
-            // to OssAuditWorker / OssAuditController and yields the "Mistake 服务不可用"
+            // to OssAuditWorker / OssAuditController and yields the "Mistake service unavailable"
             // abort / 502 branch.
             response.StatusCode.Should().Be(HttpStatusCode.ServiceUnavailable);
             var body = await response.Content.ReadAsStringAsync();

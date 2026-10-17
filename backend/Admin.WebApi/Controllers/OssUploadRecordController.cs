@@ -47,7 +47,7 @@ public class OssUploadRecordController : ControllerBase
                 || response.Items.Any(r => r is null || !HasManagedMetadata(r))))
                 return StatusCode(502, new { errorKind = "invalid_source_metadata", message = "Upload metadata is unavailable." });
 
-            // 收集所有唯一的 studentId，批量查询学生姓名
+            // Collect all unique studentIds and look up the student names in one batch
             var studentIds = response.Items.Select(r => r.StudentId).Distinct().ToList();
             var studentNameMap = new Dictionary<string, string>();
 
@@ -60,7 +60,7 @@ public class OssUploadRecordController : ControllerBase
                 }
                 catch
                 {
-                    studentNameMap[sid] = sid; // 如果查不到学生，回退显示 studentId
+                    studentNameMap[sid] = sid; // Fall back to showing the studentId when the student cannot be found
                 }
             }
 
@@ -124,7 +124,7 @@ public class OssUploadRecordController : ControllerBase
             return BadRequest(new ErrorResponse("Assignments are required."));
         try
         {
-            // 获取上传记录
+            // Fetch the upload record
             var record = await _studentClient.GetUploadRecordAsync(request.StudentId, id, cancellationToken);
 
             if (string.IsNullOrEmpty(record.Id))
@@ -132,7 +132,7 @@ public class OssUploadRecordController : ControllerBase
                 return BadRequest(new ErrorResponse("Upload record not found"));
             }
 
-            // 按图片粒度分配 - 每个分组可以有独立的 subject 和 grade
+            // Assign per image - each group can carry its own subject and grade
             var warnings = new List<string>();
             var allSuccess = true;
             var createdItems = new List<object>();
@@ -140,7 +140,7 @@ public class OssUploadRecordController : ControllerBase
 
             foreach (var assignment in request.Assignments)
             {
-                // 获取指定索引的图片路径
+                // Get the image paths for the given indices
                 var selectedImagePaths = assignment.ImageIndices
                     .Where(idx => idx >= 0 && idx < record.ImageEntries.Count)
                     .Select(idx => record.ImageEntries[idx].Path)
@@ -153,7 +153,7 @@ public class OssUploadRecordController : ControllerBase
                     continue;
                 }
 
-                // 调用 Mistake 服务创建错题
+                // Call the Mistake service to create mistakes
                 var submitResponse = await _mistakeClient.SubmitMistakeUploadAsync(
                     request.StudentId,
                     assignment.Subject,
@@ -444,9 +444,9 @@ public class OssUploadRecordController : ControllerBase
     }
 
     /// <summary>
-    /// 手动清理审核完毕但上传记录未删除的遗留数据。
-    /// 先检查关联错题的审核状态，再通过 Mistake HTTP 客户端完成审核；成功后
-    /// 移除返回的图片路径，并通过 Student HTTP 客户端删除审核后的上传记录。
+    /// Manually cleans up legacy data whose mistakes are fully reviewed but whose upload record was not deleted.
+    /// Checks the review status of the linked mistakes first, then completes the review through the Mistake HTTP client;
+    /// on success removes the returned image paths and deletes the reviewed upload record through the Student HTTP client.
     /// </summary>
     [HttpPost("legacy-clean/{id}")]
     public async Task<IActionResult> LegacyClean(string id, CancellationToken cancellationToken = default)

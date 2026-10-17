@@ -4,13 +4,15 @@ using Npgsql;
 namespace Ruoyu.Admin.LocalRegressionStubs;
 
 /// <summary>
-/// 独立种子脚本：直写本地 PostgreSQL（ruoyu_admin 的 OssAuditRuns / OssAuditRecords）、
-/// OSS_LOCAL_PATH 本地对象目录，以及替身（serve 模式）读取的夹具 JSON。
+/// Standalone seed script: writes directly to the local PostgreSQL (OssAuditRuns / OssAuditRecords in
+/// ruoyu_admin), the local OSS_LOCAL_PATH object directory, and the fixtures JSON consumed by the
+/// stub server (serve mode).
 ///
-/// 安全边界（与 #26 一致，不可放宽）：
-/// - 仅在 USE_LOCAL_OSS=1 时执行；否则拒绝（此时 Admin.WebApi 解析到的是 S3OssService）。
-/// - 任何文件写入只允许落在解析后的本地 OSS 目录内。
-/// - 不读取、不写入任何真实下游凭据；数据库连接串只来自命令行或环境变量。
+/// Security boundary (consistent with #26, must not be relaxed):
+/// - Runs only when USE_LOCAL_OSS=1; refuses otherwise (Admin.WebApi then resolves to S3OssService).
+/// - Any file write must land inside the resolved local OSS directory.
+/// - Never reads or writes real downstream credentials; the database connection string comes only
+///   from the command line or environment variables.
 /// </summary>
 internal static class RegressionSeeder
 {

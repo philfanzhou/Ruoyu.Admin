@@ -11,7 +11,7 @@ using Xunit;
 namespace Admin.WebApi.Tests.Controllers;
 
 /// <summary>
-/// ImageController UT：覆盖路径校验、mistakes/ 路径分流、Student 路径分流、异常处理。
+/// ImageController unit tests: covers path validation, mistakes/ path routing, Student path routing, and error handling.
 /// </summary>
 public class ImageControllerTests
 {
@@ -55,7 +55,7 @@ public class ImageControllerTests
     }
 
     // ============================================================
-    // 路径校验
+    // Path validation
     // ============================================================
 
     [Fact]
@@ -72,7 +72,7 @@ public class ImageControllerTests
     [Fact]
     public async Task GetImage_NullPath_ReturnsBadRequest()
     {
-        // path 参数缺失时 Request.Query["path"].ToString() 返回空字符串
+        // When the path parameter is missing, Request.Query["path"].ToString() returns an empty string
         SetupQuery(null);
 
         var result = await _controller.GetImage(CancellationToken.None);
@@ -129,7 +129,7 @@ public class ImageControllerTests
     }
 
     // ============================================================
-    // mistakes/ 路径分流
+    // mistakes/ path routing
     // ============================================================
 
     [Fact]
@@ -159,7 +159,7 @@ public class ImageControllerTests
                 It.IsAny<CancellationToken>()),
             Times.Once);
 
-        // 不应调用 Student 服务
+        // The Student service must not be called
         _studentClient.Verify(
             c => c.GetPresignedUrlAsync(
                 It.IsAny<string>(),
@@ -172,7 +172,7 @@ public class ImageControllerTests
     [Fact]
     public async Task GetImage_MistakesPathCaseInsensitive_CallsMistakeGrpcService()
     {
-        // 路径以 MISTAKES/ 开头（大写），应仍走 Mistake 服务
+        // A path starting with MISTAKES/ (uppercase) must still go to the Mistake service
         SetupQuery("MISTAKES/2025/06/14/abc/image.jpg");
 
         var httpResult = new MistakePresignedUrlResult { Url = "https://example.com/presigned" };
@@ -226,7 +226,7 @@ public class ImageControllerTests
     }
 
     // ============================================================
-    // Student 路径分流
+    // Student path routing
     // ============================================================
 
     [Fact]
@@ -256,7 +256,7 @@ public class ImageControllerTests
                 It.IsAny<CancellationToken>()),
             Times.Once);
 
-        // 不应调用 Mistake 服务
+        // The Mistake service must not be called
         _mistakeClient.Verify(
             c => c.GetPresignedUrlAsync(
                 It.IsAny<string>(),
@@ -269,7 +269,7 @@ public class ImageControllerTests
     [Fact]
     public async Task GetImage_QuestionsPath_CallsStudentHttpService()
     {
-        // questions/ 路径不以 mistakes/ 开头，应走 Student 服务
+        // A questions/ path does not start with mistakes/ and must go to the Student service
         SetupQuery("questions/2025/01/01/xyz/q1.png");
 
         var httpResult = new PresignedUrlResult { Url = "https://example.com/q-presigned" };
@@ -294,7 +294,7 @@ public class ImageControllerTests
     }
 
     // ============================================================
-    // 异常处理
+    // Error handling
     // ============================================================
 
     [Fact]
