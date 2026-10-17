@@ -1,40 +1,40 @@
-# 助教管理 — 任务清单
+# Assistant Management — Task List
 
-## Phase 1: 文档（已完成）
+## Phase 1: Documentation (complete)
 
-- [x] 创建功能 spec
-- [x] 创建技术设计
-- [x] 创建任务清单和测试规格
+- [x] Create the functional spec
+- [x] Create the technical design
+- [x] Create the task list and test specification
 
-## Phase 2: 后端代码
+## Phase 2: Backend code
 
 - [x] AssistantPortalProxyMiddleware.cs + AssistantPortalOptions
-- [x] Program.cs 配置（Options、HttpClient、Middleware）
-- [x] appsettings.json 添加 AssistantPortal 配置节
+- [x] Program.cs wiring (Options, HttpClient, Middleware)
+- [x] appsettings.json adds the AssistantPortal configuration section
 
-## Phase 3: 前端代码
+## Phase 3: Frontend code
 
 - [x] assistantPortalApi.ts
-- [x] AssistantView.vue（助教管理主页面）
-- [x] router/index.ts 添加 /assistants 路由
-- [x] 侧边导航添加助教管理入口
+- [x] AssistantView.vue (the assistant management main page)
+- [x] router/index.ts adds the /assistants route
+- [x] The side navigation adds the assistant management entry
 
-## Phase 4: 测试与验证
+## Phase 4: Testing and verification
 
-- [x] AssistantPortalProxyMiddleware 单元测试
-- [x] AdminController 端点测试（grant/revoke/subjects）
-- [x] 编译验证
-- [x] 提交并 push
+- [x] AssistantPortalProxyMiddleware unit tests
+- [x] AdminController endpoint tests (grant/revoke/subjects)
+- [x] Compilation verified
+- [x] Committed and pushed
 
-## 已删除任务（2026-07-27）
+## Deleted tasks (2026-07-27)
 
-以下任务随助教-学生关联功能一起删除：
+The following tasks were deleted together with the assistant-student association feature:
 
-- ~~助教 Portal: AssistantStudent 实体 + DbContext 更新~~
-- ~~助教 Portal: AssistantDbService 学生关联方法~~
-- ~~助教 Portal: AdminController 学生关联端点~~
-- ~~助教 Portal: RevokeAssistantRole 同步清理学生关联~~
-- ~~AssistantDbService 学生关联方法测试~~
-- ~~AdminController 学生关联端点测试~~
+- ~~Assistant Portal: AssistantStudent entity + DbContext update~~
+- ~~Assistant Portal: AssistantDbService student-association methods~~
+- ~~Assistant Portal: AdminController student-association endpoints~~
+- ~~Assistant Portal: RevokeAssistantRole also cleaning up student associations~~
+- ~~AssistantDbService student-association method tests~~
+- ~~AdminController student-association endpoint tests~~
 
-关联管理统一在学生管理页"关联账户"对话框完成。
+Association management is done uniformly in the "Linked accounts" dialog on the student management page.

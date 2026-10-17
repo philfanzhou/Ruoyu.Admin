@@ -1,51 +1,51 @@
-# MistakeManagement 约定
+# MistakeManagement Conventions
 
-## 命名约定
+## Naming conventions
 
-- Controller 路由：`api/admin/mistakes`（kebab-case）
-- 请求模型：PascalCase，定义在 Controller 文件内（如 `UpdateMistakeRequest`）
-- 响应字段：camelCase（匿名对象属性）
+- Controller route: `api/admin/mistakes` (kebab-case)
+- Request models: PascalCase, defined inside the Controller file (for example `UpdateMistakeRequest`)
+- Response fields: camelCase (anonymous-object properties)
 
-## 错误处理约定
+## Error handling conventions
 
-- 所有 endpoint 使用 try-catch 包裹，异常统一返回 500 + `ErrorResponse`
-- `ErrorResponse` 格式：`{ "message": "错误描述" }`
-- MigrateImages 中单张图片迁移失败时记录 Error 日志并保留原路径，不中断整体流程
+- Every endpoint is wrapped in try-catch; exceptions uniformly return 500 + `ErrorResponse`
+- `ErrorResponse` format: `{ "message": "error description" }`
+- In MigrateImages, a single-image migration failure logs an Error and keeps the original path without aborting the whole flow
 
-## gRPC 调用约定
+## gRPC calling conventions
 
-- 错题操作通过 `MistakeGrpcServiceClient` 调用
-- 学生姓名通过 `StudentManagementGrpcServiceClient.GetStudent` 获取
-- 图片迁移通过 `StudentLearningGrpcServiceClient.MigrateImagesToMistake` 调用（不再直接操作 OSS）
+- Mistake operations go through `MistakeGrpcServiceClient`
+- Student names are fetched via `StudentManagementGrpcServiceClient.GetStudent`
+- Image migration goes through `StudentLearningGrpcServiceClient.MigrateImagesToMistake` (no direct OSS operations anymore)
 
-## 日志约定
+## Logging conventions
 
-- 使用 `ILogger<MistakeController>` 记录日志
-- 错误日志：`_logger.LogError(ex, "Failed to ...")`
-- 迁移信息日志：`_logger.LogInformation("Migrated image from {OldPath} to {NewPath}", oldPath, newPath)`
-- 迁移错误日志：`_logger.LogError(ex, "Failed to migrate image {Path}", oldPath)`
-- 日志消息使用英文
+- Log with `ILogger<MistakeController>`
+- Error logs: `_logger.LogError(ex, "Failed to ...")`
+- Migration info logs: `_logger.LogInformation("Migrated image from {OldPath} to {NewPath}", oldPath, newPath)`
+- Migration error logs: `_logger.LogError(ex, "Failed to migrate image {Path}", oldPath)`
+- Log messages are in English
 
-## 分页约定
+## Pagination conventions
 
-- GetMistakeItems 支持分页，参数校验：page ≤ 0 → 1，size ≤ 0 → 10，size > 100 → 100
-- GetMistakesByUploadId 不支持分页，返回全部关联错题，total 为客户端计数
+- GetMistakeItems supports pagination with parameter validation: page ≤ 0 → 1, size ≤ 0 → 10, size > 100 → 100
+- GetMistakesByUploadId does not support pagination; it returns all associated mistakes, with total as a client-side count
 
-## 学生姓名获取约定
+## Student-name fetching conventions
 
-- 逐个调用 `StudentManagement.GetStudent`（非批量）
-- 查询失败时回退显示 studentId
-- 空白 studentId 跳过查询
+- Calls `StudentManagement.GetStudent` one by one (not batched)
+- Falls back to showing the studentId when the query fails
+- Skips the query for a whitespace studentId
 
-## MigrateImages 约定
+## MigrateImages conventions
 
-- 图片迁移委托给 Student gRPC `MigrateImagesToMistake`，路径映射由服务端处理
-- 同一请求内相同路径只迁移一次（pathMapping 缓存）
-- 迁移结果处理：成功 → 更新 region.SourceImagePath；失败 → 保留原路径，记录 Error 日志
-- 最后调用 UpdateMistakeItem 批量更新所有 sourceRegions（包括未迁移的）
+- Image migration is delegated to Student gRPC `MigrateImagesToMistake`; the path mapping is handled server-side
+- The same path is migrated only once within a request (the pathMapping cache)
+- Migration-result handling: success → update region.SourceImagePath; failure → keep the original path and log an Error
+- UpdateMistakeItem is called last to batch-update all sourceRegions (including unmigrated ones)
 
-## 响应字段差异约定
+## Response-field difference conventions
 
-- 列表接口（GetMistakeItems、GetMistakesByUploadId）：不返回 sourceRegions，返回 imageCount 和 firstImagePath
-- 详情接口（GetMistakeItem）：返回完整 sourceRegions（含 boundingBox）
-- 更新接口（UpdateMistakeItem）：返回精简字段（id, studentId, studentName, subject, grade, sourceUploadId, reviewStatus）
+- List endpoints (GetMistakeItems, GetMistakesByUploadId): do not return sourceRegions; return imageCount and firstImagePath
+- Detail endpoint (GetMistakeItem): returns the complete sourceRegions (with boundingBox)
+- Update endpoint (UpdateMistakeItem): returns trimmed fields (id, studentId, studentName, subject, grade, sourceUploadId, reviewStatus)

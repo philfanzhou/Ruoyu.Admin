@@ -1,44 +1,44 @@
-# 错题管理 (MistakeManagement)
+# Mistake Management (MistakeManagement)
 
-## 功能名称和一句话概括
+## Feature name and one-line summary
 
-**MistakeManagement** — 管理员查看、编辑错题记录及迁移错题图片存储路径。
+**MistakeManagement** — administrators view and edit mistake records and migrate mistake image storage paths.
 
-## 核心用户故事
+## Core user stories
 
-作为管理员，我希望查看和编辑错题记录并迁移图片存储路径，以便维护错题数据的准确性和存储一致性。
+As an administrator, I want to view and edit mistake records and migrate image storage paths so that mistake data stays accurate and storage stays consistent.
 
-## 补充约束
+## Supplementary constraints
 
-1. **幂等性**：图片迁移为幂等操作，所有路径已在 `mistakes/` 下时返回 migratedCount=0
-2. **并发**：迁移操作通过 `pathMapping` 字典缓存同一请求内相同旧路径只迁移一次，但跨请求无并发控制
-3. **事务边界**：单张图片迁移失败时不中断整体流程，仅记录 Error 日志并保留原路径；已迁移的图片不会回滚
-4. **失败降级**：查询学生姓名失败时回退显示 studentId
-5. **分页参数**：page ≤ 0 重置为 1，size ≤ 0 重置为 10，size > 100 限制为 100
-6. **迁移路径映射**：由 Student gRPC `MigrateImagesToMistake` 服务端处理（`uploads/xxx` → `mistakes/xxx`），Admin Portal 根据返回结果更新路径
-7. **UpdateMistakeItem 可选字段**：StudentId、Subject、Grade 均为可选，未传时使用默认值
+1. **Idempotency**: image migration is idempotent; when every path is already under `mistakes/` it returns migratedCount=0
+2. **Concurrency**: migration uses a `pathMapping` dictionary so the same old path is migrated only once within a request, but there is no cross-request concurrency control
+3. **Transaction boundary**: a single-image migration failure does not abort the whole flow; it only logs an Error and keeps the original path; already-migrated images are not rolled back
+4. **Failure degradation**: when the student-name lookup fails, the response falls back to showing the studentId
+5. **Pagination parameters**: page ≤ 0 resets to 1, size ≤ 0 resets to 10, size > 100 is capped at 100
+6. **Migration path mapping**: handled server-side by Student gRPC `MigrateImagesToMistake` (`uploads/xxx` → `mistakes/xxx`); the Admin Portal updates paths from the returned result
+7. **UpdateMistakeItem optional fields**: StudentId, Subject, and Grade are all optional; defaults are used when omitted
 
-## 关键验收条件摘要
+## Key acceptance conditions summary
 
-1. 可分页浏览错题记录列表，支持按学生、学科、年级、审核状态筛选
-2. 可查看单条错题详细信息，包含 sourceRegions 和 boundingBox
-3. 可根据上传记录查看关联的所有错题
-4. 可编辑错题的学生、学科、年级信息
-5. 可将错题图片从 `uploads/` 路径迁移到 `mistakes/` 路径
-6. 图片迁移幂等：所有路径已迁移时返回 migratedCount=0
-7. 列表接口不返回 sourceRegions 和 boundingBox，仅详情接口返回
+1. The mistake-record list can be browsed page by page, filterable by student, subject, grade, and review status
+2. A single mistake's details can be viewed, including sourceRegions and boundingBox
+3. All mistakes associated with an upload record can be viewed
+4. A mistake's student, subject, and grade information can be edited
+5. Mistake images can be migrated from the `uploads/` path to the `mistakes/` path
+6. Image migration is idempotent: when every path is already migrated, it returns migratedCount=0
+7. The list endpoints do not return sourceRegions and boundingBox; only the detail endpoint does
 
-## 范围外
+## Out of scope
 
-- 错题的创建（由上传记录分配产生）
-- 错题审核状态变更（由教师端完成）
-- 错题的批量删除
-- 错题内容的智能识别与标注
+- Creating mistakes (produced by upload-record assignment)
+- Changing mistake review status (done on the teacher side)
+- Batch deletion of mistakes
+- Intelligent recognition and annotation of mistake content
 
-## 文档索引
+## Document index
 
-- [02-SPEC.md](./02-SPEC.md) — 详细需求与验收标准清单
-- [03-DESIGN.md](./03-DESIGN.md) — 架构设计、接口签名与数据流
-- [04-TASKS.md](./04-TASKS.md) — 开发/验证任务列表
-- [05-TESTS.md](./05-TESTS.md) — 单元测试与集成测试计划
-- [06-CONVENTIONS.md](./06-CONVENTIONS.md) — 命名约定、日志安全与代码风格
+- [02-SPEC.md](./02-SPEC.md) — detailed requirements and acceptance criteria list
+- [03-DESIGN.md](./03-DESIGN.md) — architecture design, interface signatures, and data flow
+- [04-TASKS.md](./04-TASKS.md) — development/verification task list
+- [05-TESTS.md](./05-TESTS.md) — unit and integration test plan
+- [06-CONVENTIONS.md](./06-CONVENTIONS.md) — naming conventions, log safety, and code style

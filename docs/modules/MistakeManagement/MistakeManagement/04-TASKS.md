@@ -2,38 +2,38 @@
 [
   {
     "id": "task-1",
-    "title": "浏览错题列表",
-    "description": "管理员分页浏览错题记录列表，按学生、学科、年级、审核状态筛选",
+    "title": "Browse the mistake list",
+    "description": "The administrator browses the mistake-record list page by page, filtered by student, subject, grade, and review status",
     "endpoint": "GET /api/admin/mistakes",
-    "userStory": "作为管理员，我希望查看错题记录列表，以便了解错题数据概况"
+    "userStory": "As an administrator, I want to view the mistake-record list to get an overview of the mistake data"
   },
   {
     "id": "task-2",
-    "title": "查看错题详情",
-    "description": "管理员查看单条错题的详细信息，包括图片区域和边界框",
+    "title": "View mistake details",
+    "description": "The administrator views a single mistake's detailed information, including image regions and bounding boxes",
     "endpoint": "GET /api/admin/mistakes/{id}",
-    "userStory": "作为管理员，我希望查看错题的详细信息，以便了解错题的具体内容"
+    "userStory": "As an administrator, I want to view a mistake's detailed information to understand its specific content"
   },
   {
     "id": "task-3",
-    "title": "按上传记录查看错题",
-    "description": "管理员根据上传记录 ID 查看关联的所有错题",
+    "title": "View mistakes by upload record",
+    "description": "The administrator views all the mistakes associated with an upload record ID",
     "endpoint": "GET /api/admin/mistakes/by-upload/{uploadId}",
-    "userStory": "作为管理员，我希望按上传记录查看关联错题，以便追踪图片分配结果"
+    "userStory": "As an administrator, I want to view the associated mistakes by upload record to trace the image-assignment results"
   },
   {
     "id": "task-4",
-    "title": "编辑错题信息",
-    "description": "管理员编辑错题的学生、学科、年级信息",
+    "title": "Edit mistake information",
+    "description": "The administrator edits a mistake's student, subject, and grade information",
     "endpoint": "PUT /api/admin/mistakes/{id}",
-    "userStory": "作为管理员，我希望修改错题的分类信息，以便纠正错误分类"
+    "userStory": "As an administrator, I want to change a mistake's classification information to correct a wrong classification"
   },
   {
     "id": "task-5",
-    "title": "迁移错题图片",
-    "description": "将错题图片从 uploads/ 路径迁移到 mistakes/ 路径",
+    "title": "Migrate mistake images",
+    "description": "Migrate the mistake's images from the uploads/ path to the mistakes/ path",
     "endpoint": "POST /api/admin/mistakes/migrate-images/{id}",
-    "userStory": "作为管理员，我希望将图片迁移到正确的存储路径，以便保持数据存储一致性"
+    "userStory": "As an administrator, I want to migrate images to the correct storage path to keep data storage consistent"
   }
 ]
 ```

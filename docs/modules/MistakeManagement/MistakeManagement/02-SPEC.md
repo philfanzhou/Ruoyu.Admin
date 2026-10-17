@@ -1,35 +1,35 @@
 # MistakeManagement API
 
-## 接口列表
+## Endpoint list
 
-| 方法 | 路径 | 说明 |
+| Method | Path | Description |
 |------|------|------|
-| GET | /api/admin/mistakes | 获取错题列表 |
-| GET | /api/admin/mistakes/{id} | 获取单个错题详情 |
-| GET | /api/admin/mistakes/by-upload/{uploadId} | 根据上传记录获取错题 |
-| PUT | /api/admin/mistakes/{id} | 更新错题信息 |
-| POST | /api/admin/mistakes/migrate-images/{id} | 迁移错题图片 |
+| GET | /api/admin/mistakes | Get the mistake list |
+| GET | /api/admin/mistakes/{id} | Get a single mistake's details |
+| GET | /api/admin/mistakes/by-upload/{uploadId} | Get the mistakes of an upload record |
+| PUT | /api/admin/mistakes/{id} | Update mistake information |
+| POST | /api/admin/mistakes/migrate-images/{id} | Migrate mistake images |
 
 ---
 
 ### GET /api/admin/mistakes
 
-分页获取错题记录列表，支持多种筛选条件。
+Get the mistake-record list page by page, supporting multiple filter conditions.
 
-**查询参数：**
+**Query parameters:**
 
-| 参数 | 类型 | 必需 | 默认值 | 说明 |
+| Parameter | Type | Required | Default | Description |
 |------|------|------|--------|------|
-| studentId | string | 否 | - | 学生 ID |
-| subject | int | 否 | - | 科目 |
-| grade | int | 否 | - | 年级 |
-| reviewStatus | int | 否 | - | 审核状态（对应 ReviewStatus 枚举） |
-| page | int | 否 | 1 | 页码（≤0 重置为 1） |
-| size | int | 否 | 20 | 每页大小（≤0 重置为 10，>100 限制为 100） |
+| studentId | string | no | - | student ID |
+| subject | int | no | - | subject |
+| grade | int | no | - | grade |
+| reviewStatus | int | no | - | review status (corresponds to the ReviewStatus enum) |
+| page | int | no | 1 | page number (≤0 resets to 1) |
+| size | int | no | 20 | page size (≤0 resets to 10, >100 capped at 100) |
 
-**gRPC 调用：** `Mistake.GetMistakeItemList`
+**gRPC call:** `Mistake.GetMistakeItemList`
 
-**响应：**
+**Response:**
 
 ```json
 {
@@ -37,7 +37,7 @@
     {
       "id": "string",
       "studentId": "string",
-      "studentName": "张三",
+      "studentName": "Zhang San",
       "subject": 1,
       "grade": 1,
       "sourceUploadId": "string",
@@ -60,31 +60,31 @@
 }
 ```
 
-**说明：** `imageCount` 为 `sourceRegions.Count`，`firstImagePath` 为第一个 sourceRegion 的 `SourceImagePath`。
+**Notes:** `imageCount` is `sourceRegions.Count`, and `firstImagePath` is the first sourceRegion's `SourceImagePath`.
 
-**错误响应：** 500 - Failed to get mistake items
+**Error response:** 500 - Failed to get mistake items
 
 ---
 
 ### GET /api/admin/mistakes/{id}
 
-获取指定错题的详细信息，包含 sourceRegions 和 boundingBox。
+Get the specified mistake's detailed information, including sourceRegions and boundingBox.
 
-**路径参数：**
+**Path parameters:**
 
-| 参数 | 类型 | 说明 |
+| Parameter | Type | Description |
 |------|------|------|
-| id | string | 错题 ID |
+| id | string | mistake ID |
 
-**gRPC 调用：** `Mistake.GetMistakeItem`
+**gRPC call:** `Mistake.GetMistakeItem`
 
-**响应：**
+**Response:**
 
 ```json
 {
   "id": "string",
   "studentId": "string",
-  "studentName": "张三",
+  "studentName": "Zhang San",
   "subject": 1,
   "grade": 1,
   "sourceUploadId": "string",
@@ -112,25 +112,25 @@
 }
 ```
 
-**说明：** `boundingBox` 可能为 null（当 gRPC 响应中 BoundingBox 为 null 时）。
+**Notes:** `boundingBox` may be null (when BoundingBox is null in the gRPC response).
 
-**错误响应：** 500 - Failed to get mistake item
+**Error response:** 500 - Failed to get mistake item
 
 ---
 
 ### GET /api/admin/mistakes/by-upload/{uploadId}
 
-获取指定上传记录关联的所有错题。
+Get all the mistakes associated with the specified upload record.
 
-**路径参数：**
+**Path parameters:**
 
-| 参数 | 类型 | 说明 |
+| Parameter | Type | Description |
 |------|------|------|
-| uploadId | string | 上传记录 ID |
+| uploadId | string | upload record ID |
 
-**gRPC 调用：** `Mistake.GetMistakeItemsByUpload`
+**gRPC call:** `Mistake.GetMistakeItemsByUpload`
 
-**响应：**
+**Response:**
 
 ```json
 {
@@ -139,23 +139,23 @@
 }
 ```
 
-**说明：** `total` 为 items.Count（客户端计数，非服务端分页），不支持分页参数。
+**Notes:** `total` is items.Count (a client-side count, not server-side pagination); pagination parameters are not supported.
 
-**错误响应：** 500 - Failed to get mistakes by upload id
+**Error response:** 500 - Failed to get mistakes by upload id
 
 ---
 
 ### PUT /api/admin/mistakes/{id}
 
-更新指定错题的学生、学科、年级信息。
+Update the specified mistake's student, subject, and grade information.
 
-**路径参数：**
+**Path parameters:**
 
-| 参数 | 类型 | 说明 |
+| Parameter | Type | Description |
 |------|------|------|
-| id | string | 错题 ID |
+| id | string | mistake ID |
 
-**请求体：**
+**Request body:**
 
 ```json
 {
@@ -165,20 +165,20 @@
 }
 ```
 
-**请求字段说明：**
-- `studentId` (string?, 可选): 学生 ID，为空时传空字符串给 gRPC
-- `subject` (int?, 可选): 科目，为空时传 0 给 gRPC
-- `grade` (int?, 可选): 年级，为空时传 0 给 gRPC
+**Request field notes:**
+- `studentId` (string?, optional): student ID; when empty, an empty string is passed to gRPC
+- `subject` (int?, optional): subject; when empty, 0 is passed to gRPC
+- `grade` (int?, optional): grade; when empty, 0 is passed to gRPC
 
-**gRPC 调用：** `Mistake.UpdateMistakeItem`
+**gRPC call:** `Mistake.UpdateMistakeItem`
 
-**响应：**
+**Response:**
 
 ```json
 {
   "id": "string",
   "studentId": "string",
-  "studentName": "张三",
+  "studentName": "Zhang San",
   "subject": 1,
   "grade": 1,
   "sourceUploadId": "string",
@@ -186,58 +186,58 @@
 }
 ```
 
-**错误响应：** 500 - Failed to update mistake item
+**Error response:** 500 - Failed to update mistake item
 
 ---
 
 ### POST /api/admin/mistakes/migrate-images/{id}
 
-将错题图片从 `uploads/` 路径迁移到 `mistakes/` 路径。
+Migrate the mistake's images from the `uploads/` path to the `mistakes/` path.
 
-**路径参数：**
+**Path parameters:**
 
-| 参数 | 类型 | 说明 |
+| Parameter | Type | Description |
 |------|------|------|
-| id | string | 错题 ID |
+| id | string | mistake ID |
 
-**执行流程：**
-1. 调用 `Mistake.GetMistakeItem` 获取错题详情
-2. 筛选 `sourceRegions` 中 `SourceImagePath` 以 `uploads/` 开头的区域，去重得到 `sourcePaths`
-3. 调用 `StudentLearning.MigrateImagesToMistake` gRPC 接口，传入 `sourcePaths`
-4. 遍历 gRPC 返回的每张图片迁移结果：
-   - 成功 → 将 `sourcePath → newPath` 记入 pathMapping，更新 region 的 `SourceImagePath` 为新路径
-   - 失败 → 记录 Error 日志，保留原路径
-5. 调用 `Mistake.UpdateMistakeItem` 更新错题的 sourceRegions
+**Execution flow:**
+1. Call `Mistake.GetMistakeItem` to get the mistake details
+2. Filter the regions in `sourceRegions` whose `SourceImagePath` starts with `uploads/`, deduplicate into `sourcePaths`
+3. Call the `StudentLearning.MigrateImagesToMistake` gRPC interface with `sourcePaths`
+4. Iterate the per-image migration results returned by gRPC:
+   - success → record `sourcePath → newPath` in pathMapping and update the region's `SourceImagePath` to the new path
+   - failure → log an Error and keep the original path
+5. Call `Mistake.UpdateMistakeItem` to update the mistake's sourceRegions
 
-**响应（无需迁移）：**
+**Response (nothing to migrate):**
 
 ```json
 {
   "success": true,
-  "message": "所有图片路径已在 mistakes 下，无需迁移",
+  "message": "All image paths are already under mistakes; nothing to migrate",
   "migratedCount": 0
 }
 ```
 
-**响应（有迁移）：**
+**Response (with migration):**
 
 ```json
 {
   "success": true,
-  "message": "已迁移 3 张图片",
+  "message": "Migrated 3 images",
   "migratedCount": 3
 }
 ```
 
-**错误响应：**
-- 500 - Failed to migrate images（gRPC 调用异常、GetMistakeItem 异常、UpdateMistakeItem 异常等）
+**Error responses:**
+- 500 - Failed to migrate images (gRPC call exception, GetMistakeItem exception, UpdateMistakeItem exception, etc.)
 
 ---
 
-## 通用错误格式
+## Common error format
 
 ```json
 {
-  "message": "错误描述"
+  "message": "error description"
 }
 ```

@@ -1,52 +1,52 @@
-# 助教管理 — 测试规格
+# Assistant Management — Test Specification
 
-> 以下转发调用方 Authorization 的描述是历史方案。当前代理只发送服务器票据内 token，并拒绝入站 Authorization；当前规则见根目录 AGENTS.md 和 docs/api.md。
+> The description below about forwarding the caller's Authorization is a historical design. The current proxy sends only the in-ticket server token and rejects inbound Authorization; the current rules are in the root AGENTS.md and docs/api.md.
 
-## 1. AssistantPortalProxyMiddleware 测试
+## 1. AssistantPortalProxyMiddleware tests
 
-与 TeacherPortalProxyMiddleware 测试对称:
+Symmetric with the TeacherPortalProxyMiddleware tests:
 
-| 场景 | 预期 |
+| Scenario | Expected |
 |------|------|
-| 非 /api/assistant-portal 请求 | 直接 next，不代理 |
-| /api/assistant-portal/admin/assistants | 转发到 {Address}/api/admin/assistants |
-| /api/assistant-portal/auth/check-assistant | 转发到 {Address}/api/auth/check-assistant |
-| Assistant Portal 未配置 | 返回 503 |
-| Assistant Portal 不可达 | 返回 502 |
-| Authorization Bearer 原样转发 | 原样转发调用方的 Authorization 头，下游校验 role:admin |
-| POST 请求体转发 | 请求体正确转发 |
+| Non-/api/assistant-portal request | goes straight to next, not proxied |
+| /api/assistant-portal/admin/assistants | forwarded to {Address}/api/admin/assistants |
+| /api/assistant-portal/auth/check-assistant | forwarded to {Address}/api/auth/check-assistant |
+| Assistant Portal not configured | returns 503 |
+| Assistant Portal unreachable | returns 502 |
+| Authorization Bearer forwarded verbatim | the caller's Authorization header is forwarded verbatim; downstream checks role:admin |
+| POST request body forwarded | the request body is forwarded correctly |
 
-## 2. AssistantDbService 测试
+## 2. AssistantDbService tests
 
-| 方法 | 场景 | 预期 |
+| Method | Scenario | Expected |
 |------|------|------|
-| AddAssistantByUserId | 新增 | 助教创建成功，含科目 |
-| GetByUserId | 存在 | 返回助教实体，含科目列表 |
-| GetByUserId | 不存在 | 返回 null |
-| SetSubjectsByUserId | 整体设置 | 旧科目清除，新科目写入 |
-| AddSubjectByUserId | 新增 | 科目关联成功 |
-| AddSubjectByUserId | 重复 | 幂等，不报错 |
-| RemoveSubjectByUserId | 存在 | 删除成功 |
-| RemoveSubjectByUserId | 不存在 | 返回 null |
-| RemoveAssistantByUserId | 撤销 | 助教及其科目被删除 |
+| AddAssistantByUserId | create | the assistant is created successfully, with subjects |
+| GetByUserId | exists | returns the assistant entity, with the subject list |
+| GetByUserId | missing | returns null |
+| SetSubjectsByUserId | full set | the old subjects are cleared and the new ones written |
+| AddSubjectByUserId | add | the subject association succeeds |
+| AddSubjectByUserId | duplicate | idempotent, no error |
+| RemoveSubjectByUserId | exists | removed successfully |
+| RemoveSubjectByUserId | missing | returns null |
+| RemoveAssistantByUserId | revoke | the assistant and their subjects are deleted |
 
-## 3. AdminController 端点测试
+## 3. AdminController endpoint tests
 
-| 端点 | 场景 | 预期 |
+| Endpoint | Scenario | Expected |
 |------|------|------|
-| GET /assistants | 正常 | 200 + 助教列表 |
-| POST /identity-users/{userId}/grant-assistant | 正常 | 200 + 成功 |
-| POST /identity-users/{userId}/revoke-assistant | 正常 | 200 + 成功 |
-| GET /assistants/{userId}/subjects | 正常 | 200 + 科目列表 |
-| PUT /assistants/{userId}/subjects | 正常 | 200 + 成功 |
-| POST /assistants/{userId}/subjects/{subject} | 正常 | 200 |
-| DELETE /assistants/{userId}/subjects/{subject} | 正常 | 200 |
-| GET /available-subjects | 正常 | 200 + 科目选项 |
+| GET /assistants | normal | 200 + the assistant list |
+| POST /identity-users/{userId}/grant-assistant | normal | 200 + success |
+| POST /identity-users/{userId}/revoke-assistant | normal | 200 + success |
+| GET /assistants/{userId}/subjects | normal | 200 + the subject list |
+| PUT /assistants/{userId}/subjects | normal | 200 + success |
+| POST /assistants/{userId}/subjects/{subject} | normal | 200 |
+| DELETE /assistants/{userId}/subjects/{subject} | normal | 200 |
+| GET /available-subjects | normal | 200 + subject options |
 
-## 4. 已移除测试
+## 4. Removed tests
 
-以下测试已随功能一起删除（2026-07-27）：
+The following tests were deleted together with the feature (2026-07-27):
 
-- `GetAssistantStudents_*` — 随 `GET /api/admin/assistants/{userId}/students` 端点删除
-- `AddAssistantStudent_*` — 随 `POST /api/admin/assistants/{userId}/students/{studentId}` 端点删除
-- `RemoveAssistantStudent_*` — 随 `DELETE /api/admin/assistants/{userId}/students/{studentId}` 端点删除
+- `GetAssistantStudents_*` — deleted with the `GET /api/admin/assistants/{userId}/students` endpoint
+- `AddAssistantStudent_*` — deleted with the `POST /api/admin/assistants/{userId}/students/{studentId}` endpoint
+- `RemoveAssistantStudent_*` — deleted with the `DELETE /api/admin/assistants/{userId}/students/{studentId}` endpoint

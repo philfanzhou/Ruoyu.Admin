@@ -1,49 +1,49 @@
-# 助教管理 — 技术设计
+# Assistant Management — Technical Design
 
-> 以下转发调用方 Authorization 的描述是历史方案。当前代理只发送服务器票据内 token，并拒绝入站 Authorization；当前规则见根目录 AGENTS.md 和 docs/api.md。
+> The description below about forwarding the caller's Authorization is a historical design. The current proxy sends only the in-ticket server token and rejects inbound Authorization; the current rules are in the root AGENTS.md and docs/api.md.
 
-## 1. Admin Portal 后端
+## 1. Admin Portal backend
 
 ### 1.1 AssistantPortalProxyMiddleware
 
-- 位置: `backend/Admin.WebApi/AssistantPortalProxyMiddleware.cs`
-- 模式: 与 TeacherPortalProxyMiddleware 完全对称
-- 注册: Program.cs 中 `app.UseMiddleware<AssistantPortalProxyMiddleware>()`
-- 配置: `AssistantPortalOptions`（Url）
-- 认证: 原样转发调用方 `Authorization: Bearer`，下游 `[Authorize(Roles="admin")]` 校验；不再注入静态 `X-Admin-Key`
-- HttpClient: 复用或新建 `IHttpClientFactory("AssistantPortal")`
+- Location: `backend/Admin.WebApi/AssistantPortalProxyMiddleware.cs`
+- Pattern: fully symmetric with TeacherPortalProxyMiddleware
+- Registration: `app.UseMiddleware<AssistantPortalProxyMiddleware>()` in Program.cs
+- Configuration: `AssistantPortalOptions` (Url)
+- Authentication: forwards the caller's `Authorization: Bearer` verbatim; downstream checks `[Authorize(Roles="admin")]`; the static `X-Admin-Key` is no longer injected
+- HttpClient: reuse or create `IHttpClientFactory("AssistantPortal")`
 
-### 1.2 配置变更
+### 1.2 Configuration changes
 
-- `appsettings.json`: 添加 `AssistantPortal` 配置节
+- `appsettings.json`: add the `AssistantPortal` configuration section
 - `Program.cs`:
   - `builder.Services.Configure<AssistantPortalOptions>(...)`
   - `builder.Services.AddHttpClient("AssistantPortal", ...)`
   - `app.UseMiddleware<AssistantPortalProxyMiddleware>()`
-  - 日志输出 AssistantPortal 地址
+  - Log the AssistantPortal address at startup
 
-## 2. Assistant Portal 后端
+## 2. Assistant Portal backend
 
-### 2.1 AdminController 端点
+### 2.1 AdminController endpoints
 
-保留的端点：
-- `GET /api/admin/assistants` — 获取助教列表
-- `POST /api/admin/identity-users/{userId}/grant-assistant` — 授予助教权限
-- `POST /api/admin/identity-users/{userId}/revoke-assistant` — 撤销助教权限
-- `GET/PUT/POST/DELETE /api/admin/assistants/{userId}/subjects[/{subject}]` — 科目管理
-- `GET /api/admin/available-subjects` — 可用科目列表
+Retained endpoints:
+- `GET /api/admin/assistants` — get the assistant list
+- `POST /api/admin/identity-users/{userId}/grant-assistant` — grant assistant permission
+- `POST /api/admin/identity-users/{userId}/revoke-assistant` — revoke assistant permission
+- `GET/PUT/POST/DELETE /api/admin/assistants/{userId}/subjects[/{subject}]` — subject management
+- `GET /api/admin/available-subjects` — available subject list
 
-### 2.2 数据库
+### 2.2 Database
 
-`AssistantDbContext` 包含 `AssistantAccounts` 和 `AssistantSubjects` 两张表，无学生关联表。
+`AssistantDbContext` contains the two tables `AssistantAccounts` and `AssistantSubjects`, with no student-association table.
 
-## 3. Admin Portal 前端
+## 3. Admin Portal frontend
 
-### 3.1 API 客户端
+### 3.1 API client
 
 `frontend/src/services/assistantPortalApi.ts`
 
-接口与 `teacherPortalApi.ts` 对称:
+Interfaces symmetric with `teacherPortalApi.ts`:
 - `getAssistants()`
 - `grantAssistant(userId, { subjects })`
 - `revokeAssistant(userId)`
@@ -53,30 +53,30 @@
 - `removeAssistantSubject(userId, subject)`
 - `getAvailableSubjects()`
 
-### 3.2 视图组件
+### 3.2 View component
 
 `frontend/src/views/AssistantView.vue`
 
-布局与 TeacherView.vue 对称:
-- 主表格: 头像 / User ID / 手机号 / 用户名 / 备注 / 科目 / 创建时间 / 操作（科目、撤销）
-- 授予权限弹窗: 搜索 Identity 用户 → 选择科目
-- 科目管理弹窗: 批量编辑科目
+Layout symmetric with TeacherView.vue:
+- Main table: avatar / User ID / phone number / username / remark / subjects / creation time / actions (subjects, revoke)
+- Grant-permission dialog: search Identity users → choose subjects
+- Subject-management dialog: batch-edit subjects
 
-### 3.3 路由
+### 3.3 Routing
 
-`router/index.ts` 新增:
+`router/index.ts` adds:
 ```ts
 {
   path: '/assistants',
   name: 'assistants',
   component: () => import('../views/AssistantView.vue'),
-  meta: { title: '助教管理' }
+  meta: { title: 'Assistant Management' }
 }
 ```
 
-侧边导航需同步添加入口。
+The side navigation needs a matching entry.
 
-## 4. 已移除功能
+## 4. Removed features
 
-- **关联账户管理**：原设计提供 `PUT /api/admin/assistants/{userId}/user-id` 端点更换 userId。已于 2026-07-27 删除。
-- **助教-学生关联**：原设计提供 `GET/POST/DELETE /api/admin/assistants/{userId}/students[/{studentId}]` 端点和 `AssistantStudent` 实体表。已于 2026-07-27 删除前后端实现。关联管理统一在学生管理页完成。
+- **Linked-account management**: the original design provided a `PUT /api/admin/assistants/{userId}/user-id` endpoint to change the userId. Deleted on 2026-07-27.
+- **Assistant-student association**: the original design provided `GET/POST/DELETE /api/admin/assistants/{userId}/students[/{studentId}]` endpoints and an `AssistantStudent` entity table. The frontend and backend implementations were deleted on 2026-07-27. Association management is done uniformly on the student management page.
