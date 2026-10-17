@@ -1,43 +1,43 @@
-# 学生增删改查 (StudentCRUD)
+# Student CRUD (StudentCRUD)
 
-## 功能名称和一句话概括
+## Feature name and one-line summary
 
-**StudentCRUD** — 管理员对学生档案的完整增删改查及选项数据查询。
+**StudentCRUD** — full create, read, update, and delete over student profiles by administrators, plus option-data queries.
 
-## 核心用户故事
+## Core user stories
 
-作为管理员，我希望对学生档案进行创建、查询、修改和删除，以便维护系统中的学生基础数据。
+As an administrator, I want to create, query, update, and delete student profiles so that the system's base student data is maintained.
 
-## 补充约束
+## Supplementary constraints
 
-1. **幂等性**：创建操作非幂等（重复提交会创建多条记录）；更新和删除为幂等操作
-2. **并发**：无显式并发控制，依赖数据库行级锁
-3. **事务边界**：单次创建/更新/删除在单一 gRPC 调用内完成，无跨服务事务
-4. **失败降级**：科目选项通过 gRPC 调用 Student 服务获取，服务不可用时返回错误；年级选项由 Controller 静态字典提供，无外部依赖
-5. **分页参数**：page 默认 1（最小 1），pageSize 默认 20（范围 1-100）
-6. **身份账户校验**：创建时 IdentityAccountIds 必填且必须为合法 GUID 格式；更新时可选，若提供则必须为合法 GUID 格式
+1. **Idempotency**: create is not idempotent (repeated submissions create multiple records); update and delete are idempotent
+2. **Concurrency**: no explicit concurrency control; relies on database row-level locks
+3. **Transaction boundary**: a single create/update/delete completes within one gRPC call; no cross-service transactions
+4. **Failure degradation**: subject options are fetched from the Student service over gRPC and return an error when the service is unavailable; grade options come from a static dictionary in the Controller with no external dependency
+5. **Pagination parameters**: page defaults to 1 (minimum 1), pageSize defaults to 20 (range 1-100)
+6. **Identity account validation**: on create, IdentityAccountIds is required and every entry must be a legal GUID; on update it is optional, but every provided entry must be a legal GUID
 
-## 关键验收条件摘要
+## Key acceptance conditions summary
 
-1. 创建学生档案时姓名必填，年级必须为 1-12 有效值，至少关联一个合法 GUID 格式的身份账户 ID
-2. 更新学生档案时姓名必填，年级必须为 1-12 有效值，IdentityAccountIds 可选
-3. 删除学生档案后该学生不再出现在列表查询中
-4. 分页查询支持按姓名和年级筛选，返回分页结果
-5. 查看单个学生返回完整详细信息
-6. 年级选项接口返回 1-12 年级静态标签，不依赖外部服务
-7. 科目选项接口通过 gRPC 调用 Student 服务返回动态科目列表
+1. Creating a student profile requires a name, a grade that is a valid 1-12 value, and at least one identity account ID in legal GUID format
+2. Updating a student profile requires a name and a valid 1-12 grade; IdentityAccountIds is optional
+3. After a student profile is deleted, that student no longer appears in list queries
+4. Paged queries support filtering by name and grade and return paged results
+5. Viewing a single student returns the complete detailed information
+6. The grade options endpoint returns static 1-12 grade labels without depending on external services
+7. The subject options endpoint returns the dynamic subject list via a gRPC call to the Student service
 
-## 范围外
+## Out of scope
 
-- 学生档案的批量导入/导出
-- 学生档案的软删除与恢复
-- 学生数据的跨服务聚合查询
-- 身份账户的创建与管理（见 AccountLinking）
+- Batch import/export of student profiles
+- Soft delete and restoration of student profiles
+- Cross-service aggregate queries over student data
+- Creation and management of identity accounts (see AccountLinking)
 
-## 文档索引
+## Document index
 
-- [02-SPEC.md](./02-SPEC.md) — 详细需求与验收标准清单
-- [03-DESIGN.md](./03-DESIGN.md) — 架构设计、接口签名与数据流
-- [04-TASKS.md](./04-TASKS.md) — 开发/验证任务列表
-- [05-TESTS.md](./05-TESTS.md) — 单元测试与集成测试计划
-- [06-CONVENTIONS.md](./06-CONVENTIONS.md) — 命名约定、日志安全与代码风格
+- [02-SPEC.md](./02-SPEC.md) — detailed requirements and acceptance criteria list
+- [03-DESIGN.md](./03-DESIGN.md) — architecture design, interface signatures, and data flow
+- [04-TASKS.md](./04-TASKS.md) — development/verification task list
+- [05-TESTS.md](./05-TESTS.md) — unit and integration test plan
+- [06-CONVENTIONS.md](./06-CONVENTIONS.md) — naming conventions, log safety, and code style

@@ -1,76 +1,76 @@
-# OpenSubjectManagement — 约定与规范 (CONVENTIONS)
+# OpenSubjectManagement — Conventions and Standards (CONVENTIONS)
 
-## 命名约定
+## Naming conventions
 
-- **命名空间**：`Admin.WebApi.Controllers`、`Admin.WebApi.Models`。
-- **类名**：DTO 采用 `XxxDto` 后缀；请求采用 `XxxRequest` 后缀；选项采用 `XxxOption` 后缀；子项采用 `XxxItem` 后缀。
-- **record 类型**：Model 使用 `record`（不可变）。注意 `OpenSubjectDto`、`SetOpenSubjectsRequest`、`SubjectItem`、`SubjectOption` 为 `public record`（非 sealed），与项目中其他 Model 的 `sealed record` 不同。
-- **方法名**：Controller 动作使用 PascalCase（如 `GetStudentOpenSubjects`、`SetStudentOpenSubjects`）。
-- **私有字段**：采用 `_camelCase` 下划线前缀（如 `_grpcClient`、`_logger`）。
-- **路由**：Controller 级别 `[Route("api/admin/students")]`，动作级别 `"{studentId:guid}/open-subjects"`。
+- **Namespaces**: `Admin.WebApi.Controllers`, `Admin.WebApi.Models`.
+- **Class names**: DTOs use the `XxxDto` suffix; requests use `XxxRequest`; options use `XxxOption`; sub-items use `XxxItem`.
+- **record types**: Models use `record` (immutable). Note that `OpenSubjectDto`, `SetOpenSubjectsRequest`, `SubjectItem`, and `SubjectOption` are `public record` (not sealed), unlike the `sealed record` of the project's other Models.
+- **Method names**: Controller actions use PascalCase (for example `GetStudentOpenSubjects`, `SetStudentOpenSubjects`).
+- **Private fields**: `_camelCase` with the underscore prefix (for example `_grpcClient`, `_logger`).
+- **Routes**: controller-level `[Route("api/admin/students")]`, action-level `"{studentId:guid}/open-subjects"`.
 
-## JSON 序列化约定
+## JSON serialization conventions
 
-- **属性命名**：ASP.NET Core 默认 camelCase 序列化策略。
+- **Property naming**: ASP.NET Core's default camelCase serialization strategy.
   - `OpenSubjectDto.OpenStartDate` → JSON `"openStartDate"`
-  - `OpenSubjectDto.OpenEndDate` → JSON `"openEndDate"`（null 时 JSON 中为 null 或不出现）
+  - `OpenSubjectDto.OpenEndDate` → JSON `"openEndDate"` (null in JSON means absent or null)
   - `OpenSubjectDto.IsActive` → JSON `"isActive"`
   - `SubjectItem.Subject` → JSON `"subject"`
   - `SetOpenSubjectsRequest.Subjects` → JSON `"subjects"`
   - `SubjectOption.DisplayName` → JSON `"displayName"`
-- **日期格式**：OpenStartDate/OpenEndDate 使用 `string` 类型，格式为 DateOnly（如 "2024-01-01"），由 `DateOnly.TryParse` 校验。
-- **可空字段**：`OpenEndDate` 为 `string?`，JSON 中 null 表示无限期开放。
+- **Date format**: OpenStartDate/OpenEndDate use the `string` type in DateOnly format (for example "2024-01-01"), validated by `DateOnly.TryParse`.
+- **Nullable fields**: `OpenEndDate` is `string?`; null in JSON means open-ended.
 
-## 日志和安全要求
+## Logging and security requirements
 
-- **禁止记录敏感信息**：StudentId 仅在错误上下文中记录。
-- **日志级别**：
-  - `Warning`：非致命错误[推断]。
-  - `Error`：gRPC 调用严重错误[推断]。
-- **错误消息**：对外返回的错误消息为英文简短描述，不包含 gRPC 内部细节。
+- **Never log sensitive information**: StudentId is logged only in error contexts.
+- **Log levels**:
+  - `Warning`: non-fatal errors [inferred].
+  - `Error`: severe gRPC call errors [inferred].
+- **Error messages**: externally returned error messages are short English descriptions containing no internal gRPC details.
 
-## 错误消息格式约定
+## Error message format conventions
 
-| 场景 | 消息文本（英文） |
+| Scenario | Message text (English) |
 | --- | --- |
-| 无效科目值 | `"Invalid subject value: {subject}"` |
-| OpenStartDate 为空 | `"Open start date is required"` |
-| 非法 OpenStartDate 格式 | `"Invalid start date format: {value}"` |
-| 非法 OpenEndDate 格式 | `"Invalid end date format: {value}"` |
-| gRPC InvalidArgument | 使用 gRPC 返回的 `Status.Detail` |
-| gRPC Success=false | 使用 gRPC 返回的 `ErrorMessage` |
-| 设置成功 | `"Open subjects updated successfully."` |
+| Invalid subject value | `"Invalid subject value: {subject}"` |
+| Empty OpenStartDate | `"Open start date is required"` |
+| Illegal OpenStartDate format | `"Invalid start date format: {value}"` |
+| Illegal OpenEndDate format | `"Invalid end date format: {value}"` |
+| gRPC InvalidArgument | uses the gRPC-returned `Status.Detail` |
+| gRPC Success=false | uses the gRPC-returned `ErrorMessage` |
+| Set succeeded | `"Open subjects updated successfully."` |
 
-> 注：SetStudentOpenSubjects 的 gRPC Success=false 返回 400 Bad Request，与 UpdateStudent/DeleteStudent 返回 404 Not Found 不同。
+> Note: SetStudentOpenSubjects returns 400 Bad Request on gRPC Success=false, unlike UpdateStudent/DeleteStudent which return 404 Not Found.
 
-## 日期处理约定
+## Date handling conventions
 
-- **输入校验**：使用 `DateOnly.TryParse` 校验日期字符串格式。
-- **输出格式化**：OpenEndDate 使用 `SubjectConstants.DateFormat` 格式化后传入 gRPC 请求。
-- **空值处理**：OpenEndDate 为 null 时，gRPC 请求中传入空字符串 `""`。
-- **gRPC 响应映射**：gRPC 返回的 OpenEndDate 为空字符串时，映射为 C# `null`。
+- **Input validation**: date-string formats are validated with `DateOnly.TryParse`.
+- **Output formatting**: OpenEndDate is formatted with `SubjectConstants.DateFormat` before going into the gRPC request.
+- **Empty-value handling**: when OpenEndDate is null, the gRPC request passes the empty string `""`.
+- **gRPC response mapping**: an empty-string OpenEndDate returned by gRPC maps to C# `null`.
 
-## 科目校验约定
+## Subject validation conventions
 
-- **校验方法**：使用 `SubjectConstants.IsValid(int subject)` 静态方法校验科目值有效性。
-- **校验时机**：在 Controller 层 SetStudentOpenSubjects 方法中，遍历每个 SubjectItem 时逐一校验。
-- **校验失败行为**：立即返回 400，不继续校验后续 SubjectItem。
-- **科目值来源**：有效科目值由 `Ruoyu.Admin.Common.Constants.SubjectConstants` 定义。
+- **Validation method**: subject values are validated with the static `SubjectConstants.IsValid(int subject)`.
+- **Validation timing**: in the Controller layer's SetStudentOpenSubjects, validated one by one while iterating the SubjectItems.
+- **Validation failure behavior**: returns 400 immediately without validating the remaining SubjectItems.
+- **Source of subject values**: valid subject values are defined by `Ruoyu.Admin.Common.Constants.SubjectConstants`.
 
-## 测试工具要求
+## Test tooling requirements
 
-- **框架**：`xUnit` 2.x。
-- **Mock**：`Moq` 4.x；gRPC Client 通过 Mock 替换。
-- **断言风格**：现有模型测试使用 `FluentAssertions`（`Should().Be()`）；Controller 测试建议保持一致。
-- **异步**：测试方法必须为 `async Task`，使用 `await` 调用被测代码。
-- **测试命名**：`Constructor_ShouldSetPropertiesCorrectly`（模型层）；Controller 层建议使用 `[方法名]_[场景]_[预期行为]`。
-- **SubjectConstants 依赖**：测试中需确认 `SubjectConstants.IsValid` 的行为，可能需要通过集成测试验证[待确认]。
+- **Framework**: `xUnit` 2.x.
+- **Mocks**: `Moq` 4.x; the gRPC client is replaced with a Mock.
+- **Assertion style**: the existing model tests use `FluentAssertions` (`Should().Be()`); Controller tests should stay consistent.
+- **Async**: test methods must be `async Task`, calling the code under test with `await`.
+- **Test naming**: `Constructor_ShouldSetPropertiesCorrectly` (model layer); the Controller layer should use `[MethodName]_[Scenario]_[ExpectedBehavior]`.
+- **SubjectConstants dependency**: tests must confirm the behavior of `SubjectConstants.IsValid`; integration tests may be needed [to confirm].
 
-## 代码风格
+## Code style
 
-- **文件作用域命名空间**：`namespace Admin.WebApi.Controllers;`（分号结尾）。
-- **record 定义**：OpenSubjectDtos.cs 中多个 record 定义在同一文件中。
-- **参数校验**：在 Controller 动作方法中遍历 SubjectItem 列表，逐项校验，校验失败立即返回 `BadRequest(new ErrorResponse(...))`。
-- **gRPC 错误处理**：使用 `try-catch` + `when` 子句过滤 `RpcException(StatusCode.InvalidArgument)`。
-- **日期解析**：使用 `DateOnly.TryParse` 而非 `DateTime.TryParse`，确保只接受日期部分。
-- **空值判断**：OpenEndDate 使用 `string.IsNullOrEmpty` 判断，OpenStartDate 使用 `string.IsNullOrEmpty` 判断。
+- **File-scoped namespaces**: `namespace Admin.WebApi.Controllers;` (semicolon-terminated).
+- **record definitions**: multiple record definitions live in the same file, OpenSubjectDtos.cs.
+- **Parameter validation**: the Controller action iterates the SubjectItem list, validating item by item; on failure return `BadRequest(new ErrorResponse(...))` immediately.
+- **gRPC error handling**: `try-catch` with a `when` clause filtering `RpcException(StatusCode.InvalidArgument)`.
+- **Date parsing**: use `DateOnly.TryParse` rather than `DateTime.TryParse` to accept only the date part.
+- **Null checks**: OpenEndDate uses `string.IsNullOrEmpty`; OpenStartDate uses `string.IsNullOrEmpty`.

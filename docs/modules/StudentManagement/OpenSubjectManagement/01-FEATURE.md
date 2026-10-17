@@ -1,43 +1,43 @@
-# 开放科目管理 (OpenSubjectManagement)
+# Open Subject Management (OpenSubjectManagement)
 
-## 功能名称和一句话概括
+## Feature name and one-line summary
 
-**OpenSubjectManagement** — 管理员配置学生的开放科目及其生效日期范围。
+**OpenSubjectManagement** — administrators configure a student's open subjects and their effective date ranges.
 
-## 核心用户故事
+## Core user stories
 
-作为管理员，我希望设置和查看学生的开放科目配置，以便控制学生可以学习哪些学科及生效时间。
+As an administrator, I want to set and view a student's open-subject configuration so that I can control which subjects the student may study and when it takes effect.
 
-## 补充约束
+## Supplementary constraints
 
-1. **幂等性**：SetStudentOpenSubjects 为全量替换语义，多次调用同一列表结果一致（幂等）
-2. **并发**：全量替换无显式并发控制，后写入覆盖先写入
-3. **事务边界**：设置操作为单次 gRPC 调用，全量替换在服务端完成
-4. **失败降级**：科目选项通过 gRPC 获取，服务不可用时返回错误
-5. **科目有效性**：科目值必须通过 `SubjectConstants.IsValid` 校验
-6. **日期规则**：OpenStartDate 必填且为合法 DateOnly 格式；OpenEndDate 可选，为空表示无限期开放
-7. **活跃状态计算**：IsActive 由 gRPC 服务端根据当前日期与 OpenStartDate/OpenEndDate 计算得出
+1. **Idempotency**: SetStudentOpenSubjects has full-replacement semantics; calling it repeatedly with the same list yields the same result (idempotent)
+2. **Concurrency**: full replacement has no explicit concurrency control; the later write overwrites the earlier one
+3. **Transaction boundary**: the set operation is a single gRPC call; the full replacement happens server-side
+4. **Failure degradation**: subject options are fetched over gRPC; an unavailable service returns an error
+5. **Subject validity**: subject values must pass the `SubjectConstants.IsValid` check
+6. **Date rules**: OpenStartDate is required and must be a legal DateOnly format; OpenEndDate is optional, and empty means open-ended
+7. **Active-status computation**: IsActive is computed by the gRPC server from the current date and OpenStartDate/OpenEndDate
 
-## 关键验收条件摘要
+## Key acceptance conditions summary
 
-1. 可查看学生的开放科目列表，包含生效日期和活跃状态
-2. 可通过 activeOnly=true 仅返回当前活跃的科目
-3. 设置学生开放科目为全量替换，传入列表替换该学生所有现有配置
-4. 每个科目的 OpenStartDate 必填，OpenEndDate 可选
-5. 科目值必须通过 `SubjectConstants.IsValid` 校验
-6. IsActive 由服务端根据当前日期与日期范围计算
+1. A student's open-subject list can be viewed, including effective dates and active status
+2. Passing activeOnly=true returns only the currently active subjects
+3. Setting a student's open subjects is a full replacement: the passed list replaces all of that student's existing configuration
+4. Every subject's OpenStartDate is required; OpenEndDate is optional
+5. Subject values must pass the `SubjectConstants.IsValid` check
+6. IsActive is computed server-side from the current date and the date range
 
-## 范围外
+## Out of scope
 
-- 单个科目的增量添加/删除（仅支持全量替换）
-- 科目开放日期的部分更新
-- 开放科目的审批流程
-- 科目定义的管理（由 Student 服务维护）
+- Incremental add/remove of individual subjects (only full replacement is supported)
+- Partial updates of a subject's open dates
+- An approval workflow for open subjects
+- Management of subject definitions (maintained by the Student service)
 
-## 文档索引
+## Document index
 
-- [02-SPEC.md](./02-SPEC.md) — 详细需求与验收标准清单
-- [03-DESIGN.md](./03-DESIGN.md) — 架构设计、接口签名与数据流
-- [04-TASKS.md](./04-TASKS.md) — 开发/验证任务列表
-- [05-TESTS.md](./05-TESTS.md) — 单元测试与集成测试计划
-- [06-CONVENTIONS.md](./06-CONVENTIONS.md) — 命名约定、日志安全与代码风格
+- [02-SPEC.md](./02-SPEC.md) — detailed requirements and acceptance criteria list
+- [03-DESIGN.md](./03-DESIGN.md) — architecture design, interface signatures, and data flow
+- [04-TASKS.md](./04-TASKS.md) — development/verification task list
+- [05-TESTS.md](./05-TESTS.md) — unit and integration test plan
+- [06-CONVENTIONS.md](./06-CONVENTIONS.md) — naming conventions, log safety, and code style
