@@ -61,12 +61,11 @@ public class OssAuditWorker : BackgroundService
         while (!stoppingToken.IsCancellationRequested)
         {
             var now = DateTime.Now;
-            // Re-read the schedule every cycle: OssAuditScheduleOptions owns the default
-            // (02:00 local time); the OssAudit configuration section only overrides it.
-            var schedule = _configuration.GetSection(OssAuditScheduleOptions.SectionName).Get<OssAuditScheduleOptions>() ?? new();
-            var nextRun = now.Date.AddHours(schedule.ScheduledHour).AddMinutes(schedule.ScheduledMinute);
-            if (nextRun <= now)
-                nextRun = nextRun.AddDays(1);
+            // Re-resolve the schedule every cycle through the layered application-settings
+            // service: database override > static configuration > OssAuditScheduleOptions
+            // default (02:00 local time).
+            var schedule = await ResolveScheduleAsync(stoppingToken);
+            var nextRun = ComputeNextRun(now, schedule.Hour, schedule.Minute);
 
             var delay = nextRun - now;
             _logger.LogInformation("Next OSS audit scheduled at {NextRun} (in {Delay})", nextRun, delay);
@@ -83,6 +82,55 @@ public class OssAuditWorker : BackgroundService
             await RunAuditAsync("scheduled", stoppingToken);
         }
     }
+
+    internal readonly record struct Schedule(int Hour, int Minute);
+
+    /// <summary>
+    /// The next audit start for a schedule, on or after <paramref name="now"/>: today at
+    /// hour:minute when that moment is still ahead, otherwise tomorrow's.
+    /// </summary>
+    internal static DateTime ComputeNextRun(DateTime now, int hour, int minute)
+    {
+        var nextRun = now.Date.AddHours(hour).AddMinutes(minute);
+        if (nextRun <= now)
+            nextRun = nextRun.AddDays(1);
+        return nextRun;
+    }
+
+    /// <summary>
+    /// Resolves the storage-audit schedule from the layered application settings. A
+    /// settings-store outage never stops the scheduling loop (and the audit invariants are
+    /// untouched by schedule timing): resolution falls back to the static-configuration and
+    /// default layers, which need no database. Exception details stay out of the log.
+    /// </summary>
+    internal async Task<Schedule> ResolveScheduleAsync(CancellationToken cancellationToken)
+    {
+        using var scope = _serviceProvider.CreateScope();
+        try
+        {
+            var settings = scope.ServiceProvider.GetRequiredService<IAppSettingsService>();
+            var hour = await settings.GetEffectiveAsync(AppSettingsRegistry.OssAuditScheduledHourKey, cancellationToken);
+            var minute = await settings.GetEffectiveAsync(AppSettingsRegistry.OssAuditScheduledMinuteKey, cancellationToken);
+            return ParseSchedule(hour.Value, minute.Value);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            _logger.LogWarning(
+                "The application settings store could not be read; the OSS audit schedule falls back to static configuration or defaults");
+            var registry = scope.ServiceProvider.GetRequiredService<AppSettingsRegistry>();
+            var hour = registry.ResolveStaticOrDefault(AppSettingsRegistry.OssAuditScheduledHourKey, _configuration);
+            var minute = registry.ResolveStaticOrDefault(AppSettingsRegistry.OssAuditScheduledMinuteKey, _configuration);
+            return ParseSchedule(hour.Value, minute.Value);
+        }
+    }
+
+    private static Schedule ParseSchedule(string hourValue, string minuteValue) => new(
+        int.Parse(hourValue, System.Globalization.CultureInfo.InvariantCulture),
+        int.Parse(minuteValue, System.Globalization.CultureInfo.InvariantCulture));
 
     internal static Task<int> CleanupLegacyHomeworkReviewImagesAsync(
         IOssService ossService,

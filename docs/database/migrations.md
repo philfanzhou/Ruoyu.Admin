@@ -2,7 +2,7 @@
 
 ## Migration strategy
 
-This project uses **EF Core Migrations** (a migration chain matched exactly and in order: `20260930190608_InitialCreate` → `20261003030002_AddReferenceObservations`). The repository-maintained `AuditMigrationExecutor` (`backend/Admin.WebApi/Database/AuditMigrationExecutor.cs`) implements ServiceMantle's `IDatabaseMigrationExecutor` extension interface and is invoked at startup by ServiceMantle 0.3.1-rc.1's `StartupDatabaseGate`, which executes the shared `DatabaseMigrationOrchestrator` (a PostgreSQL advisory lock lets multiple instances migrate one after another). The old shared `DatabaseInitializer` + inline `CREATE TABLE IF NOT EXISTS` DDL path was removed in issue #57.
+This project uses **EF Core Migrations** (a migration chain matched exactly and in order: `20260930190608_InitialCreate` → `20261003030002_AddReferenceObservations` → `20261017060000_AddAppSettings`). The repository-maintained `AuditMigrationExecutor` (`backend/Admin.WebApi/Database/AuditMigrationExecutor.cs`) implements ServiceMantle's `IDatabaseMigrationExecutor` extension interface and is invoked at startup by ServiceMantle 0.3.1-rc.1's `StartupDatabaseGate`, which executes the shared `DatabaseMigrationOrchestrator` (a PostgreSQL advisory lock lets multiple instances migrate one after another). The old shared `DatabaseInitializer` + inline `CREATE TABLE IF NOT EXISTS` DDL path was removed in issue #57.
 
 ## Startup flow
 
@@ -24,6 +24,7 @@ The shared `IHostedLifecycleService.StartingAsync` runs the one-and-only startup
 
 | Date | Change | Affected tables |
 |------|----------|--------|
+| 2026-10-17 | Added migration `20261017060000_AddAppSettings`: the new `AppSettings` table for database-hosted application settings, with the executor contract (`KnownMigrationIds` / `KnownTableNames`) and the level-two upgrade path (issue #118) | `AppSettings` |
 | 2026-10-02 | Upgraded same-version ServiceMantle 0.3.0, wired in the shared startup gate and EF Core health snapshot, deleted local database preparation, startup result recording, and the health snapshot adapter code (issue #66); the executor and migrations are unchanged | No database structure change |
 | 2026-09-30 | Established the baseline migration `20260930190608_InitialCreate` and wired in the ServiceMantle migration execution components, removing the inline DDL and the shared initializer (issue #57) | `OssAuditRecords`, `OssAuditRuns` |
 | [to confirm] | Initial creation of the database and table structure (the old inline DDL path) | `OssAuditRecords`, `OssAuditRuns` |
@@ -59,3 +60,32 @@ The executor reads the structure and migration history through `PostgreSqlSchema
 A legal legacy database missing only named indexes still gets the original DDL backfill; the baseline history is written idempotently by `EfCoreMigrationBaselineWriter` in its own transaction, while Admin remains responsible for verifying the structure first, holding the advisory lock lease, and re-checking before writing. The reader's multiple queries are not guaranteed to be a same-instant snapshot. The migration inventory, structure, configuration keys, and fixed error codes are unchanged; rolling back the application code and the same-version packages suffices — no new data migration exists, and committed migrations are not undone when the application rolls back.
 
 The shared reader first reads the migration history without naming business tables, preferring to refuse unknown migration ids and histories that do not follow the known id order, and only then reads the full business-table structure. Even when an unknown version comes with zero-column tables that cannot be represented, it still returns `VersionTooNew`. A legal migration history cannot bypass the structure check; on refusal, no indexes are backfilled and no baseline migration history is registered.
+
+## #118 AppSettings migration (2026-10-17)
+
+Migration `20261017060000_AddAppSettings` creates the `AppSettings` table: `Key text` primary
+key (`AppSettings_pkey`, natural key, no identity), `Value text NOT NULL` (the
+registry-normalized value), `UpdatedAt bigint NOT NULL DEFAULT 0` (epoch seconds, the
+`OssAuditRecord.CreatedAt` style), and `UpdatedBy text NULL` (the admin subject from the server
+session ticket). No `Down` is implemented: the chain is forward-only, and rolling back means
+restoring the whole database.
+
+Executor contract notes:
+
+- `KnownMigrationIds` and `KnownTableNames` include the third migration and the new table; a
+  database whose history is the exact level-two prefix (`InitialCreate` +
+  `AddReferenceObservations`, both audit tables with the reference columns) classifies as
+  `KnownUpgradeRequired` and upgrades in place, rows retained.
+- Structure refusal applies to `AppSettings` exactly as to the audit tables
+  (`RUOYU_ADMIN_DB_SCHEMA_INCOMPATIBLE`, zero writes).
+- Legacy takeover remains bound to the retired inline DDL's exact two-table set; a no-history
+  database that already contains `AppSettings` is refused instead of taken over.
+- Rollback boundary: the structure comparison projects only the executor's expected tables, so
+  a table the running version does not know (for example an `AppSettings` table left behind
+  after an application rollback with the history trimmed, or any stray table) neither rejects
+  the inspection nor gets touched. A history that still contains the newer migration id keeps
+  answering `VersionTooNew` — restoring the previous application binary against a
+  fully-migrated database is refused, and the supported database rollback remains a full
+  restore.
+- Readiness (`MappedSchema` probing) now covers `AppSettings` automatically; no readiness
+  semantics were changed.

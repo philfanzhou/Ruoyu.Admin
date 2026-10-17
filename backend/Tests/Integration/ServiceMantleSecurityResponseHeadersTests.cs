@@ -24,7 +24,7 @@ namespace Admin.WebApi.Tests.Integration;
 
 /// <summary>
 /// The ServiceMantle six-header security response baseline on the real pipeline (#55).
-/// Marked surfaces: every action of the ten JSON controllers carrying
+/// Marked surfaces: every action of the eleven JSON controllers carrying
 /// <c>[RequireSecurityResponseHeaders]</c> plus the marker-only endpoints that carry metadata
 /// for middleware-owned auth routes (OIDC callback, prepared-logout csrf/callback). The
 /// baseline is asserted as exact single values across the status matrix (200/302/400/401/
@@ -42,7 +42,7 @@ public sealed class ServiceMantleSecurityResponseHeadersTests : ServiceMantleInt
     // ControllerActionDescriptor.ControllerName has no "Controller" suffix.
     private static readonly string[] MarkedControllers =
     [
-        "AdminAuth", "AdminCsrf", "AdminOidc", "EnumOptions",
+        "AdminAuth", "AdminCsrf", "AdminOidc", "AppSettings", "EnumOptions",
         "IdentityAccounts", "Mistake", "OssAudit",
         "OssUploadRecord", "Students", "StudentAssociations",
     ];
@@ -119,7 +119,7 @@ public sealed class ServiceMantleSecurityResponseHeadersTests : ServiceMantleInt
                 $"controller {controller} ({endpoint.RoutePattern.RawText}) marker mismatch");
         }
 
-        // ImageController stays unmarked and the ten marked controllers are all present.
+        // ImageController stays unmarked and the marked controllers are all present.
         Assert.Contains(controllerEndpoints, e => e.Metadata.GetMetadata<ControllerActionDescriptor>()!.ControllerName == "Image"
             && e.Metadata.GetMetadata<SecurityResponseHeadersMetadata>() is null);
         foreach (var controller in MarkedControllers)

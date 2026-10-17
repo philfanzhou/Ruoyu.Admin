@@ -121,6 +121,29 @@ namespace Admin.WebApi.Persistence.Migrations
 
                     b.ToTable("OssAuditRuns", (string)null);
                 });
+
+            modelBuilder.Entity("Admin.WebApi.Persistence.AppSetting", b =>
+                {
+                    b.Property<string>("Key")
+                        .HasColumnType("text");
+
+                    b.Property<long>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasDefaultValue(0L);
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Value")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Key")
+                        .HasName("AppSettings_pkey");
+
+                    b.ToTable("AppSettings", (string)null);
+                });
 #pragma warning restore 612, 618
         }
     }
