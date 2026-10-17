@@ -1,68 +1,66 @@
-# Ruoyu.Admin 协作规范
+# Ruoyu.Admin Collaboration Guidelines
 
-Ruoyu.Admin 是 Ruoyu.Study 平台的管理后台：.NET BFF API、Vue 3 / Element Plus 管理端、单容器部署。它几乎不持有业务数据，只负责维护 Storage Audit（存储审计）数据。
+Ruoyu.Admin is the admin console of the Ruoyu.Study platform: a .NET BFF API, a Vue 3 / Element Plus admin frontend, and a single-container deployment. It holds almost no business data of its own; it only maintains Storage Audit data.
 
-## 维护方式
+## Maintenance
 
-- 本文件是 AI 协作流程、项目边界和验证约束的统一入口。
-- Codex 直接读取本文件；Claude Code 通过根目录 `CLAUDE.md` 导入本文件。
-- `.agent`、`.claude`、`.trae` 等工具目录可以补充工具专属规则，但不得覆盖本文件的边界、测试和安全约束。
-- CI 位于 `.github/workflows/`：`ci.yml`（Build & Test：后端编译+测试、前端构建+组件测试、集成镜像构建验证与 trivy 扫描；tag 推送时发布 GHCR 镜像与 GitHub Release）与 `codeql.yml`（Analyze csharp / javascript-typescript）。`main` 由 `Protect main` ruleset 保护：禁止直推、force-push 和删除，PR 必须通过上述三个 required check 才能合并。
-- 发布契约：tag 带 `v` 前缀（`vX.Y.Z-rc.N` / `vX.Y.Z`）。`vX.Y.Z-rc.N` 只发布不可变版本标签的**测试镜像**并创建 pre-release；`vX.Y.Z` 发布**正式镜像**并同时移动 `X.Y` 与 `latest`。镜像 tag 不带 `v` 前缀（保持 `X.Y.Z` 历史形态，CI 的 semver 元数据步骤负责剥离），GitHub Release 标题即 tag 本身（无库名前缀）。镜像为 `ghcr.io/philfanzhou/ruoyu.admin`——API+SPA 单容器集成是产品唯一发布形态（monorepo 继承的独立前端镜像从未被任何部署使用，已移除）。
+- This file is the single entry point for the AI collaboration process, project boundaries, and verification constraints.
+- Codex reads this file directly; Claude Code imports it through the root `CLAUDE.md`.
+- Tool directories such as `.agent`, `.claude`, and `.trae` may add tool-specific rules, but must not override this file's boundaries, testing, and security constraints.
+- CI lives in `.github/workflows/`: `ci.yml` (Build & Test: backend build + tests, frontend build + component tests, integration image build verification with trivy scan; on tag push, publishes the GHCR image and GitHub Release) and `codeql.yml` (Analyze csharp / javascript-typescript). `main` is protected by the `Protect main` ruleset: direct pushes, force pushes, and deletion are forbidden; PRs must pass the three required checks above before merging.
+- Release contract: tags carry the `v` prefix (`vX.Y.Z-rc.N` / `vX.Y.Z`). `vX.Y.Z-rc.N` publishes only a **test image** with an immutable version tag and creates a pre-release; `vX.Y.Z` publishes the **production image** and also moves `X.Y` and `latest`. Image tags carry no `v` prefix (keeping the historical `X.Y.Z` form; the CI semver-metadata step strips it), and the GitHub Release title is the tag itself (no repository-name prefix). The image is `ghcr.io/philfanzhou/ruoyu.admin` — the API + SPA single integrated container is the product's only release form (the standalone frontend image inherited from the monorepo was never used by any deployment and has been removed).
 
-## 文档与沟通语言
+## Documentation and communication language
 
-- 流程与约束文档、GitHub issue/PR 正文和 review 使用中文；Issue 标题使用中文。
-- 使用自然、具体的中文，直接说明对象、动作、条件和结果。避免生硬翻译、抽象流程黑话及不必要的中英混写；必要的专业术语首次出现时解释其含义。
-- PR 标题和 commit message 使用英文 conventional commit 格式（`feat:` / `fix:` / `docs:` / `test:` / `refactor:` / `chore:` 等）。
-- 面向使用者的根 `README.md` 保持英文。
-- `docs/` 与 `CONTEXT.md` 是从 Ruoyu.Study monorepo 继承的中文文档，保持中文；翻译为英文是独立后续项。
-- 引用代码、命令、路径、JSON 字段和配置键时保持原样。
+- Repository documentation and communication use English: the root `README.md`, everything under `docs/`, `CONTEXT.md`, code comments, GitHub issue titles and bodies, PR bodies, and review comments.
+- Write natural, concrete English that directly states the object, action, condition, and result. Avoid stiff translationese, abstract process jargon, and unnecessary language mixing; when a technical term is unavoidable, explain it on first use.
+- PR titles and commit messages use the English conventional commit format (`feat:` / `fix:` / `docs:` / `test:` / `refactor:` / `chore:` etc.).
+- Keep code, commands, paths, JSON fields, and configuration keys exactly as they are when quoting them.
 
-## 项目边界与架构
+## Project boundaries and architecture
 
-- `backend/Ruoyu.Admin.Common`、`backend/Ruoyu.Admin.Consul`、`backend/Ruoyu.Admin.ServiceClients` 是类库，不得反向引用 `backend/Admin.WebApi`。
-- `backend/Admin.WebApi` 负责 HTTP、认证、配置、代理中间件和应用启动时的服务组合。Controller 不得直接构造 `HttpClient`，一律通过 `Ruoyu.Admin.ServiceClients` 的接口或 `IHttpClientFactory` 命名客户端。
-- 认证只使用 `AdminSession` 和托管 OIDC。五个旧配置键仅允许缺省或规范的 `true`；`false` 和格式错误的值必须在启动前拒绝。不注册入站 Bearer 或 JWT Cookie 认证方案。`--validate-auth-config` 加载与正式启动相同的配置后，以固定且不含敏感值的结果退出，只读取 Consul 缓存；`start.sh` 必须在停止或删除旧容器前使用目标集成镜像检查配置。
-- API 监听端口 **5020 是硬编码的**（`Program.cs` 中的 `const int httpPort`），不是配置项。改端口属于部署契约变更，必须同步 `start.sh`、`frontend/vite.config.js` 和部署文档。
-- 数据库只有 `ruoyu_admin`，只有 `OssAuditRuns` 和 `OssAuditRecords` 两张表，结构由编号和顺序严格匹配的 EF Core 迁移链（`Persistence/Migrations`）管理，启动时由 ServiceMantle 共享 `StartupDatabaseGate`（配置边界和部署声明位于 `Admin.WebApi/Database`）调用 `AuditMigrationExecutor` 及共享迁移执行组件（通过 PostgreSQL advisory lock 使多个实例依次执行迁移；旧库接管、结构拒绝规则见 `docs/database/migrations.md`）。新增或修改迁移必须同步 `AuditMigrationExecutor.KnownMigrationIds` 契约；「结构未知即拒绝（`RUOYU_ADMIN_DB_SCHEMA_INCOMPATIBLE`）」「缺库默认拒绝创建（`Database:AllowCreate` 默认 false）」语义不得放宽。
-- Storage Audit v1 使用三个服务持久保存的完整引用快照，只新增 `Status=3` 的只读观察。`deletionAuthorized` 恒为 `false`。已有单条记录和非空批量 `resolve` 请求，不论记录状态，都经同一个引用收集器检查后拒绝：引用完整时返回 409，引用不可用时返回 502。不执行对象 Delete、Copy 或审计记录删除。触及聚合、判定或任何删除路径必须有测试。
-- **审计不变量：Student、Mistake、Homework 三个引用提供服务的快照全部验证成功后，才允许列举 OSS 对象。** 任一服务不可达、引用不完整、响应不符合接口规范或操作被取消，必须整轮失败，不列举、删除或复制 S3 对象，也不发布本轮新观察。不回退到旧 gRPC、offset 分页或空集合；采集时的引用状态不能作为未来的删除许可。
-- 扫描只包含 `Uploads`、`Mistakes`。`Questions`、`Documents` 没有完整引用来源，不纳入扫描。启动时不再执行旧正则图片清理或旧桶记录清理。历史业务快照、回执与尝试记录持续保留的对象引用（上游称 `pins`）以及审计记录必须保留；旧记录的 `Status` 不能绕过所有删除请求必须通过的引用检查和拒删规则。接口规范与 Admin 的调用责任见 `docs/modules/OssAudit/StorageAudit.md`。
-- `/` 与所有非 `/api` 路由必须允许匿名访问，否则 SPA 登录页无法加载（未登录 → 拿不到页面 → 无法登录的死锁）。静态文件与 SPA 回退必须注册在 `UseAuthentication()` 之前。
+- `backend/Ruoyu.Admin.Common`, `backend/Ruoyu.Admin.Consul`, and `backend/Ruoyu.Admin.ServiceClients` are class libraries and must not reference `backend/Admin.WebApi` back.
+- `backend/Admin.WebApi` owns HTTP, authentication, configuration, the proxy middleware, and service composition at application startup. Controllers must not construct `HttpClient` directly; always go through the interfaces in `Ruoyu.Admin.ServiceClients` or an `IHttpClientFactory` named client.
+- Authentication uses only `AdminSession` and managed OIDC. The five legacy configuration keys only allow omission or the exact value `true`; `false` and malformed values must be rejected before startup. Do not register inbound Bearer or JWT Cookie authentication schemes. `--validate-auth-config` loads the same configuration as a normal startup, then exits with a fixed result that contains no sensitive values, reading only the Consul cache; `start.sh` must validate the configuration with the target integrated image before stopping or removing the old container.
+- The API listen port **5020 is hardcoded** (`const int httpPort` in `Program.cs`); it is not a configuration item. Changing the port is a deployment contract change and must be synchronized with `start.sh`, `frontend/vite.config.js`, and the deployment documentation.
+- The only database is `ruoyu_admin`, with only the two tables `OssAuditRuns` and `OssAuditRecords`; their structure is managed by the EF Core migration chain in `Persistence/Migrations`, whose numbers and order must match exactly. At startup, the ServiceMantle-shared `StartupDatabaseGate` (its configuration boundary and deployment declarations live in `Admin.WebApi/Database`) calls `AuditMigrationExecutor` and the shared migration execution components (a PostgreSQL advisory lock lets multiple instances execute the migrations one after another; legacy-database takeover and structure-refusal rules are in `docs/database/migrations.md`). Adding or modifying a migration must keep the `AuditMigrationExecutor.KnownMigrationIds` contract in sync; the semantics of "reject unknown structures (`RUOYU_ADMIN_DB_SCHEMA_INCOMPATIBLE`)" and "a missing database is not created by default (`Database:AllowCreate` defaults to false)" must not be relaxed.
+- Storage Audit v1 uses the full reference snapshots persisted by the three services and only adds read-only observations with `Status=3`. `deletionAuthorized` is always `false`. Existing single-record and non-empty batch `resolve` requests, whatever the record status, go through the same reference collector check and are then rejected: 409 when the references are complete, 502 when the references are unavailable. No object Delete or Copy, and no audit-record deletion, is ever executed. Anything that touches aggregation, decisions, or any deletion path must have tests.
+- **Audit invariant: OSS objects may be listed only after the snapshots provided by all three reference services — Student, Mistake, and Homework — validate successfully.** If any service is unreachable, references are incomplete, a response does not conform to the interface specification, or the operation is cancelled, the whole run must fail: no listing, deleting, or copying of S3 objects, and no new observations published for that run. Do not fall back to the legacy gRPC path, offset pagination, or empty collections; the reference status captured at collection time is not permission for future deletion.
+- Scans cover only `Uploads` and `Mistakes`. `Questions` and `Documents` have no complete reference source and are not scanned. The legacy regex-based image cleanup and legacy bucket-record cleanup no longer run at startup. The object references through which historical business snapshots, receipts, and attempt records stay retained (upstream calls them `pins`), plus the audit records, must be preserved; an old record's `Status` cannot bypass the reference check and the delete-refusal rules that every delete request must pass. The interface specification and Admin's calling responsibilities are in `docs/modules/OssAudit/StorageAudit.md`.
+- `/` and every non-`/api` route must allow anonymous access; otherwise the SPA login page cannot load (not signed in → page unavailable → no way to log in: a deadlock). Static files and the SPA fallback must be registered before `UseAuthentication()`.
 
-## 外部契约归属
+## External contract ownership
 
-Student、Mistake、Homework、Teacher Portal、Assistant Portal 的接口由 Ruoyu.Study 维护，Identity 由 [SignaCore](https://github.com/philfanzhou/SignaCore) 维护。本仓库无编译期依赖。
+The Student, Mistake, Homework, Teacher Portal, and Assistant Portal interfaces are maintained by Ruoyu.Study; Identity is maintained by [SignaCore](https://github.com/philfanzhou/SignaCore). This repository has no compile-time dependency on them.
 
-- `backend/Ruoyu.Admin.ServiceClients` 中的 DTO 是下游 HTTP 契约的**手写镜像副本**。上游字段变更不会在本仓库产生编译错误，只会产生运行时反序列化偏差。
-- 因此下游契约变更必须同步修改 ServiceClients，并补充对应 Controller 单测。
-- 不得为了让编译通过而在 DTO 上添加宽松的可选字段来掩盖上游接口变化造成的不一致；应确认上游定义后同步修改 DTO 和对应测试。
-- 三个代理中间件（Identity / Teacher Portal / Assistant Portal）只使用服务器票据内 token，拒绝入站 Authorization，剥离浏览器 Cookie/CSRF/Host 与下游 Set-Cookie。`IdentityProxyMiddleware` 会剥离入站的 `X-Admin-AppSecret` 再注入本服务自己的值——不得移除这个剥离逻辑，否则调用方可以伪造网关凭据。
+- The DTOs in `backend/Ruoyu.Admin.ServiceClients` are **hand-written mirror copies** of the downstream HTTP contracts. Upstream field changes produce no compile errors in this repository — only runtime deserialization drift.
+- Therefore, a downstream contract change must be synchronized into ServiceClients, with the corresponding controller unit tests added.
+- Do not add loose optional fields to DTOs just to make compilation pass and thereby mask inconsistencies caused by upstream interface changes; confirm the upstream definition, then update the DTOs and the tests together.
+- The three proxy middleware (Identity / Teacher Portal / Assistant Portal) use only the server-side in-ticket token, reject inbound Authorization headers, and strip browser Cookie/CSRF/Host headers and downstream Set-Cookie headers. `IdentityProxyMiddleware` strips the inbound `X-Admin-AppSecret` and then injects this service's own value — do not remove that stripping logic, or callers could forge gateway credentials.
 
-## 安全与变更纪律
+## Security and change discipline
 
-- 不得提交 token、密码、连接字符串、Identity `AppSecret`、数据库文件、个人数据或真实凭据，也不得把它们写入日志、截图或测试输出。
-- `StartupDiagnosticsFormatter` 的脱敏方法（`MaskSecret` / `SummarizePassword`）是启动日志的唯一出口。新增启动诊断日志必须走它，不得直接打印配置值。
-- `appsettings.json` 中的 OSS 凭据是本地开发用的 mock 值；生产凭据只来自 Consul KV 或环境变量。不得把真实凭据写进任何 `appsettings*.json`。
-- 认证、授权、审计删除、代理和 CORS 的行为变化必须有针对性测试和文档说明。
-- 提交前检查文档链接、敏感信息和仓库状态。
+- Never commit tokens, passwords, connection strings, the Identity `AppSecret`, database files, personal data, or real credentials, and never write them into logs, screenshots, or test output.
+- The masking methods in `StartupDiagnosticsFormatter` (`MaskSecret` / `SummarizePassword`) are the only outlet for startup logging. New startup diagnostics logging must go through them; never print configuration values directly.
+- The OSS credentials in `appsettings.json` are mock values for local development; production credentials come only from Consul KV or environment variables. Never write real credentials into any `appsettings*.json`.
+- Behavior changes to authentication, authorization, audit deletion, proxying, and CORS must come with targeted tests and documentation.
+- Before committing, check documentation links, sensitive information, and the repository state.
 
-## 未决事项
+## Pending decisions
 
-- 仓库级尚未做出的决定只写入 `docs/pending-decisions.md`，不得创建分散的 `HumanReview.md` 或在能力文档里夹带待办。
-- 待决事项只阻塞文件中声明的范围，不冻结无关任务。
-- 决定形成后迁入 ADR、能力文档或实施 Issue，并从 pending 文件移除。
-- 由 Ruoyu.Study 负责的跨仓库接口问题记录在该仓库，本仓库只保留 Admin 侧取舍。
-- 完成记录、测试结果、普通缺陷和代码卫生建议不得写入 pending 文件；已知缺陷记录在 `docs/README.md`。
+- Repository-level decisions that have not been made yet go only into `docs/pending-decisions.md`; do not create scattered `HumanReview.md` files or smuggle to-dos into capability documents.
+- A pending item blocks only the scope declared in that file; it does not freeze unrelated tasks.
+- Once a decision is made, move it into an ADR, a capability document, or an implementation Issue, and remove it from the pending file.
+- Cross-repository interface questions owned by Ruoyu.Study are tracked in that repository; this repository keeps only the Admin-side trade-offs.
+- Completion records, test results, ordinary defects, and code-hygiene suggestions do not go into the pending file; known defects are recorded in `docs/README.md`.
 
-## 已知文档债
+## Known documentation debt
 
-`docs/README.md` 的「已知文档债」小节记录了从 monorepo 继承、尚未修正的过期描述（主要是 gRPC 时代的集成矩阵与设计稿）。**代码、测试、配置和脚本才是当前实现事实**；文档与代码冲突时先判断是实现未完成、文档过期还是需求变化，不得直接假定任一方正确，也不得基于过期文档做设计决策。
+The known-documentation-debt section of `docs/README.md` records outdated descriptions inherited from the monorepo that have not been corrected yet (mainly the gRPC-era integration matrix and design drafts). **Code, tests, configuration, and scripts are the current implementation truth**; when documentation and code conflict, first determine whether the implementation is unfinished, the documentation is outdated, or the requirement has changed — do not simply assume either side is correct, and do not base design decisions on outdated documentation.
 
-## 验证
+## Verification
 
-按改动风险运行最小充分验证（后端 `dotnet test` 包含 `backend/Tests/Integration/` 的 Testcontainers 集成测试，需要本机 Docker；无 Docker 时用 `--filter "FullyQualifiedName!~Admin.WebApi.Tests.Integration"` 运行其余套件）：
+Run the minimum verification sufficient for the change's risk (backend `dotnet test` includes the Testcontainers integration tests in `backend/Tests/Integration/`, which need local Docker; without Docker, run the remaining suites with `--filter "FullyQualifiedName!~Admin.WebApi.Tests.Integration"`):
 
 ```bash
 cd backend
@@ -71,7 +69,7 @@ dotnet build Ruoyu.Admin.sln --configuration Release
 dotnet test Ruoyu.Admin.sln --configuration Release --no-build
 ```
 
-前端：
+Frontend:
 
 ```bash
 cd frontend
@@ -80,10 +78,10 @@ npm run build
 npm test
 ```
 
-触及 Dockerfile 或 `start.sh` 时，还需实际构建镜像：
+When the Dockerfile or `start.sh` is touched, also build the image for real:
 
 ```bash
 ./scripts/build.sh
 ```
 
-跨服务端到端用例（Admin 建学生 → User Portal 可见）保留在 Ruoyu.Study 仓库的 `tests/e2e/` 中，面向已部署环境运行，不在本仓库内。
+Cross-service end-to-end cases (Admin creates a student → visible in User Portal) stay in the Ruoyu.Study repository under `tests/e2e/`, run against deployed environments, not in this repository.
