@@ -11,7 +11,7 @@ dotnet run --project Admin.WebApi/Admin.WebApi.csproj
 
 `backend/` 下是一个多项目解决方案，`dotnet run` 必须显式指定项目。
 
-监听端口 **5020 是 `Program.cs` 里的 `const int httpPort`，硬编码且不可配置**。`appsettings.json` 中的 `AdminApi:Port` 是遗留死配置，没有任何代码读取它，改它不会改变监听端口。
+监听端口 **5020 是 `Program.cs` 里的 `const int httpPort`，硬编码且不可配置**。
 
 启动前置条件：`IdentityService:AppId` 与 `IdentityService:AppSecret` 必须已配置，否则宿主在启动阶段直接抛 `InvalidOperationException`。本地开发可通过环境变量注入：
 

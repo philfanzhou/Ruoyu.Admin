@@ -224,8 +224,6 @@ The original parent work still owns physical garbage collection and any future w
 
 **`Steeltoe.Discovery.Consul` 4.2.0 carries a known high-severity advisory** (GHSA-67c9-f6v2-qv86: malformed `secure` metadata aborts service instance lookup — a denial of service; patched in 4.3.0). Inherited from the monorepo; `dotnet restore` surfaces it as NU1903. The CI image scans run report-only (`exit-code: '0'`) until the bump lands: the advisory has a patched release, so `--ignore-unfixed` would not skip it and a blocking scan would fail every pull request today. The bump needs its own verification of Consul KV loading and service registration, and promoting the scans to blocking rides with that change.
 
-**`AdminApi:Port` in `appsettings.json` is dead configuration**; nothing reads it. The listen port is the hardcoded `const int httpPort = 5020` in `Program.cs`.
-
 **`Ruoyu.Admin.ServiceClients` carries unused downstream methods.** The library was shared with the Mistake service and several portals in the monorepo; this repository consumes 20 of Student's 25 methods and 7 of Mistake's 14. The remainder, including the mistake→student DTO block, is dead code here.
 
 Everything except the Storage Audit fix is inherited from the monorepo rather than introduced by the extraction. Full list with fix options: [docs/README.md](docs/README.md).

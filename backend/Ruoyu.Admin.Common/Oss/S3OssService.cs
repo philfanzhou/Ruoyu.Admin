@@ -118,10 +118,13 @@ public class S3OssService : IOssService
 
 public class OssOptions
 {
+    // Structural defaults only: credentials have no code default. Local-development mock
+    // credentials live in appsettings.Development.json; production values come from Consul
+    // KV or environment variables, and a missing credential fails at first use.
     public string InternalEndpoint { get; set; } = "localhost:8333";
     public bool InternalSecure { get; set; }
-    public string AccessKey { get; set; } = "seaweedfs_admin";
-    public string SecretKey { get; set; } = "seaweedfs_admin";
+    public string AccessKey { get; set; } = string.Empty;
+    public string SecretKey { get; set; } = string.Empty;
     public string BucketName { get; set; } = "ruoyu-study";
     public string? PublicBaseUrl { get; set; }
 }

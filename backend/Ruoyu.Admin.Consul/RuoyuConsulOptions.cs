@@ -9,8 +9,6 @@ public sealed class RuoyuConsulOptions
 
     public int Port { get; set; } = 8500;
 
-    public string ServiceName { get; set; } = string.Empty;
-
     public string? ServiceId { get; set; }
 
     public string KvPrefix { get; set; } = "config/ruoyu";
@@ -46,12 +44,6 @@ public sealed class RuoyuConsulOptions
         if (int.TryParse(envPort, out var port))
         {
             options.Port = port;
-        }
-
-        var envServiceName = Environment.GetEnvironmentVariable("CONSUL_SERVICE_NAME");
-        if (!string.IsNullOrWhiteSpace(envServiceName))
-        {
-            options.ServiceName = envServiceName;
         }
 
         var envServiceId = Environment.GetEnvironmentVariable("CONSUL_SERVICE_ID");

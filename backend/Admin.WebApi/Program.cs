@@ -62,11 +62,15 @@ builder.AddAdminLogging();
 // nginx in the same container proxies /api/ to this port.
 const int httpPort = 5020;
 
-var studentServiceUrl = builder.Configuration["StudentService:Url"] ?? "http://localhost:5005";
-var mistakeServiceUrl = builder.Configuration["MistakeService:Url"] ?? "http://localhost:5007";
+// Downstream base addresses: the options classes own the local-development defaults; every
+// environment override still arrives via configuration (Consul KV / mounted / environment).
+var studentServiceOptions = builder.Configuration.GetSection(StudentServiceOptions.SectionName).Get<StudentServiceOptions>() ?? new();
+var mistakeServiceOptions = builder.Configuration.GetSection(MistakeServiceOptions.SectionName).Get<MistakeServiceOptions>() ?? new();
+var studentServiceUrl = studentServiceOptions.Url;
+var mistakeServiceUrl = mistakeServiceOptions.Url;
 var managedAssignment = ManagedAssignmentOptions.Read(builder.Configuration);
 builder.Services.AddSingleton(managedAssignment);
-var homeworkServiceUrl = builder.Configuration["HomeworkService:Url"] ?? "http://localhost:5009";
+var homeworkServiceUrl = (builder.Configuration.GetSection(HomeworkServiceOptions.SectionName).Get<HomeworkServiceOptions>() ?? new()).Url;
 var identityAppId = builder.Configuration["IdentityService:AppId"];
 var identityAppSecret = builder.Configuration["IdentityService:AppSecret"];
 if (string.IsNullOrWhiteSpace(identityAppId) || string.IsNullOrWhiteSpace(identityAppSecret))

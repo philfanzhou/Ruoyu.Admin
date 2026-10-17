@@ -60,10 +60,6 @@ Student、Mistake、Homework、Teacher Portal、Assistant Portal 与 Identity �
 
 `ci.yml` 中的 trivy 镜像扫描步骤（HIGH/CRITICAL + `ignore-unfixed`）当前为 **report-only（`exit-code: '0'`）**：该漏洞已有修复版本，`ignore-unfixed` 不会跳过它，若设为阻塞，required check `Build & Test` 会让每个 PR 从当天起直接红。**升级条件**：以独立变更把 `Ruoyu.Admin.Consul` 的 Steeltoe.Discovery.Consul 升到 `>= 4.3.0`（涉及 Consul KV 加载与服务注册行为，需按验证纪律完整回归），复核通过后把该步骤改为 `exit-code: '1'`（对齐 SignaCore 的阻塞策略）。首扫时另一镜像（已废弃的独立前端镜像，其 nginx:1.30.0-alpine 基础层贡献了 39 个 HIGH）已随 2026-09-25 的分离模式退役一并消失；当前扫描对象只剩集成镜像，已知发现仅 Steeltoe 这一条。
 
-### `AdminApi:Port` 是死配置
-
-`appsettings.json` 里的 `AdminApi:Port` 没有任何代码读取。监听端口由 `Program.cs` 中的 `const int httpPort = 5020` 硬编码。删除该配置键或让端口真正可配，都需要单独决定。
-
 ### `Ruoyu.Admin.ServiceClients` 仍含未使用的下游方法
 
 该库在 monorepo 中由 Mistake 服务与多个 Portal 共用。#104 已删除错题评审/重分析与作业图片管理方向的无调用方法及配套 DTO（Mistake 7 个方法、Student 10 个方法及其独占 DTO，含 mistake→student 调用的返回记录请求块）。剩余盘点：Mistake 7 个方法全部在用；Student 24 个方法用到 20 个，`AppendImagesToRecordAsync`、`DeleteUploadRecordAsync`、`MarkUploadRecordAsReturnedAsync`、`RemoveProcessedImagesAsync` 及其独占 DTO 仍无调用方，属后续清理项。

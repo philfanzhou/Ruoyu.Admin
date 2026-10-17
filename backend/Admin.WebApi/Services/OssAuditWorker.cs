@@ -61,9 +61,10 @@ public class OssAuditWorker : BackgroundService
         while (!stoppingToken.IsCancellationRequested)
         {
             var now = DateTime.Now;
-            var scheduledHour = _configuration.GetValue<int>("OssAudit:ScheduledHour", 2);
-            var scheduledMinute = _configuration.GetValue<int>("OssAudit:ScheduledMinute", 0);
-            var nextRun = now.Date.AddHours(scheduledHour).AddMinutes(scheduledMinute);
+            // Re-read the schedule every cycle: OssAuditScheduleOptions owns the default
+            // (02:00 local time); the OssAudit configuration section only overrides it.
+            var schedule = _configuration.GetSection(OssAuditScheduleOptions.SectionName).Get<OssAuditScheduleOptions>() ?? new();
+            var nextRun = now.Date.AddHours(schedule.ScheduledHour).AddMinutes(schedule.ScheduledMinute);
             if (nextRun <= now)
                 nextRun = nextRun.AddDays(1);
 
