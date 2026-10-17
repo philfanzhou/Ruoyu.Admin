@@ -1,44 +1,44 @@
-# 验证与测试 (Verification)
+# Verification and testing (Verification)
 
-## 运行测试
+## Run the tests
 
 ```bash
 cd backend
 
-# 运行全部测试（集成测试需要本机 Docker，见下）
+# Run all tests (integration tests need local Docker, see below)
 dotnet test Ruoyu.Admin.sln --configuration Release
 
-# 运行指定测试类
+# Run a specific test class
 dotnet test Ruoyu.Admin.sln --filter "FullyQualifiedName~OssUploadRecordControllerLegacyTests"
 
-# 运行模型测试
+# Run the model tests
 dotnet test Ruoyu.Admin.sln --filter "FullyQualifiedName~ModelTests"
 ```
 
-> **Docker 前置**：`Tests/Integration/` 下的集成测试（ServiceMantle 宿主启动、correlation 传播）通过 Testcontainers 启动一次性 PostgreSQL 容器，需要本机 Docker（CI 的 ubuntu-latest 自带）。无 Docker 时可运行其余套件：
+> **Docker prerequisite**: the integration tests under `Tests/Integration/` (ServiceMantle host startup, correlation propagation) start a one-off PostgreSQL container through Testcontainers and need local Docker (CI's ubuntu-latest has it). Without Docker you can run the remaining suites:
 >
 > ```bash
 > dotnet test Ruoyu.Admin.sln --filter "FullyQualifiedName!~Admin.WebApi.Tests.Integration"
 > ```
 >
-> 集成测试归入独立的 xunit collection（`service-mantle-integration`），与其它测试类并行、collection 内串行。
+> Integration tests live in a dedicated xunit collection (`service-mantle-integration`), parallel with other test classes and serial within the collection.
 
-## 测试项目结构
+## Test project structure
 
 ```
 test/Admin.WebApi.Tests/
 ├── Admin.WebApi.Tests.csproj
 ├── Integration/
-│   ├── ServiceMantleIntegration.cs              # Testcontainers PostgreSQL fixture 与共享基类
-│   ├── ServiceMantleHostStartupTests.cs         # 宿主启动 / 服务身份 / 匿名 SPA 契约 / 401
-│   └── ServiceMantleCorrelationTests.cs         # x-correlation-id 回显与安全规则 / 日志 scope
+│   ├── ServiceMantleIntegration.cs              # Testcontainers PostgreSQL fixture and shared base class
+│   ├── ServiceMantleHostStartupTests.cs         # Host startup / service identity / anonymous SPA contract / 401
+│   └── ServiceMantleCorrelationTests.cs         # x-correlation-id echo and safety rules / log scopes
 ├── Models/
-│   └── ModelTests.cs              # DTO 构造函数测试
+│   └── ModelTests.cs              # DTO constructor tests
 ├── Controllers/
 │   ├── AssignmentControllerTests.cs
-│   ├── EnumOptionsControllerTests.cs          # 枚举选项聚合测试
+│   ├── EnumOptionsControllerTests.cs          # Enum options aggregation tests
 │   ├── IdentityAccountsControllerTests.cs
-│   ├── ImageControllerTests.cs                # 图片代理路径校验与 gRPC 异常测试
+│   ├── ImageControllerTests.cs                # Image proxy path validation and gRPC exception tests
 │   ├── MistakeControllerTests.cs
 │   ├── OssAuditControllerTests.cs
 │   ├── OssUploadRecordControllerLegacyTests.cs
@@ -51,70 +51,70 @@ test/Admin.WebApi.Tests/
     └── OssAuditWorkerTests.cs
 ```
 
-## 覆盖率
+## Coverage
 
 ```bash
 dotnet test --collect:"XPlat Code Coverage"
 ```
 
-> 当前未配置覆盖率目标。建议目标：Controller 层 ≥ 80%。
+> No coverage target is configured today. Suggested target: controller layer >= 80%.
 
-## 构建验证
+## Build verification
 
 ```bash
-# Release 构建
+# Release build
 cd backend
 dotnet publish -c Release -o ./publish
 
-# 验证构建产物
+# Verify the build output
 ls ./publish/Admin.WebApi.dll
 ```
 
-## API 验证
+## API verification
 
-后端启动后可通过 Swagger UI 或 curl 验证：
+With the backend running, verify through the Swagger UI or curl:
 
 ```bash
-# 健康检查
+# Health check
 curl http://localhost:5020/
 
-# 枚举选项（无需下游服务）
+# Enum options (no downstream services needed)
 curl http://localhost:5020/api/admin/enum-options
 
-# 审计状态（仅需本地数据库）
+# Audit status (local database only)
 curl http://localhost:5020/api/admin/oss-audit/status
 ```
 
-## 测试覆盖现状
+## Current test coverage
 
-| 模块 | 测试文件 | 覆盖说明 |
+| Module | Test file | Coverage |
 |------|----------|----------|
-| Models (DTO) | ModelTests.cs | DTO 构造函数 |
+| Models (DTO) | ModelTests.cs | DTO constructors |
 | OssUploadRecordController (Legacy) | OssUploadRecordControllerLegacyTests.cs | LegacyCheck/LegacyClean |
-| OssUploadRecordController | OssUploadRecordControllerTests.cs, AssignmentControllerTests.cs | 分配/旋转/重置/列表/详情 |
+| OssUploadRecordController | OssUploadRecordControllerTests.cs, AssignmentControllerTests.cs | Assign/rotate/reset/list/detail |
 | StudentsController | StudentsControllerTests.cs | ListStudents/CreateStudent/GetStudent |
 | MistakeController | MistakeControllerTests.cs | GetMistakeItems/UpdateMistakeItem |
-| OssAuditController | OssAuditControllerTests.cs | 审计记录管理 |
-| OssAuditWorker | OssAuditWorkerTests.cs | 后台审计任务 |
-| IdentityProxyMiddleware | IdentityProxyMiddlewareTests.cs | 代理转发 |
-| TeacherPortalProxyMiddleware | TeacherPortalProxyMiddlewareTests.cs | 代理转发 |
-| IdentityAccountsController | IdentityAccountsControllerTests.cs | 账户批量查询/关联学生 |
-| EnumOptionsController | EnumOptionsControllerTests.cs | GetAll 聚合返回 5 类枚举 |
-| ImageController | ImageControllerTests.cs | 路径校验（空/非法/正常）、mistakes 路径走 Mistake gRPC、其它走 Student gRPC、NotFound/其它 gRPC 异常 |
+| OssAuditController | OssAuditControllerTests.cs | Audit record management |
+| OssAuditWorker | OssAuditWorkerTests.cs | Background audit jobs |
+| IdentityProxyMiddleware | IdentityProxyMiddlewareTests.cs | Proxy forwarding |
+| TeacherPortalProxyMiddleware | TeacherPortalProxyMiddlewareTests.cs | Proxy forwarding |
+| IdentityAccountsController | IdentityAccountsControllerTests.cs | Account batch lookup / linked students |
+| EnumOptionsController | EnumOptionsControllerTests.cs | GetAll aggregates 5 enum lists |
+| ImageController | ImageControllerTests.cs | Path validation (empty/invalid/normal), mistakes paths going to Mistake gRPC, others to Student gRPC, NotFound/other gRPC exceptions |
 
-### EnumOptionsController 测试要点
+### EnumOptionsController test essentials
 
-- `GetAll` 返回 `EnumOptionsResponse`，包含 5 个列表：UploadStatuses、Grades、Subjects、Classifications、ReviewStatuses
-- 每个列表的元素数量应与对应 `*Constants.EnglishNames` 一致
-- 每个元素的 `Value`/`Name`/`DisplayName` 字段应正确映射
+- `GetAll` returns an `EnumOptionsResponse` containing 5 lists: UploadStatuses, Grades, Subjects, Classifications, ReviewStatuses
+- Each list's element count should match the corresponding `*Constants.EnglishNames`
+- Each element's `Value`/`Name`/`DisplayName` fields should map correctly
 
-### ImageController 测试要点
+### ImageController test essentials
 
-- 路径校验：空路径 → 400；含 `..` 或以 `/`、`\` 开头 → 400
-- 路径以 `mistakes/` 开头（不区分大小写）→ 调用 `MistakeGrpcService.GetPresignedUrlAsync`
-- 其它路径 → 调用 `StudentLearningGrpcService.GetPresignedUrlAsync`，并传递 `size` 参数
-- gRPC 返回正常 → 302 Redirect 到预签名 URL
-- gRPC 抛 `NotFound` → 404
-- gRPC 抛其它异常 → 502
+- Path validation: empty path → 400; containing `..` or starting with `/` or `\` → 400
+- Path starting with `mistakes/` (case-insensitive) → calls `MistakeGrpcService.GetPresignedUrlAsync`
+- Any other path → calls `StudentLearningGrpcService.GetPresignedUrlAsync`, passing the `size` parameter
+- gRPC success → 302 redirect to the presigned URL
+- gRPC throws `NotFound` → 404
+- gRPC throws another exception → 502
 
-> 详细测试计划见各模块的 05-TESTS.md
+> For detailed test plans see each module's 05-TESTS.md

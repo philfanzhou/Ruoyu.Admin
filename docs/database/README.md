@@ -1,44 +1,44 @@
-# 数据库文档
+# Database documentation
 
-Admin Portal 服务的本地数据库文档。本文档是数据库结构的**唯一真实来源**（Single Source of Truth）。
+Local database documentation for the Admin Portal service. This directory is the **single source of truth** for the database structure.
 
-> **唯一事实源原则**：表结构、字段、索引、约束只在本目录维护。[modules/](../modules/) 中的功能文档只引用本目录的链接，不重复抄整表定义。如需修改表结构，必须先更新本目录下的文档。
+> **Single-source-of-truth principle**: table structures, fields, indexes, and constraints are maintained only in this directory. The capability documents under [modules/](../modules/) only link here and never copy full table definitions. Any table-structure change must first update the documents in this directory.
 
-## 数据库概览
+## Database overview
 
-| 属性 | 值 |
+| Property | Value |
 |------|------|
-| 数据库类型 | PostgreSQL |
-| 数据库名 | `ruoyu_admin` |
-| 连接字符串配置键 | `ConnectionStrings:AuditDb`（本地开发默认值）/ Consul `PostgreSql:*` + `Database:Name`（生产合成） |
-| ORM | Entity Framework Core（基线迁移 + ServiceMantle 迁移执行组件） |
+| Database type | PostgreSQL |
+| Database name | `ruoyu_admin` |
+| Connection string configuration key | `ConnectionStrings:AuditDb` (local development default) / Consul `PostgreSql:*` + `Database:Name` (production synthesis) |
+| ORM | Entity Framework Core (baseline migration + ServiceMantle migration execution components) |
 | DbContext | `AuditDbContext` |
 
-## 数据库连接策略
+## Database connection strategy
 
-通过 `SharedPostgreSqlConnectionStringFactory.BuildOrFallback` 组装连接串：Consul 的 `PostgreSql:Host/Port/Username/Password` 与本地 `Database:Name=ruoyu_admin` 合成 PostgreSQL 连接串；未配置 Consul 时回退到本地 `ConnectionStrings:AuditDb`。详见 [development/LocalSetup.md](../development/LocalSetup.md#数据库连接策略)。
+The connection string is assembled by `SharedPostgreSqlConnectionStringFactory.BuildOrFallback`: Consul's `PostgreSql:Host/Port/Username/Password` is synthesized with the local `Database:Name=ruoyu_admin` into a PostgreSQL connection string; without Consul configured it falls back to the local `ConnectionStrings:AuditDb`. See [development/LocalSetup.md](../development/LocalSetup.md#database-connection-strategy) for details.
 
-## 表清单
+## Table list
 
-| 表名 | 说明 | 详细文档 |
+| Table | Description | Detailed documentation |
 |------|------|----------|
-| `OssAuditRecords` | OSS只读观察与历史审计记录 | [tables/oss_audit_records.md](tables/oss_audit_records.md) |
-| `OssAuditRuns` | OSS 审计运行记录 | [tables/oss_audit_runs.md](tables/oss_audit_runs.md) |
+| `OssAuditRecords` | OSS read-only observations and historical audit records | [tables/oss_audit_records.md](tables/oss_audit_records.md) |
+| `OssAuditRuns` | OSS audit run records | [tables/oss_audit_runs.md](tables/oss_audit_runs.md) |
 
-## 实体关系
+## Entity relationships
 
-详见 [relations.md](relations.md)。
+See [relations.md](relations.md).
 
-## 迁移历史
+## Migration history
 
-详见 [migrations.md](migrations.md)。
+See [migrations.md](migrations.md).
 
-本项目自 issue #57 起使用 EF Core Migrations（按顺序精确匹配的已知迁移链），由 `AuditMigrationExecutor` 接入 ServiceMantle 迁移执行组件（通过 PostgreSQL advisory lock 使多个实例依次执行）管理表结构。
+Since issue #57 this project uses EF Core Migrations (a known migration chain matched exactly and in order), wired into ServiceMantle's migration execution components by `AuditMigrationExecutor` (a PostgreSQL advisory lock lets multiple instances execute one after another) to manage table structures.
 
-## 已移除的表
+## Removed tables
 
-无。本项目自创建以来未移除过任何表。
+None. This project has never removed a table since its creation.
 
-## 声明
+## Declaration
 
-> 本文档是 Admin Portal 数据库结构的**唯一真实来源**。任何表结构变更必须先更新本文档及对应的表文档，再修改代码。
+> This document is the **single source of truth** for the Admin Portal database structure. Any table-structure change must first update this document and the corresponding table document, and only then the code.

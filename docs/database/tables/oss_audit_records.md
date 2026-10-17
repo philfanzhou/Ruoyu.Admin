@@ -1,52 +1,52 @@
 # OssAuditRecords
 
-OSS审计观察与历史处置记录表。v1新行只表示捕获时未观察到引用。
+The OSS audit observation and historical disposition record table. A new v1 row only means no reference was observed at capture time.
 
-## 表信息
+## Table information
 
-| 属性 | 值 |
+| Property | Value |
 |------|------|
-| 表名 | `OssAuditRecords` |
-| 所属数据库 | `ruoyu_admin`（PostgreSQL） |
-| 实体类 | `Admin.WebApi.Persistence.OssAuditRecord` |
+| Table name | `OssAuditRecords` |
+| Database | `ruoyu_admin` (PostgreSQL) |
+| Entity class | `Admin.WebApi.Persistence.OssAuditRecord` |
 | DbContext | `AuditDbContext` |
 
-## 字段定义
+## Field definitions
 
-| 字段 | 类型 | 约束 | 说明 |
+| Field | Type | Constraint | Description |
 |------|------|------|------|
-| `Id` | `bigint` | PK | 主键，自增 |
-| `ObjectPath` | `string` | NOT NULL, UNIQUE | OSS 对象路径，如 `uploads/xxx.jpg`、`mistakes/xxx.jpg` |
-| `Bucket` | `string` | NOT NULL | 所属 Bucket 名称。新记录取值只有 `uploads`、`mistakes`（由 `OssAuditWorker.AuditedBucketNames` 决定）；`questions`、`documents` 保留原历史值，startup不删除 |
-| `Size` | `bigint` | NOT NULL | 对象大小（字节） |
-| `LastModified` | `bigint` | NOT NULL | 对象最后修改时间（Unix 秒） |
-| `Status` | `int` | NOT NULL, DEFAULT 0 | 审计状态，见下方枚举 |
-| `CreatedAt` | `bigint` | NOT NULL | 记录创建时间（Unix 秒） |
-| `ResolvedAt` | `bigint` | NULL | 记录处理时间（Unix 秒），未处理时为 null |
-| `Note` | `string` | NULL | 备注，忽略记录时可填写原因 |
+| `Id` | `bigint` | PK | Primary key, auto-increment |
+| `ObjectPath` | `string` | NOT NULL, UNIQUE | OSS object path, e.g. `uploads/xxx.jpg`, `mistakes/xxx.jpg` |
+| `Bucket` | `string` | NOT NULL | Bucket name. New records take only `uploads` or `mistakes` (decided by `OssAuditWorker.AuditedBucketNames`); `questions` and `documents` keep their historical values, and startup does not delete them |
+| `Size` | `bigint` | NOT NULL | Object size (bytes) |
+| `LastModified` | `bigint` | NOT NULL | Object last-modified time (Unix seconds) |
+| `Status` | `int` | NOT NULL, DEFAULT 0 | Audit status, see the enum below |
+| `CreatedAt` | `bigint` | NOT NULL | Record creation time (Unix seconds) |
+| `ResolvedAt` | `bigint` | NULL | Record processing time (Unix seconds), null while unprocessed |
+| `Note` | `string` | NULL | Remark; may carry a reason when a record is ignored |
 
-## Status 枚举
+## Status enum
 
-| 值 | 名称 | 说明 |
+| Value | Name | Description |
 |----|------|------|
-| 0 | `Pending` | 历史待处理 |
-| 1 | `Resolved` | 历史已删除状态，当前不再次删除 |
-| 2 | `Ignored` | 历史已忽略 |
-| 3 | `UnreferencedObservation` | 未观察到引用，只读报告、非删除许可 |
+| 0 | `Pending` | Historical pending |
+| 1 | `Resolved` | Historical deleted state; not deleted again now |
+| 2 | `Ignored` | Historical ignored |
+| 3 | `UnreferencedObservation` | No reference observed; a read-only report, not a deletion permission |
 
-旧0/1/2保持历史，不回填为新观察；任何状态都不能跳过共同collector或授予删除。
+Old 0/1/2 stay historical and are not backfilled as new observations; no status can skip the shared collector or grant deletion.
 
-## 索引
+## Indexes
 
-| 索引名 | 字段 | 类型 | 说明 |
+| Index name | Field | Type | Description |
 |--------|------|------|------|
-| PK | `Id` | UNIQUE | 主键索引 |
-| IX_OssAuditRecords_Status | `Status` | NON-UNIQUE | 按状态筛选审计记录 |
-| IX_OssAuditRecords_Bucket | `Bucket` | NON-UNIQUE | 按 Bucket 筛选 |
-| IX_OssAuditRecords_ObjectPath | `ObjectPath` | UNIQUE | 确保同一对象路径不会重复记录 |
-| IX_OssAuditRecords_CreatedAt | `CreatedAt` | NON-UNIQUE | 按创建时间排序查询 |
+| PK | `Id` | UNIQUE | Primary key index |
+| IX_OssAuditRecords_Status | `Status` | NON-UNIQUE | Filter audit records by status |
+| IX_OssAuditRecords_Bucket | `Bucket` | NON-UNIQUE | Filter by bucket |
+| IX_OssAuditRecords_ObjectPath | `ObjectPath` | UNIQUE | Ensures the same object path is never recorded twice |
+| IX_OssAuditRecords_CreatedAt | `CreatedAt` | NON-UNIQUE | Sort queries by creation time |
 
-## DDL（PostgreSQL）
+## DDL (PostgreSQL)
 
 ```sql
 CREATE TABLE IF NOT EXISTS "OssAuditRecords" (
@@ -67,12 +67,12 @@ CREATE INDEX IF NOT EXISTS "IX_OssAuditRecords_Bucket" ON "OssAuditRecords" ("Bu
 CREATE INDEX IF NOT EXISTS "IX_OssAuditRecords_CreatedAt" ON "OssAuditRecords" ("CreatedAt");
 ```
 
-表结构由按顺序精确匹配的 EF Core 迁移链与 ServiceMantle 启动检查管理，见[迁移](../migrations.md)。
+The table structure is managed by the EF Core migration chain matched exactly and in order plus the ServiceMantle startup checks; see [migrations](../migrations.md).
 
-## 业务规则
+## Business rules
 
-- `ObjectPath` 有精确匹配的 UNIQUE 约束；同路径已有任意状态的记录时，不重复创建。
-- v1 只新增 `Status=3` 的只读观察，完整扫描后在同一事务中提交，不据此作出删除或其他处置决定。
-- 已有单条记录的所有状态，以及非空批量 `resolve`，均通过同一引用收集器检查后拒绝删除：引用完整时返回 409，不可用时返回 502，不执行对象 Delete、Copy 或审计记录删除。
-- `ignore` 仅允许历史状态 0 变为 2，可选填 Note，状态 3 拒绝。启动时不清理旧 review 或旧桶记录。
-- 原状态含义与当前 Admin 的行为规则见[StorageAudit](../../modules/OssAudit/StorageAudit.md)。
+- `ObjectPath` has an exactly matching UNIQUE constraint; when a record of any status already exists for a path, no duplicate is created.
+- v1 only adds read-only observations with `Status=3`, committed in one transaction after a complete scan; no deletion or other disposition decision is made on that basis.
+- Existing single records of any status, and non-empty batch `resolve`, all pass the same reference-collector check and are then refused deletion: 409 when references are complete, 502 when unavailable; no object Delete, no Copy, and no audit-record deletion are executed.
+- `ignore` only moves historical status 0 to 2, optionally filling Note; status 3 is refused. Startup does not clean old review or old bucket records.
+- For the original status meanings and Admin's current behavior rules, see [StorageAudit](../../modules/OssAudit/StorageAudit.md).

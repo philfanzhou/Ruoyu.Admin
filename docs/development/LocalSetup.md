@@ -1,135 +1,135 @@
-# 本地环境搭建 (LocalSetup)
+# Local environment setup (LocalSetup)
 
-## 前置依赖
+## Prerequisites
 
-| 依赖 | 版本 | 用途 |
+| Dependency | Version | Purpose |
 |------|------|------|
-| .NET SDK | 10.0+ | 后端编译运行 |
-| Node.js | 18+ | 前端构建（可选） |
-| PostgreSQL | 12+ | 审计数据库 |
+| .NET SDK | 10.0+ | Backend build and run |
+| Node.js | 18+ | Frontend build (optional) |
+| PostgreSQL | 12+ | Audit database |
 
-## 后端配置
+## Backend configuration
 
-1. 复制配置文件：
+1. Copy the configuration files:
    ```bash
    cd backend
-   # Development 环境下 appsettings.Development.json 已包含开发默认值，可直接使用
+   # In the Development environment, appsettings.Development.json already contains the development defaults and can be used directly
    ```
 
-2. 关键配置项（开发默认值位于 `appsettings.Development.json`，基础 `appsettings.json` 不再携带环境专用值）：
+2. Key configuration items (development defaults live in `appsettings.Development.json`; the base `appsettings.json` no longer carries environment-specific values):
 
-| 配置键 | 默认值 | 说明 |
+| Configuration key | Default | Description |
 |--------|--------|------|
-| `ConnectionStrings:AuditDb` | `Host=localhost;Port=5432;Database=ruoyu_admin;Username=phil` | 审计数据库连接串（本地开发默认值，生产由 Consul 覆盖） |
-| `Database:Name` | `ruoyu_admin` | 数据库名（与 Consul `PostgreSql:*` 合成连接串时使用） |
-| `StudentService:Url` | `http://localhost:5005` | Student HTTP 服务 |
-| `MistakeService:Url` | `http://localhost:5007` | Mistake HTTP 服务 |
-| `MistakeService:UseSessionToken` | `false` | 仅 Mistake 出站会话 opt-in；启用需显式根 origin（path 为 `/`），http 与 https 同等接受，公网部署应使用 HTTPS（部署建议，非代码强制） |
-| `IdentityService:Authority` | （无；Development 默认 `http://127.0.0.1:5002`，见 `appsettings.Development.json`） | Identity 托管 OIDC discovery +服务器会话 HTTP 代理。`appsettings.json` 不含 `IdentityService` 节，本地必须经环境变量 / user-secrets 注入 `AppId`、`AppSecret` 等 |
-| `TeacherPortal:Url` | `http://localhost:5004` | Teacher Portal HTTP 服务 |
-| `AssistantPortal:Url` | `http://localhost:5021` | Assistant Portal HTTP 服务 |
+| `ConnectionStrings:AuditDb` | `Host=localhost;Port=5432;Database=ruoyu_admin;Username=phil` | Audit database connection string (local development default; production is overridden by Consul) |
+| `Database:Name` | `ruoyu_admin` | Database name (used when synthesizing the connection string with Consul `PostgreSql:*`) |
+| `StudentService:Url` | `http://localhost:5005` | Student HTTP service |
+| `MistakeService:Url` | `http://localhost:5007` | Mistake HTTP service |
+| `MistakeService:UseSessionToken` | `false` | Mistake outbound session opt-in only; enabling requires an explicit root origin (path `/`), http and https accepted equally, public deployments should use HTTPS (deployment advice, not enforced in code) |
+| `IdentityService:Authority` | (none; Development defaults to `http://127.0.0.1:5002`, see `appsettings.Development.json`) | Identity hosted OIDC discovery + server-session HTTP proxy. `appsettings.json` has no `IdentityService` section; locally you must inject `AppId`, `AppSecret`, etc. via environment variables / user-secrets |
+| `TeacherPortal:Url` | `http://localhost:5004` | Teacher Portal HTTP service |
+| `AssistantPortal:Url` | `http://localhost:5021` | Assistant Portal HTTP service |
 
-### 托管登录开发配置
+### Hosted login development configuration
 
-当前版本只运行服务器会话托管登录。必须配置 `IdentityService:Authority/AppId/AppSecret`、`AdminOidc:RedirectUri/PostLogoutRedirectUri`、当前管理员白名单与 ADMIN 应用 audience，并完成真实下游信任及精确 Code/Logout 注册。五个旧键 `AdminOidc:Enabled/UseSessionForAdminApi/UseSessionForLogout/UseSessionForIdentityProxy/UseSessionForPortalProxies` 不再选择运行模式：应删除；仅缺省或规范小写 `true` 可通过迁移检验，显式 `false`、空值或畸形值在所有环境启动拒绝。密码入口永久 `410 legacy_login_disabled`，API/图片/三个代理/关联查询始终使用同一管理员会话与 CSRF 边界，任何入站 Authorization 固定401；不存在关闭能力或浏览器 JWT 回退模式。
+The current version runs only the server-session hosted login. You must configure `IdentityService:Authority/AppId/AppSecret`, `AdminOidc:RedirectUri/PostLogoutRedirectUri`, the current administrator allowlist and the ADMIN application audience, and complete real downstream trust plus exact Code/Logout registration. The five legacy keys `AdminOidc:Enabled/UseSessionForAdminApi/UseSessionForLogout/UseSessionForIdentityProxy/UseSessionForPortalProxies` no longer select the run mode: remove them; only omission or the canonical lowercase `true` passes migration validation, and an explicit `false`, empty, or malformed value is rejected at startup in every environment. The password entry point is permanently `410 legacy_login_disabled`; API/images/the three proxies/association queries always use the same administrator session and CSRF boundary; any inbound Authorization gets a fixed 401; there is no capability switch and no browser-JWT fallback mode.
 
-开发 SPA 使用 `http://127.0.0.1:8090`，完整 `/api/*` 由 Vite 代理到后端硬编码 5020。注册与 BFF 配置必须使用浏览器原点的 `http://127.0.0.1:8090/api/auth/oidc/callback` 与 `/api/auth/oidc/logout/return`，不能注册内部 5020、localhost 或通配符。集成模式改用其实际同源地址。传输安全是部署决策：配置层 http 与 https 同等接受（结构规则不变，`localhost` 主机名仍拒绝），公网部署应使用 HTTPS 与正常 CA（建议而非强制）；SignaCore Host 0.1.16 起同样无 HTTP origin 门，更早的 Host 版本须按其自身 Testing 门放行本服务的 HTTP redirect origin（部署侧事实）。复用 `IdentityService:Authority/AppId/AppSecret` 的 Confidential、PerApplication ADMIN audience、Code + openid profile + S256 客户端，不启用 refresh；Secret 只通过环境变量或 user-secrets 注入。
+The development SPA uses `http://127.0.0.1:8090`, with the full `/api/*` proxied by Vite to the backend's hardcoded 5020. The registration and the BFF configuration must use the browser origin's `http://127.0.0.1:8090/api/auth/oidc/callback` and `/api/auth/oidc/logout/return` — never register the internal 5020, localhost, or wildcards. Integrated mode switches to its actual same-origin address. Transport security is a deployment decision: at the configuration level http and https are accepted equally (structural rules unchanged, `localhost` host names stay rejected); public deployments should use HTTPS with a normal CA (a recommendation, not enforced); SignaCore Host 0.1.16 likewise has no HTTP origin gate, and earlier Host versions must admit this service's HTTP redirect origin under their own Testing gate (a deployment-side fact). Reuse the Confidential, PerApplication ADMIN audience, Code + openid profile + S256 client of `IdentityService:Authority/AppId/AppSecret`, without enabling refresh; the Secret is injected only via environment variables or user-secrets.
 
-Cookie 只含不透明引用，ticket 8 小时绝对期限、token 到期显式重新登录，重启丢失。unsafe 请求由共享客户端单飞取普通 CSRF；退出使用独立 logout CSRF，即使 token 到期或被移出白名单仍允许本人退出。三个代理和图片均依赖当前服务器授权。完整 TLS、白名单、日志、单实例限制与回退条件见 [Deployment.md](./Deployment.md#signacore-托管登录唯一模式)。
+Cookies hold only an opaque reference; tickets have an 8-hour absolute lifetime, token expiry requires explicit re-login, and restarts lose them. Unsafe requests take the ordinary CSRF via the shared client's single flight; logout uses the separate logout CSRF, so even an expired token or removal from the allowlist still lets the user log out. The three proxies and images all depend on the current server authorization. For full TLS, allowlist, logging, single-instance limits, and rollback conditions, see [Deployment.md](./Deployment.md#signacore-hosted-login-the-only-mode).
 
-自动化完整握手使用 `backend/Tests/Integration/OidcTestAuthority.cs` 的测试 RSA、Discovery/JWKS/token 替身与 Testcontainers PostgreSQL，`dotnet test Ruoyu.Admin.sln --configuration Release --filter "FullyQualifiedName~Oidc"`；不连接生产 Identity。
+The automated full handshake uses the test RSA, Discovery/JWKS/token stand-ins, and Testcontainers PostgreSQL of `backend/Tests/Integration/OidcTestAuthority.cs`, `dotnet test Ruoyu.Admin.sln --configuration Release --filter "FullyQualifiedName~Oidc"`; it never connects to production Identity.
 
-Mistake 出站专项用 `dotnet test Ruoyu.Admin.sln --configuration Release --filter "FullyQualifiedName~MistakeSession"`，覆盖 14 个真实 HTTP 方法、真 Program Code/PKCE 当前服务器票据、同请求换/撤票、并发、redirect/Cookie 隔离和取消。启用时先运行实际 `dotnet Admin.WebApi.dll --validate-auth-config`；不能将 localhost 改为例外、跳过 TLS 或以 AppSecret 冒充用户。`false` 保留旧匿名下游兼容，管理入站仍只接受 Session。真实官方 Provider/Mistake/Student/S3 联合验证另按 [Deployment](./Deployment.md#mistake-出站会话ikjnxa) 执行。
+The Mistake outbound suite runs `dotnet test Ruoyu.Admin.sln --configuration Release --filter "FullyQualifiedName~MistakeSession"`, covering the 14 real HTTP methods, a real Program Code/PKCE current server ticket, same-request ticket rotation/revocation, concurrency, redirect/Cookie isolation, and cancellation. When enabling, first run the actual `dotnet Admin.WebApi.dll --validate-auth-config`; you must not make localhost an exception, skip TLS, or pass the AppSecret off as the user. `false` keeps the old anonymous downstream compatibility, and management inbound still accepts Session only. Real official Provider/Mistake/Student/S3 joint verification is performed separately per [Deployment](./Deployment.md#mistake-outbound-session-ikjnxa).
 
-### 数据库连接策略
+### Database connection strategy
 
-Admin Portal 通过 `SharedPostgreSqlConnectionStringFactory.BuildOrFallback` 组装连接串，与 mistake / student 等服务保持一致：
+Admin Portal assembles its connection string through `SharedPostgreSqlConnectionStringFactory.BuildOrFallback`, consistent with services like mistake / student:
 
-1. 启动时调用 `AddRuoyuConsulConfiguration` 加载共享配置（Consul 地址由 `CONSUL_*` 环境变量或 `RuoyuConsulOptions` 默认值提供，基础 `appsettings.json` 不再含 `Consul` 节）
-2. 从 Consul KV `config/ruoyu/shared.json` 获取 `PostgreSql:Host/Port/Username/Password`
-3. 当 `PostgreSql:Host`、`PostgreSql:Username`、`Database:Name` 均非空时，与本地 `Database:Name` 合成 PostgreSQL 连接串
-4. 否则回退到本地 `ConnectionStrings:AuditDb`（仅 Development 默认提供）
+1. At startup, call `AddRuoyuConsulConfiguration` to load the shared configuration (the Consul address comes from `CONSUL_*` environment variables or `RuoyuConsulOptions` defaults; the base `appsettings.json` no longer contains a `Consul` section)
+2. Obtain `PostgreSql:Host/Port/Username/Password` from the Consul KV `config/ruoyu/shared.json`
+3. When `PostgreSql:Host`, `PostgreSql:Username`, and `Database:Name` are all non-empty, synthesize a PostgreSQL connection string with the local `Database:Name`
+4. Otherwise fall back to the local `ConnectionStrings:AuditDb` (provided only as a Development default)
 
-- 本地开发：`ConnectionStrings:AuditDb` 指向本地 PostgreSQL（`Host=localhost;Username=phil`，无密码），无需 Consul 即可运行
-- 生产环境：由 Consul 的 `PostgreSql:*` 下发，基础 `appsettings.json` 不再携带本地连接串回退
+- Local development: `ConnectionStrings:AuditDb` points at the local PostgreSQL (`Host=localhost;Username=phil`, no password); it runs without Consul
+- Production: delivered by Consul's `PostgreSql:*`; the base `appsettings.json` no longer carries a local connection-string fallback
 
-3. 环境变量覆盖（可选）：
+3. Environment variable overrides (optional):
    ```bash
-   export USE_LOCAL_OSS=1           # 使用本地文件系统替代 S3
-   export OSS_LOCAL_PATH=data/oss   # 本地 OSS 存储路径
+   export USE_LOCAL_OSS=1           # use the local file system instead of S3
+   export OSS_LOCAL_PATH=data/oss   # local OSS storage path
    ```
 
-4. IOssService 凭证权限说明（Phase 4 变更）：
+4. IOssService credential permission notes (Phase 4 change):
 
-   Admin Portal 保留 `IOssService` 用于审计场景，但凭证权限降级为只读 + 有限写：
+   Admin Portal keeps `IOssService` for audit scenarios, but the credential permissions are downgraded to read-only + limited write:
 
-   | 操作 | 权限 | 用途 |
+   | Operation | Permission | Purpose |
    |------|------|------|
-   | `ListObjects` | 只读 | 审计浏览 |
-   | `GetPresignedUrl` | 只读 | 生成预签名 URL |
-   | `ObjectExists` | 只读 | 审计校验 |
-   | `Download` | 只读 | 图片查看（改造后走预签名 URL，可后续移除） |
-   | `Delete` | 写 | 僵尸文件清理 |
-   | `CopyObject` | 写 | 迁移辅助 |
+   | `ListObjects` | read-only | audit browsing |
+   | `GetPresignedUrl` | read-only | generating presigned URLs |
+   | `ObjectExists` | read-only | audit verification |
+   | `Download` | read-only | image viewing (switched to presigned URLs after the rework; can be removed later) |
+   | `Delete` | write | zombie file cleanup |
+   | `CopyObject` | write | migration assistance |
 
-   > 本地开发使用 `LocalFileOssService`（`USE_LOCAL_OSS=1`）时无权限限制；生产环境需配置对应权限的 OSS 凭证。
+   > Local development with `LocalFileOssService` (`USE_LOCAL_OSS=1`) has no permission restrictions; production must configure OSS credentials with matching permissions.
 
-5. OSS 地址配置：
+5. OSS address configuration:
 
-   | 配置键 | 说明 | 示例 |
+   | Configuration key | Description | Example |
    |--------|------|------|
-   | `Oss:InternalEndpoint` | Admin 后端实际连接的 S3 地址 | `localhost:8333` |
-   | `Oss:InternalSecure` | 内部连接是否使用 HTTPS | `false` |
-   | `Oss:PublicBaseUrl` | 浏览器使用的预签名公共基础 URL | `https://oss.example.com/oss` |
+   | `Oss:InternalEndpoint` | the S3 address the Admin backend actually connects to | `localhost:8333` |
+   | `Oss:InternalSecure` | whether the internal connection uses HTTPS | `false` |
+   | `Oss:PublicBaseUrl` | the public presigned base URL used by browsers | `https://oss.example.com/oss` |
 
-   本地开发使用 `LocalFileOssService` 时不读取这些 S3 地址。Admin 前端 Nginx 不提供 `/oss/` 代理，公共对象由 User Web Nginx 统一代理。
+   These S3 addresses are not read when local development uses `LocalFileOssService`. The Admin frontend Nginx provides no `/oss/` proxy; public objects are uniformly proxied by the User Web Nginx.
 
-## 前端配置
+## Frontend configuration
 
 ```bash
 cd frontend
 npm install
 ```
 
-前端开发服务器默认端口 8090；托管登录访问 `http://127.0.0.1:8090`，API 请求代理到后端 5020 端口。
+The frontend dev server listens on 8090 by default; hosted login accesses `http://127.0.0.1:8090`, and API requests are proxied to backend port 5020.
 
-## 下游服务依赖
+## Downstream service dependencies
 
-Admin Portal 依赖以下下游服务运行：
+Admin Portal depends on the following downstream services running:
 
-| 服务 | 端口 | 必要性 | 不可用时影响 |
+| Service | Port | Required | Impact when unavailable |
 |------|------|--------|-------------|
-| Student Service | 5005 | 必须 | 学生管理、上传记录、图片预签名 URL、图片迁移均不可用；审计路径聚合不可用 |
-| Mistake Service | 5007 | 必须 | 错题管理、图片预签名 URL 不可用；审计引用聚合按不变量整轮中止（连接拒绝与非 JSON 失败均向上传播，见 [#28](https://github.com/philfanzhou/Ruoyu.Admin/issues/28)） |
-| Identity Service | 5002 | 可选 | 身份代理返回 502；账户批量查询返回空列表 |
-| Teacher Portal | 5004 | 可选 | 教师门户代理返回 502/503 |
-| Assistant Portal | 5021 | 可选 | 助教门户代理返回 502/503 |
-| OSS 存储 | - | 必须（审计场景） | 审计浏览、僵尸清理不可用；图片查看通过下游 HTTP 服务获取预签名 URL |
+| Student Service | 5005 | required | Student management, upload records, image presigned URLs, and image migration all unavailable; audit path aggregation unavailable |
+| Mistake Service | 5007 | required | Mistake management and image presigned URLs unavailable; audit reference aggregation aborts the whole run per the invariant (connection refusals and non-JSON failures both propagate upward, see [#28](https://github.com/philfanzhou/Ruoyu.Admin/issues/28)) |
+| Identity Service | 5002 | optional | identity proxy returns 502; account batch lookup returns an empty list |
+| Teacher Portal | 5004 | optional | teacher portal proxy returns 502/503 |
+| Assistant Portal | 5021 | optional | assistant portal proxy returns 502/503 |
+| OSS storage | - | required (audit scenarios) | audit browsing and zombie cleanup unavailable; image viewing goes through downstream HTTP services for presigned URLs |
 
-> **Phase 4 变更**：Student Service 不可用时，影响范围扩大（新增图片预签名 URL、图片迁移、路径聚合）。Mistake Service 不可用时，审计按不变量整轮中止而非继续（历史「跳过聚合」表述与当前实现的不变量冲突；连接拒绝与非 JSON 失败均向上传播，见 [#28](https://github.com/philfanzhou/Ruoyu.Admin/issues/28)）。OSS 存储仅影响审计场景，图片查看已改为通过下游 HTTP 服务获取预签名 URL，不再由 Admin 直接读取对象内容。
+> **Phase 4 change**: when the Student Service is unavailable, the impact widens (image presigned URLs, image migration, and path aggregation added). When the Mistake Service is unavailable, the audit aborts the whole run per the invariant instead of continuing (the historical "skip aggregation" wording conflicts with the current implementation's invariant; connection refusals and non-JSON failures both propagate upward, see [#28](https://github.com/philfanzhou/Ruoyu.Admin/issues/28)). OSS storage affects only audit scenarios; image viewing now goes through downstream HTTP services for presigned URLs and Admin no longer reads object contents directly.
 >
-> 需要一套可执行的本地全栈（含 Identity 与三个引用来源替身）时，见 [LocalRegressionEnv.md](./LocalRegressionEnv.md)。
+> When you need a runnable local full stack (including Identity and the three reference-source stand-ins), see [LocalRegressionEnv.md](./LocalRegressionEnv.md).
 
-> 详细配置说明见 [Deployment.md](./Deployment.md)
+> For detailed configuration notes see [Deployment.md](./Deployment.md)
 
-### Prepared logout（#46，#83 起由 SignaCore 包承担）
+### Prepared logout (#46; owned by the SignaCore package since #83)
 
-退出始终使用 prepared logout，端点为包拥有的 `POST /api/auth/oidc/logout`。必需的 `AdminOidc:PostLogoutRedirectUri` 与 RedirectUri 同 origin，路径固定 `/api/auth/oidc/logout/return`、无 query/fragment/userinfo；SignaCore 应用注册的 PostLogout 回调需由维护者改为该值。http 与 https 同等接受（结构规则不变），公网部署应使用 HTTPS（建议而非强制）。非 POST logout 固定405，每次 POST 尝试都清理旧 `adminAuthToken` Cookie。
+Logout always uses prepared logout, with the package-owned endpoint `POST /api/auth/oidc/logout`. The required `AdminOidc:PostLogoutRedirectUri` is same-origin with the RedirectUri, with the fixed path `/api/auth/oidc/logout/return` and no query/fragment/userinfo; the SignaCore application registration's PostLogout callback must be changed to this value by the maintainer. http and https are accepted equally (structural rules unchanged); public deployments should use HTTPS (a recommendation, not enforced). Non-POST logout is a fixed 405, and every POST attempt clears the old `adminAuthToken` Cookie.
 
-SPA 先 GET `/api/auth/oidc/csrf`（公开签发 `{"token":"..."}`，轮换共享 `adminCsrf` Cookie），再以导航式 form POST 提交 `__RequestVerificationToken`（或单值 `X-CSRF-TOKEN` header）。缺/错 token 固定 `400 {"outcome":"csrf_rejected"}` 且不触碰会话；登出不以 access token 期限或管理员白名单阻止本人退出。包在按会话键串行的门内先移除票据、删除会话 Cookie，再向 Authority `/oauth2/logout/requests` 发 HTTP Basic 认证 + 服务器 id_token_hint + PostLogout URI + 一次性 state，不重试不跟随 redirect；成功 302 验证过的同源 logout_uri，失败/超时/取消固定 `200 {"outcome":"local_only"}`。回跳 `/api/auth/oidc/logout/return?state=...` 以绑定 Cookie（5 分钟）原子单用，正确 302 `/login`，其余固定 400 HTML。
-
-
-成功 JSON `{success:true,upstreamLogout:true,logoutUrl:...}` 仅导航验证后同源或相对 `/oauth2/logout?logout_handle=<43base64url>` 的唯一 URL；相对 URL 解析成 Authority 同源绝对 URL。准备失败、畸形/超大响应、错误 URL、超时、取消、容量不足或缺 ID token 均永久保持本地退出，响应可写时 `{success:true,upstreamLogout:false}`，断连不能保证浏览器收到结果。重新查询本地状态恢复，不推定远端成功。整体发送/读取 10 秒上限、JSON 最多 4096B；私有 HTTP 无浏览器 Cookie/Authorization、日志或 redirect，协议路径不进入 telemetry。
+The SPA first GETs `/api/auth/oidc/csrf` (publicly issuing `{"token":"..."}` and rotating the shared `adminCsrf` Cookie), then submits `__RequestVerificationToken` via a navigational form POST (or a single-value `X-CSRF-TOKEN` header). A missing/wrong token is a fixed `400 {"outcome":"csrf_rejected"}` without touching the session; logout is never blocked by access-token expiry or the administrator allowlist. Inside a gate serialized per session key, the package first removes the ticket and deletes the session Cookie, then sends HTTP Basic authentication + the server id_token_hint + the PostLogout URI + a one-time state to the Authority's `/oauth2/logout/requests`, without retrying or following redirects; success is a 302 to the validated same-origin logout_uri, failure/timeout/cancellation is a fixed `200 {"outcome":"local_only"}`. The return trip `/api/auth/oidc/logout/return?state=...` consumes atomically once with the binding Cookie (5 minutes); the correct case is a 302 to `/login`, everything else a fixed 400 HTML.
 
 
-### 令牌过期与显式重认证（#45）
+The success JSON `{success:true,upstreamLogout:true,logoutUrl:...}` carries only the unique URL that is same-origin or relative `/oauth2/logout?logout_handle=<43base64url>` after navigational validation; a relative URL resolves to an absolute URL same-origin with the Authority. Preparation failure, malformed/oversized response, wrong URL, timeout, cancellation, insufficient capacity, or a missing ID token all permanently keep the local logout — when the response is still writable, `{success:true,upstreamLogout:false}`; on disconnection the browser is not guaranteed to receive the result. Recovery re-queries the local state; remote success is never presumed. The overall send/read has a 10-second cap and the JSON at most 4096B; the private HTTP carries no browser Cookie/Authorization, logs, or redirects, and the protocol paths enter no telemetry.
 
-在唯一会话模式，有效管理员票据且严格 `expires_at` 到期时，业务门禁为 `401 {"error":"reauthentication_required"}`，零下游/OSS 删除，不清服务器 ID token、不刷新或重放写请求。`GET /api/auth/session` 为 `{authenticated,displayName,requiresReauthentication}`：有效 token true/false，仅合法 token 到期 false/true（保留显示名），匿名/撤票/8h失效/缺token/坏期限 false/false、显示名 null。当前非管理员403优先；任意 Authorization401。浏览器仅显式进入 `/api/auth/oidc/start?returnUrl=...` 受控授权；上游会话可复用立即回跳，否则显示托管登录；取消/失败保持既有固定结果，BFF不自动挑战。fake测试验证两种回跳时序与deadline前/精确/后/8h、并发，不能证明生产SignaCore时限；真实联调仍归 #41/IKJ8MO。
 
-### 门户服务端凭据（#44）
+### Token expiry and explicit reauthentication (#45)
 
-Teacher/Assistant 全代理前缀在认证/授权前共用管理员/CSRF 门禁，合法 access token 到期返回 `401 reauthentication_required` 且零出站，仅发送服务器 Bearer，剥离浏览器 Cookie、Host、CSRF 与 gateway 头、下游 Set-Cookie。保留 admin/auth/其他路径映射、query/body、503/502 和下游401/403；取消传递且不重放。关联查询共用相同管理员边界，只转发服务器 token，失败门禁在 Student/门户调用前拒绝。业务单侧失败/畸形响应继续该侧空列表，另一侧正常，此聚合不保证失败可见性或两门户一致。生产 rollout 不在 #75 实现范围；当前组合的正式验证使用官方 Provider 与真实下游。专项 `PortalSession_`、`AssociationsSession_` 在隔离数据库/fake HTTP 上运行，不触生产。
+In the only-session mode, when a valid administrator ticket hits a strict `expires_at` deadline, the business gate returns `401 {"error":"reauthentication_required"}`, with zero downstream/OSS deletion, no clearing of the server ID token, and no refresh or write replay. `GET /api/auth/session` returns `{authenticated,displayName,requiresReauthentication}`: valid token true/false; only a valid token at expiry false/true (display name kept); anonymous/revoked/8h-expired/missing token/bad deadline false/false with null display name. Non-admin 403 takes precedence; any Authorization 401. The browser only explicitly enters the controlled authorization at `/api/auth/oidc/start?returnUrl=...`; when the upstream session can be reused it returns immediately, otherwise the hosted login shows; cancel/failure keeps the existing fixed results, and the BFF never auto-challenges. Fake tests verify both return timings and before/exactly-at/after the deadline/8h plus concurrency, and cannot prove the production SignaCore timings; the real joint debugging still belongs to #41/IKJ8MO.
 
-### Identity 代理服务端会话（#43）
+### Portal server-side credentials (#44)
 
-全 `/api/identity` 前缀（大小写、根和尾斜线）在认证/授权前经过共享管理员与 CSRF 边界。拒绝任何入站 Authorization；合法 access token 到期时返回 `401 reauthentication_required` 且零出站；只转发服务器票据内有效 access token，剥离浏览器 Cookie、Host、X-CSRF-TOKEN 与伪造 gateway 头后注入本服务 AppId/AppSecret。下游 Set-Cookie 不传给浏览器；401/403/结构化503和 Retry-After 原样，网络失败502，取消传递且不重放。AppSecret 剥离始终保持，三个代理共用相同会话边界。生产平台注册不由本项执行；正式组合门禁归 #75。专项 `FullyQualifiedName~IdentitySession_` 使用 fake HTTP 与隔离数据库，无生产 OSS 删除。
+The full Teacher/Assistant proxy prefixes share the administrator/CSRF gate before authentication/authorization; a valid access token at expiry returns `401 reauthentication_required` with zero outbound, only the server Bearer is sent, and browser Cookie, Host, CSRF, and gateway headers plus downstream Set-Cookie are stripped. The admin/auth/other path mappings, query/body, 503/502, and downstream 401/403 are preserved; cancellation propagates without replay. Association queries share the same administrator boundary, forward only the server token, and reject before the Student/portal calls on failure. A single-sided business failure or malformed response keeps that side an empty list while the other side is normal; this aggregation guarantees neither failure visibility nor cross-portal consistency. Production rollout is not in #75's implementation scope; formal verification of the current combination uses the official Provider and real downstream. The dedicated `PortalSession_` and `AssociationsSession_` suites run on an isolated database/fake HTTP and never touch production.
+
+### Identity proxy server-side session (#43)
+
+The full `/api/identity` prefix (case, root, and trailing slash) passes the shared administrator and CSRF boundary before authentication/authorization. Any inbound Authorization is rejected; a valid access token at expiry returns `401 reauthentication_required` with zero outbound; only the valid in-ticket server access token is forwarded, and after stripping browser Cookie, Host, X-CSRF-TOKEN, and forged gateway headers, this service's own AppId/AppSecret is injected. Downstream Set-Cookie does not reach the browser; 401/403/structured 503 and Retry-After pass through as-is, network failure gives 502, and cancellation propagates without replay. AppSecret stripping always remains, and the three proxies share the same session boundary. Production platform registration is not performed by this item; the formal combination gate belongs to #75. The dedicated `FullyQualifiedName~IdentitySession_` tests use fake HTTP and an isolated database, with no production OSS deletion.

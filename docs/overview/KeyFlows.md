@@ -1,76 +1,83 @@
-# 关键业务流程
+# Key business flows
 
-## 1. OSS 审计流程
+## 1. OSS audit flow
 
-OSS 审计用于发现 OSS 存储中未被任何业务引用的"僵尸"文件。支持定时触发和手动触发两种方式。
+The OSS audit discovers "zombie" files in OSS storage that no business references. It supports both scheduled and manual triggers.
 
-### 时序图
+### Sequence diagram
 
 ```
-定时触发 (OssAuditWorker)              手动触发 (OssAuditController)
+Scheduled trigger (OssAuditWorker)         Manual trigger (OssAuditController)
     │                                        │
-    │  每天凌晨 2:00 (可配置)                  │  POST /api/admin/oss-audit/trigger
+    │  daily at 2:00 AM (configurable)       │  POST /api/admin/oss-audit/trigger
     │                                        │
     ▼                                        ▼
 ┌──────────────────────────────────────────────────────┐
-│ 1. 创建 OssAuditRun (Status=Running)                  │
-│    → 若 SaveChanges 失败 (DbUpdateException)          │
-│      说明有并发审计，直接退出                           │
-│    → 双重检查：查询是否有其他 Status=0 的 Run           │
-│      若有，删除当前 Run 并退出                          │
+│ 1. Create OssAuditRun (Status=Running)               │
+│    → if SaveChanges fails (DbUpdateException)        │
+│      a concurrent audit exists; exit immediately     │
+│    → double check: query for other Status=0 Runs     │
+│      if any, delete the current Run and exit         │
 └──────────────────────┬───────────────────────────────┘
                        │
                        ▼
 ┌──────────────────────────────────────────────────────┐
-│ 2. 聚合 Student 的已注册 OSS 路径                       │
-│    HTTP: IStudentHttpClient.GetAllUploadRecordsAsync  │
-│    （分页遍历上传记录，本地聚合 image_paths）            │
-│    → 若 Student 服务不可用 → 标记 Run 为 Failed，退出   │
+│ 2. Aggregate Student's registered OSS paths          │
+│    HTTP: IStudentHttpClient.GetAllUploadRecordsAsync │
+│    (paginate upload records, aggregate image_paths   │
+│     locally)                                         │
+│    → Student service unavailable → mark Run Failed   │
 └──────────────────────┬───────────────────────────────┘
                        │
                        ▼
 ┌──────────────────────────────────────────────────────┐
-│ 3. 并入 Homework 的引用路径                            │
+│ 3. Merge in Homework's reference paths               │
 │    HTTP: HomeworkReferenceClient.GetAllImagePathsAsync│
-│    → 若 Homework 服务不可用 → 标记 Run 为 Failed，退出  │
+│    → Homework service unavailable → mark Run Failed  │
 └──────────────────────┬───────────────────────────────┘
                        │
                        ▼
 ┌──────────────────────────────────────────────────────┐
-│ 4. 聚合 Mistake 的已引用图片路径                        │
-│    HTTP: IMistakeHttpClient.GetMistakeItemListAsync   │
-│    （分页遍历错题条目，聚合 source_regions 图片路径）     │
-│    → 若 Mistake 服务不可用 → 标记 Run 为 Failed，退出   │
-│      引用聚合不完整时不得产出可处置结论，因此不降级继续    │
+│ 4. Aggregate Mistake's referenced image paths        │
+│    HTTP: IMistakeHttpClient.GetMistakeItemListAsync  │
+│    (paginate mistake items, aggregate                │
+│     source_regions image paths)                      │
+│    → Mistake service unavailable → mark Run Failed   │
+│      incomplete reference aggregation must not yield │
+│      disposable conclusions, so no degraded continue │
 └──────────────────────┬───────────────────────────────┘
                        │
                        ▼
 ┌──────────────────────────────────────────────────────┐
-│ 5. 遍历 OssAuditWorker.AuditedBuckets                 │
-│    当前为 uploads、mistakes 两个桶                     │
-│    （questions、documents 无引用来源，不在审计范围内）   │
+│ 5. Iterate OssAuditWorker.AuditedBuckets             │
+│    currently the two buckets uploads, mistakes       │
+│    (questions, documents have no reference source    │
+│     and are outside the audit scope)                 │
 │    IOssService: ListObjectsWithBucketAsync (per bucket)│
 │                                                       │
-│    对每个对象：                                        │
-│    ├─ ThumbnailHelper.IsThumbnailPath？ → 跳过        │
-│    │  （缩略图与原图关联，删原图时自动清理）            │
-│    ├─ 在 registeredPaths 中？ → 跳过                  │
-│    ├─ 在 mistakePaths 中？ → 跳过                     │
-│    └─ 都不在 → 检查 OssAuditRecords 是否已存在        │
-│       └─ 不存在 → 插入新记录 (Status=Pending)         │
+│    For each object:                                  │
+│    ├─ ThumbnailHelper.IsThumbnailPath? → skip        │
+│    │  (thumbnails are tied to the original image;   │
+│    │  removed automatically when it is deleted)     │
+│    ├─ in registeredPaths? → skip                    │
+│    ├─ in mistakePaths? → skip                       │
+│    └─ in neither → check whether OssAuditRecords    │
+│       already has it                                │
+│       └─ not present → insert a new record          │
+│          (Status=Pending)                           │
 └──────────────────────┬───────────────────────────────┘
                        │
                        ▼
 ┌──────────────────────────────────────────────────────┐
-│ 6. 更新 OssAuditRun                                  │
-│    Status=Completed, NewZombieCount=N                 │
+│ 6. Update OssAuditRun                               │
+│    Status=Completed, NewZombieCount=N               │
 └──────────────────────────────────────────────────────┘
 ```
 
-### Resolve 流程
+### Resolve flow
 
 ```
-管理员                     OssAuditController          Student Svc        Mistake Svc        DB         OSS
+Administrator                OssAuditController       Student Svc      Mistake Svc      DB         OSS
   │                              │                        │                  │              │          │
   │ POST /records/{id}/resolve   │                        │                  │              │          │
   │─────────────────────────────>│                        │                  │              │          │
@@ -82,17 +89,18 @@ OSS 审计用于发现 OSS 存储中未被任何业务引用的"僵尸"文件。
   │                              │─────────────────────────────────────────>│              │          │
   │                              │<────────────────────────────────────────│              │          │
   │                              │                        │                  │              │          │
-  │                              │ [验证：路径仍被引用？]   │                  │              │          │
-  │                              │ 若被引用 → 400 BadReq  │                  │              │          │
+  │                              │ [Verify: path still referenced?]          │              │          │
+  │                              │ referenced → 400 BadReq │                  │              │          │
   │                              │                        │                  │              │          │
   │                              │ IOssService.DeleteAsync │                  │              │          │
   │                              │─────────────────────────────────────────────────────────────────────>│
   │                              │                        │                  │              │          │
-  │                              │  (DeleteAsync 内部：    │                  │              │          │
-  │                              │   IsThumbnailPath? → 否 │                  │              │          │
+  │                              │  (inside DeleteAsync:  │                  │              │          │
+  │                              │   IsThumbnailPath? → no │                  │              │          │
   │                              │   GetAllThumbnailPaths  │                  │              │          │
-  │                              │   → 删除关联缩略图      │                  │              │          │
-  │                              │   → 删除原图)           │                  │              │          │
+  │                              │   → delete associated   │                  │              │          │
+  │                              │     thumbnails          │                  │              │          │
+  │                              │   → delete the original)│                  │              │          │
   │                              │<─────────────────────────────────────────────────────────────────────│
   │                              │                        │                  │              │          │
   │                              │ Remove AuditRecord     │                  │              │          │
@@ -104,14 +112,14 @@ OSS 审计用于发现 OSS 存储中未被任何业务引用的"僵尸"文件。
 
 ---
 
-## 2. 上传记录分配流程
+## 2. Upload record assignment flow
 
-将上传记录中的图片按分组分配为错题条目，支持跨学科分配。
+Assigns the images of an upload record to mistake items by group, supporting cross-subject assignment.
 
-### 时序图
+### Sequence diagram
 
 ```
-管理员                     OssUploadRecordController   Student Svc        Mistake Svc
+Administrator                OssUploadRecordController  Student Svc      Mistake Svc
   │                              │                        │                  │
   │ POST /{id}/assign            │                        │                  │
   │ {assignments: [...]}         │                        │                  │
@@ -121,12 +129,12 @@ OSS 审计用于发现 OSS 存储中未被任何业务引用的"僵尸"文件。
   │                              │───────────────────────>│                  │
   │                              │<──────────────────────│                  │
   │                              │                        │                  │
-  │                              │ ┌─ 对每个 assignment ─┐│                  │
+  │                              │ ┌─ for each assignment ┐│                  │
   │                              │ │                     ││                  │
   │                              │ │ SubmitMistakeUpload ││                  │
   │                              │ │─────────────────────────────────────>│
   │                              │ │<────────────────────────────────────│
-  │                              │ │ (返回 createdItemIds)││              │
+  │                              │ │ (returns createdItemIds)││          │
   │                              │ └─────────────────────┘│                  │
   │                              │                        │                  │
   │                              │ MarkUploadRecordCompleted               │
@@ -139,24 +147,24 @@ OSS 审计用于发现 OSS 存储中未被任何业务引用的"僵尸"文件。
   │     totalImageCount }        │                        │                  │
 ```
 
-### 关键语义
+### Key semantics
 
-- 一个 `assignment` = 一道错题 = 一条 `mistake_item`
-- 一个 `assignment` 内的多张图片打包到同一条 `mistake_item` 的 `source_regions`
-- 多个 `assignment` 可分别指定不同的 `subject` / `grade`（跨学科分配）
-- 同一上传记录可被多次分配（每次创建新的 `mistake_item`）
-- 分配后上传记录被标记为 Completed，`mistake_item` 进入 `PendingReview` 状态
+- One `assignment` = one mistake = one `mistake_item`
+- The multiple images within one assignment are packed into the same `mistake_item`'s `source_regions`
+- Multiple assignments can specify different `subject` / `grade` each (cross-subject assignment)
+- The same upload record can be assigned multiple times (each creates a new `mistake_item`)
+- After assignment the upload record is marked Completed and the `mistake_item` enters `PendingReview`
 
 ---
 
-## 3. 遗留数据清理流程
+## 3. Legacy data cleanup flow
 
-清理已审核完毕但仍残留的上传记录。当上传记录关联的错题已全部审核（Confirmed/Rejected），但上传记录本身未被删除时，属于遗留数据。
+Cleans up upload records that finished review but still linger. When all mistakes linked to an upload record have been reviewed (Confirmed/Rejected) but the upload record itself was not deleted, it is legacy data.
 
-### 时序图
+### Sequence diagram
 
 ```
-管理员                     OssUploadRecordController   Mistake Svc        Student Svc
+Administrator                OssUploadRecordController  Mistake Svc      Student Svc
   │                              │                        │                  │
   │ 1. GET /legacy-check/{id}    │                        │                  │
   │─────────────────────────────>│                        │                  │
@@ -164,10 +172,10 @@ OSS 审计用于发现 OSS 存储中未被任何业务引用的"僵尸"文件。
   │                              │───────────────────────>│                  │
   │                              │<──────────────────────│                  │
   │                              │                        │                  │
-  │                              │ [判断：是否遗留数据？]   │                  │
-  │  - 无关联错题 → isLegacy=false│                        │                  │
-  │  - 有待审核 → isLegacy=false  │                        │                  │
-  │  - 全部已审核 → isLegacy=true │                        │                  │
+  │                              │ [Decide: legacy data?] │                  │
+  │  - no linked mistakes → isLegacy=false               │                  │
+  │  - any pending review → isLegacy=false               │                  │
+  │  - all reviewed → isLegacy=true                      │                  │
   │<─────────────────────────────│                        │                  │
   │                              │                        │                  │
   │ 2. POST /legacy-clean/{id}   │                        │                  │
@@ -178,7 +186,7 @@ OSS 审计用于发现 OSS 存储中未被任何业务引用的"僵尸"文件。
   │                              │<──────────────────────│                  │
   │                              │  (RemovedImagePaths)   │                  │
   │                              │                        │                  │
-  │                              │ Step 2: RemoveImagesFromRecord [若有]    │
+  │                              │ Step 2: RemoveImagesFromRecord [if any]  │
   │                              │───────────────────────────────────────>│
   │                              │<──────────────────────────────────────│
   │                              │                        │                  │
@@ -189,47 +197,47 @@ OSS 审计用于发现 OSS 存储中未被任何业务引用的"僵尸"文件。
   │<─────────────────────────────│ 200 OK { success: true }               │
 ```
 
-### 清理三步骤
+### The three cleanup steps
 
-1. **CompleteUploadReview**：调用 Mistake 服务完成上传审核，返回需要移除的图片路径列表
-2. **RemoveImagesFromRecord**：调用 Student 服务从上传记录中移除已处理的图片路径
-3. **DeleteUploadRecordAfterReview**：调用 Student 服务删除上传记录
+1. **CompleteUploadReview**: calls the Mistake service to complete the upload review and get the list of image paths to remove
+2. **RemoveImagesFromRecord**: calls the Student service to remove the processed image paths from the upload record
+3. **DeleteUploadRecordAfterReview**: calls the Student service to delete the upload record
 
 ---
 
-## 4. 学生 CRUD 与账户关联流程
+## 4. Student CRUD and account linking flow
 
-学生的创建、查询、更新、删除操作，以及与 Identity 账户的关联/解绑。
+Creating, querying, updating, and deleting students, plus linking/unlinking Identity accounts.
 
-### 创建学生时序图
+### Create student sequence diagram
 
 ```
-管理员                     StudentsController          Student Svc (gRPC)
+Administrator                StudentsController       Student Svc (gRPC)
   │                              │                        │
   │ POST /api/admin/students     │                        │
   │ { name, grade,              │                        │
   │   identityAccountIds }       │                        │
   │─────────────────────────────>│                        │
   │                              │                        │
-  │                              │ [验证]                  │
-  │                              │ - name 非空             │
-  │                              │ - grade 有效 (1-12)     │
-  │                              │ - accountIds 非空        │
-  │                              │ - accountIds 格式合法    │
+  │                              │ [Validation]           │
+  │                              │ - name non-empty       │
+  │                              │ - grade valid (1-12)   │
+  │                              │ - accountIds non-empty │
+  │                              │ - accountIds well-formed│
   │                              │                        │
-  │                              │ CreateStudent           │
+  │                              │ CreateStudent          │
   │                              │───────────────────────>│
   │                              │<──────────────────────│
   │                              │                        │
   │<─────────────────────────────│ 200 OK (StudentDto)    │
 ```
 
-### 关联/解绑账户时序图
+### Link/unlink account sequence diagram
 
 ```
-管理员                     StudentsController          Student Svc (gRPC)
+Administrator                StudentsController       Student Svc (gRPC)
   │                              │                        │
-  │ 关联：                       │                        │
+  │ Link:                        │                        │
   │ POST /{studentId}/accounts   │                        │
   │ { identityAccountId }        │                        │
   │─────────────────────────────>│                        │
@@ -238,7 +246,7 @@ OSS 审计用于发现 OSS 存储中未被任何业务引用的"僵尸"文件。
   │                              │<──────────────────────│
   │<─────────────────────────────│ 200 OK                 │
   │                              │                        │
-  │ 解绑：                       │                        │
+  │ Unlink:                      │                        │
   │ DELETE /{sid}/accounts/{aid} │                        │
   │─────────────────────────────>│                        │
   │                              │ UnlinkIdentityAccount  │
@@ -247,9 +255,9 @@ OSS 审计用于发现 OSS 存储中未被任何业务引用的"僵尸"文件。
   │<─────────────────────────────│ 200 OK                 │
 ```
 
-### 关键约束
+### Key constraints
 
-- 创建学生时必须提供至少一个 `identityAccountId`
-- `identityAccountId` 必须是合法的 GUID 格式
-- 年级取值范围 1-12（1-6 小学，7-9 初中，10-12 高中）
-- 更新学生时 `identityAccountIds` 可选，提供时会替换整个关联列表
+- Creating a student requires at least one `identityAccountId`
+- `identityAccountId` must be a valid GUID
+- Grade range is 1-12 (1-6 primary, 7-9 junior high, 10-12 senior high)
+- When updating a student, `identityAccountIds` is optional; when provided it replaces the whole link list

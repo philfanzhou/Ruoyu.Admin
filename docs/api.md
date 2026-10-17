@@ -1,89 +1,89 @@
-# Admin Portal REST API 文档
+# Admin Portal REST API documentation
 
-## 概述
+## Overview
 
-Admin Portal 提供 REST API 接口，用于管理学生、错题记录、OSS 上传记录、审计等功能。
+Admin Portal provides REST API endpoints for managing students, mistake records, OSS upload records, audits, and more.
 
-## 基础信息
+## Basics
 
-- 基础路径: `/api/admin`
-- 数据格式: JSON
-- 认证: 管理 API 只使用服务器 AdminSession；任何入站 `Authorization` 固定401，不采用浏览器 JWT。
-- 匿名入口：SPA 静态文件、`/` 首页回退、`/api/auth/login`、`/api/auth/callback`、`/api/auth/oidc/start`、`/api/auth/oidc/callback`、`/api/auth/session` 标记 `[AllowAnonymous]`，按各自协议匿名处理（见下方"认证流程"）
+- Base path: `/api/admin`
+- Data format: JSON
+- Authentication: management APIs use only the server-side AdminSession; any inbound `Authorization` gets a fixed 401, and browser JWTs are not used.
+- Anonymous entry points: SPA static files, the `/` home fallback, `/api/auth/login`, `/api/auth/callback`, `/api/auth/oidc/start`, `/api/auth/oidc/callback`, and `/api/auth/session` are marked `[AllowAnonymous]` and handled anonymously per their own protocols (see "Authentication flow" below)
 
 ---
 
-## 认证流程
+## Authentication flow
 
-Admin Portal 采用 **mode-1 集成部署**：同一容器（端口 5020）既提供后端 REST API，又通过 `wwwroot` 提供前端静态文件与 SPA 路由回退。因此认证按请求路径区分：
+Admin Portal uses **mode-1 integrated deployment**: the same container (port 5020) serves both the backend REST API and, through `wwwroot`, the frontend static files with SPA route fallback. Authentication therefore depends on the request path:
 
-- **前端入口（匿名）**：`/` 及所有非 `/api/*` 路径由 SPA fallback 处理，无需登录即可加载登录页
-- **API（需认证）**：`/api/*` 受 `FallbackPolicy = RequireAuthenticatedUser()` 保护；管理路径与代理按下文使用管理员会话。匿名协议入口按各自规则豁免。
+- **Frontend entry (anonymous)**: `/` and every non-`/api/*` path is handled by the SPA fallback; the login page loads without signing in
+- **API (authentication required)**: `/api/*` is protected by `FallbackPolicy = RequireAuthenticatedUser()`; management paths and proxies use the administrator session as described below. Anonymous protocol entry points are exempt per their own rules.
 
-### 托管登录基础（#38）
+### Hosted login foundation (#38)
 
-当前版本只运行服务器会话托管登录，协议与安全职责由官方包 `SignaCore.Client.AspNetCore`（#83 起替换自写实现）承担：授权码 + PKCE S256 回调、服务器票据存储、pending state、prepared logout 与其端点的 user-neutral antiforgery 边界。必须配置 `IdentityService:Authority/AppId/AppSecret`、`AdminOidc:RedirectUri/PostLogoutRedirectUri`、当前管理员白名单；`IdentityService:ClockSkewSeconds` 仍参与启动校验但运行时固定 30 秒（包内值）。管理员白名单通过包的 PreSignInAuthorizationDecision（新会话签入前）与 AuthorizationDecision（会话状态读取）两个适配器执行：非白名单 subject 不签入、无票据无 Cookie。五个旧键 `AdminOidc:Enabled/UseSessionForAdminApi/UseSessionForLogout/UseSessionForIdentityProxy/UseSessionForPortalProxies` 不再选择运行模式：应删除；仅缺省或规范小写 `true` 可通过迁移检验，显式 `false`、空值或畸形值在所有环境启动拒绝。密码入口永久 `410 legacy_login_disabled`，API/图片/三个代理/关联查询始终使用同一管理员会话与 CSRF 边界，任何入站 Authorization 固定401；不存在关闭能力或浏览器 JWT 回退模式。
+The current version runs only the server-session hosted login; the protocol and security responsibilities are carried by the official package `SignaCore.Client.AspNetCore` (since #83, replacing the hand-written implementation): authorization code + PKCE S256 callback, server-side ticket storage, pending state, prepared logout, and the user-neutral antiforgery boundary of its endpoints. `IdentityService:Authority/AppId/AppSecret`, `AdminOidc:RedirectUri/PostLogoutRedirectUri`, and the current administrator allowlist must be configured; `IdentityService:ClockSkewSeconds` still participates in startup validation but is fixed at 30 seconds at runtime (the in-package value). The administrator allowlist is enforced through the package's PreSignInAuthorizationDecision (before a new session signs in) and AuthorizationDecision (when session state is read) adapters: a subject not on the allowlist is not signed in and gets no ticket and no Cookie. The five legacy keys `AdminOidc:Enabled/UseSessionForAdminApi/UseSessionForLogout/UseSessionForIdentityProxy/UseSessionForPortalProxies` no longer select the run mode: remove them; only omission or the canonical lowercase `true` passes migration validation, and an explicit `false`, an empty value, or a malformed value is rejected at startup in every environment. The password entry point is permanently `410 legacy_login_disabled`; API/image/three-proxy/association queries always use the same administrator session and CSRF boundary, any inbound Authorization gets a fixed 401; there is no capability switch and no browser JWT fallback mode.
 
-缺失或非法必需认证配置在任何宿主、迁移、worker 或监听前拒绝，不创建 disabled 实例。配置与只读预检见 [Deployment.md](development/Deployment.md#signacore-托管登录唯一模式)。
+Missing or invalid required authentication configuration is rejected before any host, migration, worker, or listener is created; no disabled instance is created. For configuration and the read-only preflight, see [Deployment.md](development/Deployment.md#signacore-hosted-login-the-only-mode).
 
-| 匿名入口 | 行为 |
+| Anonymous entry point | Behavior |
 |---|---|
-| `GET /api/auth/oidc/start?returnUrl=/students` | 包端点：读取 Discovery 后发起 Confidential code + PKCE S256；scope 仅 `openid profile`，return 路径为单值本地路径，缺省 `/`；Discovery 失败重定向 `/login?authError=identity_unavailable` |
-| `GET /api/auth/oidc/callback` | 包端点：单值 state/iss/code/error 检查、原子消费 5 分钟服务器端 pending state、严格校验 RS256 ID Token 与（配置门禁后）at+jwt access token 并做 iss/sub 关联，白名单 Decision 通过后才写票据与 Cookie |
-| `GET /api/auth/session` | 始终只返回三字段 `authenticated/displayName/requiresReauthentication`；匿名/坏票据 false/null/false，合法 token 到期 false/展示名/true，不刷新时限；不会把 Bearer 当此会话 |
+| `GET /api/auth/oidc/start?returnUrl=/students` | Package endpoint: reads Discovery and then initiates the Confidential code + PKCE S256 flow; scope is only `openid profile`, the return path is a single-value local path defaulting to `/`; Discovery failure redirects to `/login?authError=identity_unavailable` |
+| `GET /api/auth/oidc/callback` | Package endpoint: single-value state/iss/code/error checks, atomic consumption of the 5-minute server-side pending state, strict validation of the RS256 ID Token and (after the configuration gate) the at+jwt access token plus iss/sub correlation; the ticket and Cookie are written only after the allowlist Decision passes |
+| `GET /api/auth/session` | Always returns only the three fields `authenticated/displayName/requiresReauthentication`; anonymous/bad ticket false/null/false, valid token expired false/display name/true, no lifetime extension; a Bearer is never treated as this session |
 
-返回目标只允许绝对站内路径，拒绝外部、编码外部、控制字符、反斜线与 `/api/auth/*`、`/login` 循环；错误目标回退 `/dashboard`。取消返回 `/login?authError=cancelled`；start 的 Discovery/JWKS 不可用返回 `identity_unavailable`；回调协议/兑换/签名等失败统一 `sign_in_failed`，不反射 error_description 或异常。state 无论成功/失败都不重用；失败兑换必须重新 start，不能重试旧 code。入口和 redirect 响应均 no-store/no-cache/no-referrer。
+Return targets allow only absolute in-site paths and reject external, encoded-external, control-character, backslash, and `/api/auth/*` and `/login` loops; on an invalid target it falls back to `/dashboard`. Cancelling returns `/login?authError=cancelled`; an unavailable Discovery/JWKS in start returns `identity_unavailable`; callback protocol/redemption/signature and similar failures uniformly return `sign_in_failed` without reflecting error_description or exceptions. state is never reused whether the flow succeeds or fails; a failed redemption must start again and cannot retry the old code. Both the entry and redirect responses are no-store/no-cache/no-referrer.
 
-会话 Cookie（名 `adminSession`）为 HttpOnly、Path=/、SameSite=Lax、Secure（http 入口 scheme 下包 Cookie 不带 Secure，切换入口 scheme 需重新登录），值即包内票据存储的不透明键；access/id token、票据主体与截止时间只在单进程内存。会话寿命不超过 access token 到期；到期票据由存储在读时回收，过期与不存在不可区分。请求取消不发布部分票据；存储有界（默认容量 10000）并定期回收，重启/多副本不支持状态延续。展示名取 nickname/name，缺失时 null；ID Token 角色不进入业务边界主体（accessor 只重建 iss/sub/display_name）。挑战/拒绝由包 session scheme 处理（challenge 重定向 start、forbid 403），业务面短路仍为 401/403 JSON。基础 Code 请求不包含 offline_access/refresh；SPA 退出走下文的 prepared logout。
+The session Cookie (name `adminSession`) is HttpOnly, Path=/, SameSite=Lax, Secure (with an http entry scheme the package Cookie has no Secure flag; switching the entry scheme requires re-login), and its value is the opaque key of the in-package ticket store; the access/id token, ticket principal, and deadlines live only in single-process memory. The session lifetime does not exceed access-token expiry; expired tickets are reclaimed by the store on read, and expiry is indistinguishable from absence. Request cancellation publishes no partial ticket; the store is bounded (default capacity 10000) and reclaimed periodically, and restarts/multiple replicas do not support state continuation. The display name comes from nickname/name, null when absent; ID Token roles do not enter the business-boundary principal (the accessor rebuilds only iss/sub/display_name). Challenges/rejections are handled by the package session scheme (challenge redirects to start, forbid is 403), while the business surface still short-circuits with 401/403 JSON. The base Code request contains no offline_access/refresh; SPA logout goes through the prepared logout described below.
 
-### 管理员会话与 CSRF（#42）
+### Admin session and CSRF (#42)
 
-API 始终使用 AdminSession；旧键仅用于启动迁移检验，不能恢复任何旧凭据路径。
+The API always uses AdminSession; the legacy keys exist only for startup migration validation and cannot restore any legacy credential path.
 
-管理路径先显式读取服务器 AdminSession 票据，要求唯一 `iss/sub` 与已验证票据 stamp 相同，issuer 与 Authority 严格相同；只按**当前** `AdminPortal:AdminUserIds`（ID 大小写不敏感）授权，不信任 ID Token role 或浏览器头。任何入站 `Authorization`（空、重复、合法或非法）固定 401，不回落新 Cookie 或旧 `adminAuthToken`。无/过期/丢失票据、缺 access token、无效/到期 `expires_at` 为 `401 {"error":"unauthorized"}`；有效身份不在白名单为 `403 {"error":"forbidden"}`；均为 JSON，不 redirect HTML。8 小时票据寿命不能延长 access token 期限，当前不 refresh。
+Management paths first explicitly read the server AdminSession ticket, require a unique `iss/sub` matching the validated ticket stamp, and require the issuer to be exactly equal to the Authority; authorization uses only the **current** `AdminPortal:AdminUserIds` (case-insensitive IDs) and does not trust ID Token roles or browser headers. Any inbound `Authorization` (empty, repeated, valid or invalid) gets a fixed 401, with no fallback to the new Cookie or the old `adminAuthToken`. Missing/expired/lost ticket, missing access token, or invalid/expired `expires_at` yields `401 {"error":"unauthorized"}`; a valid identity not on the allowlist yields `403 {"error":"forbidden"}`; both are JSON, never an HTML redirect. The 8-hour ticket lifetime cannot extend the access-token deadline, and there is currently no refresh.
 
-`GET /api/auth/csrf` 要求相同管理员会话与有效 token，拒绝 Authorization。成功 `200 {"requestToken":"..."}`，no-store/no-cache，并设置独立 `adminCsrf` Cookie（HttpOnly、Path=/、SameSite=Lax；Secure 策略按配置入口 scheme 派生：https 入口 Secure，http 入口 `SameAsRequest`）。request token 绑定主体与 CSRF Cookie，不输出服务器 access/id token。
+`GET /api/auth/csrf` requires the same administrator session and a valid token and rejects Authorization. Success returns `200 {"requestToken":"..."}`, no-store/no-cache, and sets the separate `adminCsrf` Cookie (HttpOnly, Path=/, SameSite=Lax; the Secure policy derives from the configured entry scheme: Secure for an https entry, `SameAsRequest` for an http entry). The request token is bound to the principal and the CSRF Cookie and never outputs the server access/id token.
 
-所有管理写方法（GET/HEAD/OPTIONS/TRACE 之外，包括 POST/PUT/PATCH/DELETE 与 OSS trigger/resolve/batch-resolve）在 Controller/业务/出站/删除前显式验证框架 antiforgery，要求单值 `X-CSRF-TOKEN`。缺/错/重复 header、错 Cookie、异主体 token、只提交 form token 为 `400 {"error":"csrf_invalid"}`；CSRF 成功只继续本次请求，不重放写请求。审计的已有单条记录和非空批量 `resolve` 请求都执行同一收集器对三个服务的引用检查；v1 验证完整时返回 409，引用不可用时返回 502，始终拒绝删除；匿名 claims/OIDC callback 不套此浏览器 CSRF 边界。默认 CORS 不变，不启用跨源 Cookie。
+All management write methods (everything other than GET/HEAD/OPTIONS/TRACE, including POST/PUT/PATCH/DELETE and OSS trigger/resolve/batch-resolve) explicitly validate framework antiforgery before controller/business/outbound/deletion, requiring a single-value `X-CSRF-TOKEN`. A missing/wrong/duplicated header, wrong Cookie, token bound to a different principal, or a form-token-only submission yields `400 {"error":"csrf_invalid"}`; a successful CSRF check only continues the current request and never replays write requests. The audit's existing single-record and non-empty batch `resolve` requests both run the same collector's reference check against the three services; when v1 validation is complete it returns 409, when references are unavailable it returns 502, and deletion is always refused; anonymous claims/OIDC callback do not get this browser CSRF boundary. The default CORS is unchanged and cross-origin Cookies are not enabled.
 
-`POST /api/auth/login` 在读取密码/模型绑定前固定 `410 {"error":"legacy_login_disabled"}`，不转发 Identity、不发 JWT Cookie。登出走包端点 `POST /api/auth/oidc/logout`（见 Prepared logout）；非 POST 固定405且不撤票或 prepare，并在所有 POST 尝试上清理旧 `adminAuthToken` Cookie。三个代理与关联查询只使用服务器票据内 token。SPA/非 API 继续匿名，health 语义不变。
+`POST /api/auth/login` returns a fixed `410 {"error":"legacy_login_disabled"}` before reading the password or doing model binding, forwards nothing to Identity, and issues no JWT Cookie. Logout goes through the package endpoint `POST /api/auth/oidc/logout` (see Prepared logout); non-POST gets a fixed 405 with no ticket revocation or preparation, and every POST attempt clears the old `adminAuthToken` Cookie. The three proxies and association queries use only the in-ticket server token. SPA/non-API stays anonymous, and health semantics are unchanged.
 
-### 已退役的密码登录
+### Retired password login
 
-`POST /api/auth/login` 永久返回 `410 {"error":"legacy_login_disabled"}`。所有合法配置以及大小写/尾斜线、空或畸形请求体、任意 Cookie/Authorization 都在认证和模型绑定前拒绝；不读取密码、不兑换 Identity token、不签发 Cookie，也不返回 access/refresh token。配置不能恢复密码入口。请使用 `/api/auth/oidc/start` 的 SignaCore 托管登录。
+`POST /api/auth/login` permanently returns `410 {"error":"legacy_login_disabled"}`. All valid configurations and case/trailing-slash variants, empty or malformed bodies, and any Cookie/Authorization are rejected before authentication and model binding; the password is never read, no Identity token is redeemed, no Cookie is issued, and no access/refresh token is returned. Configuration cannot restore the password entry point. Use SignaCore hosted login via `/api/auth/oidc/start`.
 
-`POST /api/auth/callback` 的 `{ "userId": "..." }` → `{ "roles": ["admin"] }` 白名单契约保持；非白名单返回空 roles。SPA 和非 API 路径保持匿名。旧完整镜像回滚属于独立部署动作，本版不能复活密码登录或已撤票据。最终发布必须包含 #41 的托管登录 SPA，不部署仍含旧密码表单的中间镜像。
-
----
-
-## 目录
-
-1. [枚举选项](#枚举选项)
-2. [身份账户](#身份账户)
-3. [图片](#图片)
-4. [错题](#错题)
-5. [OSS 审计](#oss-审计)
-6. [OSS 上传记录](#oss-上传记录)
-7. [学生](#学生)
-8. [教师/助教关联账户](#教师助教关联账户)
+The `{ "userId": "..." }` → `{ "roles": ["admin"] }` allowlist contract of `POST /api/auth/callback` is retained; non-allowlisted users get empty roles. The SPA and non-API paths stay anonymous. Rolling back to an old complete image is a separate deployment action; this version cannot resurrect password login or revoked tickets. The final release must include the hosted-login SPA from #41; intermediate images that still contain the old password form are not release candidates.
 
 ---
 
-## 枚举选项
+## Table of contents
 
-### 获取所有枚举选项
+1. [Enum options](#enum-options)
+2. [Identity accounts](#identity-accounts)
+3. [Images](#images)
+4. [Mistakes](#mistakes)
+5. [OSS audit](#oss-audit)
+6. [OSS upload records](#oss-upload-records)
+7. [Students](#students)
+8. [Teacher/assistant linked accounts](#teacherassistant-linked-accounts)
 
-获取系统中所有可用的枚举选项，包括上传状态、年级、科目、分类、审核状态。
+---
 
-**接口:** `GET /api/admin/enum-options`
+## Enum options
 
-**响应示例:**
+### Get all enum options
+
+Returns all enum options available in the system, including upload statuses, grades, subjects, classifications, and review statuses.
+
+**Endpoint:** `GET /api/admin/enum-options`
+
+**Response example:**
 
 ```json
 {
   "uploadStatuses": [
-    { "value": 0, "name": "Unspecified", "displayName": "未指定" },
-    { "value": 1, "name": "Uploaded", "displayName": "已上传" }
+    { "value": 0, "name": "Unspecified", "displayName": "Not specified" },
+    { "value": 1, "name": "Uploaded", "displayName": "Uploaded" }
   ],
   "grades": [...],
   "subjects": [...],
@@ -92,19 +92,19 @@ API 始终使用 AdminSession；旧键仅用于启动迁移检验，不能恢复
 }
 ```
 
-> **变更**：2026 年 6 月起不再返回 `mistakeTypes` 字段，错题错误类型已下线（该字段的定义与下线记录由 Ruoyu.Study 仓库的共享常量文档维护）。
+> **Change**: since June 2026 the `mistakeTypes` field is no longer returned; mistake error types have been taken offline (the field's definition and decommission record are maintained in the shared constants documentation of the Ruoyu.Study repository).
 
 ---
 
-## 身份账户
+## Identity accounts
 
-### 批量获取身份账户信息
+### Batch-get identity account information
 
-根据账户 ID 列表批量获取身份账户信息。
+Batch-fetches identity account information by a list of account IDs.
 
-**接口:** `POST /api/admin/identity-accounts/batch`
+**Endpoint:** `POST /api/admin/identity-accounts/batch`
 
-**请求体:**
+**Request body:**
 
 ```json
 {
@@ -112,36 +112,36 @@ API 始终使用 AdminSession；旧键仅用于启动迁移检验，不能恢复
 }
 ```
 
-**响应示例:**
+**Response example:**
 
 ```json
 [
   {
     "id": "550e8400-e29b-41d4-a716-446655440000",
     "username": "john_doe",
-    "displayName": "张三",
+    "displayName": "Zhang San",
     "phone": "13800138000",
-    "remark": "备注信息"
+    "remark": "Remark"
   }
 ]
 ```
 
-### 根据身份账户获取学生列表
+### Get student list by identity account
 
-获取指定身份账户关联的所有学生。
+Returns all students linked to the given identity account.
 
-**接口:** `GET /api/admin/accounts/{accountId:guid}/students`
+**Endpoint:** `GET /api/admin/accounts/{accountId:guid}/students`
 
-**路径参数:**
-- `accountId` (UUID): 身份账户 ID
+**Path parameters:**
+- `accountId` (UUID): identity account ID
 
-**响应示例:**
+**Response example:**
 
 ```json
 [
   {
     "id": "string",
-    "name": "张三",
+    "name": "Zhang San",
     "grade": 1,
     "identityAccountIds": ["550e8400-e29b-41d4-a716-446655440000"],
     "createdAt": 1234567890,
@@ -152,42 +152,42 @@ API 始终使用 AdminSession；旧键仅用于启动迁移检验，不能恢复
 
 ---
 
-## 图片
+## Images
 
-### 获取图片
+### Get image
 
-从 OSS 存储中获取图片文件。
+Fetches an image file from OSS storage.
 
-**接口:** `GET /api/admin/image`
+**Endpoint:** `GET /api/admin/image`
 
-**查询参数:**
-- `path` (string, 必需): OSS 对象路径
+**Query parameters:**
+- `path` (string, required): OSS object path
 
-**响应:** 图片二进制流
+**Response:** binary image stream
 
 ---
 
-## 错题
+## Mistakes
 
-`MistakeService:UseSessionToken=true` 时，下列管理调用及上传分类/LegacyCheck/LegacyClean/错题图片共同使用当前服务器票据出站；任何入站 Authorization 仍 401，unsafe 仍先校验 CSRF。发送前票据/截止时间无效为 401（合法 token 到期 `reauthentication_required`），当前白名单拒绝为 403，均零 Mistake HTTP。
+When `MistakeService:UseSessionToken=true`, the management calls below plus upload classification/LegacyCheck/LegacyClean/mistake images share the current server ticket for the outbound call; any inbound Authorization still gets 401 and unsafe methods still validate CSRF first. An invalid ticket/deadline before sending yields 401 (valid-token expiry `reauthentication_required`), a current-allowlist rejection yields 403, and both mean zero Mistake HTTP.
 
-目标 401/403/3xx、非法/缺失必需 data、JSON/TLS/网络/超时或未知写结果为安全 502。JSON controller 使用固定 ProblemDetails：`mistake.unavailable`（502）、`mistake.request_rejected`（合法业务失败 400）、`mistake.conflict`（合法业务冲突 409）；图片使用相同状态与固定安全 error，合法结果为签名 URL redirect，URL 不携带 server Bearer。真实详情 GET 404 与合法空列表保留，不把目标拒绝伪装成空 DTO。取消传播，每个 unsafe 方法应用发送最多一次，失败后不继续 Student/S3 写，无 refresh/replay；已发送写的提交状态可能未知。默认 false 保留原 Mistake 下游兼容，不改变管理入站身份。
+Target 401/403/3xx, illegal/missing required data, JSON/TLS/network/timeout, or unknown write results yield a safe 502. JSON controllers use fixed ProblemDetails: `mistake.unavailable` (502), `mistake.request_rejected` (legitimate business failure 400), `mistake.conflict` (legitimate business conflict 409); images use the same statuses with a fixed safe error, legitimate results are a signed-URL redirect, and the URL carries no server Bearer. Real detail-GET 404 and legitimate empty lists are preserved and target rejections are never disguised as empty DTOs. Cancellation propagates, each unsafe method sends the application at most once, a failure stops later Student/S3 writes, there is no refresh/replay; the commit state of an already-sent write may be unknown. The default false keeps the original Mistake downstream compatibility and does not change management inbound identity.
 
-### 获取错题列表
+### Get mistake list
 
-分页获取错题记录列表，支持多种筛选条件。
+Returns a paginated list of mistake records with multiple filter conditions.
 
-**接口:** `GET /api/admin/mistakes`
+**Endpoint:** `GET /api/admin/mistakes`
 
-**查询参数:**
-- `studentId` (string, 可选): 学生 ID
-- `subject` (int, 可选): 科目
-- `grade` (int, 可选): 年级
-- `reviewStatus` (int, 可选): 审核状态
-- `page` (int, 可选, 默认: 1): 页码
-- `size` (int, 可选, 默认: 20, 最大: 100): 每页大小
+**Query parameters:**
+- `studentId` (string, optional): student ID
+- `subject` (int, optional): subject
+- `grade` (int, optional): grade
+- `reviewStatus` (int, optional): review status
+- `page` (int, optional, default: 1): page number
+- `size` (int, optional, default: 20, max: 100): page size
 
-**响应示例:**
+**Response example:**
 
 ```json
 {
@@ -195,7 +195,7 @@ API 始终使用 AdminSession；旧键仅用于启动迁移检验，不能恢复
     {
       "id": "string",
       "studentId": "string",
-      "studentName": "张三",
+      "studentName": "Zhang San",
       "subject": 1,
       "grade": 1,
       "sourceUploadId": "string",
@@ -218,22 +218,22 @@ API 始终使用 AdminSession；旧键仅用于启动迁移检验，不能恢复
 }
 ```
 
-### 获取单个错题详情
+### Get single mistake detail
 
-获取指定错题 ID 的详细信息。
+Returns the details of the given mistake ID.
 
-**接口:** `GET /api/admin/mistakes/{id}`
+**Endpoint:** `GET /api/admin/mistakes/{id}`
 
-**路径参数:**
-- `id` (string): 错题 ID
+**Path parameters:**
+- `id` (string): mistake ID
 
-**响应示例:**
+**Response example:**
 
 ```json
 {
   "id": "string",
   "studentId": "string",
-  "studentName": "张三",
+  "studentName": "Zhang San",
   "subject": 1,
   "grade": 1,
   "sourceUploadId": "string",
@@ -259,16 +259,16 @@ API 始终使用 AdminSession；旧键仅用于启动迁移检验，不能恢复
 }
 ```
 
-### 根据上传记录获取错题
+### Get mistakes by upload record
 
-获取指定上传记录关联的所有错题。
+Returns all mistakes linked to the given upload record.
 
-**接口:** `GET /api/admin/mistakes/by-upload/{uploadId}`
+**Endpoint:** `GET /api/admin/mistakes/by-upload/{uploadId}`
 
-**路径参数:**
-- `uploadId` (string): 上传记录 ID
+**Path parameters:**
+- `uploadId` (string): upload record ID
 
-**响应示例:**
+**Response example:**
 
 ```json
 {
@@ -277,16 +277,16 @@ API 始终使用 AdminSession；旧键仅用于启动迁移检验，不能恢复
 }
 ```
 
-### 更新错题信息
+### Update mistake information
 
-更新指定错题的信息。
+Updates the information of the given mistake.
 
-**接口:** `PUT /api/admin/mistakes/{id}`
+**Endpoint:** `PUT /api/admin/mistakes/{id}`
 
-**路径参数:**
-- `id` (string): 错题 ID
+**Path parameters:**
+- `id` (string): mistake ID
 
-**请求体:**
+**Request body:**
 
 ```json
 {
@@ -296,13 +296,13 @@ API 始终使用 AdminSession；旧键仅用于启动迁移检验，不能恢复
 }
 ```
 
-**响应示例:**
+**Response example:**
 
 ```json
 {
   "id": "string",
   "studentId": "string",
-  "studentName": "张三",
+  "studentName": "Zhang San",
   "subject": 1,
   "grade": 1,
   "sourceUploadId": "string",
@@ -312,38 +312,38 @@ API 始终使用 AdminSession；旧键仅用于启动迁移检验，不能恢复
 
 ---
 
-## OSS 审计
+## OSS audit
 
-详细规则见 [StorageAudit](./modules/OssAudit/StorageAudit.md)，上游 v1 字段规范由 Ruoyu.Study 维护。
+Detailed rules are in [StorageAudit](./modules/OssAudit/StorageAudit.md); the upstream v1 field specification is maintained by Ruoyu.Study.
 
-| 方法与路径 | 当前行为 |
+| Method and path | Current behavior |
 |---|---|
-| GET `/api/admin/oss-audit/records` | 按 page/pageSize 分页，可用 status/bucket 筛选；保留 items/totalCount/statusCounts/bucketCounts。状态 3 为 UnreferencedObservation；bucketCounts 统计历史状态 0 和新状态 3 |
-| GET `/api/admin/oss-audit/status` | isRunning、lastCompleted/lastFailed、pendingCount、observationCount、deletionAuthorized=false；已完成的运行记录包含 referenceContractVersion/referenceSnapshots（三个服务的快照元数据 JSON） |
-| POST `/api/admin/oss-audit/trigger` | 通过现有认证与 CSRF 检查后异步启动运行；运行中返回 400，正常返回 200 OperationResponse |
-| POST `/api/admin/oss-audit/records/{id}/resolve` | 已有记录不论状态 0/1/2/3，都先用引用收集器完整检查；v1 验证成功后恒返回 409 cleanup_not_authorized，依赖不完整时返回 502 references_unavailable。未知 ID 返回 404；不写入 S3，也不删除审计记录 |
-| POST `/api/admin/oss-audit/records/batch-resolve` | 非空 IDs 使用同一收集器，按引用是否完整返回 409/502，包括部分或全部 ID 不存在的请求；空 IDs 返回 400。不写入 S3，也不删除审计记录 |
-| POST `/api/admin/oss-audit/records/{id}/ignore` | body `{note}`；仅历史状态 0 更新为 2，并记录 ResolvedAt/Note；其他状态返回 400，未知 ID 返回 404 |
+| GET `/api/admin/oss-audit/records` | Paginated by page/pageSize with optional status/bucket filters; keeps items/totalCount/statusCounts/bucketCounts. Status 3 is UnreferencedObservation; bucketCounts counts both historical status 0 and the new status 3 |
+| GET `/api/admin/oss-audit/status` | isRunning, lastCompleted/lastFailed, pendingCount, observationCount, deletionAuthorized=false; completed runs include referenceContractVersion/referenceSnapshots (the snapshot metadata JSON of the three services) |
+| POST `/api/admin/oss-audit/trigger` | Starts a run asynchronously after the existing authentication and CSRF checks; returns 400 while a run is in progress, otherwise 200 OperationResponse |
+| POST `/api/admin/oss-audit/records/{id}/resolve` | For an existing record of any status 0/1/2/3, first runs the full check with the reference collector; after successful v1 validation it always returns 409 cleanup_not_authorized, and when dependencies are incomplete it returns 502 references_unavailable. Unknown ID returns 404; nothing is written to S3 and no audit record is deleted |
+| POST `/api/admin/oss-audit/records/batch-resolve` | Non-empty IDs use the same collector and return 409/502 depending on reference completeness, including requests where some or all IDs do not exist; empty IDs return 400. Nothing is written to S3 and no audit record is deleted |
+| POST `/api/admin/oss-audit/records/{id}/ignore` | body `{note}`; only historical status 0 is updated to 2 with ResolvedAt/Note recorded; other statuses return 400 and unknown IDs return 404 |
 
-拒绝响应为 `{success:false,errorKind:...}`。新运行记录的 `NewZombieCount` 兼容字段只表示新增只读观察数；旧运行记录（version=null）保留原历史含义。v1 不提供垃圾回收，也不授予物理删除许可。
+Rejection responses are `{success:false,errorKind:...}`. The `NewZombieCount` compatibility field of new runs counts only newly added read-only observations; old runs (version=null) keep the original historical meaning. v1 provides no garbage collection and grants no physical deletion permission.
 
 ---
 
-## OSS 上传记录
+## OSS upload records
 
-### 获取所有上传记录
+### Get all upload records
 
-分页获取所有上传记录，支持按状态和学生筛选。
+Returns all upload records paginated, filterable by status and student.
 
-**接口:** `GET /api/admin/oss-upload-records`
+**Endpoint:** `GET /api/admin/oss-upload-records`
 
-**查询参数:**
-- `page` (int, 可选, 默认: 1): 页码
-- `pageSize` (int, 可选, 默认: 20): 每页大小
-- `status` (int, 可选, 默认: -1): 上传状态 (-1 表示所有)
-- `studentId` (string, 可选): 学生 ID
+**Query parameters:**
+- `page` (int, optional, default: 1): page number
+- `pageSize` (int, optional, default: 20): page size
+- `status` (int, optional, default: -1): upload status (-1 means all)
+- `studentId` (string, optional): student ID
 
-**响应示例:**
+**Response example:**
 
 ```json
 {
@@ -351,7 +351,7 @@ API 始终使用 AdminSession；旧键仅用于启动迁移检验，不能恢复
     {
       "id": "string",
       "studentId": "string",
-      "studentName": "张三",
+      "studentName": "Zhang San",
       "status": 1,
       "imagePaths": ["path/to/image.jpg"],
       "comments": "string",
@@ -366,16 +366,16 @@ API 始终使用 AdminSession；旧键仅用于启动迁移检验，不能恢复
 }
 ```
 
-### 获取上传记录关联的业务实体
+### Get business entities linked to an upload record
 
-获取指定上传记录关联的错题/作业条目，用于展示上传记录的分类归属。
+Returns the mistake/homework entries linked to the given upload record, used to show the record's classification ownership.
 
-**接口:** `GET /api/admin/oss-upload-records/{id}/linked-items`
+**Endpoint:** `GET /api/admin/oss-upload-records/{id}/linked-items`
 
-**路径参数:**
-- `id` (string): 上传记录 ID
+**Path parameters:**
+- `id` (string): upload record ID
 
-**响应示例:**
+**Response example:**
 
 ```json
 {
@@ -394,18 +394,18 @@ API 始终使用 AdminSession；旧键仅用于启动迁移检验，不能恢复
 }
 ```
 
-> **说明**：`imageIndices` 表示该业务实体引用了上传记录中的哪些图片（**原始索引**，即上传时的顺序，不受移除操作影响）。`remainingImageCount` 表示 `image_paths` 中剩余图片数量，`totalImageCount` 表示原始上传时的总图片数。
+> **Note**: `imageIndices` indicates which images of the upload record the business entity references (**original indices**, i.e. the upload-time order, unaffected by removals). `remainingImageCount` is the number of images remaining in `image_paths`, and `totalImageCount` is the total number of images at original upload.
 
-### 重置上传记录状态
+### Reset upload record status
 
-重置上传记录的状态。
+Resets the status of an upload record.
 
-**接口:** `POST /api/admin/oss-upload-records/{id}/reset-status`
+**Endpoint:** `POST /api/admin/oss-upload-records/{id}/reset-status`
 
-**路径参数:**
-- `id` (string): 上传记录 ID
+**Path parameters:**
+- `id` (string): upload record ID
 
-**请求体:**
+**Request body:**
 
 ```json
 {
@@ -414,7 +414,7 @@ API 始终使用 AdminSession；旧键仅用于启动迁移检验，不能恢复
 }
 ```
 
-**响应示例:**
+**Response example:**
 
 ```json
 {
@@ -423,16 +423,16 @@ API 始终使用 AdminSession；旧键仅用于启动迁移检验，不能恢复
 }
 ```
 
-### 按图片粒度分配上传记录
+### Assign upload records at image granularity
 
-将上传记录中的指定图片分配为错题条目。一次请求可以包含多个 assignment，每个 assignment 内的图片共享同一道错题（一条 `mistake_item`）。
+Assigns the specified images of an upload record to mistake entries. One request can contain multiple assignments; the images within each assignment share one mistake (one `mistake_item`).
 
-**接口:** `POST /api/admin/oss-upload-records/{id}/assign`
+**Endpoint:** `POST /api/admin/oss-upload-records/{id}/assign`
 
-**路径参数:**
-- `id` (string): 上传记录 ID
+**Path parameters:**
+- `id` (string): upload record ID
 
-**请求体:**
+**Request body:**
 
 ```json
 {
@@ -442,34 +442,34 @@ API 始终使用 AdminSession；旧键仅用于启动迁移检验，不能恢复
       "subject": 1,
       "grade": 7,
       "imageIndices": [0, 1],
-      "comments": "第 1、2 张图是同一道语文错题"
+      "comments": "Images 1 and 2 are the same Chinese mistake"
     },
     {
       "subject": 3,
       "grade": 7,
       "imageIndices": [2],
-      "comments": "第 3 张图是另一道英语错题"
+      "comments": "Image 3 is a separate English mistake"
     }
   ]
 }
 ```
 
-**请求字段说明:**
-- `studentId` (string, 必需): 学生 ID
-- `assignments` (array, 必需): 分配条目列表
-  - `subject` (int, 必需): 学科 (1-9)
-  - `grade` (int, 必需): 年级 (1-12)
-  - `imageIndices` (array, 必需): 该 assignment 引用的图片索引（基于上传记录的原始索引）。`imageIndices` 至少包含 1 个元素。
-  - `comments` (string, 可选): 备注
+**Request field notes:**
+- `studentId` (string, required): student ID
+- `assignments` (array, required): the list of assignment entries
+  - `subject` (int, required): subject (1-9)
+  - `grade` (int, required): grade (1-12)
+  - `imageIndices` (array, required): the image indices referenced by this assignment (based on the upload record's original indices). `imageIndices` must contain at least 1 element.
+  - `comments` (string, optional): remark
 
-**核心语义**：
-- **一个 assignment = 一道错题 = 一条 `mistake_item`**。
-- 一个 assignment 内的多张图片（如题目+解答）会被打包到同一条 `mistake_item` 的 `source_regions` 中。
-- 多个 assignment 可以分别指定不同的 `subject` / `grade`（实现跨学科分配）。
-- 同一上传记录可被多次分配（每次请求都会创建新的 `mistake_item`）。
-- 任何已被审核通过的图片（即不在 `image_upload_record.image_paths` 中的图片）不能再次被分配。
+**Core semantics**:
+- **One assignment = one mistake = one `mistake_item`**.
+- The multiple images within one assignment (for example question + solution) are packed into the same `mistake_item`'s `source_regions`.
+- Multiple assignments can specify different `subject` / `grade` each (enabling cross-subject assignment).
+- The same upload record can be assigned multiple times (each request creates new `mistake_item`s).
+- Any image already approved for review (i.e. not present in `image_upload_record.image_paths`) cannot be assigned again.
 
-**响应示例:**
+**Response example:**
 
 ```json
 {
@@ -494,41 +494,41 @@ API 始终使用 AdminSession；旧键仅用于启动迁移检验，不能恢复
 }
 ```
 
-**响应字段说明:**
-- `createdItems[]` (array): 每个 assignment 对应一个元素
-  - `subject` (int): 学科
-  - `grade` (int): 年级
-  - `itemId` (string): 新创建的 `mistake_item` ID
-  - `imageCount` (int): 该 item 引用的图片数量
-- `remainingImageCount` (int): 分配后 `image_upload_record.image_paths` 中剩余的图片数量（用于前端判断是否需要继续分配）
-- `totalImageCount` (int): 上传记录原始总图片数
+**Response field notes:**
+- `createdItems[]` (array): one element per assignment
+  - `subject` (int): subject
+  - `grade` (int): grade
+  - `itemId` (string): the ID of the newly created `mistake_item`
+  - `imageCount` (int): the number of images referenced by the item
+- `remainingImageCount` (int): the number of images remaining in `image_upload_record.image_paths` after assignment (used by the frontend to decide whether to continue assigning)
+- `totalImageCount` (int): the original total number of images in the upload record
 
-> **后续流程**：分配后的 `mistake_item` 进入 `PendingReview` 状态，由教师审核。教师完成整批审核（`CompleteUploadReview`）后：
-> 1. `Confirmed` 的图片被复制到 `mistakes/`。
-> 2. `Rejected` 和 `Confirmed` 的图片路径都会从 `image_upload_record.image_paths` 中移除。
-> 3. 当 `image_paths` 清空时，整条上传记录自动删除。
+> **Follow-up flow**: the assigned `mistake_item` enters `PendingReview` for teacher review. After the teacher completes the whole batch review (`CompleteUploadReview`):
+> 1. `Confirmed` images are copied to `mistakes/`.
+> 2. The paths of both `Rejected` and `Confirmed` images are removed from `image_upload_record.image_paths`.
+> 3. When `image_paths` becomes empty, the whole upload record is deleted automatically.
 
-### 获取上传记录图片
+### Get upload record image
 
-获取上传记录中的图片。
+Fetches an image from an upload record.
 
-**接口:** `GET /api/admin/oss-upload-records/image`
+**Endpoint:** `GET /api/admin/oss-upload-records/image`
 
-**查询参数:**
-- `path` (string, 必需): 图片路径
+**Query parameters:**
+- `path` (string, required): image path
 
-**响应:** 图片二进制流
+**Response:** binary image stream
 
-### 旋转上传记录图片
+### Rotate upload record image
 
-旋转上传记录中的图片。
+Rotates an image in an upload record.
 
-**接口:** `POST /api/admin/oss-upload-records/{id}/rotate`
+**Endpoint:** `POST /api/admin/oss-upload-records/{id}/rotate`
 
-**路径参数:**
-- `id` (string): 上传记录 ID
+**Path parameters:**
+- `id` (string): upload record ID
 
-**请求体:**
+**Request body:**
 
 ```json
 {
@@ -538,7 +538,7 @@ API 始终使用 AdminSession；旧键仅用于启动迁移检验，不能恢复
 }
 ```
 
-**响应示例:**
+**Response example:**
 
 ```json
 {
@@ -548,28 +548,28 @@ API 始终使用 AdminSession；旧键仅用于启动迁移检验，不能恢复
 
 ---
 
-## 学生
+## Students
 
-### 获取学生列表
+### Get student list
 
-分页获取学生列表，支持按姓名和年级筛选。
+Returns students paginated, filterable by name and grade.
 
-**接口:** `GET /api/admin/students`
+**Endpoint:** `GET /api/admin/students`
 
-**查询参数:**
-- `name` (string, 可选): 学生姓名
-- `grade` (int, 可选): 年级
-- `page` (int, 可选, 默认: 1): 页码
-- `pageSize` (int, 可选, 默认: 20, 最大: 100): 每页大小
+**Query parameters:**
+- `name` (string, optional): student name
+- `grade` (int, optional): grade
+- `page` (int, optional, default: 1): page number
+- `pageSize` (int, optional, default: 20, max: 100): page size
 
-**响应示例:**
+**Response example:**
 
 ```json
 {
   "items": [
     {
       "id": "string",
-      "name": "张三",
+      "name": "Zhang San",
       "grade": 1,
       "identityAccountIds": ["550e8400-e29b-41d4-a716-446655440000"],
       "createdAt": 1234567890,
@@ -582,38 +582,38 @@ API 始终使用 AdminSession；旧键仅用于启动迁移检验，不能恢复
 }
 ```
 
-### 获取年级选项
+### Get grade options
 
-获取所有可用的年级选项。
+Returns all available grade options.
 
-**接口:** `GET /api/admin/students/grades`
+**Endpoint:** `GET /api/admin/students/grades`
 
-**响应示例:**
+**Response example:**
 
 ```json
 [
   {
     "value": 1,
-    "label": "小学一年级"
+    "label": "Primary school grade 1"
   }
 ]
 ```
 
-### 获取学生详情
+### Get student detail
 
-获取指定学生的详细信息。
+Returns the details of the given student.
 
-**接口:** `GET /api/admin/students/{studentId:guid}`
+**Endpoint:** `GET /api/admin/students/{studentId:guid}`
 
-**路径参数:**
-- `studentId` (UUID): 学生 ID
+**Path parameters:**
+- `studentId` (UUID): student ID
 
-**响应示例:**
+**Response example:**
 
 ```json
 {
   "id": "string",
-  "name": "张三",
+  "name": "Zhang San",
   "grade": 1,
   "identityAccountIds": ["550e8400-e29b-41d4-a716-446655440000"],
   "createdAt": 1234567890,
@@ -621,28 +621,28 @@ API 始终使用 AdminSession；旧键仅用于启动迁移检验，不能恢复
 }
 ```
 
-### 创建学生
+### Create student
 
-创建新的学生记录。
+Creates a new student record.
 
-**接口:** `POST /api/admin/students`
+**Endpoint:** `POST /api/admin/students`
 
-**请求体:**
+**Request body:**
 
 ```json
 {
-  "name": "张三",
+  "name": "Zhang San",
   "grade": 1,
   "identityAccountIds": ["550e8400-e29b-41d4-a716-446655440000"]
 }
 ```
 
-**响应示例:**
+**Response example:**
 
 ```json
 {
   "id": "string",
-  "name": "张三",
+  "name": "Zhang San",
   "grade": 1,
   "identityAccountIds": ["550e8400-e29b-41d4-a716-446655440000"],
   "createdAt": 1234567890,
@@ -650,26 +650,26 @@ API 始终使用 AdminSession；旧键仅用于启动迁移检验，不能恢复
 }
 ```
 
-### 更新学生
+### Update student
 
-更新学生信息。
+Updates student information.
 
-**接口:** `PUT /api/admin/students/{studentId:guid}`
+**Endpoint:** `PUT /api/admin/students/{studentId:guid}`
 
-**路径参数:**
-- `studentId` (UUID): 学生 ID
+**Path parameters:**
+- `studentId` (UUID): student ID
 
-**请求体:**
+**Request body:**
 
 ```json
 {
-  "name": "张三",
+  "name": "Zhang San",
   "grade": 1,
   "identityAccountIds": ["550e8400-e29b-41d4-a716-446655440000"]
 }
 ```
 
-**响应示例:**
+**Response example:**
 
 ```json
 {
@@ -678,16 +678,16 @@ API 始终使用 AdminSession；旧键仅用于启动迁移检验，不能恢复
 }
 ```
 
-### 删除学生
+### Delete student
 
-删除学生记录。
+Deletes a student record.
 
-**接口:** `DELETE /api/admin/students/{studentId:guid}`
+**Endpoint:** `DELETE /api/admin/students/{studentId:guid}`
 
-**路径参数:**
-- `studentId` (UUID): 学生 ID
+**Path parameters:**
+- `studentId` (UUID): student ID
 
-**响应示例:**
+**Response example:**
 
 ```json
 {
@@ -696,31 +696,31 @@ API 始终使用 AdminSession；旧键仅用于启动迁移检验，不能恢复
 }
 ```
 
-### 获取学生关联的身份账户
+### Get identity accounts linked to a student
 
-获取指定学生关联的所有身份账户 ID。
+Returns all identity account IDs linked to the given student.
 
-**接口:** `GET /api/admin/students/{studentId:guid}/accounts`
+**Endpoint:** `GET /api/admin/students/{studentId:guid}/accounts`
 
-**路径参数:**
-- `studentId` (UUID): 学生 ID
+**Path parameters:**
+- `studentId` (UUID): student ID
 
-**响应示例:**
+**Response example:**
 
 ```json
 ["550e8400-e29b-41d4-a716-446655440000"]
 ```
 
-### 关联身份账户到学生
+### Link an identity account to a student
 
-将身份账户关联到学生。
+Links an identity account to a student.
 
-**接口:** `POST /api/admin/students/{studentId:guid}/accounts`
+**Endpoint:** `POST /api/admin/students/{studentId:guid}/accounts`
 
-**路径参数:**
-- `studentId` (UUID): 学生 ID
+**Path parameters:**
+- `studentId` (UUID): student ID
 
-**请求体:**
+**Request body:**
 
 ```json
 {
@@ -728,7 +728,7 @@ API 始终使用 AdminSession；旧键仅用于启动迁移检验，不能恢复
 }
 ```
 
-**响应示例:**
+**Response example:**
 
 ```json
 {
@@ -737,17 +737,17 @@ API 始终使用 AdminSession；旧键仅用于启动迁移检验，不能恢复
 }
 ```
 
-### 解除身份账户与学生的关联
+### Unlink an identity account from a student
 
-解除身份账户与学生的关联。
+Unlinks an identity account from a student.
 
-**接口:** `DELETE /api/admin/students/{studentId:guid}/accounts/{accountId:guid}`
+**Endpoint:** `DELETE /api/admin/students/{studentId:guid}/accounts/{accountId:guid}`
 
-**路径参数:**
-- `studentId` (UUID): 学生 ID
-- `accountId` (UUID): 身份账户 ID
+**Path parameters:**
+- `studentId` (UUID): student ID
+- `accountId` (UUID): identity account ID
 
-**响应示例:**
+**Response example:**
 
 ```json
 {
@@ -756,19 +756,19 @@ API 始终使用 AdminSession；旧键仅用于启动迁移检验，不能恢复
 }
 ```
 
-### 获取学生开放科目
+### Get student open subjects
 
-获取学生的开放科目配置。
+Returns the student's open subject configuration.
 
-**接口:** `GET /api/admin/students/{studentId:guid}/open-subjects`
+**Endpoint:** `GET /api/admin/students/{studentId:guid}/open-subjects`
 
-**路径参数:**
-- `studentId` (UUID): 学生 ID
+**Path parameters:**
+- `studentId` (UUID): student ID
 
-**查询参数:**
-- `activeOnly` (bool, 可选, 默认: false): 是否仅返回活跃的科目
+**Query parameters:**
+- `activeOnly` (bool, optional, default: false): return only active subjects
 
-**响应示例:**
+**Response example:**
 
 ```json
 [
@@ -782,16 +782,16 @@ API 始终使用 AdminSession；旧键仅用于启动迁移检验，不能恢复
 ]
 ```
 
-### 设置学生开放科目
+### Set student open subjects
 
-设置学生的开放科目配置。
+Sets the student's open subject configuration.
 
-**接口:** `PUT /api/admin/students/{studentId:guid}/open-subjects`
+**Endpoint:** `PUT /api/admin/students/{studentId:guid}/open-subjects`
 
-**路径参数:**
-- `studentId` (UUID): 学生 ID
+**Path parameters:**
+- `studentId` (UUID): student ID
 
-**请求体:**
+**Request body:**
 
 ```json
 {
@@ -805,7 +805,7 @@ API 始终使用 AdminSession；旧键仅用于启动迁移检验，不能恢复
 }
 ```
 
-**响应示例:**
+**Response example:**
 
 ```json
 {
@@ -814,74 +814,74 @@ API 始终使用 AdminSession；旧键仅用于启动迁移检验，不能恢复
 }
 ```
 
-### 获取科目选项
+### Get subject options
 
-获取所有可用的科目选项。
+Returns all available subject options.
 
-**接口:** `GET /api/admin/students/subject-options`
+**Endpoint:** `GET /api/admin/students/subject-options`
 
-**响应示例:**
+**Response example:**
 
 ```json
 [
   {
     "value": 1,
     "name": "Math",
-    "displayName": "数学"
+    "displayName": "Math"
   }
 ]
 ```
 
-### 获取学生关联的教师/助教
+### Get teachers/assistants linked to a student
 
-根据学生 ID 查询该学生关联的所有教师和助教（通过学生 identityAccountIds 反查 TeacherPortal/AssistantPortal）。
+Queries all teachers and assistants linked to the student by ID (via the student's identityAccountIds against TeacherPortal/AssistantPortal).
 
-**接口:** `GET /api/admin/students/{studentId:guid}/linked-accounts`
+**Endpoint:** `GET /api/admin/students/{studentId:guid}/linked-accounts`
 
-**路径参数:**
-- `studentId` (UUID): 学生 ID
+**Path parameters:**
+- `studentId` (UUID): student ID
 
-**响应示例:**
+**Response example:**
 
 ```json
 {
   "teachers": [
     {
       "userId": "550e8400-e29b-41d4-a716-446655440000",
-      "displayName": "张老师",
+      "displayName": "Teacher Zhang",
       "phone": "13800138000",
       "subjects": "1,3",
-      "role": "教师"
+      "role": "Teacher"
     }
   ],
   "assistants": [
     {
       "userId": "660e8400-e29b-41d4-a716-446655440001",
-      "displayName": "李助教",
+      "displayName": "Assistant Li",
       "phone": "13900139000",
       "subjects": "2",
-      "role": "助教"
+      "role": "Assistant"
     }
   ]
 }
 ```
 
-> **说明**：当 TeacherPortal 或 AssistantPortal 不可用时，对应列表降级为空数组。
+> **Note**: when TeacherPortal or AssistantPortal is unavailable, the corresponding list degrades to an empty array.
 
 ---
 
-## 教师/助教关联账户
+## Teacher/assistant linked accounts
 
-### 更换教师关联账户
+### Change a teacher's linked account
 
-更换教师当前关联的身份账户。
+Changes the identity account currently linked to a teacher.
 
-**接口:** `PUT /api/teacher-portal/admin/teachers/{userId}/user-id`
+**Endpoint:** `PUT /api/teacher-portal/admin/teachers/{userId}/user-id`
 
-**路径参数:**
-- `userId` (string): 教师当前关联的用户 ID
+**Path parameters:**
+- `userId` (string): the user ID currently linked to the teacher
 
-**请求体:**
+**Request body:**
 
 ```json
 {
@@ -889,7 +889,7 @@ API 始终使用 AdminSession；旧键仅用于启动迁移检验，不能恢复
 }
 ```
 
-**响应示例:**
+**Response example:**
 
 ```json
 {
@@ -898,7 +898,7 @@ API 始终使用 AdminSession；旧键仅用于启动迁移检验，不能恢复
     "id": 1,
     "userId": "660e8400-e29b-41d4-a716-446655440001",
     "phone": "13800138000",
-    "username": "张老师",
+    "username": "Teacher Zhang",
     "subjects": [1, 3],
     "createdAt": "2024-01-01T00:00:00Z",
     "updatedAt": "2024-01-02T00:00:00Z"
@@ -906,20 +906,20 @@ API 始终使用 AdminSession；旧键仅用于启动迁移检验，不能恢复
 }
 ```
 
-**错误情况:**
-- NewUserId 已被其他教师占用：`{ "success": false, "message": "NewUserId is already bound to another teacher" }`
-- 教师不存在：`{ "success": false, "message": "Teacher not found" }`
+**Error cases:**
+- NewUserId is already taken by another teacher: `{ "success": false, "message": "NewUserId is already bound to another teacher" }`
+- Teacher not found: `{ "success": false, "message": "Teacher not found" }`
 
-### 更换助教关联账户
+### Change an assistant's linked account
 
-更换助教当前关联的身份账户。
+Changes the identity account currently linked to an assistant.
 
-**接口:** `PUT /api/assistant-portal/admin/assistants/{userId}/user-id`
+**Endpoint:** `PUT /api/assistant-portal/admin/assistants/{userId}/user-id`
 
-**路径参数:**
-- `userId` (string): 助教当前关联的用户 ID
+**Path parameters:**
+- `userId` (string): the user ID currently linked to the assistant
 
-**请求体:**
+**Request body:**
 
 ```json
 {
@@ -927,7 +927,7 @@ API 始终使用 AdminSession；旧键仅用于启动迁移检验，不能恢复
 }
 ```
 
-**响应示例:**
+**Response example:**
 
 ```json
 {
@@ -936,7 +936,7 @@ API 始终使用 AdminSession；旧键仅用于启动迁移检验，不能恢复
     "id": 1,
     "userId": "770e8400-e29b-41d4-a716-446655440002",
     "phone": "13900139000",
-    "username": "李助教",
+    "username": "Assistant Li",
     "isActive": true,
     "subjects": [2],
     "createdAt": "2024-01-01T00:00:00Z",
@@ -945,56 +945,56 @@ API 始终使用 AdminSession；旧键仅用于启动迁移检验，不能恢复
 }
 ```
 
-**错误情况:**
-- NewUserId 已被其他助教占用：`{ "success": false, "message": "NewUserId is already bound to another assistant" }`
-- 助教不存在：`{ "success": false, "message": "Assistant not found" }`
+**Error cases:**
+- NewUserId is already taken by another assistant: `{ "success": false, "message": "NewUserId is already bound to another assistant" }`
+- Assistant not found: `{ "success": false, "message": "Assistant not found" }`
 
 ---
 
-## 错误响应
+## Error responses
 
-所有错误响应都遵循以下格式：
+All error responses follow this format:
 
 ```json
 {
-  "message": "错误描述"
+  "message": "Error description"
 }
 ```
 
-常见 HTTP 状态码：
-- `400 Bad Request`: 请求参数错误
-- `404 Not Found`: 资源不存在
-- `500 Internal Server Error`: 服务器内部错误
-- `502 Bad Gateway`: 下游服务不可用
+Common HTTP status codes:
+- `400 Bad Request`: invalid request parameters
+- `404 Not Found`: resource does not exist
+- `500 Internal Server Error`: internal server error
+- `502 Bad Gateway`: downstream service unavailable
 
-### Prepared logout（#46，#83 起由包承担）
+### Prepared logout (#46; owned by the package since #83)
 
-退出始终使用 prepared logout，由包端点 `POST /api/auth/oidc/logout` 处理。必需的 `AdminOidc:PostLogoutRedirectUri` 与 RedirectUri 同 origin，路径固定 `/api/auth/oidc/logout/return`、无 query/fragment/userinfo；维护者需在 SignaCore 应用注册把 PostLogout 回调改为该值。http 与 https 同等接受（结构规则不变），公网部署应使用 HTTPS（建议而非强制）。非 POST logout 固定405（本地守卫先于授权管线），且每次 POST 尝试都清理旧 `adminAuthToken` Cookie。
+Logout always uses prepared logout, handled by the package endpoint `POST /api/auth/oidc/logout`. The required `AdminOidc:PostLogoutRedirectUri` is same-origin with the RedirectUri, with the fixed path `/api/auth/oidc/logout/return` and no query/fragment/userinfo; the maintainer must change the PostLogout callback in the SignaCore application registration to this value. http and https are accepted equally (structural rules unchanged), and public deployments should use HTTPS (a recommendation, not enforced). Non-POST logout gets a fixed 405 (the local guard runs before the authorization pipeline), and every POST attempt clears the old `adminAuthToken` Cookie.
 
-SPA 先 GET `/api/auth/oidc/csrf`（公开签发，响应 `{"token":"..."}` 并轮换共享 `adminCsrf` Cookie；user-neutral 对，与业务面 principal 绑定对共用同一 Cookie），再以导航式 form POST 提交 `__RequestVerificationToken` 到 `/api/auth/oidc/logout`；antiforgery 校验同时接受单值 `X-CSRF-TOKEN` header。缺/错 token 为固定 `400 {"outcome":"csrf_rejected"}`，不触碰会话。登出本身不以 access token 期限或管理员白名单阻止本人退出（票据存在即可）；无会话 Cookie 时直接 `200 {"outcome":"local_only"}`。
+The SPA first GETs `/api/auth/oidc/csrf` (publicly issued; the response is `{"token":"..."}` and rotates the shared `adminCsrf` Cookie; a user-neutral pair sharing the same Cookie as the business-principal-bound pair), then submits `__RequestVerificationToken` via a navigational form POST to `/api/auth/oidc/logout`; antiforgery validation also accepts a single-value `X-CSRF-TOKEN` header. A missing/wrong token yields the fixed `400 {"outcome":"csrf_rejected"}` without touching the session. Logout itself is never blocked by access-token expiry or the administrator allowlist (a ticket is enough); with no session Cookie it directly returns `200 {"outcome":"local_only"}`.
 
-包在按会话键加锁的串行门内先移除服务器票据并删除会话 Cookie（本地撤销先行、永不回滚、并发登出至多一次撤销与一次准备），再向 Authority `/oauth2/logout/requests` 发服务端 HTTP Basic 认证、服务器保留的 id_token_hint、精确 PostLogout URI 与一次性 state，不自动重试/跟随 redirect，不向浏览器发 ID token/secret；backchannel 与其余包协议流量共享命名客户端并传播 correlation id，但不进入 telemetry。
+Inside a serialized gate keyed by the session, the package first removes the server ticket and deletes the session Cookie (local revocation first, never rolled back, with at most one revocation and one preparation under concurrent logouts), then sends server-side HTTP Basic authentication, the server-retained id_token_hint, the exact PostLogout URI, and a one-time state to the Authority's `/oauth2/logout/requests`, with no automatic retry/redirect following and no ID token/secret sent to the browser; the backchannel shares a named client with the rest of the package protocol traffic and propagates the correlation id, but does not enter telemetry.
 
-成功为 302 到验证过的同源 `logout_uri`（唯一 43 字符 base64url `logout_handle`）；准备失败、畸形/跨源/超大 URL、错误状态、超时或取消均保持本地退出并响应固定 `200 {"outcome":"local_only"}`（浏览器导航式提交时直接显示该 JSON）。回跳 `GET /api/auth/oidc/logout/return?state=...` 只以单值 state + 独立 `adminSession-logout-return` 绑定 Cookie（HttpOnly/Secure/SameSite=Lax/Path=`/api/auth/oidc/logout`、5 分钟）原子单用消费；正确 302 `/login`，其余固定 400 HTML 页。下游已发令牌不保证立即失效。真实 PostLogout 注册变更由维护者部署时执行；专项 `PreparedLogout_` 测试使用隔离数据库/虚构凭据，无生产 OSS 删除。
+Success is a 302 to the validated same-origin `logout_uri` (the unique 43-character base64url `logout_handle`); preparation failure, malformed/cross-origin/oversized URL, error status, timeout, or cancellation all keep the local logout with the fixed response `200 {"outcome":"local_only"}` (shown directly as that JSON when the browser submits by navigation). The return `GET /api/auth/oidc/logout/return?state=...` consumes, atomically and once only, a single-value state plus the separate `adminSession-logout-return` binding Cookie (HttpOnly/Secure/SameSite=Lax/Path=`/api/auth/oidc/logout`, 5 minutes); the correct case is a 302 to `/login`, everything else a fixed 400 HTML page. Tokens already issued downstream are not guaranteed to be invalidated immediately. The real PostLogout registration change is performed by the maintainer at deployment; the dedicated `PreparedLogout_` tests use an isolated database and fictitious credentials, with no production OSS deletion.
 
-### 令牌过期与显式重认证（#45）
+### Token expiry and explicit reauthentication (#45)
 
-在唯一会话模式，票据随 access token 到期被存储回收，过期与不存在不可区分：业务门禁为 `401 {"error":"unauthorized"}`，零下游/OSS 删除、不重放写请求（#83 起不再有独立的 reauthentication_required 业务错误；SPA 对过期会话按匿名跳登录）。`GET /api/auth/session` 为 `{authenticated,displayName,requiresReauthentication}`：有效 token true/false；票据缺失但会话 Cookie 仍在（过期/撤票）为 false/true 且显示名 null；从未登录 false/false。当前非管理员403优先；任意 Authorization401。浏览器仅显式进入 `/api/auth/oidc/start?returnUrl=...` 受控授权（returnUrl 为单值本地路径，缺省 `/`）；上游会话可复用立即回跳，否则显示托管登录；取消/失败保持既有固定结果（cancelled/sign_in_failed/identity_unavailable 映射不变），BFF不自动挑战。
+In the only-session mode, tickets are reclaimed by the store when the access token expires, and expiry is indistinguishable from absence: the business gate returns `401 {"error":"unauthorized"}`, with zero downstream/OSS deletion and no write replay (since #83 there is no separate reauthentication_required business error; the SPA treats an expired session as anonymous and redirects to login). `GET /api/auth/session` returns `{authenticated,displayName,requiresReauthentication}`: valid token true/false; ticket missing but session Cookie still present (expired/revoked) false/true with null display name; never logged in false/false. Non-admin 403 takes precedence; any Authorization gets 401. The browser only enters the controlled authorization at `/api/auth/oidc/start?returnUrl=...` explicitly (returnUrl is a single-value local path defaulting to `/`); when the upstream session can be reused it immediately returns, otherwise the hosted login is shown; cancel/failure keeps the existing fixed results (cancelled/sign_in_failed/identity_unavailable mappings unchanged), and the BFF never auto-challenges.
 
-### 门户服务端凭据（#44）
+### Portal server-side credentials (#44)
 
-Teacher/Assistant 全代理前缀始终在认证/授权前共用管理员/CSRF 门禁，合法 access token 到期返回 `401 reauthentication_required` 且零出站，仅发送服务器 Bearer，剥离浏览器 Cookie、Host、CSRF 与 gateway 头、下游 Set-Cookie。保留 admin/auth/其他路径映射、query/body、503/502 和下游401/403；取消传递且不重放。关联查询共用相同管理员边界，只转发服务器 token，失败门禁在 Student/门户调用前拒绝。业务单侧失败/畸形响应继续该侧空列表，另一侧正常，此聚合不保证失败可见性或两门户一致。生产 rollout 不在 #75 实现范围；当前组合的正式验证使用官方 Provider 与真实下游。专项 `PortalSession_`、`AssociationsSession_` 在隔离数据库/fake HTTP 上运行，不触生产。
+The full Teacher/Assistant proxy prefixes always share the administrator/CSRF gate before authentication/authorization; a valid access token at expiry returns `401 reauthentication_required` with zero outbound, only the server Bearer is sent, and browser Cookie, Host, CSRF, and gateway headers plus downstream Set-Cookie are stripped. The admin/auth/other path mappings, query/body, 503/502, and downstream 401/403 are preserved; cancellation propagates without replay. Association queries share the same administrator boundary, forward only the server token, and reject before the Student/portal calls on failure. A single-sided business failure or malformed response keeps that side an empty list while the other side is normal; this aggregation guarantees neither failure visibility nor cross-portal consistency. Production rollout is not in #75's implementation scope; formal verification of the current combination uses the official Provider and real downstream. The dedicated `PortalSession_` and `AssociationsSession_` suites run on an isolated database/fake HTTP and never touch production.
 
-### Identity 代理服务端会话（#43）
+### Identity proxy server-side session (#43)
 
-全 `/api/identity` 前缀（大小写、根和尾斜线）在认证/授权前经过共享管理员与 CSRF 边界。拒绝任何入站 Authorization；合法 access token 到期时返回 `401 reauthentication_required` 且零出站；只转发服务器票据内有效 access token，剥离浏览器 Cookie、Host、X-CSRF-TOKEN 与伪造 gateway 头后注入本服务 AppId/AppSecret。下游 Set-Cookie 不传给浏览器；401/403/结构化503和 Retry-After 原样，网络失败502，取消传递且不重放。AppSecret 剥离始终保持，三个代理共用相同会话边界。生产平台注册不由本项执行；正式组合门禁归 #75。专项 `FullyQualifiedName~IdentitySession_` 使用 fake HTTP 与隔离数据库，无生产 OSS 删除。
+The full `/api/identity` prefix (case, root, and trailing slash) passes the shared administrator and CSRF boundary before authentication/authorization. Any inbound Authorization is rejected; a valid access token at expiry returns `401 reauthentication_required` with zero outbound; only the valid in-ticket server access token is forwarded, and after stripping browser Cookie, Host, X-CSRF-TOKEN, and forged gateway headers, this service's own AppId/AppSecret is injected. Downstream Set-Cookie does not reach the browser; 401/403/structured 503 and Retry-After pass through as-is, network failure gives 502, and cancellation propagates without replay. AppSecret stripping always remains, and the three proxies share the same session boundary. Production platform registration is not performed by this item; the formal combination gate belongs to #75. The dedicated `FullyQualifiedName~IdentitySession_` tests use fake HTTP and an isolated database, with no production OSS deletion.
 
-Identity 代理退役浏览器凭据兼容（#73）：middleware 的 settings 为必需依赖，直接调用缺 TrustedSessionKey/有效服务器 token 也401拒绝。所有路径使用 StartsWithSegments remaining 映射 `/api`，根/尾斜线/大小写/query/body 保持；始终 RequestAborted，预取消/发送中取消传播且无应用层重试。非代理的 `IdentityAccountsController` 不在本次修改范围。中间镜像不部署，最终须包含 #41/#75；回滚只选择明确旧完整镜像，不复活票据。
+Identity proxy retirement of browser-credential compatibility (#73): the middleware's settings are a required dependency, and direct invocation lacking TrustedSessionKey/a valid server token is also rejected with 401. All paths map `/api` using the StartsWithSegments remainder; root/trailing slash/case/query/body are preserved; RequestAborted always applies, and pre-cancellation/cancellation mid-send propagate with no application-layer retry. The non-proxied `IdentityAccountsController` is out of scope for that change. Intermediate images are not deployed; the final must include #41/#75; rollback selects only a known-good old complete image and does not resurrect tickets.
 
-门户传输退役浏览器凭据兼容（#74）：两 middleware 只接受 TrustedSessionKey 的有效 server token，settings 为必需依赖，直接调用缺可信项也401。统一 remaining 的 admin/auth/其他三类映射，始终 RequestAborted、剥离浏览器Authorization/Cookie/Host/CSRF/gateway，隔离Set-Cookie；取消传播且无应用层重试。关联查询只随API-session，即使门户proxy开关false也用server token；当前账户筛选、单侧失败保另一侧、无关联短路与Student失败响应保持。此中间镜像不部署，最终须组合#41/#75；整版回滚不恢复本版浏览器凭据路径或复活撤票。
+Portal transport retirement of browser-credential compatibility (#74): the two middleware accept only a valid server token from TrustedSessionKey, settings are a required dependency, and direct invocation lacking a trusted item is also 401. The unified remainder uses the three admin/auth/other mappings, always applies RequestAborted, strips browser Authorization/Cookie/Host/CSRF/gateway, and isolates Set-Cookie; cancellation propagates with no application-layer retry. Association queries ride only with the API-session and use the server token even when the portal proxy switch is false; the current-account filter, one-side failure keeping the other side, no-association short circuit, and Student failure response are preserved. This intermediate image is not deployed; the final must combine #41/#75; a full-version rollback does not restore this version's browser-credential path or resurrect revoked tickets.
 
-### 管理接口统一使用本地会话（#72）
+### Management endpoints uniformly use the local session (#72)
 
-`/api/admin/*`（含 native image）、普通 CSRF、三个代理和关联查询始终共用 AdminSession 边界，任何 Authorization401、白名单403、期限401、普通 unsafe CSRF400 与三字段会话状态保持。全局入站 Bearer handler 与 JWT Cookie 验证均未注册；默认认证和 FallbackPolicy 也只选择服务器会话。
+`/api/admin/*` (including native image), ordinary CSRF, the three proxies, and association queries always share the AdminSession boundary; Authorization 401, allowlist 403, deadline 401, ordinary unsafe CSRF 400, and the three-field session status all hold. No global inbound Bearer handler or JWT Cookie validation is registered; the default authentication and FallbackPolicy also select only the server session.
 
-退出登录相关接口（`/api/auth/oidc/csrf|logout|logout/return`）由 SignaCore 包提供，不携带六头安全基线（应答自带 no-store；antiforgery 签发可附 X-Frame-Options: SAMEORIGIN）；非 POST logout405、POST 恒清理旧 adminAuthToken。退出身份不以 access 期限或管理员白名单阻止本人退出；成功/失败/取消与一次性 state 按包协议。SPA/health 匿名，不更改业务/OSS/三个代理。API+SPA 必须使用最终完整集成镜像；回滚只选择明确旧完整镜像，不复活撤票状态。
+Logout-related endpoints (`/api/auth/oidc/csrf|logout|logout/return`) are provided by the SignaCore package and do not carry the six-header security baseline (their answers carry their own no-store; antiforgery issuance may attach X-Frame-Options: SAMEORIGIN); non-POST logout 405, POST always clears the old adminAuthToken. Logout identity is never blocked by access expiry or the administrator allowlist; success/failure/cancellation and the one-time state follow the package protocol. SPA/health are anonymous, with no change to business/OSS/three proxies. API+SPA must use the final complete integrated image; rollback selects only a known-good old complete image and does not resurrect revoked ticket state.
