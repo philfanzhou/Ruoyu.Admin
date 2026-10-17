@@ -35,6 +35,16 @@ describe('async authoritative route guard', () => {
     await router.push('/login'); expect(fetch).toHaveBeenCalledTimes(1)
   })
 
+  // The settings page rides the same route-agnostic guard: no session means the
+  // login page, with the original target preserved (#119 acceptance).
+  it('sends an unauthenticated /settings visit to login with the target preserved', async () => {
+    vi.mocked(fetch).mockResolvedValue(response(profile(false)))
+    router = (await import('./index')).default; await router.push('/settings')
+    expect(router.currentRoute.value.name).toBe('login')
+    expect(router.currentRoute.value.query.returnUrl).toBe('/settings')
+    expect(fetch).toHaveBeenCalledTimes(1)
+  })
+
   it('retains explicit expiry and callback/exit status instead of bouncing away', async () => {
     vi.mocked(fetch).mockResolvedValue(response(profile(false, true)))
     router = (await import('./index')).default; await router.push('/students?grade=7')

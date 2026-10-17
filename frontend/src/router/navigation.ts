@@ -6,6 +6,7 @@ export const NAV_GROUPS = [
   { key: 'users', label: '用户' },
   { key: 'content', label: '内容与上传' },
   { key: 'storage', label: '存储审计' },
+  { key: 'system', label: '系统' },
 ] as const
 
 export type NavGroupKey = (typeof NAV_GROUPS)[number]['key']

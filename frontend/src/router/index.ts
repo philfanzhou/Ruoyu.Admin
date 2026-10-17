@@ -1,6 +1,6 @@
 import { markRaw } from 'vue'
 import { createRouter, createWebHistory } from 'vue-router'
-import { Box, Collection, DataBoard, Reading, Service, Upload, User } from '@element-plus/icons-vue'
+import { Box, Collection, DataBoard, Reading, Service, Setting, Upload, User } from '@element-plus/icons-vue'
 import { initializeSession, onSessionInvalidated, safeReturnUrl, session } from '../services/auth'
 
 const router = createRouter({
@@ -57,6 +57,12 @@ const router = createRouter({
       name: 'oss-audit',
       component: () => import('../views/OssAuditView.vue'),
       meta: { title: 'OSS 审计', group: 'storage', icon: markRaw(Box) }
+    },
+    {
+      path: '/settings',
+      name: 'settings',
+      component: () => import('../views/SettingsView.vue'),
+      meta: { title: '系统设置', group: 'system', icon: markRaw(Setting) }
     }
   ]
 })
