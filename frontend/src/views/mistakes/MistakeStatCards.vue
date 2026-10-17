@@ -1,5 +1,5 @@
 <template>
-  <!-- Click a card to filter by that review status; clicking the active card (or 总错题) clears it. -->
+  <!-- Click a card to filter by that review status; clicking the active card (or the total-mistakes card) clears it. -->
   <div class="stats-row">
     <div
       v-for="s in CARDS"

@@ -4,9 +4,11 @@ import ElementPlus from 'element-plus'
 import AuditBulkBar from './AuditBulkBar.vue'
 
 /**
- * 批量条的计数与运行态（#24 批量表「快速重复点击只发一次」的 UI 一半；提交守卫
- * 本身在 OssAuditView 用例中断言）。count 由父组件传入，只统计 status===0 的勾选
- * （统计逻辑在 OssAuditView 的 selectedIds 不变量中）。
+ * Bulk-bar count and running state (the UI half of the issue #24 bulk table
+ * row "rapid repeated clicks send only once"; the submit guard itself is
+ * asserted in the OssAuditView cases). count comes from the parent and only
+ * tallies checked rows with status===0 (the tallying logic lives in the
+ * selectedIds invariant of OssAuditView).
  */
 
 describe('AuditBulkBar', () => {

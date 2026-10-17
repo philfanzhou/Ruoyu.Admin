@@ -31,8 +31,10 @@ import identityApi from '../services/identityApi'
 import { confirmDanger } from '../utils/confirm'
 
 /**
- * 学生关联/解除账号的确认流程（#25 范围表末行）：解除关联必须过危险确认；
- * 添加关联无确认（既有行为）；accountId 缺失时早退，不得静默提交。
+ * Confirmation flow for linking/unlinking student accounts (last row of the
+ * issue #25 scope table): unlinking must go through the danger confirmation;
+ * linking has no confirmation (existing behavior); a missing accountId exits
+ * early and must not submit silently.
  */
 
 const student = {

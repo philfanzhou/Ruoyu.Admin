@@ -45,7 +45,7 @@ import { studentAdminClient } from '../../services/studentAdminApi'
 import type { UploadRecordDto } from '../../services/studentAdminApi'
 import { getErrorMessage } from './uploadRecord'
 
-// Two steps, as before: opening runs legacy-check; only "确认清理" in this dialog calls legacy-clean.
+// Two steps, as before: opening runs legacy-check; only the Confirm Clean button in this dialog calls legacy-clean.
 const props = defineProps<{
   record: UploadRecordDto | null
 }>()

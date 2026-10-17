@@ -3,9 +3,12 @@ import { ElMessageBox } from 'element-plus'
 import { confirmDanger } from './confirm'
 
 /**
- * 单条/批量删除等破坏性操作的二次确认门（#24 语义模型：确认框点遮罩不发请求、
- * Enter 不触发删除、Esc/取消不发请求）。此处直接检查 confirmDanger 原样传给
- * ElMessageBox.confirm 的选项；组件级用例只驱动确认/取消两条路径。
+ * The danger-confirmation gate for destructive operations such as single or
+ * batch delete (issue #24 semantic model: clicking the dialog mask sends no
+ * request, Enter does not trigger deletion, Esc/cancel sends no request).
+ * This file checks the options that confirmDanger passes through to
+ * ElMessageBox.confirm as-is; component-level cases drive only the
+ * confirm/cancel paths.
  */
 describe('confirmDanger', () => {
   let confirmSpy: ReturnType<typeof vi.fn>

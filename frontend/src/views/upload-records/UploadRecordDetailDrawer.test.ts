@@ -20,8 +20,10 @@ import { studentAdminClient } from '../../services/studentAdminApi'
 import { confirmDanger } from '../../utils/confirm'
 
 /**
- * 上传记录删图的危险确认（#24 手工清单「上传记录：删图（危险确认）」）：
- * 删除必须先过 confirmDanger；取消路径不发任何请求。
+ * Danger confirmation for removing images from an upload record (the "upload
+ * record: remove image (danger confirmation)" row of the issue #24 manual
+ * checklist): removal must pass confirmDanger first; the cancel path sends
+ * no request at all.
  */
 
 const record = {
