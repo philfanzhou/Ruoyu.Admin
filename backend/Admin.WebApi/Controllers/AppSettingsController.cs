@@ -52,7 +52,7 @@ public sealed class AppSettingsController : ControllerBase
 
         var updatedBy = User.FindFirstValue("sub");
         var effective = await _settings.UpsertAsync(key, rawValue, updatedBy, cancellationToken);
-        _logger.LogInformation("Application setting {SettingKey} saved (source: database)", key);
+        _logger.LogInformation("Application setting {SettingKey} saved (source: database)", AdminLogValue.Sanitize(key));
         return Ok(ToDto(effective));
     }
 
@@ -66,7 +66,7 @@ public sealed class AppSettingsController : ControllerBase
             return NotFound(new ErrorResponse($"Setting '{key}' has no database override to delete."));
 
         _logger.LogInformation("Application setting {SettingKey} override deleted (effective source: {SettingSource})",
-            key, effective.Source);
+            AdminLogValue.Sanitize(key), effective.Source);
         return Ok(ToDto(effective));
     }
 
