@@ -40,7 +40,77 @@ Identity fields of the request scope flow into the real Console/Loki pipeline; s
 
 ## Configuration loading
 
-At startup the Admin API loads PostgreSQL, OSS, and downstream-service shared configuration through Consul `config/ruoyu/*`. `start.sh` injects the Consul address, the database name `ruoyu_admin`, and the Identity application credentials. The `127.0.0.1` values in the repository are placeholder defaults and **are not the address of any real deployment**; at deployment time, point `CONSUL_HTTP_ADDR` at the actual Consul address.
+Configuration reaches the running Admin API through a two-level model:
+
+- a **static layer**, assembled once at startup from appsettings files, the Consul KV snapshot, environment variables, and the command line; and
+- a **database dynamic layer** (#118): a small catalog of runtime-adjustable application settings persisted in the `AppSettings` table of the `ruoyu_admin` database and resolved per use (see [Database-hosted application settings](#database-hosted-application-settings-dynamic-layer)).
+
+### Static configuration layers
+
+Within the static layer, each layer overrides the one above it — the earlier a value arrives, the lower its precedence:
+
+1. **Options-class defaults in code** — not an `IConfiguration` source at all. When no key binds, the owning options class supplies the value: `StudentServiceOptions` / `MistakeServiceOptions` / `HomeworkServiceOptions` (the local-development downstream URLs), `OssAuditScheduleOptions` (02:00 local time), `OssOptions` (structural S3 defaults; credentials default to empty), `TeacherPortalOptions` / `AssistantPortalOptions` (empty URL = proxy answers 503 "not configured"), `RuoyuConsulOptions` (see the Consul paragraph below), `AdminPortalOptions` (empty allowlist).
+2. **appsettings files**. The image carries `appsettings.json` and `appsettings.Development.json` (both are published with the project), but the container runs in the Production environment, so only the base file loads there. `start.sh --config-file <path>` bind-mounts a replacement read-only over `/app/appsettings.json`. Locally (`dotnet run`, environment `Development`), `appsettings.Development.json` overlays the base file. The base file holds only environment-neutral keys (`Logging`, `Loki:Uri`, `AllowedHosts`, `Database:Name`, `AdminPortal`, `AdminOidc`, `AdminWeb`).
+3. **Consul KV snapshot** under `config/ruoyu` (the `KvPrefix`; every JSON object below the prefix is flattened into configuration keys — `config/ruoyu/shared.json` is where `PostgreSql:*` arrives). A successful load is cached locally; when Consul is unreachable the existing cache is used; without a cache this layer is simply absent and startup continues on the lower layers. A missing database connection then fails later at the startup database gate rather than at configuration load.
+4. **Environment variables and command line — always the highest precedence.** These sources are replayed after the Consul snapshot is applied, so they override Consul no matter how Consul was reached (live, cache, or absent). They never override each other's relative order (environment variables lose to command-line arguments, the framework default).
+
+Only development placeholder values live in `appsettings.Development.json`: the local audit-database connection string, mock OSS credentials, and localhost downstream URLs (see [LocalSetup](LocalSetup.md#backend-configuration)). Production credentials — OSS keys, `IdentityService:AppId`/`AppSecret`, `PostgreSql:Password` — come only from Consul KV or environment variables and must never be written into any `appsettings*.json`.
+
+The Consul client itself binds from the `Consul` configuration section plus the `CONSUL_*` environment variables; no `appsettings*.json` carries a `Consul` section anymore, so the effective values are the `RuoyuConsulOptions` defaults (`host.docker.internal:8500`, prefix `config/ruoyu`, cache enabled under `./data/consul`) overridden by `CONSUL_HTTP_ADDR`, `CONSUL_HOST`, `CONSUL_PORT`, `CONSUL_KV_PREFIX`, `CONSUL_TIMEOUT_MS`, `CONSUL_RETRY_COUNT`, `CONSUL_ENABLE_CACHE`, `CONSUL_CACHE_DIR`, and `CONSUL_TOKEN`. The `127.0.0.1` / `localhost` values in the repository are placeholder defaults and **are not the address of any real deployment**; at deployment time, point `CONSUL_HTTP_ADDR` at the actual Consul address.
+
+### Key ownership
+
+| Key | Normally arrives from | When absent |
+|-----|----------------------|-------------|
+| `IdentityService:Authority` | Consul KV or environment (`start.sh` `--authority` → `IdentityService__Authority`) | required — malformed/missing fails startup (`AdminOidcSettings.Read`) |
+| `IdentityService:AppId`, `IdentityService:AppSecret` | environment or a restricted env-file (`start.sh` reads `IDENTITY_APP_ID` / `IDENTITY_APP_SECRET`); secrets never belong in files | mandatory — the host refuses to start without them |
+| `AdminOidc:RedirectUri`, `AdminOidc:PostLogoutRedirectUri` | environment (`start.sh` `--redirect-uri` / `--post-logout-redirect-uri` → `AdminOidc__*`) | required with the exact fixed paths; same-origin pair |
+| Legacy five `AdminOidc:Enabled` / `UseSessionForAdminApi` / `UseSessionForLogout` / `UseSessionForIdentityProxy` / `UseSessionForPortalProxies` | nowhere — remove them | omission passes; only omission, the canonical `true`, or a JSON boolean `true` passes migration validation — `false`, empty, or any malformed value rejects startup in every environment |
+| `AdminPortal:AdminUserIds` | Consul KV or environment | empty list — an empty allowlist yields 403 for everyone |
+| `AdminWeb:AllowedOrigins` | Consul KV or environment | empty list — CORS allows any origin |
+| `IdentityService:Audience`, `IdentityService:RequireHttpsMetadata` | Consul KV or environment; Development placeholders in `appsettings.Development.json` | only consulted when `Mistake:ManagedAssignmentEnabled=true` (enablement gate requires them) |
+| `IdentityService:ClockSkewSeconds` | Consul KV or environment | default 30; valid 0–300; a malformed or out-of-range value fails startup |
+| `PostgreSql:Host` / `Port` / `Username` / `Password` | Consul KV `config/ruoyu/shared.json` | absent → the local `ConnectionStrings:AuditDb` fallback is used |
+| `Database:Name` | base `appsettings.json`; `start.sh` always injects `Database__Name` (`DB_NAME`, default `ruoyu_admin`) | `ruoyu_admin` |
+| `Database:AllowCreate` | Consul KV or environment | default `false` — a verifiably missing database is refused, never silently created |
+| `ConnectionStrings:AuditDb` | `appsettings.Development.json` only (local development) | absent in production — production connects via the Consul `PostgreSql:*` synthesis |
+| `StudentService:Url`, `MistakeService:Url`, `HomeworkService:Url` | Consul KV or environment in production; Development placeholders locally | options-class default (`http://localhost:5005` / `:5007` / `:5009`) |
+| `MistakeService:UseSessionToken` | Consul KV, environment, or Development placeholder | `false`; must parse as a boolean or startup fails |
+| `Mistake:ManagedAssignmentEnabled` | Consul KV or environment | `false`; a non-boolean value fails startup |
+| `TeacherPortal:Url`, `AssistantPortal:Url` | Consul KV or environment | options-class default is empty — the proxy answers 503 "not configured" |
+| `Oss:InternalEndpoint` / `InternalSecure` / `AccessKey` / `SecretKey` / `BucketName` / `PublicBaseUrl` | Consul KV or environment in production; mock values in `appsettings.Development.json` | `OssOptions` structural defaults (`localhost:8333`, bucket `ruoyu-study`); credentials have **no** code default — a missing credential fails at first use |
+| `OssAudit:ScheduledHour`, `OssAudit:ScheduledMinute` | any static source may override, but these are database-layer keys resolved per cycle | options-class default 02:00 local time; see the dynamic layer below |
+| `Loki:Uri` | Consul KV or a mounted file | base-file fallback `http://ruoyu-loki:3100`; empty disables the remote sink |
+| `Logging:LogLevel:*` | any static source | base-file Information defaults |
+| `Consul:*` (client binding) | `CONSUL_*` environment variables or a Consul-provided `Consul` section | `RuoyuConsulOptions` defaults |
+| `StorageReferences:*` | Consul KV or environment; default-off | see [StorageAudit](../modules/OssAudit/StorageAudit.md) |
+| `Kestrel:Endpoints:*` (optional HTTPS listener) | environment or a mounted file | none — the HTTP listener on hardcoded 5020 is the only default |
+
+Plain environment variables outside `IConfiguration` section binding: `USE_LOCAL_OSS=1` switches `IOssService` to `LocalFileOssService` (directory from `OSS_LOCAL_PATH`, default `data/oss`); `APP_TITLE` titles the SPA shell; `TZ` is set by `start.sh`.
+
+### start.sh injection surface
+
+`start.sh` passes configuration into the container as environment variables and mounts — never as command-line arguments beyond `--validate-auth-config`:
+
+- always: `TZ`, `APP_TITLE` (container name), `Database__Name` (from `DB_NAME`, default `ruoyu_admin`);
+- when set: `IdentityService__AppId` / `IdentityService__AppSecret` / `IdentityService__Authority` (from `IDENTITY_APP_ID` / `IDENTITY_APP_SECRET` / `--authority`), `AdminOidc__RedirectUri` / `AdminOidc__PostLogoutRedirectUri` (from `--redirect-uri` / `--post-logout-redirect-uri`), and the `CONSUL_HTTP_ADDR` / `CONSUL_TOKEN` / `CONSUL_HOST` / `CONSUL_PORT` / `CONSUL_KV_PREFIX` / `CONSUL_TIMEOUT_MS` / `CONSUL_RETRY_COUNT` / `CONSUL_ENABLE_CACHE` passthrough;
+- mounts: `--env-file` (docker env-file, the recommended home for secrets), `--config-file` (read-only bind mount over `/app/appsettings.json`), `--cache-dir` (sets `CONSUL_CACHE_DIR=/app/data/consul`; the preflight mounts it read-only, normal startup read-write).
+
+### Database-hosted application settings (dynamic layer)
+
+Issue #118 added a database-hosted settings layer for runtime-adjustable values. Its keys form a closed catalog (`AppSettingsRegistry` in `Admin.WebApi/Services`); the first-version catalog is the storage-audit schedule — `OssAudit:ScheduledHour` (integer 0–23, default 2) and `OssAudit:ScheduledMinute` (integer 0–59, default 0), defaults inherited from `OssAuditScheduleOptions` (02:00 local time). Keys without a registry definition are never read from or written to the `AppSettings` table.
+
+Every registered key resolves through three layers, highest first:
+
+1. **database override** (source `db`) — the row in `AppSettings`;
+2. **valid static configuration value** (source `static`) — the same-name key from any static source (Consul KV, environment, appsettings); a static value that fails the value domain is treated as absent rather than surfacing an unusable setting;
+3. **options-class default** (source `default`).
+
+Deleting the database override falls back to the lower layers. Persistence is a last-writer-wins primary-key upsert (`UpdatedAt` / `UpdatedBy` recorded); there is no optimistic locking — this is a single-administrator surface.
+
+The write surface is the management API `api/admin/settings` (`AppSettingsController`, behind the shared admin session and CSRF boundary): `GET` lists every registered key with its effective value and source; `PUT {key}` upserts the database override (invalid values are refused with a fixed 400 message that names the key and its constraint and never echoes the value); `DELETE {key}` removes the override and returns the post-delete effective value. Unregistered keys get 404 and never create rows. The admin SPA's settings page (issue #119) is a thin consumer of this API. Because `OssAuditWorker` re-resolves the schedule through the layered service on every cycle, a change takes effect on the next scheduling computation without a restart; if the settings store is unreachable, resolution falls back to the static/default layers (a warning is logged without exception details) and the loop keeps running — the audit invariants are untouched by schedule timing.
+
+Credentials, downstream URLs, the administrator allowlist, CORS, and authentication keys deliberately stay out of the database layer: they belong to the static layer and the security boundary, and making them runtime-adjustable would be a behavior change outside this model. The `AppSettings` table itself is part of the migration chain (`20261017060000_AddAppSettings`); its structure, upgrade, and refusal rules are documented in [migrations](../database/migrations.md).
 
 ### Authentication read-only preflight and upgrade
 
@@ -95,8 +165,8 @@ Production capability activation also depends on Ruoyu.Study's application Code 
   "Oss": {
     "InternalEndpoint": "10.20.30.40:8333",
     "InternalSecure": false,
-    "AccessKey": "seaweedfs_admin",
-    "SecretKey": "seaweedfs_admin",
+    "AccessKey": "<access key from Consul KV or the environment>",
+    "SecretKey": "<secret key from Consul KV or the environment>",
     "BucketName": "ruoyu-study",
     "PublicBaseUrl": "https://oss.example.com/oss"
   }

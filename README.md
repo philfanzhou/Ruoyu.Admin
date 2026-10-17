@@ -69,7 +69,7 @@ Managed mistake assignment is opt-in (`Mistake:ManagedAssignmentEnabled=false` b
 | Ruoyu.Study Mistake service | Mistake items, review submission, analysis triggers |
 | Ruoyu.Study Homework service | Image-reference aggregation for Storage Audit |
 | Ruoyu.Study Teacher Portal / Assistant Portal | Teacher and assistant administration, reached through the proxies |
-| PostgreSQL | `ruoyu_admin` database — `OssAuditRuns`, `OssAuditRecords` |
+| PostgreSQL | `ruoyu_admin` database — `OssAuditRuns`, `OssAuditRecords`, `AppSettings` (database-hosted application settings) |
 | S3-compatible object store (SeaweedFS in the reference deployment) | Storage Audit read-only object browsing |
 | Consul (optional) | KV-backed configuration with local cache fallback |
 | Grafana Loki (optional) | Log aggregation |
@@ -137,14 +137,14 @@ Three anonymous JSON endpoints are served alongside the SPA (never rewritten by 
 
 ## Configuration
 
-Configuration is read from `appsettings.json`, then Consul KV under `config/ruoyu` (when reachable), then environment variables. Consul results are cached locally so the host still starts when Consul is down.
+Configuration is a two-level model. The **static layer** is assembled once at startup, in increasing precedence: the image's `appsettings.json` (development-only values — the local database connection string, mock OSS credentials, localhost downstream URLs — live in `appsettings.Development.json`, which the production container never loads), then the Consul KV snapshot under `config/ruoyu` (cached locally, so the host still starts when Consul is down), with environment variables and the command line always overriding both. Options classes in code supply the defaults when no key binds. On top of that, a **database dynamic layer** persists runtime-adjustable application settings in the `AppSettings` table of `ruoyu_admin`: a closed key catalog resolved as database override → static configuration → options-class default, managed through the `api/admin/settings` management API on the shared admin session and CSRF boundary. The first-version catalog is the storage-audit schedule; credentials, downstream URLs, the administrator allowlist, CORS, and authentication keys deliberately stay out of the database layer. Key-ownership table, layering details, and the `start.sh` injection surface: [docs/development/Deployment.md](docs/development/Deployment.md#configuration-loading).
 
 | Section | Purpose |
 |---------|---------|
 | `IdentityService:*` | Identity authority, `AppId` / `AppSecret` for gateway calls |
 | `StudentService:Url`, `MistakeService:Url`, `HomeworkService:Url` | Downstream service addresses |
 | `MistakeService:UseSessionToken` | Default false; opt in to current server-session Bearer for all 14 existing Mistake methods, with an explicit root origin (http and https equally accepted; the structural URI rules are unchanged) |
-| `TeacherPortal:Url`, `AssistantPortal:Url` | Proxy targets |
+| `TeacherPortal:Url`, `AssistantPortal:Url` | Proxy targets (empty = the proxy answers 503 "not configured") |
 | `AdminPortal:AdminUserIds` | Accounts granted the `admin` role via the Identity callback |
 | `AdminOidc:RedirectUri`, `AdminOidc:PostLogoutRedirectUri` | Required exact registered login and same-origin logout callbacks |
 | Legacy five `AdminOidc` switches | Remove them; absent or canonical lowercase `true` is accepted only for migration validation, false/malformed values reject startup in every environment |
@@ -152,12 +152,10 @@ Configuration is read from `appsettings.json`, then Consul KV under `config/ruoy
 | `AdminWeb:AllowedOrigins` | CORS origins; empty means allow any |
 | `Oss:*` | `InternalEndpoint` / `InternalSecure` for direct S3 access, `PublicBaseUrl` for presigned URLs |
 | `StorageReferences:*` | Default-off dedicated RS256 signing key and three mandatory HTTPS provider roots; see [StorageAudit](docs/modules/OssAudit/StorageAudit.md) |
-| `OssAudit:ScheduledHour`, `OssAudit:ScheduledMinute` | Daily audit schedule (UTC) |
+| `OssAudit:ScheduledHour`, `OssAudit:ScheduledMinute` | Daily audit schedule (local time) — database-hosted settings: an override stored in the `AppSettings` table wins over static configuration, is managed via `api/admin/settings`, and takes effect on the worker's next scheduling cycle without a restart |
 | `ConnectionStrings:AuditDb`, `Database:Name`, `PostgreSql:*` | Audit database |
 | `Database:AllowCreate` | Allow startup to create a verifiably missing `ruoyu_admin` database (default `false` = refuse) |
-| `Consul:*` | KV address, prefix, cache directory |
-
-Full details: [docs/development/Deployment.md](docs/development/Deployment.md).
+| `Consul:*` | Consul client binding (address, prefix, cache); no `appsettings` section anymore — defaults live in `RuoyuConsulOptions`, overrides arrive via the `CONSUL_*` environment variables |
 
 Mistake session forwarding is an outgoing opt-in, independent of the permanent incoming Session-only boundary. Each send re-reads the current server ticket in the current request scope, including revocation or renewal after framework authentication was cached. A dedicated client permits only the configured origin and existing method/path pairs, strips other headers, disables redirects, cookies, client logging and outbound telemetry, and never sends AppSecret or browser credentials to Mistake. Transport security is a deployment decision: the configuration accepts http and https origins equally (the structural URI rules are unchanged), and public-facing deployments should use normal HTTPS/CA/SAN. The existing `--validate-auth-config` checks these settings before host startup and before `start.sh` stops an existing instance, without creating or rewriting cache.
 

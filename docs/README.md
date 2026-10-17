@@ -20,7 +20,7 @@ Ruoyu.Admin is the administration console service of the Ruoyu.Study platform, p
 
 | Path | Contents |
 |------|------|
-| `backend/Admin.WebApi` | Host, controllers, proxy middleware, audit persistence, `OssAuditWorker` |
+| `backend/Admin.WebApi` | Host, controllers, proxy middleware, audit persistence, database-hosted application settings, `OssAuditWorker` |
 | `backend/Ruoyu.Admin.Common` | `IOssService` (S3 + local files), thumbnails, shared JWT utilities (not registered by this host), database initializer, shared constants |
 | `backend/Ruoyu.Admin.Consul` | Consul KV configuration source with local cache fallback, Serilog/Loki bootstrap, PostgreSQL connection-string factory |
 | `backend/Ruoyu.Admin.ServiceClients` | Hand-written HTTP clients and mirror DTOs for Student / Mistake |

@@ -10,24 +10,51 @@
 
 ## Backend configuration
 
-1. Copy the configuration files:
-   ```bash
-   cd backend
-   # In the Development environment, appsettings.Development.json already contains the development defaults and can be used directly
-   ```
+Local development runs in the `Development` environment: `dotnet run` loads the base `appsettings.json` first and then overlays `appsettings.Development.json`, which is the only place environment-specific local values live (the base file carries just the environment-neutral keys `Logging`, `Loki:Uri`, `AllowedHosts`, `Database:Name=ruoyu_admin`, `AdminPortal:AdminUserIds=[]`, `AdminOidc={}`, and `AdminWeb:AllowedOrigins=[]`). The complete layering model — static layers, the key-ownership table, and the database-hosted dynamic layer — is in [Deployment.md](./Deployment.md#configuration-loading); this page lists the local values only.
 
-2. Key configuration items (development defaults live in `appsettings.Development.json`; the base `appsettings.json` no longer carries environment-specific values):
+### Development key table
 
-| Configuration key | Default | Description |
+Every key present in `appsettings.Development.json`, with the options-class default that applies when the file value (or the whole file) is absent:
+
+| Configuration key | Value in `appsettings.Development.json` | Options-class default | Notes |
+|--------|--------|--------|------|
+| `ConnectionStrings:AuditDb` | `Host=localhost;Port=5432;Database=ruoyu_admin;Username=phil` | none (no fallback in code) | Local audit database; production connects through the Consul `PostgreSql:*` synthesis instead |
+| `IdentityService:Authority` | `http://127.0.0.1:5002` | none | Identity hosted OIDC discovery + server-session HTTP proxy; required, and `AppId`/`AppSecret` are **not** in any file — inject them via environment variables or user-secrets |
+| `IdentityService:Audience` | `PlatformAudience` | none | Read only when `Mistake:ManagedAssignmentEnabled=true` (the managed-assignment trust gate also requires `IdentityService:Authority` and `RequireHttpsMetadata`) |
+| `IdentityService:RequireHttpsMetadata` | `false` | `true` | Same managed-assignment gate |
+| `IdentityService:ClockSkewSeconds` | `30` | `30` | Valid range 0–300; a malformed or out-of-range value fails startup |
+| `StudentService:Url` | `http://localhost:5005` | `http://localhost:5005` (`StudentServiceOptions`) | Student HTTP service |
+| `MistakeService:Url` | `http://localhost:5007` | `http://localhost:5007` (`MistakeServiceOptions`) | Mistake HTTP service |
+| `MistakeService:UseSessionToken` | `false` | `false` (absent = false) | Mistake outbound session opt-in only; enabling requires an explicit root origin (path `/`), http and https accepted equally, public deployments should use HTTPS (deployment advice, not enforced in code); a value that does not parse as a boolean fails startup |
+| `HomeworkService:Url` | `http://localhost:5009` | `http://localhost:5009` (`HomeworkServiceOptions`) | Homework reference-source HTTP service |
+| `TeacherPortal:Url` | `http://localhost:5004` | `""` → the proxy answers 503 (`TeacherPortalOptions`) | Teacher Portal HTTP service |
+| `AssistantPortal:Url` | `http://localhost:5021` | `""` → the proxy answers 503 (`AssistantPortalOptions`) | Assistant Portal HTTP service |
+| `Oss:InternalEndpoint` | `localhost:8333` | `localhost:8333` (`OssOptions`) | The S3 address the backend actually connects to |
+| `Oss:InternalSecure` | `false` | `false` | Whether the internal connection uses HTTPS |
+| `Oss:AccessKey` / `Oss:SecretKey` | `mock_access_key` / `mock_secret_key` (mock values) | empty string — **no code default** | Production credentials come only from Consul KV or environment variables and must never be written into any `appsettings*.json`; a missing credential fails at first use |
+| `Oss:BucketName` | `ruoyu-study` | `ruoyu-study` | |
+| `Oss:PublicBaseUrl` | `https://oss.example.com/oss` (placeholder example) | `null` | The public presigned base URL used by browsers |
+
+Keys that are configurable but deliberately absent from every file:
+
+| Configuration key | Where it comes from | Default |
 |--------|--------|------|
-| `ConnectionStrings:AuditDb` | `Host=localhost;Port=5432;Database=ruoyu_admin;Username=phil` | Audit database connection string (local development default; production is overridden by Consul) |
-| `Database:Name` | `ruoyu_admin` | Database name (used when synthesizing the connection string with Consul `PostgreSql:*`) |
-| `StudentService:Url` | `http://localhost:5005` | Student HTTP service |
-| `MistakeService:Url` | `http://localhost:5007` | Mistake HTTP service |
-| `MistakeService:UseSessionToken` | `false` | Mistake outbound session opt-in only; enabling requires an explicit root origin (path `/`), http and https accepted equally, public deployments should use HTTPS (deployment advice, not enforced in code) |
-| `IdentityService:Authority` | (none; Development defaults to `http://127.0.0.1:5002`, see `appsettings.Development.json`) | Identity hosted OIDC discovery + server-session HTTP proxy. `appsettings.json` has no `IdentityService` section; locally you must inject `AppId`, `AppSecret`, etc. via environment variables / user-secrets |
-| `TeacherPortal:Url` | `http://localhost:5004` | Teacher Portal HTTP service |
-| `AssistantPortal:Url` | `http://localhost:5021` | Assistant Portal HTTP service |
+| `IdentityService:AppId`, `IdentityService:AppSecret` | environment variables or user-secrets (locally), Consul KV / env-file (production) | none — mandatory; the host refuses to start without them |
+| `AdminOidc:RedirectUri`, `AdminOidc:PostLogoutRedirectUri` | environment variables / user-secrets (locally) | none — required with the exact fixed paths (see [hosted login](#hosted-login-development-configuration)) |
+| `AdminPortal:AdminUserIds` | base `appsettings.json` (empty) or Consul KV / environment | empty list — an empty allowlist yields 403 for everyone |
+| `AdminWeb:AllowedOrigins` | base `appsettings.json` (empty) or Consul KV / environment | empty list — CORS allows any origin |
+| `Database:Name` | base `appsettings.json` | `ruoyu_admin` |
+| `OssAudit:ScheduledHour`, `OssAudit:ScheduledMinute` | database dynamic layer (`AppSettings` table) → static configuration → default | `02:00` local time (`OssAuditScheduleOptions`); see [Deployment.md](./Deployment.md#database-hosted-application-settings-dynamic-layer) |
+| `Database:AllowCreate` | Consul KV / environment | `false` — a verifiably missing database is refused |
+
+### Local-only environment switches
+
+Optional environment variables for local runs:
+
+```bash
+export USE_LOCAL_OSS=1           # use the local file system instead of S3
+export OSS_LOCAL_PATH=data/oss   # local OSS storage path
+```
 
 ### Hosted login development configuration
 
@@ -53,36 +80,11 @@ Admin Portal assembles its connection string through `SharedPostgreSqlConnection
 - Local development: `ConnectionStrings:AuditDb` points at the local PostgreSQL (`Host=localhost;Username=phil`, no password); it runs without Consul
 - Production: delivered by Consul's `PostgreSql:*`; the base `appsettings.json` no longer carries a local connection-string fallback
 
-3. Environment variable overrides (optional):
-   ```bash
-   export USE_LOCAL_OSS=1           # use the local file system instead of S3
-   export OSS_LOCAL_PATH=data/oss   # local OSS storage path
-   ```
+### OSS credential permissions and addresses
 
-4. IOssService credential permission notes (Phase 4 change):
+`IOssService` keeps only the read-only capabilities the OSS audit needs — `DownloadAsync` and `ListObjectsWithBucketAsync`; upload, Delete, Copy, and presign members no longer exist on the interface ("the audit never mutates objects" is enforced by the type constraint). Production OSS credentials therefore only need read access to the bucket.
 
-   Admin Portal keeps `IOssService` for audit scenarios, but the credential permissions are downgraded to read-only + limited write:
-
-   | Operation | Permission | Purpose |
-   |------|------|------|
-   | `ListObjects` | read-only | audit browsing |
-   | `GetPresignedUrl` | read-only | generating presigned URLs |
-   | `ObjectExists` | read-only | audit verification |
-   | `Download` | read-only | image viewing (switched to presigned URLs after the rework; can be removed later) |
-   | `Delete` | write | zombie file cleanup |
-   | `CopyObject` | write | migration assistance |
-
-   > Local development with `LocalFileOssService` (`USE_LOCAL_OSS=1`) has no permission restrictions; production must configure OSS credentials with matching permissions.
-
-5. OSS address configuration:
-
-   | Configuration key | Description | Example |
-   |--------|------|------|
-   | `Oss:InternalEndpoint` | the S3 address the Admin backend actually connects to | `localhost:8333` |
-   | `Oss:InternalSecure` | whether the internal connection uses HTTPS | `false` |
-   | `Oss:PublicBaseUrl` | the public presigned base URL used by browsers | `https://oss.example.com/oss` |
-
-   These S3 addresses are not read when local development uses `LocalFileOssService`. The Admin frontend Nginx provides no `/oss/` proxy; public objects are uniformly proxied by the User Web Nginx.
+> Local development with `LocalFileOssService` (`USE_LOCAL_OSS=1`) has no permission restrictions and reads no `Oss:*` addresses at all. The Admin frontend Nginx provides no `/oss/` proxy; public objects are uniformly proxied by the User Web Nginx.
 
 ## Frontend configuration
 
