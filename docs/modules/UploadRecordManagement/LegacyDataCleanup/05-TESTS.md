@@ -1,84 +1,84 @@
-# LegacyDataCleanup 测试
+# LegacyDataCleanup Tests
 
-## 现有测试覆盖
+## Existing test coverage
 
-测试文件：`test/Admin.WebApi.Tests/Controllers/OssUploadRecordControllerLegacyTests.cs`
+Test file: `test/Admin.WebApi.Tests/Controllers/OssUploadRecordControllerLegacyTests.cs`
 
-### LegacyCheck 测试
+### LegacyCheck tests
 
 1. **LegacyCheck_NoMistakes_ReturnsNotLegacy**
-   - Given 上传记录没有关联错题（GetMistakeItemsByUpload 返回空列表）
-   - When 调用 LegacyCheck
-   - Then 返回 200，isLegacy=false，message="该记录没有关联错题"
+   - Given the upload record has no associated mistakes (GetMistakeItemsByUpload returns an empty list)
+   - When LegacyCheck is called
+   - Then it returns 200 with isLegacy=false and message="This record has no associated mistakes"
 
 2. **LegacyCheck_AllReviewed_ReturnsLegacy**
-   - Given 上传记录关联的错题全部已审核（Confirmed + Rejected），且有图片在 uploads/ 路径下
-   - When 调用 LegacyCheck
-   - Then 返回 200，isLegacy=true，mistakeCount=2，hasUploadPathImage=true
+   - Given all the upload record's associated mistakes are reviewed (Confirmed + Rejected), with images under the uploads/ path
+   - When LegacyCheck is called
+   - Then it returns 200 with isLegacy=true, mistakeCount=2, hasUploadPathImage=true
 
 3. **LegacyCheck_AllReviewed_NoUploadPath_ReturnsLegacyWithNoUploadPath**
-   - Given 上传记录关联的错题全部已审核，图片已在 mistakes/ 路径下
-   - When 调用 LegacyCheck
-   - Then 返回 200，isLegacy=true，hasUploadPathImage=false
+   - Given all the associated mistakes are reviewed and the images are already under the mistakes/ path
+   - When LegacyCheck is called
+   - Then it returns 200 with isLegacy=true and hasUploadPathImage=false
 
 4. **LegacyCheck_HasPendingReview_ReturnsNotLegacy**
-   - Given 上传记录有部分错题待审核
-   - When 调用 LegacyCheck
-   - Then 返回 200，isLegacy=false，pendingCount=1
+   - Given the upload record has some pending-review mistakes
+   - When LegacyCheck is called
+   - Then it returns 200 with isLegacy=false and pendingCount=1
 
 5. **LegacyCheck_GrpcException_Returns500**
-   - Given GetMistakeItemsByUpload 抛出 RpcException
-   - When 调用 LegacyCheck
-   - Then 返回 500
+   - Given GetMistakeItemsByUpload throws an RpcException
+   - When LegacyCheck is called
+   - Then it returns 500
 
-### LegacyClean 测试
+### LegacyClean tests
 
 6. **LegacyClean_NoMistakes_ReturnsBadRequest**
-   - Given 上传记录没有关联错题
-   - When 调用 LegacyClean
-   - Then 返回 400
+   - Given the upload record has no associated mistakes
+   - When LegacyClean is called
+   - Then it returns 400
 
 7. **LegacyClean_HasPendingReview_ReturnsBadRequest**
-   - Given 上传记录有待审核的错题
-   - When 调用 LegacyClean
-   - Then 返回 400
+   - Given the upload record has pending-review mistakes
+   - When LegacyClean is called
+   - Then it returns 400
 
 8. **LegacyClean_AllReviewed_CompleteReviewFails_ReturnsBadRequest**
-   - Given 所有错题已审核，但 CompleteUploadReview 返回 Success=false
-   - When 调用 LegacyClean
-   - Then 返回 400
+   - Given all mistakes are reviewed but CompleteUploadReview returns Success=false
+   - When LegacyClean is called
+   - Then it returns 400
 
 9. **LegacyClean_AllReviewed_Success**
-   - Given 所有错题已审核，CompleteUploadReview 和 DeleteUploadRecordAfterReview 均成功
-   - When 调用 LegacyClean
-   - Then 返回 200，success=true，uploadRecordId="test-record-id"
+   - Given all mistakes are reviewed and both CompleteUploadReview and DeleteUploadRecordAfterReview succeed
+   - When LegacyClean is called
+   - Then it returns 200 with success=true and uploadRecordId="test-record-id"
 
 10. **LegacyClean_CompleteReviewSuccess_DeleteFails_ReturnsBadRequest**
-    - Given CompleteUploadReview 成功，但 DeleteUploadRecordAfterReview 返回 Success=false
-    - When 调用 LegacyClean
-    - Then 返回 400
+    - Given CompleteUploadReview succeeds but DeleteUploadRecordAfterReview returns Success=false
+    - When LegacyClean is called
+    - Then it returns 400
 
 11. **LegacyClean_GrpcException_Returns500**
-    - Given GetMistakeItemsByUpload 抛出 RpcException
-    - When 调用 LegacyClean
-    - Then 返回 500
+    - Given GetMistakeItemsByUpload throws an RpcException
+    - When LegacyClean is called
+    - Then it returns 500
 
 12. **LegacyClean_WithRemovedImagePaths_CallsRemoveImagesFromRecord**
-    - Given 所有错题已审核且 CompleteUploadReview 返回 RemovedImagePaths
-    - When 调用 LegacyClean
-    - Then 调用 RemoveImagesFromRecord 后再调用 DeleteUploadRecordAfterReview
+    - Given all mistakes are reviewed and CompleteUploadReview returns RemovedImagePaths
+    - When LegacyClean is called
+    - Then RemoveImagesFromRecord is called before DeleteUploadRecordAfterReview
 
 13. **LegacyClean_EmptyRemovedImagePaths_SkipsRemoveImagesFromRecord**
-    - Given 所有错题已审核且 CompleteUploadReview 返回空 RemovedImagePaths
-    - When 调用 LegacyClean
-    - Then 跳过 RemoveImagesFromRecord，直接调用 DeleteUploadRecordAfterReview
+    - Given all mistakes are reviewed and CompleteUploadReview returns empty RemovedImagePaths
+    - When LegacyClean is called
+    - Then RemoveImagesFromRecord is skipped and DeleteUploadRecordAfterReview is called directly
 
 14. **LegacyClean_EmptyStudentId_ReturnsBadRequest**
-    - Given 关联错题的 StudentId 为空
-    - When 调用 LegacyClean
-    - Then 返回 400
+    - Given the associated mistakes' StudentId is empty
+    - When LegacyClean is called
+    - Then it returns 400
 
 15. **LegacyClean_RemoveImagesThrowsException_Returns500**
-    - Given RemoveImagesFromRecord 抛出异常
-    - When 调用 LegacyClean
-    - Then 返回 500
+    - Given RemoveImagesFromRecord throws
+    - When LegacyClean is called
+    - Then it returns 500

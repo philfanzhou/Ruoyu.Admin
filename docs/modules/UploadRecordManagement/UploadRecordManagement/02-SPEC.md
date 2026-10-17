@@ -1,37 +1,37 @@
 # UploadRecordManagement API
 
-新增 managed-v1 与 legacyfalse 分支共用现有 assign 路由。受管分支的字段、验证与逐组结果以[受管集成契约](../../../Integration/ManagedAssignment.md)为准；以下 index-based shape 描述 legacy 分支。当前客户端为 HTTP，旧 gRPC 名称只描述原迁移背景。
+The newly added managed-v1 and legacyfalse branches share the existing assign route. The managed branch's fields, validation, and per-group results follow the [managed integration contract](../../../Integration/ManagedAssignment.md); the index-based shape below describes the legacy branch. The current client is HTTP; the old gRPC names only describe the original migration background.
 
-## 接口列表
+## Endpoint list
 
-| 方法 | 路径 | 说明 |
+| Method | Path | Description |
 |------|------|------|
-| GET | /api/admin/oss-upload-records | 获取所有上传记录 |
-| POST | /api/admin/oss-upload-records/{id}/reset-status | 重置上传记录状态 |
-| POST | /api/admin/oss-upload-records/{id}/assign | 按图片粒度分配上传记录 |
-| GET | /api/admin/oss-upload-records/image | 获取上传记录图片 |
-| POST | /api/admin/oss-upload-records/{id}/rotate | 旋转上传记录图片 |
-| DELETE | /api/admin/oss-upload-records/{id}/images/{imageIndex} | 从上传记录中移除图片 |
-| POST | /api/admin/oss-upload-records/{id}/analyze | VL 分析上传记录 |
+| GET | /api/admin/oss-upload-records | Get all upload records |
+| POST | /api/admin/oss-upload-records/{id}/reset-status | Reset an upload record's status |
+| POST | /api/admin/oss-upload-records/{id}/assign | Assign an upload record at image granularity |
+| GET | /api/admin/oss-upload-records/image | Get an upload record image |
+| POST | /api/admin/oss-upload-records/{id}/rotate | Rotate an upload record image |
+| DELETE | /api/admin/oss-upload-records/{id}/images/{imageIndex} | Remove an image from an upload record |
+| POST | /api/admin/oss-upload-records/{id}/analyze | VL-analyze an upload record |
 
 ---
 
 ### GET /api/admin/oss-upload-records
 
-分页获取所有上传记录，支持按状态和学生筛选。
+Get all upload records page by page, filterable by status and student.
 
-**查询参数：**
+**Query parameters:**
 
-| 参数 | 类型 | 必需 | 默认值 | 说明 |
+| Parameter | Type | Required | Default | Description |
 |------|------|------|--------|------|
-| page | int | 否 | 1 | 页码 |
-| pageSize | int | 否 | 20 | 每页大小 |
-| status | int | 否 | -1 | 上传状态（-1 表示所有） |
-| studentId | string | 否 | - | 学生 ID |
+| page | int | no | 1 | page number |
+| pageSize | int | no | 20 | page size |
+| status | int | no | -1 | upload status (-1 means all) |
+| studentId | string | no | - | student ID |
 
-**HTTP 调用：** Student `GET /api/uploads`；列表项直接作为详情抽屉数据源，新增 contentRevision/imageEntries/assignmentProtocol 并保留 imagePaths。开启 managed 时坏 metadata 返回502，依赖错误明确失败。
+**HTTP call:** Student `GET /api/uploads`; the list items serve directly as the detail drawer's data source, adding contentRevision/imageEntries/assignmentProtocol while keeping imagePaths. With managed enabled, bad metadata returns 502 and dependency errors fail explicitly.
 
-**响应：**
+**Response:**
 
 ```json
 {
@@ -39,7 +39,7 @@
     {
       "id": "string",
       "studentId": "string",
-      "studentName": "张三",
+      "studentName": "Zhang San",
       "status": 1,
       "imagePaths": ["path/to/image.jpg"],
       "comments": "string",
@@ -53,21 +53,21 @@
 }
 ```
 
-**错误响应：** 500 - Failed to get upload records
+**Error response:** 500 - Failed to get upload records
 
 ---
 
 ### POST /api/admin/oss-upload-records/{id}/reset-status
 
-重置上传记录的状态。
+Reset an upload record's status.
 
-**路径参数：**
+**Path parameters:**
 
-| 参数 | 类型 | 说明 |
+| Parameter | Type | Description |
 |------|------|------|
-| id | string | 上传记录 ID |
+| id | string | upload record ID |
 
-**请求体：**
+**Request body:**
 
 ```json
 {
@@ -76,9 +76,9 @@
 }
 ```
 
-**gRPC 调用：** `StudentLearning.ResetUploadRecordStatus`
+**gRPC call:** `StudentLearning.ResetUploadRecordStatus`
 
-**响应：**
+**Response:**
 
 ```json
 {
@@ -87,23 +87,23 @@
 }
 ```
 
-**错误响应：**
-- 400 - Failed to reset status（gRPC 返回失败）
+**Error responses:**
+- 400 - Failed to reset status (gRPC returned failure)
 - 500 - Failed to reset upload record status
 
 ---
 
 ### POST /api/admin/oss-upload-records/{id}/assign
 
-将上传记录中的指定图片分配为错题条目。一次请求可以包含多个 assignment，每个 assignment 内的图片共享同一道错题。
+Assign the specified images of an upload record to mistake items. One request may contain multiple assignments; the images within each assignment share the same mistake.
 
-**路径参数：**
+**Path parameters:**
 
-| 参数 | 类型 | 说明 |
+| Parameter | Type | Description |
 |------|------|------|
-| id | string | 上传记录 ID |
+| id | string | upload record ID |
 
-**请求体：**
+**Request body:**
 
 ```json
 {
@@ -113,26 +113,26 @@
       "imageIndices": [0, 1],
       "subject": 1,
       "grade": 7,
-      "comments": "第 1、2 张图是同一道语文错题"
+      "comments": "Images 1 and 2 are the same Chinese-language mistake"
     }
   ]
 }
 ```
 
-**请求字段说明：**
-- `studentId` (string, 必需): 学生 ID
-- `assignments` (array, 必需): 分配条目列表
-  - `imageIndices` (array, 必需): 该 assignment 引用的图片索引（基于上传记录的原始索引），至少包含 1 个元素
-  - `subject` (int, 必需): 学科
-  - `grade` (int, 必需): 年级
-  - `comments` (string, 可选): 备注，为空时回退到上传记录的 comments
+**Request field notes:**
+- `studentId` (string, required): student ID
+- `assignments` (array, required): the assignment entry list
+  - `imageIndices` (array, required): the image indices this assignment references (based on the upload record's original indices), with at least 1 element
+  - `subject` (int, required): subject
+  - `grade` (int, required): grade
+  - `comments` (string, optional): remark; when empty, falls back to the upload record's comments
 
-**gRPC 调用流程：**
-1. `StudentLearning.GetUploadRecord` - 获取上传记录以取得图片路径
-2. 对每个 assignment 调用 `Mistake.SubmitMistakeUpload` - 创建错题条目
-3. `StudentLearning.MarkUploadRecordCompleted` - 标记上传记录为完成
+**gRPC call flow:**
+1. `StudentLearning.GetUploadRecord` - fetch the upload record to get the image paths
+2. Call `Mistake.SubmitMistakeUpload` for each assignment - create the mistake items
+3. `StudentLearning.MarkUploadRecordCompleted` - mark the upload record as completed
 
-**响应（成功）：**
+**Response (success):**
 
 ```json
 {
@@ -151,7 +151,7 @@
 }
 ```
 
-**响应（有警告）：**
+**Response (with warnings):**
 
 ```json
 {
@@ -164,7 +164,7 @@
 }
 ```
 
-**错误响应：**
+**Error responses:**
 - 400 - Upload record not found
 - 500 - Failed to assign upload record
 
@@ -172,21 +172,21 @@
 
 ### GET /api/admin/oss-upload-records/image
 
-从 OSS 存储中获取图片文件。
+Fetch an image file from OSS storage.
 
-**查询参数：**
+**Query parameters:**
 
-| 参数 | 类型 | 必需 | 说明 |
+| Parameter | Type | Required | Description |
 |------|------|------|------|
-| path | string | 是 | OSS 对象路径 |
+| path | string | yes | OSS object path |
 
-**依赖：** `IOssService.DownloadAsync`
+**Dependency:** `IOssService.DownloadAsync`
 
-**响应：** 图片二进制流（Content-Type 根据扩展名自动判断）
+**Response:** the image binary stream (Content-Type inferred from the extension)
 
-**支持的图片格式：** .jpg/.jpeg, .png, .gif, .webp, .bmp, .svg（其他格式返回 application/octet-stream）
+**Supported image formats:** .jpg/.jpeg, .png, .gif, .webp, .bmp, .svg (other formats return application/octet-stream)
 
-**错误响应：**
+**Error responses:**
 - 400 - Path is required
 - 404 - Image not found
 - 500 - Failed to get image
@@ -195,15 +195,15 @@
 
 ### POST /api/admin/oss-upload-records/{id}/rotate
 
-旋转上传记录中的图片。
+Rotate an image in an upload record.
 
-**路径参数：**
+**Path parameters:**
 
-| 参数 | 类型 | 说明 |
+| Parameter | Type | Description |
 |------|------|------|
-| id | string | 上传记录 ID（必须是合法 GUID） |
+| id | string | upload record ID (must be a legal GUID) |
 
-**请求体：**
+**Request body:**
 
 ```json
 {
@@ -213,9 +213,9 @@
 }
 ```
 
-**gRPC 调用：** `StudentLearning.RotateUploadImage`
+**gRPC call:** `StudentLearning.RotateUploadImage`
 
-**响应：**
+**Response:**
 
 ```json
 {
@@ -223,32 +223,32 @@
 }
 ```
 
-**错误响应：**
-- 400 - Invalid record ID / StudentId is required / gRPC 返回失败
+**Error responses:**
+- 400 - Invalid record ID / StudentId is required / gRPC returned failure
 - 500 - Failed to rotate image
 
 ---
 
 ### DELETE /api/admin/oss-upload-records/{id}/images/{imageIndex}
 
-从上传记录中移除指定索引的图片。
+Remove the image at the given index from an upload record.
 
-**路径参数：**
+**Path parameters:**
 
-| 参数 | 类型 | 说明 |
+| Parameter | Type | Description |
 |------|------|------|
-| id | string | 上传记录 ID |
-| imageIndex | int | 图片索引 |
+| id | string | upload record ID |
+| imageIndex | int | image index |
 
-**查询参数：**
+**Query parameters:**
 
-| 参数 | 类型 | 必需 | 说明 |
+| Parameter | Type | Required | Description |
 |------|------|------|------|
-| studentId | string | 是 | 学生 ID |
+| studentId | string | yes | student ID |
 
-**gRPC 调用：** `StudentLearning.RemoveImageFromRecord`
+**gRPC call:** `StudentLearning.RemoveImageFromRecord`
 
-**响应：**
+**Response:**
 
 ```json
 {
@@ -259,27 +259,27 @@
 }
 ```
 
-**说明：** `recordDeleted` 表示移除图片后上传记录是否已被自动删除（图片全部移除时）；`remainingImageCount` 为剩余图片数量。
+**Notes:** `recordDeleted` indicates whether the upload record was deleted automatically after the image removal (when all images are removed); `remainingImageCount` is the number of remaining images.
 
-**错误响应：**
-- 400 - studentId is required / gRPC 返回失败
+**Error responses:**
+- 400 - studentId is required / gRPC returned failure
 - 500 - Failed to remove image
 
 ---
 
 ### POST /api/admin/oss-upload-records/{id}/analyze
 
-对上传记录进行 VL（视觉语言）分析，自动识别图片分组和学科/年级。
+Run VL (vision-language) analysis on an upload record, automatically recognizing image groupings and subject/grade.
 
-**路径参数：**
+**Path parameters:**
 
-| 参数 | 类型 | 说明 |
+| Parameter | Type | Description |
 |------|------|------|
-| id | string | 上传记录 ID |
+| id | string | upload record ID |
 
-**gRPC 调用：** `StudentManagement.AnalyzeUploadRecord`（Admin 专用接口，待 Task 4.6 迁移至通用接口）
+**gRPC call:** `StudentManagement.AnalyzeUploadRecord` (an Admin-only interface, to be migrated to the generic interface in Task 4.6)
 
-**响应：**
+**Response:**
 
 ```json
 {
@@ -300,14 +300,14 @@
 }
 ```
 
-**错误响应：** 500 - VL 分析失败
+**Error response:** 500 - VL analysis failed
 
 ---
 
-## 通用错误格式
+## Common error format
 
 ```json
 {
-  "message": "错误描述"
+  "message": "error description"
 }
 ```

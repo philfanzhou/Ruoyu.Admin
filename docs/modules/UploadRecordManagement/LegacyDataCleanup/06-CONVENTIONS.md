@@ -1,51 +1,51 @@
-# LegacyDataCleanup 约定
+# LegacyDataCleanup Conventions
 
-## 命名约定
+## Naming conventions
 
-- 端点路由：`legacy-check/{id}` 和 `legacy-clean/{id}`（kebab-case）
-- ReviewerId 固定值：`"admin-legacy-cleanup"`（标识由管理员遗留清理流程触发的审核完成操作）
+- Endpoint routes: `legacy-check/{id}` and `legacy-clean/{id}` (kebab-case)
+- Fixed ReviewerId value: `"admin-legacy-cleanup"` (identifies review-completion operations triggered by the administrator legacy-cleanup flow)
 
-## 错误处理约定
+## Error handling conventions
 
-- 所有 endpoint 使用 try-catch 包裹，异常统一返回 500 + `ErrorResponse`
-- gRPC 返回 `Success=false` 时返回 400 + `ErrorResponse`
-- 前置条件不满足时返回 400 + 中文描述消息
-- `ErrorResponse` 格式：`{ "message": "错误描述" }`
+- Every endpoint is wrapped in try-catch; exceptions uniformly return 500 + `ErrorResponse`
+- A gRPC `Success=false` returns 400 + `ErrorResponse`
+- Unmet preconditions return 400 + a descriptive message
+- `ErrorResponse` format: `{ "message": "error description" }`
 
-## 日志约定
+## Logging conventions
 
-- 使用 `ILogger<OssUploadRecordController>` 记录日志
-- 信息日志记录每个步骤的执行：
+- Log with `ILogger<OssUploadRecordController>`
+- Info logs record each step's execution:
   - `Starting legacy data cleanup for upload record: {RecordId}`
   - `Step 1: Calling CompleteUploadReview for {RecordId}`
   - `Step 2: Removing {Count} image paths from upload record {RecordId}`
   - `Step 3: Calling DeleteUploadRecordAfterReview for {RecordId}`
   - `Legacy data cleanup completed successfully for {RecordId}`
-- 警告日志记录步骤失败：
+- Warning logs record step failures:
   - `CompleteUploadReview failed for {RecordId}: {Message}`
   - `DeleteUploadRecordAfterReview failed for {RecordId}: {Message}`
-- 日志消息使用英文
+- Log messages are in English
 
-## 流程约定
+## Flow conventions
 
-### LegacyCheck 只读操作
-- 不修改任何数据
-- 仅查询 Mistake 服务获取关联错题状态
+### LegacyCheck is read-only
+- Modifies no data
+- Only queries the Mistake service for the associated mistakes' review status
 
-### LegacyClean 多步骤事务
-- 严格按步骤顺序执行：验证 → CompleteUploadReview → RemoveImagesFromRecord(可选) → DeleteUploadRecordAfterReview
-- 步骤间无事务保证：若中间步骤失败，已执行的步骤不会回滚 [推断]
-- RemoveImagesFromRecord 为可选步骤，仅当 CompleteUploadReview 返回 RemovedImagePaths 时执行
+### LegacyClean is a multi-step transaction
+- Steps run strictly in order: verify → CompleteUploadReview → RemoveImagesFromRecord (optional) → DeleteUploadRecordAfterReview
+- No transaction guarantee between steps: if a middle step fails, the already-executed steps are not rolled back [inferred]
+- RemoveImagesFromRecord is optional, running only when CompleteUploadReview returns RemovedImagePaths
 
-## 中文消息约定
+## User-facing message conventions
 
-- LegacyCheck/LegacyClean 的面向用户的 message 使用中文
-- 日志消息使用英文
-- ErrorResponse 中的 message 混合使用：前置条件验证用中文，gRPC 失败用英文（来自 gRPC 响应）
+- The user-facing messages of LegacyCheck/LegacyClean are written in Chinese
+- Log messages are in English
+- The message inside ErrorResponse is mixed: precondition validation is in Chinese, gRPC failures are in English (taken from the gRPC response)
 
-## 判断逻辑约定
+## Decision-logic conventions
 
-- `allReviewed`：`mistakeList.Items.All(i => i.ReviewStatus == Confirmed || i.ReviewStatus == Rejected)`
-- `hasPending`：`mistakeList.Items.Any(i => i.ReviewStatus == PendingReview)`
-- 两个条件同时检查：`!allReviewed || hasPending` 时拒绝清理
-- `hasUploadPathImage`：检查 `sourceRegions` 中是否有 `SourceImagePath.StartsWith("uploads/")`
+- `allReviewed`: `mistakeList.Items.All(i => i.ReviewStatus == Confirmed || i.ReviewStatus == Rejected)`
+- `hasPending`: `mistakeList.Items.Any(i => i.ReviewStatus == PendingReview)`
+- Both conditions are checked together: cleanup is refused when `!allReviewed || hasPending`
+- `hasUploadPathImage`: checks whether any `sourceRegions` entry has `SourceImagePath.StartsWith("uploads/")`
