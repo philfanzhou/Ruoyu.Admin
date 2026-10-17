@@ -176,7 +176,7 @@ import type { AssignmentChoice, FixedOperation, GroupState } from './managedAssi
 const props = defineProps<{
   /** A fresh copy per open (also when reopening the same row); null closes the drawer. */
   record: UploadRecordDto | null
-  /** Pre-filled assign grade ("指派" opens with the student's grade when already known). */
+  /** Pre-filled assign grade (assigning opens with the student's grade when already known). */
   initialGrade: number
   studentGrade: number
   gradeOptions: GradeOption[]

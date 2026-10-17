@@ -310,7 +310,7 @@ function onStudentChange(studentId: string | undefined) {
 
 // ===== Detail / Legacy =====
 function openDetail(record: UploadRecordDto, withAssign = false) {
-  // "指派" pre-fills the student's grade when it is already known.
+  // The Assign action pre-fills the student's grade when it is already known.
   detailInitialGrade.value = withAssign ? studentGradeMap.value[record.studentId] || 0 : 0
   detailRecord.value = { ...record }
   loadStudentGrade(record.studentId)

@@ -2,8 +2,8 @@
  * Subject utilities - shared across admin portal views.
  *
  * Subject value mapping (matches SubjectConstants.cs in ruoyu.common):
- *   1=语文(chinese), 2=数学(math), 3=英语(english), 4=物理(physics),
- *   5=化学(chemistry), 6=生物(biology), 7=历史(history), 8=地理(geography), 9=政治(politics)
+ *   1=chinese, 2=math, 3=english, 4=physics,
+ *   5=chemistry, 6=biology, 7=history, 8=geography, 9=politics
  */
 
 export interface SubjectMeta {

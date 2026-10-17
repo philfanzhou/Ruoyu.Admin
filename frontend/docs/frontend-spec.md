@@ -1,535 +1,542 @@
-# Admin Portal 前端 Spec
+# Admin Portal Frontend Spec
 
-## 技术栈
+## Tech Stack
 
-| 项目 | 技术 |
+| Item | Technology |
 |------|------|
-| 框架 | Vue 3 + TypeScript |
-| UI 库 | Element Plus |
-| HTTP 客户端 | Axios |
-| 构建工具 | Vite |
-| 路由 | Vue Router 4 |
-| 入口 | `src/main.ts` |
-| 图标 | `@element-plus/icons-vue` |
-| 设计令牌 | `src/styles/tokens.css`（`--adm-*`），Element Plus 主题映射见 `src/styles/element-theme.css` |
+| Framework | Vue 3 + TypeScript |
+| UI library | Element Plus |
+| HTTP client | Axios |
+| Build tool | Vite |
+| Routing | Vue Router 4 |
+| Entry point | `src/main.ts` |
+| Icons | `@element-plus/icons-vue` |
+| Design tokens | `src/styles/tokens.css` (`--adm-*`); the Element Plus theme mapping lives in `src/styles/element-theme.css` |
 
 ---
 
-## 项目结构
+## Project Structure
 
 ```
 frontend/src/
-├── main.ts                      # 入口，注册 ElementPlus + VueRouter；样式引入顺序：EP css → tokens.css → element-theme.css → style.css
-├── App.vue                      # 根组件，应用外壳（可折叠侧边栏 + 56px 顶部栏 + 面包屑）
+├── main.ts                      # Entry point, registers ElementPlus + VueRouter; style import order: EP css → tokens.css → element-theme.css → style.css
+├── App.vue                      # Root component, application shell (collapsible sidebar + 56px top bar + breadcrumb)
 ├── styles/
-│   ├── tokens.css               # 设计令牌（色板、字号、间距、圆角、阴影、z-index、布局尺寸）
-│   └── element-theme.css        # 把 --el-* 变量（含派生色）映射到 --adm-* 令牌
-├── style.css                    # 基础元素样式 + 各页面仍在使用的共享类
+│   ├── tokens.css               # Design tokens (palette, font sizes, spacing, radii, shadows, z-index, layout dimensions)
+│   └── element-theme.css        # Maps --el-* variables (including derived colors) to --adm-* tokens
+├── style.css                    # Base element styles + shared classes still used by pages
 ├── composables/
-│   └── useSidebar.ts            # 侧边栏折叠状态（视口断点 + localStorage 偏好）
+│   └── useSidebar.ts            # Sidebar collapse state (viewport breakpoint + localStorage preference)
 ├── router/
-│   ├── index.ts                 # 路由配置（meta: title / group / icon）
-│   └── navigation.ts            # 导航分组常量表与 RouteMeta 类型声明
+│   ├── index.ts                 # Route configuration (meta: title / group / icon)
+│   └── navigation.ts            # Navigation group constant table and the RouteMeta type declaration
 ├── views/
-│   ├── LoginView.vue            # 登录页（单卡片）
-│   ├── DashboardView.vue        # 待办与概况（待处理 + 规模指标，只展示真实数据）
-│   ├── StudentView.vue          # 学生管理页面
-│   ├── TeacherView.vue          # 教师管理页面
-│   ├── AssistantView.vue        # 助教管理页面
-│   ├── UploadRecordView.vue      # 上传记录管理页面（列表与操作：状态统计卡 + 公共列表组件）
-│   ├── upload-records/           # 上传记录子组件：详情抽屉、图片画廊、VL 分析卡/结果弹窗、指派表单、重置/遗留检查弹窗、状态映射
-│   ├── MistakeView.vue           # 错题管理页面（列表与操作：统计卡 + 公共列表组件）
-│   ├── mistakes/                 # 错题子组件：详情弹窗、信息与审核信息、图片画廊（含迁移横幅）、编辑表单
-│   ├── OssAuditView.vue          # OSS 审计页面（列表、只读观察与历史记录忽略）
-│   └── oss-audit/                # OSS 审计子组件：只读观察状态面板、记录表格、历史忽略弹窗、扫描状态轮询（useAuditStatus）
+│   ├── LoginView.vue            # Login page (single card)
+│   ├── DashboardView.vue        # To-dos and overview (pending + scale metrics, shows only real data)
+│   ├── StudentView.vue          # Student management page
+│   ├── TeacherView.vue          # Teacher management page
+│   ├── AssistantView.vue        # Assistant management page
+│   ├── UploadRecordView.vue      # Upload record management page (list and actions: status stat cards + shared list components)
+│   ├── upload-records/           # Upload record child components: detail drawer, image gallery, VL analysis card/result dialog, assign form, reset/legacy-check dialogs, status mapping
+│   ├── MistakeView.vue           # Mistake management page (list and actions: stat cards + shared list components)
+│   ├── mistakes/                 # Mistake child components: detail dialog, info and review info, image gallery (with migration banner), edit form
+│   ├── OssAuditView.vue          # OSS audit page (list, read-only observations, and historical record ignoring)
+│   └── oss-audit/                # OSS audit child components: read-only observation status panel, record table, historical ignore dialog, scan status polling (useAuditStatus)
 ├── services/
-│   ├── httpClient.ts            # 共享 axios 实例（同源会话、CSRF 与受控失效导航）
-│   ├── identityApi.ts           # Identity 用户管理 API
-│   ├── studentAdminApi.ts       # 学生管理 + 上传记录 + 错题查询 API
-│   ├── teacherPortalApi.ts      # 教师权限管理 API
-│   ├── assistantPortalApi.ts    # 助教权限管理 API
-│   └── ossAuditApi.ts           # OSS 审计 API
+│   ├── httpClient.ts            # Shared axios instance (same-origin session, CSRF, and controlled invalidation navigation)
+│   ├── identityApi.ts           # Identity user management API
+│   ├── studentAdminApi.ts       # Student management + upload record + mistake query API
+│   ├── teacherPortalApi.ts      # Teacher permission management API
+│   ├── assistantPortalApi.ts    # Assistant permission management API
+│   └── ossAuditApi.ts           # OSS audit API
 └── utils/
-    └── subject.ts               # 学科名称与颜色映射
+    └── subject.ts               # Subject name and color mapping
 ```
 
 ---
 
-## 设计规范
+## Design Guidelines
 
-定位为内部运维工具：信息清晰、操作高效、危险操作醒目。
+Positioned as an internal operations tool: clear information, efficient actions, and prominent dangerous operations.
 
-### Design Tokens（CSS 变量）
+### Design Tokens (CSS Variables)
 
-所有 `--adm-*` 令牌统一定义在 `src/styles/tokens.css`，其他样式只引用令牌，不写裸色值。主要取值：
+All `--adm-*` tokens are defined once in `src/styles/tokens.css`; other styles reference tokens only and never hard-code raw color values. Main values:
 
-| 类别 | 变量 | 值 |
+| Category | Variable | Value |
 |------|------|----|
-| 主色 | `--adm-primary` / `-hover` / `-bg` / `-border` | `#2563eb` / `#1d4ed8` / `#eff6ff` / `#bfdbfe` |
-| 成功 | `--adm-success` / `-hover` / `-bg` / `-border` | `#15803d` / `#166534` / `#f0fdf4` / `#bbf7d0` |
-| 警告 | `--adm-warning` / `-hover` / `-bg` / `-border` | `#b45309` / `#92400e` / `#fffbeb` / `#fde68a` |
-| 危险 | `--adm-danger` / `-hover` / `-bg` / `-border` | `#dc2626` / `#b91c1c` / `#fef2f2` / `#fecaca` |
-| 信息 | `--adm-info*` | 同主色 |
-| 中性 | `--adm-neutral` | `#64748b`（Element Plus `info` 色） |
-| 侧边栏 | `--adm-sidebar` / `--adm-sidebar-hover` | `#0f172a` / `#1e293b` |
-| 背景 | `--adm-surface` / `-elevated` / `-subtle` | `#f1f5f9` / `#ffffff` / `#f8fafc` |
-| 边框 | `--adm-border` / `-light` / `-hover` | `#e2e8f0` / `#f1f5f9` / `#cbd5e1` |
-| 文本 | `--adm-text-primary` / `-secondary` / `-tertiary` / `-muted` | `#0f172a` / `#475569` / `#64748b` / `#7d8ba1` |
-| 字号 | `--adm-font-size-xs/sm/base/md/lg/xl` | 12 / 13 / 14 / 16 / 18 / 22px |
-| 间距 | `--adm-space-1…8` | 4px 基准 |
-| 圆角 | `--adm-radius-sm/md/lg` | 4 / 6 / 8px |
-| 布局 | `--adm-sidebar-width` / `--adm-sidebar-collapsed-width` / `--adm-header-height` | 220 / 64 / 56px |
+| Primary | `--adm-primary` / `-hover` / `-bg` / `-border` | `#2563eb` / `#1d4ed8` / `#eff6ff` / `#bfdbfe` |
+| Success | `--adm-success` / `-hover` / `-bg` / `-border` | `#15803d` / `#166534` / `#f0fdf4` / `#bbf7d0` |
+| Warning | `--adm-warning` / `-hover` / `-bg` / `-border` | `#b45309` / `#92400e` / `#fffbeb` / `#fde68a` |
+| Danger | `--adm-danger` / `-hover` / `-bg` / `-border` | `#dc2626` / `#b91c1c` / `#fef2f2` / `#fecaca` |
+| Info | `--adm-info*` | Same as primary |
+| Neutral | `--adm-neutral` | `#64748b` (the Element Plus `info` color) |
+| Sidebar | `--adm-sidebar` / `--adm-sidebar-hover` | `#0f172a` / `#1e293b` |
+| Backgrounds | `--adm-surface` / `-elevated` / `-subtle` | `#f1f5f9` / `#ffffff` / `#f8fafc` |
+| Borders | `--adm-border` / `-light` / `-hover` | `#e2e8f0` / `#f1f5f9` / `#cbd5e1` |
+| Text | `--adm-text-primary` / `-secondary` / `-tertiary` / `-muted` | `#0f172a` / `#475569` / `#64748b` / `#7d8ba1` |
+| Font sizes | `--adm-font-size-xs/sm/base/md/lg/xl` | 12 / 13 / 14 / 16 / 18 / 22px |
+| Spacing | `--adm-space-1…8` | 4px base |
+| Radii | `--adm-radius-sm/md/lg` | 4 / 6 / 8px |
+| Layout | `--adm-sidebar-width` / `--adm-sidebar-collapsed-width` / `--adm-header-height` | 220 / 64 / 56px |
 
-- `--adm-error*` 是 `--adm-danger*` 的兼容别名，仅供尚未迁移的页面使用；新代码使用 `--adm-danger*`。
-- 对比度约束：正文文本（`--adm-text-primary`/`-secondary`）与语义色文字在白色背景上 ≥ 4.5:1，次级文本（`-tertiary`/`-muted`）在 `--adm-surface` 与白色背景上 ≥ 3:1。修改令牌时需重新核对。
+- `--adm-error*` is a compatibility alias of `--adm-danger*`, reserved for pages that have not migrated yet; new code uses `--adm-danger*`.
+- Contrast constraints: body text (`--adm-text-primary`/`-secondary`) and semantic-color text on white backgrounds must reach ≥ 4.5:1, and secondary text (`-tertiary`/`-muted`) must reach ≥ 3:1 on `--adm-surface` and white backgrounds. Re-verify whenever a token changes.
 
-### Element Plus 主题映射
+### Element Plus Theme Mapping
 
-`src/styles/element-theme.css` 在 `:root` 中覆盖 `--el-color-{primary,success,warning,danger,error,info}` 及其派生色 `-light-3/-light-5/-light-7/-light-8/-light-9/-dark-2`，并映射字号、圆角、文本色、边框色与背景色。Element Plus 的 hover/active 色是预计算的静态值，**必须显式覆盖派生色**，只改基色会让 hover 仍是默认蓝。派生色用 `color-mix()` 从令牌计算（与 Element Plus 自身的混色比例一致）；`--el-color-*-rgb` 三元组无法从十六进制变量派生，需与令牌手动保持一致。
+`src/styles/element-theme.css` overrides `--el-color-{primary,success,warning,danger,error,info}` and their derived colors `-light-3/-light-5/-light-7/-light-8/-light-9/-dark-2` in `:root`, and maps font sizes, radii, text colors, border colors, and background colors. Element Plus hover/active colors are precomputed static values, so **the derived colors must be overridden explicitly** — changing only the base color would leave hover at the default blue. Derived colors are computed from tokens with `color-mix()` (using the same mix ratios Element Plus itself uses); the `--el-color-*-rgb` triplets cannot be derived from hex variables and must be kept in sync with the tokens manually.
 
-### 整体布局
+### Overall Layout
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│ Sidebar 220px │ 56px Header：折叠按钮 + 面包屑 ……… 用户名 + 退出登录 │
-│ (折叠为 64px)  ├──────────────────────────────────────────────┤
-│  概览          │                                              │
-│   数据仪表盘   │                                              │
-│  用户          │       Main Content Area                      │
-│   学生/教师/助教│       (max-width: 1400px, padding: 24px)     │
-│  内容与上传    │                                              │
-│   上传记录/错题 │                                              │
-│  存储审计      │                                              │
-│   OSS 审计     │                                              │
+│ Sidebar 220px │ 56px Header: collapse button + breadcrumb … Username + Sign out │
+│ (64px when    ├──────────────────────────────────────────────┤
+│  collapsed)   │                                              │
+│  Overview     │                                              │
+│   Dashboard   │       Main Content Area                      │
+│  Users        │       (max-width: 1400px, padding: 24px)     │
+│   Students/   │                                              │
+│   Teachers/   │                                              │
+│   Assistants  │                                              │
+│  Content      │                                              │
+│   Upload      │                                              │
+│   records/    │                                              │
+│   Mistakes    │                                              │
+│  Storage      │                                              │
+│   OSS audit   │                                              │
 └───────────────┴──────────────────────────────────────────────┘
 ```
 
-- **导航单一来源**：路由 `meta` 声明 `title`、`group`、`icon`（`@element-plus/icons-vue`），分组显示名在 `router/navigation.ts` 的 `NAV_GROUPS` 常量表中。侧边栏、分组和面包屑（首页 / 分组 / 页面）都由此生成，不在外壳中硬编码路径表。
-- **侧边栏**：`el-menu` 实现，深色背景；激活项按路由 `name` 判断，带 query 的地址（如 `/upload-records?status=1`）同样高亮。点击导航项跳转到无 query 的页面地址。
-- **折叠**：视口 < 1024px 时自动折叠为 64px 图标栏，在此宽度下的手动切换只是临时的；视口 ≥ 1024px 时使用用户偏好（默认展开），手动切换写入 `localStorage.adminSidebarCollapsed`（`'1'`/`'0'`），刷新后保持。`localStorage` 读写失败时按宽度默认值处理，不报错。折叠态悬停导航项显示名称提示；折叠按钮带 `aria-label`。
-- **顶部栏**：56px 高，sticky；只包含折叠按钮、面包屑、用户名和「退出登录」，不放无功能的按钮。
-- **内容区**：`max-width: 1400px`，居中，24px 内边距；外壳本身不产生横向滚动，页面自身的最小宽度由各列表页负责。
+- **Single source of navigation**: routes declare `title`, `group`, and `icon` (`@element-plus/icons-vue`) in `meta`; group display names live in the `NAV_GROUPS` constant table in `router/navigation.ts`. The sidebar, groups, and breadcrumb (home / group / page) are all generated from this — the shell never hard-codes a path table.
+- **Sidebar**: implemented with `el-menu` on a dark background; the active item is matched by route `name`, so addresses with a query (such as `/upload-records?status=1`) stay highlighted too. Clicking a navigation item navigates to the page address without the query.
+- **Collapse**: below a 1024px viewport the sidebar auto-collapses to a 64px icon rail, and manual toggling at that width is only temporary; at ≥ 1024px the user preference applies (expanded by default), manual toggles write `localStorage.adminSidebarCollapsed` (`'1'`/`'0'`), and the state survives refresh. If reading or writing `localStorage` fails, fall back to the width default without raising an error. In the collapsed state, hovering a navigation item shows a name tooltip; the collapse button carries an `aria-label`.
+- **Top bar**: 56px tall, sticky; contains only the collapse button, breadcrumb, username, and "Sign out" — no non-functional buttons.
+- **Content area**: `max-width: 1400px`, centered, 24px padding; the shell itself never produces horizontal scrolling — each list page owns its own minimum width.
 
-### 组件规范
+### Component Conventions
 
-| 组件 | 规范 |
+| Component | Convention |
 |------|------|
-| 按钮 | `primary`（蓝底白字）/ `secondary`（白底边框）/ `ghost`（透明）/ `danger` / `warning` / `link` 文字按钮 |
-| 卡片 | `background: #fff` + `border: 1px solid #e2e8f0` + `border-radius: 12px` |
-| 表格 | 表头背景 `#f8fafc`，单元格 padding `14px 16px`，行悬停背景 `#f8fafc` |
-| 状态徽章 | 双编码：颜色 + 圆点（`dot::before`），色盲友好 |
-| 学科标签 | 统一色彩（数学蓝/语文橙/英语绿/物理紫/化学粉紫/生物绿/历史红/地理蓝/政治紫），跨门户一致 |
-| Modal | 居中弹窗，用于详情/编辑表单 |
-| Drawer | 右侧滑出面板，宽度 400-480px，用于详情/批量操作 |
-| 浮动批量操作栏 | 底部 fixed，显示"已选择 N 项 + 批量操作按钮" |
-| 空状态 | 居中图标 + 文案 + 引导按钮 |
-| 骨架屏 | shimmer 动画（`linear-gradient` + `background-position` 动画） |
+| Buttons | `primary` (blue background, white text) / `secondary` (white background, border) / `ghost` (transparent) / `danger` / `warning` / `link` text button |
+| Cards | `background: #fff` + `border: 1px solid #e2e8f0` + `border-radius: 12px` |
+| Tables | Header background `#f8fafc`, cell padding `14px 16px`, row hover background `#f8fafc` |
+| Status badges | Dual-encoded: color + dot (`dot::before`), colorblind-friendly |
+| Subject tags | Unified colors (math blue / Chinese orange / English green / physics purple / chemistry pink-purple / biology green / history red / geography blue / politics purple), consistent across portals |
+| Modal | Centered dialog for details/edit forms |
+| Drawer | Right slide-out panel, 400-480px wide, for details/bulk operations |
+| Floating bulk action bar | Fixed at the bottom, shows "N items selected + bulk action buttons" |
+| Empty states | Centered icon + copy + a guiding button |
+| Skeleton screens | Shimmer animation (`linear-gradient` + `background-position` animation) |
 
-### 状态徽章双编码
+### Status Badge Dual Encoding
 
-所有状态徽章同时使用颜色 + 圆点：
+All status badges use both color and dot:
 
-| 状态 | 颜色 | 圆点 |
+| Status | Color | Dot |
 |------|------|------|
-| pending（待处理/待审核） | `--adm-warning` | 圆点 |
-| processing（处理中） | `--adm-info` | 旋转 spinner |
-| completed/confirmed（已完成/已确认） | `--adm-success` | 圆点 |
-| failed/returned/rejected（失败/已退回/已退回） | `--adm-error` | 圆点 |
-| ignored（已忽略） | `#a16207` | 圆点 |
+| pending (to-process / awaiting review) | `--adm-warning` | Dot |
+| processing | `--adm-info` | Spinning spinner |
+| completed/confirmed | `--adm-success` | Dot |
+| failed/returned/rejected | `--adm-error` | Dot |
+| ignored | `#a16207` | Dot |
 
 ---
 
-## 页面架构
+## Page Architecture
 
-整体布局见上文「设计规范 → 整体布局」。
+For the overall layout see "Design Guidelines → Overall Layout" above.
 
-### 页面清单
+### Page Inventory
 
-| 路由 | 页面 | 所属分组 | 说明 |
+| Route | Page | Group | Notes |
 |------|------|----------|------|
-| `/login` | LoginView.vue | 认证 | 单卡片登录页 |
-| `/dashboard` | DashboardView.vue | 概览 | 待办与概况（待处理 + 规模指标，只展示真实数据） |
-| `/students` | StudentView.vue | 用户 | 学生管理 |
-| `/teachers` | TeacherView.vue | 用户 | 教师管理 |
-| `/assistants` | AssistantView.vue | 用户 | 助教管理 |
-| `/upload-records` | UploadRecordView.vue | 内容与上传 | 上传记录管理（含状态统计卡 + 非模态详情抽屉） |
-| `/mistakes` | MistakeView.vue | 内容与上传 | 错题查询与管理（统计卡 + 详情弹窗） |
-| `/oss-audit` | OssAuditView.vue | 存储审计 | OSS 引用观察审计（状态面板 + 只读记录） |
+| `/login` | LoginView.vue | Auth | Single-card login page |
+| `/dashboard` | DashboardView.vue | Overview | To-dos and overview (pending + scale metrics, shows only real data) |
+| `/students` | StudentView.vue | Users | Student management |
+| `/teachers` | TeacherView.vue | Users | Teacher management |
+| `/assistants` | AssistantView.vue | Users | Assistant management |
+| `/upload-records` | UploadRecordView.vue | Content & Uploads | Upload record management (status stat cards + non-modal detail drawer) |
+| `/mistakes` | MistakeView.vue | Content & Uploads | Mistake query and management (stat cards + detail dialog) |
+| `/oss-audit` | OssAuditView.vue | Storage Audit | OSS reference-observation audit (status panel + read-only records) |
 
-默认重定向：`/` → `/dashboard`（已登录）/ `/login`（未登录）。
-
----
-
-## 页面详细说明
-
-### 0. 登录页 (`/login`)
-
-**布局**：居中单卡片（品牌名、会话状态、显式操作），使用 Element Plus 与设计令牌。
-
-- 不包含用户名、密码、记住用户名或 token 输入；显式同源链接进入 `/api/auth/oidc/start?returnUrl=...`，凭据只在 SignaCore 托管页提交。
-- 路由守卫先等待唯一 `/api/auth/session` 请求。完整三字段状态决定 authenticated、anonymous、reauthentication、forbidden 或 unavailable；显示名只来自当前服务器 session，null 保持空白。
-- 深链保留站内路径与 query；外部、双斜杠、反斜杠、控制字符、点路径、登录/认证循环和四层解码后仍畸形的输入回到 `/dashboard`，长度上限 2048。
-- 过期仅显示显式重新登录，403 仅显示权限提示与本人退出；503、断网和关闭能力显示不可用与显式状态重试，不自动授权跳转。
-- callback 仅识别既有固定 `authError`，不读取 code/state/verifier/token 或输出任意原始错误。`loggedOut=1` 留在退出完成页，避免立即重登。
-- 本人退出单飞，先取专用 `GET /api/auth/logout/csrf`，一次 `POST /api/auth/logout`。本地完成后才跳转 BFF 返回的不透明 prepared URL；仅本地退出明确显示上游未结束。响应丢失/取消只重新查询本地事实，不重放 POST，不声称全局退出。
+Default redirect: `/` → `/dashboard` (signed in) / `/login` (anonymous).
 
 ---
 
-### 0.5 数据仪表盘 (`/dashboard`)
+## Page Details
 
-页面标题「待办与概况」。只展示能从现有接口取得的真实数字，不包含任何示例数据、趋势图或活动流（需要新增后端统计接口，不在前端范围）。
+### 0. Login Page (`/login`)
 
-**指标**（每张卡片独立加载，可点击进入对应列表）：
+**Layout**: a centered single card (brand name, session status, explicit actions), built with Element Plus and the design tokens.
 
-| 分组 | 指标 | 数据来源 | 跳转 |
+- No username, password, remember-username, or token inputs; an explicit same-origin link goes to `/api/auth/oidc/start?returnUrl=...`, and credentials are submitted only on the SignaCore hosted page.
+- The route guard first waits for the single `/api/auth/session` request. The full three-field status decides authenticated, anonymous, reauthentication, forbidden, or unavailable; the display name comes only from the current server session, and null stays blank.
+- Deep links keep the in-site path and query; external URLs, double slashes, backslashes, control characters, dot paths, login/auth loops, and input still malformed after four decode levels fall back to `/dashboard`, with a length cap of 2048.
+- Expiry only shows an explicit re-login, 403 only shows a permission notice and signing out of the current account; 503, network loss, and a disabled capability show unavailable with an explicit status retry — never an automatic authorization redirect.
+- The callback recognizes only the existing fixed `authError` values and never reads code/state/verifier/token or echoes arbitrary raw errors. `loggedOut=1` stays on the signed-out page to avoid an immediate re-login.
+- Signing out of the current account is single-flight: first fetch the dedicated `GET /api/auth/logout/csrf`, then one `POST /api/auth/logout`. The jump to the opaque prepared URL returned by the BFF happens only after the local part finishes; only a local sign-out explicitly states that the upstream outcome is unresolved. A lost or cancelled response only re-queries the local facts — it never replays the POST and never claims a global sign-out.
+
+---
+
+### 0.5 Dashboard (`/dashboard`)
+
+Page title: "To-dos and Overview". Shows only real numbers obtainable from existing APIs; no sample data, trend charts, or activity feeds (those would need new backend statistics APIs, which are outside the frontend scope).
+
+**Metrics** (each card loads independently and links into the corresponding list):
+
+| Group | Metric | Data source | Link |
 |------|------|----------|------|
-| 待处理 | 待处理上传 | `getUploadRecords({ page: 1, pageSize: 1, status: 1 }).totalCount` | `/upload-records?status=1` |
-| 待处理 | 待审核错题 | `getMistakeItems({ page: 1, size: 1, reviewStatus: 1 }).total` | `/mistakes?reviewStatus=1` |
-| 待处理 | 待处置 OSS 审计记录 | `ossAuditApi.getStatus().pendingCount` | `/oss-audit?status=0` |
-| 规模 | 学生 | `getStudents({ page: 1, pageSize: 1 }).total` | `/students` |
-| 规模 | 教师 | `getTeachers({ page: 1, pageSize: 1 }).total` | `/teachers` |
-| 规模 | 助教 | `getAssistants({ page: 1, pageSize: 1 }).total` | `/assistants` |
+| Pending | Pending uploads | `getUploadRecords({ page: 1, pageSize: 1, status: 1 }).totalCount` | `/upload-records?status=1` |
+| Pending | Mistakes awaiting review | `getMistakeItems({ page: 1, size: 1, reviewStatus: 1 }).total` | `/mistakes?reviewStatus=1` |
+| Pending | OSS audit records to handle | `ossAuditApi.getStatus().pendingCount` | `/oss-audit?status=0` |
+| Scale | Students | `getStudents({ page: 1, pageSize: 1 }).total` | `/students` |
+| Scale | Teachers | `getTeachers({ page: 1, pageSize: 1 }).total` | `/teachers` |
+| Scale | Assistants | `getAssistants({ page: 1, pageSize: 1 }).total` | `/assistants` |
 
-**加载与失败**：各卡片并行请求、互不影响（`Promise.allSettled`）。请求失败或响应中缺少数值时，该卡显示「—」与「加载失败」并提供单卡「重试」；**失败不得显示为 0**。页头「刷新」重新加载全部卡片。
+**Loading and failure**: each card requests in parallel without affecting the others (`Promise.allSettled`). When a request fails or the response lacks the number, the card shows "—" plus "failed to load" and offers a per-card retry; **a failure must never display as 0**. The header "Refresh" reloads all cards.
 
-**列表页深链**（`src/utils/routeQuery.ts`）：上传记录（`status` ∈ 1–5）、错题（`reviewStatus` ∈ 1–3）、OSS 审计（`status` ∈ 0–2）从 URL 读取状态筛选，并在首次列表请求前生效；缺失、重复、非整数或不在集合中的值视为无筛选。页面存活期间 URL 中该键变化（如点击侧边栏无参链接）时重新应用筛选并回到第 1 页；页面内切换状态筛选或重置时用 `router.replace` 同步该键（其他 query 键保留），刷新后筛选与 URL 一致，且每次切换只发出一次列表请求。
-
----
-
-### 1. 学生管理页面 (`/students`)
-
-**布局**：筛选栏 + 数据表格 + 服务端分页 + 弹窗（创建/编辑/关联账户/开放学科）。
-
-**功能列表**：
-- 创建学生（姓名、年级、关联账户、开放学科）；创建接口返回学生 ID 后立即保存勾选的开放学科
-- 若学生创建成功但开放学科保存失败，保留已创建学生并提示管理员稍后通过“学科”补充，不得把整个创建操作提示为失败
-- 学生列表（搜索、年级/学科筛选、服务端分页）
-- 编辑学生（修改信息、管理关联账户、管理开放学科）
-- 删除学生
-- 不展示“全部/已绑定/未绑定”统计概览条：现有后端未提供全量绑定聚合，禁止用当前页数量冒充全量统计
-
-**表格列**：头像、ID、姓名、年级、开放学科、创建时间、操作。关联账户不单独占列，入口合并到最右侧操作列。
-
-**操作列**：编辑、学科（无开放学科时为强调样式“分配”）、关联账户、删除。
-
-**API 调用**（按需加载）：
-- `getGrades()` - 加载年级选项
-- `getStudents(params)` - 查询学生列表
-- `getIdentityAccountsByStudentId(id)` - 获取关联账户
-- `createStudent(payload)` - 创建学生
-- `updateStudent(id, payload)` - 更新学生
-- `deleteStudent(id)` - 删除学生
-- `linkIdentityAccount(id, accountId)` - 关联账户
-- `unlinkIdentityAccount(id, accountId)` - 取消关联
-- `getStudentOpenSubjects(id, activeOnly)` - 获取开放学科
-- `setStudentOpenSubjects(id, payload)` - 设置开放学科
+**List-page deep links** (`src/utils/routeQuery.ts`): upload records (`status` ∈ 1–5), mistakes (`reviewStatus` ∈ 1–3), and OSS audit (`status` ∈ 0–2) read the status filter from the URL and apply it before the first list request; missing, duplicated, non-integer, or out-of-set values count as no filter. While the page stays alive, a change of that URL key (for example clicking a parameter-less sidebar link) re-applies the filter and returns to page 1; switching or resetting the status filter inside the page syncs the key with `router.replace` (other query keys are preserved), so after a refresh the filter matches the URL, and each switch issues exactly one list request.
 
 ---
 
-### 2. 教师管理页面 (`/teachers`)
+### 1. Student Management Page (`/students`)
 
-**布局**：筛选栏 + 数据表格 + 服务端分页 + 授权弹窗 + 学科管理弹窗。
+**Layout**: filter bar + data table + server-side pagination + dialogs (create/edit/linked accounts/open subjects).
 
-**功能列表**：
-- 授予教师权限（搜索 Identity 用户 → 选择科目 → 授予）
-- 教师列表（查看科目、撤销权限）
-- 学科管理（增删教师负责学科，可关闭标签 X 按钮）
-- 未分配学科警告徽章
-- 显示账号备注（从 Identity 服务批量获取用户备注信息，方便管理员识别教师身份）
-- 关键词、学科、页码和每页条数均传给 Teacher Portal，由数据库完成过滤、总数统计和分页；前端不得对单页结果做假分页
+**Feature list**:
+- Create a student (name, grade, linked account, open subjects); once the create API returns the student ID, immediately save the checked open subjects
+- If the student was created but saving the open subjects failed, keep the created student and prompt the admin to complete it later via "Subjects" — never report the whole create operation as failed
+- Student list (search, grade/subject filters, server-side pagination)
+- Edit a student (modify info, manage linked accounts, manage open subjects)
+- Delete a student
+- No "all/linked/unlinked" stat overview bar: the current backend provides no account-wide linkage aggregate, and the current page's counts must not be passed off as totals
 
-**表格列**：
-| 列 | 说明 |
+**Table columns**: avatar, ID, name, grade, open subjects, created time, actions. Linked accounts get no column of their own; the entry merges into the rightmost actions column.
+
+**Actions column**: Edit, Subjects (emphasized "Assign" style when there are no open subjects yet), Linked Accounts, Delete.
+
+**API calls** (loaded on demand):
+- `getGrades()` - load grade options
+- `getStudents(params)` - query the student list
+- `getIdentityAccountsByStudentId(id)` - fetch linked accounts
+- `createStudent(payload)` - create a student
+- `updateStudent(id, payload)` - update a student
+- `deleteStudent(id)` - delete a student
+- `linkIdentityAccount(id, accountId)` - link an account
+- `unlinkIdentityAccount(id, accountId)` - unlink an account
+- `getStudentOpenSubjects(id, activeOnly)` - fetch open subjects
+- `setStudentOpenSubjects(id, payload)` - set open subjects
+
+---
+
+### 2. Teacher Management Page (`/teachers`)
+
+**Layout**: filter bar + data table + server-side pagination + grant dialog + subject management dialog.
+
+**Feature list**:
+- Grant teacher permission (search Identity users → choose subjects → grant)
+- Teacher list (view subjects, revoke permission)
+- Subject management (add/remove the subjects a teacher covers; tags can be closed with the X button)
+- Warning badge for unassigned subjects
+- Show account remarks (user remarks fetched in batch from the Identity service to help admins identify teachers)
+- Keyword, subject, page, and page size are all passed to the Teacher Portal, which does the filtering, total counting, and pagination in the database; the frontend must never fake pagination over a single page of results
+
+**Table columns**:
+| Column | Notes |
 |------|------|
-| 头像 | 36×36 用户头像 |
-| User ID | Identity 用户唯一标识 |
-| 手机号 | 用户手机号 |
-| 用户名 | 用户名 |
-| 备注 | 从 Identity 服务获取的账号备注，帮助管理员识别教师身份 |
-| 学科 | 教师负责的学科标签（可删除、可管理） |
-| 创建时间 | 教师记录创建时间 |
-| 操作 | 学科（无学科时为强调样式“分配”）、撤销权限 |
+| Avatar | 36×36 user avatar |
+| User ID | Unique Identity user identifier |
+| Phone | User phone number |
+| Username | Username |
+| Remark | Account remark from the Identity service, helping admins identify teachers |
+| Subjects | Subject tags the teacher covers (removable, manageable) |
+| Created time | When the teacher record was created |
+| Actions | Subjects (emphasized "Assign" style when there are none), revoke permission |
 
-**数据加载流程**：
-1. 调用 `getTeachers({ keyword, subject, page, pageSize })` 获取数据库分页结果
-2. 收集当前页教师的 `userId`，调用 `getUsersByIds(ids)` 批量获取 Identity 用户信息
-3. 通过 `userId` 映射，在表格中显示备注等 Identity 用户字段
+**Data loading flow**:
+1. Call `getTeachers({ keyword, subject, page, pageSize })` for the database-paginated result
+2. Collect the current page's teacher `userId`s and call `getUsersByIds(ids)` to batch-fetch Identity user info
+3. Map by `userId` to display remarks and other Identity user fields in the table
 
-**API 调用**（按需加载）：
-- `getUsers(params)` - 搜索 Identity 用户
-- `getTeachers(params)` - 按关键词/学科分页获取教师列表
-- `addTeacherByUserId(payload)` - 新增教师
-- `grantTeacher(userId, payload)` - 授予权限
-- `removeTeacherByUserId(userId)` - 撤销权限
-- `getTeacherSubjects(userId)` - 获取教师学科
-- `setTeacherSubjects(userId, subjects)` - 设置学科
-- `getAvailableSubjects()` - 获取可用学科
-
----
-
-### 3. 助教管理页面 (`/assistants`)
-
-**布局**：筛选栏 + 数据表格 + 服务端分页 + 授权弹窗 + 学科管理弹窗。
-
-**功能列表**：
-- 授予助教权限（搜索 Identity 用户 → 选择科目 → 授予）
-- 助教列表（查看科目、撤销权限）
-- 学科管理（增删助教负责学科）
-- 未分配学科时显示警告徽章，并将“学科”操作替换为强调样式“分配”
-- 关键词、学科、页码和每页条数均传给 Assistant Portal，由数据库完成过滤、总数统计和分页；前端不得对单页结果做假分页
-
-**表格列**：头像、ID、手机号、用户名、备注、学科、创建时间、操作。
-
-**操作列**：学科（无学科时为强调样式“分配”）、撤销权限。
-
-**API 调用**：
-- `assistantPortalApi.getAssistants(params)` - 按关键词/学科分页获取助教列表
-- `assistantPortalApi.grantAssistant(userId, payload)` - 授予
-- `assistantPortalApi.revokeAssistant(userId)` - 撤销
-- `assistantPortalApi.setAssistantSubjects(userId, subjects)` - 设置科目
+**API calls** (loaded on demand):
+- `getUsers(params)` - search Identity users
+- `getTeachers(params)` - paginated teacher list by keyword/subject
+- `addTeacherByUserId(payload)` - add a teacher
+- `grantTeacher(userId, payload)` - grant permission
+- `removeTeacherByUserId(userId)` - revoke permission
+- `getTeacherSubjects(userId)` - fetch a teacher's subjects
+- `setTeacherSubjects(userId, subjects)` - set subjects
+- `getAvailableSubjects()` - fetch available subjects
 
 ---
 
-### 列表页规范
+### 3. Assistant Management Page (`/assistants`)
 
-所有列表页（学生、教师、助教、上传记录、错题、OSS 审计已迁移）统一使用 `src/components/list/` 下的公共组件，不再各写一套原生表格、手写模态框或分页器：
+**Layout**: filter bar + data table + server-side pagination + grant dialog + subject management dialog.
 
-| 组件 | 接口 | 约定 |
+**Feature list**:
+- Grant assistant permission (search Identity users → choose subjects → grant)
+- Assistant list (view subjects, revoke permission)
+- Subject management (add/remove the subjects an assistant covers)
+- When no subject is assigned, show a warning badge and replace the "Subjects" action with the emphasized "Assign" style
+- Keyword, subject, page, and page size are all passed to the Assistant Portal, which does the filtering, total counting, and pagination in the database; the frontend must never fake pagination over a single page of results
+
+**Table columns**: avatar, ID, phone, username, remark, subjects, created time, actions.
+
+**Actions column**: Subjects (emphasized "Assign" style when there are none), revoke permission.
+
+**API calls**:
+- `assistantPortalApi.getAssistants(params)` - paginated assistant list by keyword/subject
+- `assistantPortalApi.grantAssistant(userId, payload)` - grant
+- `assistantPortalApi.revokeAssistant(userId)` - revoke
+- `assistantPortalApi.setAssistantSubjects(userId, subjects)` - set subjects
+
+---
+
+### List Page Conventions
+
+All list pages (students, teachers, assistants, upload records, mistakes, OSS audit — all migrated) uniformly use the shared components under `src/components/list/` instead of each writing its own raw table, hand-rolled modal, or paginator:
+
+| Component | Interface | Conventions |
 |------|------|------|
-| `PageHeader.vue` | props `title`、`description`；插槽 `#actions` | 页面标题区，主操作按钮放在 `#actions` |
-| `FilterBar.vue` | 默认插槽放 `el-form-item`；emit `search` / `reset` | 卡片容器 + `el-form inline`，自带标准「搜索」「重置」按钮，窄屏自动换行；筛选控件需显式设置宽度 |
-| `DataTableCard.vue` | props `data`、`loading`、`error: string \| null`、`emptyText`；默认插槽放 `el-table-column`；插槽 `#footer`；emit `retry`；其余属性原样传给 `el-table` | 状态由 props 唯一决定：`loading` 优先（`v-loading`），其次 `error`（显示错误信息与「重试」，**不显示空态**），最后按 `data.length` 显示空态。卡片宽度跟随容器（`contain: inline-size`），宽表在卡片内横向滚动，页面本身不出现横向滚动 |
-| `ListPagination.vue` | `v-model:page`、`v-model:page-size`、`total`；emit `change` | `el-pagination`，`layout="total, sizes, prev, pager, next"`，每页 10/20/50；改变每页条数时回到第 1 页；每次交互只触发一次 `change` |
-| `SubjectTag.vue` | props `subject`、`closable`；emit `close` | 沿用 `utils/subject.ts` 的学科色映射（全局 `.adm-subj-tag`） |
-| `StatusTag.vue` | props `label`、`type: 'success' \| 'warning' \| 'danger' \| 'info' \| 'primary'` | 基于 `el-tag` 的通用状态标签 |
+| `PageHeader.vue` | props `title`, `description`; slot `#actions` | Page title area; primary action buttons go in `#actions` |
+| `FilterBar.vue` | Default slot holds `el-form-item`s; emits `search` / `reset` | Card container + `el-form inline` with the standard "Search"/"Reset" buttons built in; wraps on narrow screens; filter controls need explicit widths |
+| `DataTableCard.vue` | props `data`, `loading`, `error: string \| null`, `emptyText`; default slot holds `el-table-column`s; slot `#footer`; emits `retry`; other attrs pass through to `el-table` | State is decided solely by props: `loading` first (`v-loading`), then `error` (shows the error and "Retry", **not the empty state**), then the empty state based on `data.length`. The card follows its container's width (`contain: inline-size`); wide tables scroll horizontally inside the card, so the page itself never scrolls horizontally |
+| `ListPagination.vue` | `v-model:page`, `v-model:page-size`, `total`; emits `change` | `el-pagination` with `layout="total, sizes, prev, pager, next"`, 10/20/50 per page; changing the page size returns to page 1; each interaction triggers exactly one `change` |
+| `SubjectTag.vue` | props `subject`, `closable`; emits `close` | Reuses the subject color mapping from `utils/subject.ts` (global `.adm-subj-tag`) |
+| `StatusTag.vue` | props `label`, `type: 'success' \| 'warning' \| 'danger' \| 'info' \| 'primary'` | Generic status tag based on `el-tag` |
 
-使用约定：
+Usage conventions:
 
-- **加载失败**：列表加载失败时清空旧行并设置 `error`，由 `DataTableCard` 显示错误态与「重试」；可以同时保留 toast。失败与「暂无数据」必须可区分。
-- **弹窗**：表单与详情使用 `el-dialog`（或 `el-drawer`），设置 `append-to-body` 与 `:close-on-click-modal="false"`（避免点遮罩丢失填写内容）；Esc 可关闭，打开时焦点在弹窗内。
-- **表单**：`el-form label-position="top"`，必填项用 `el-form-item required` 标记；校验提示沿用各页现有的 `ElMessage.warning` 规则。多选学科用 `el-checkbox-group` + `el-checkbox border`。
-- **远程搜索**：选择 Identity 用户/账户用 `el-select filterable remote`，`remote-method` 调用 `identityApi.getUsers`：关键字至少 2 个字符，纯数字按手机号查询，`pageSize: 20`。已选项需保留在 options 中以显示标签。（学生「关联账户」弹窗中的添加列表每行有独立的添加按钮与进行中状态，保留 `el-input` 搜索 + 列表的形式。）
-- **行操作**：操作列 `fixed="right"`；普通操作用 `el-button link type="primary"`，删除/撤销/解除等破坏性操作用 `el-button link type="danger"` 并经过危险二次确认：调用 `src/utils/confirm.ts` 的 `confirmDanger`（约定见「设计规范 → 确认操作」），不得直接使用 `ElMessageBox.confirm`。
-- **Element Plus 语言**：`main.ts` 以 `zh-cn` locale 注册 Element Plus，分页、空态等内置文案为中文。
-- **已知限制**：学生页的「学科」筛选在客户端过滤当前页（后端 `GET /api/admin/students` 只支持 `name`、`grade`），启用时页面显示「学科筛选仅作用于当前页结果」提示；每行一次开放学科请求（N+1）为现有行为。两者需要服务端支持，不在前端范围。
+- **Load failure**: when a list fails to load, clear the old rows and set `error`, letting `DataTableCard` show the error state with "Retry"; a toast may accompany it. Failure and "no data" must be distinguishable.
+- **Dialogs**: forms and details use `el-dialog` (or `el-drawer`) with `append-to-body` and `:close-on-click-modal="false"` (so clicking the mask cannot lose entered content); Esc closes, and focus stays inside the dialog while open.
+- **Forms**: `el-form label-position="top"`, required fields marked with `el-form-item required`; validation hints keep each page's existing `ElMessage.warning` rules. Multi-select subjects use `el-checkbox-group` + `el-checkbox border`.
+- **Remote search**: picking Identity users/accounts uses `el-select filterable remote`, whose `remote-method` calls `identityApi.getUsers`: at least 2 characters, pure digits query by phone, `pageSize: 20`. Selected items must stay in options so their labels render. (The add list in the student "Linked Accounts" dialog keeps the `el-input` search + list form, with each row having its own add button and in-progress state.)
+- **Row actions**: actions column uses `fixed="right"`; regular actions use `el-button link type="primary"`, while destructive actions such as delete/revoke/unlink use `el-button link type="danger"` and go through the danger double confirmation: call `confirmDanger` from `src/utils/confirm.ts` (conventions under "Design Guidelines → Confirmation Operations") — never `ElMessageBox.confirm` directly.
+- **Element Plus language**: `main.ts` registers Element Plus with the `zh-cn` locale, so built-in copy such as pagination and empty states is Chinese.
+- **Known limits**: the student page's subject filter filters the current page client-side (the backend `GET /api/admin/students` supports only `name` and `grade`), and the page shows the "subject filter applies only to the current page" notice when enabled; one open-subjects request per row (N+1) is existing behavior. Both need server-side support and are outside the frontend scope.
 
 ---
 
-### 4. 上传记录管理页面 (`/upload-records`)
+### 4. Upload Record Management Page (`/upload-records`)
 
-**所属分组**：内容与上传
+**Group**: Content & Uploads
 
-**布局**：页头（刷新）+ 5 张状态统计卡（点击按该状态筛选，再次点击取消）+ 筛选栏（学生 `el-select filterable remote`，规则沿用原实现：去空格后为空不请求、250ms 防抖、`getStudents({ name, pageSize: 20 })`；状态）+ 数据表格 + 服务端分页。点击行或「详情」打开右侧 480px 详情抽屉（`src/views/upload-records/UploadRecordDetailDrawer.vue`）：抽屉**非模态**（`:modal="false" modal-penetrable`），打开时列表仍可点击其他行切换详情，当前行高亮；Esc 关闭。重置状态、遗留检查、VL 完整结果为 `el-dialog`。
+**Layout**: header (refresh) + 5 status stat cards (click to filter by that status, click again to clear) + filter bar (student `el-select filterable remote`, reusing the original rules: no request when empty after trimming, 250ms debounce, `getStudents({ name, pageSize: 20 })`; status) + data table + server-side pagination. Clicking a row or "Details" opens the right-side 480px detail drawer (`src/views/upload-records/UploadRecordDetailDrawer.vue`): the drawer is **non-modal** (`:modal="false" modal-penetrable`) — while open, the list stays clickable to switch details to another row, with the current row highlighted; Esc closes. Reset status, legacy check, and the full VL result are `el-dialog`s.
 
-**状态映射**（`src/views/upload-records/uploadRecord.ts` 的 `UPLOAD_STATUSES`，与后端 `UploadStatusConstants.DisplayNames` 一致，统计卡、筛选、表格、详情共用）：1 待处理 / 2 处理中 / 3 审核中 / 4 处理失败 / 5 已退回。
+**Status mapping** (`UPLOAD_STATUSES` in `src/views/upload-records/uploadRecord.ts`, consistent with the backend `UploadStatusConstants.DisplayNames`, shared by stat cards, filters, table, and details): 1 pending / 2 processing / 3 in review / 4 failed / 5 returned.
 
-**确认**：删除图片使用 `confirmDanger`（文案说明若为最后一张，整条上传记录一并删除）；退回、重置状态为非破坏性操作，使用普通确认或弹窗；遗留清理为两步（检查结果弹窗 → 弹窗内「确认清理」）。
+**Confirmations**: deleting an image uses `confirmDanger` (the copy states that if it is the last image, the whole upload record is deleted with it); returning and resetting status are non-destructive and use a plain confirmation or dialog; legacy cleanup is two-step (check-result dialog → "Confirm Clean" inside that dialog).
 
-**受管指派**：按服务器返回的 `assignmentProtocol` 选择 legacy 或 managed-v1；缺失或未知协议时不可指派。受管模式展示精确 `contentRevision`、有序类型与路径以及原 index，只允许选择 `type === "mistake"` 的图片。每组确认前固定 UUID `requestKey`、revision、精确 `sourcePaths` 或 `sourceRegions`，以及 subject/grade/comments。两种输入二选一；区域可指定整图或裁剪矩形，规则见[受管指派说明](../../docs/Integration/ManagedAssignment.md)。发送中禁止修改，双击只发送一次；逐组展示 Completed/Failed/Unknown/NotAttempted 和真实 IDs，仅全部 Completed 才关闭并提示成功。部分成功或 Unknown 时，在本页面保留原请求与已有 IDs，显式重试整个原批次，不按刷新后的 index 重建。切行或关闭抽屉时递增操作编号 `generation`，旧操作延迟返回的响应不能覆盖当前内容；取消只停止当前操作等待，恢复入口仍可打开原请求。整页关闭后不保证恢复内存中的记录；永久结果由 Mistake 保存。Admin 不新增浏览器持久操作日志，不主动封闭来源（seal，来源交接后拒绝新分组）或执行旧清理。
+**Managed assignment**: choose legacy or managed-v1 per the server-returned `assignmentProtocol`; when the protocol is missing or unknown, assigning is impossible. Managed mode shows the exact `contentRevision`, the ordered types and paths with their original indexes, and only allows selecting images with `type === "mistake"`. Before each group is confirmed, fix the UUID `requestKey`, revision, exact `sourcePaths` or `sourceRegions`, and subject/grade/comments. The two inputs are mutually exclusive; a region can be the whole image or a crop rectangle — see the [managed assignment notes](../../docs/Integration/ManagedAssignment.md) for the rules. While sending, modifications are forbidden and a double click sends only once; each group shows Completed/Failed/Unknown/NotAttempted with the real IDs, and only all-Completed closes with a success notice. On partial success or Unknown, the page keeps the original request and the existing IDs and explicitly retries the whole original batch instead of rebuilding from refreshed indexes. Switching rows or closing the drawer increments the operation number `generation` so a late response from an old operation cannot overwrite the current content; cancelling only stops waiting on the current operation, and the resume entry can still reopen the original request. After the whole page closes, recovering the in-memory record is not guaranteed; permanent results are kept by Mistake. Admin adds no browser-side persistent operation log, never proactively seals the source (seal: after source hand-over, reject new groups), and never runs the old cleanup.
 
-**功能列表**：
-- 上传记录列表（学生搜索筛选、状态筛选、分页）
-- 总记录数显示
-- 缩略图列（显示第一张图片缩略图，点击可预览所有图片）
-- 查看详情（图片缩略图、旋转、预览大图）
-- 按图片粒度分配记录（选择图片 → 指定学科/年级/类型 → 创建错题/作业条目）
-- 重置状态
-- 旋转图片
-- 遗留数据检查与清理（逐条检查）
+**Feature list**:
+- Upload record list (student search filter, status filter, pagination)
+- Total record count
+- Thumbnail column (shows the first image's thumbnail; click to preview all images)
+- View details (image thumbnails, rotation, large-image preview)
+- Assign records per image (select images → choose subject/grade/type → create mistake/homework entries)
+- Reset status
+- Rotate images
+- Legacy data check and cleanup (checked record by record)
 
-#### 遗留数据检查清理
+#### Legacy Data Check and Cleanup
 
-**问题背景**：系统早期存在一个 Bug：教师审核错题通过后，上传记录没有被删除，图片路径也没有迁移（仍在 `uploads/` 而非 `mistakes/`）。这些遗留数据需要安全清理。
+**Background**: an early-system bug left upload records undeleted after a teacher approved a mistake review, with image paths unmigrated (still under `uploads/` instead of `mistakes/`). This legacy data needs safe cleanup.
 
-**设计思路**：不再使用独立的全量扫描页面，而是在每条上传记录的操作列提供"检查清理"按钮，逐条检查该记录是否为遗留数据。这样做的好处是：
-1. 每次只检查一条上传记录，而非全量扫描
-2. 管理员可以在浏览上传记录时随时检查可疑记录
-3. 减少不必要的全量扫描开销
+**Design**: instead of a standalone full-scan page, each upload record's actions column offers a "Check & Clean" button that checks that single record for legacy status. Benefits:
+1. Each check covers one upload record, not a full scan
+2. Admins can inspect suspicious records at any time while browsing
+3. Avoids unnecessary full-scan overhead
 
-**检查逻辑**：
+**Check logic**:
 
-| 条件 | 判定 | 返回信息 |
+| Condition | Verdict | Returned info |
 |------|------|----------|
-| 无关联错题 | 非遗留 | "该记录没有关联错题" |
-| 全部错题已审核（Confirmed/Rejected）且无待审核 | **遗留数据** | isLegacy=true, mistakeCount, hasUploadPathImage |
-| 存在待审核错题 | 非遗留 | "该记录还有N条错题待审核" |
+| No linked mistakes | Not legacy | "This record has no linked mistakes" |
+| All mistakes reviewed (Confirmed/Rejected) and none awaiting review | **Legacy data** | isLegacy=true, mistakeCount, hasUploadPathImage |
+| Some mistakes awaiting review | Not legacy | "This record still has N mistakes awaiting review" |
 
-**清理流程**：
+**Cleanup flow**:
 
 ```
-管理员点击"检查清理"按钮
+Admin clicks the "Check & Clean" button
     ↓
-调用 GET /api/admin/oss-upload-records/legacy-check/{id}
+GET /api/admin/oss-upload-records/legacy-check/{id}
     ↓
-显示检查结果对话框：
-    - 非遗留：显示提示信息，仅"关闭"按钮
-    - 遗留数据：显示错题数量、图片迁移状态、清理操作说明
+Show the check-result dialog:
+    - Not legacy: show the notice, "Close" button only
+    - Legacy data: show mistake count, image migration status, cleanup instructions
     ↓
-（遗留数据时）管理员点击"确认清理"
+(For legacy data) Admin clicks "Confirm Clean"
     ↓
-调用 POST /api/admin/oss-upload-records/legacy-clean/{id}
+POST /api/admin/oss-upload-records/legacy-clean/{id}
     ↓
-后端处理流程：
+Backend processing flow:
 ┌─────────────────────────────────────────────────────┐
-│ 1. 验证是否为遗留数据（错题全部已审核）               │
-│    - 不满足条件则中止并返回错误                        │
+│ 1. Verify the record is legacy (all mistakes        │
+│    reviewed)                                        │
+│    - Abort with an error if the condition fails     │
 └─────────────────────────────────────────────────────┘
     ↓
 ┌─────────────────────────────────────────────────────┐
-│ 2. CompleteUploadReview（gRPC）                      │
-│    - 迁移物理文件：uploads/ → mistakes/              │
-│    - 更新错题记录中的图片路径                          │
-│    - 保存到数据库                                      │
+│ 2. CompleteUploadReview (gRPC)                      │
+│    - Migrate the physical files: uploads/ →         │
+│      mistakes/                                      │
+│    - Update image paths in the mistake records      │
+│    - Persist to the database                        │
 └─────────────────────────────────────────────────────┘
     ↓
 ┌─────────────────────────────────────────────────────┐
-│ 3. DeleteUploadRecordAfterReview（gRPC）             │
-│    - 删除上传记录                                      │
-│    - 清理关联数据                                      │
+│ 3. DeleteUploadRecordAfterReview (gRPC)             │
+│    - Delete the upload record                       │
+│    - Clean up associated data                       │
 └─────────────────────────────────────────────────────┘
     ↓
-返回成功 → 刷新列表
+Success → refresh the list
 ```
 
-**关键约束**：
+**Key constraints**:
 
-1. **不直接操作数据库**：所有操作通过 gRPC 业务接口完成
-2. **先验证后清理**：清理前必须先通过 legacy-check 验证
-3. **不可逆操作**：删除前需管理员二次确认
-4. **原子性**：图片迁移和路径更新在同一次请求中完成
+1. **No direct database access**: every operation goes through the gRPC business interfaces
+2. **Verify before cleaning**: cleanup must be preceded by a legacy-check verification
+3. **Irreversible**: deletion requires a second admin confirmation
+4. **Atomicity**: image migration and path updates complete within the same request
 
-**API 调用**（按需加载）：
-- `getUploadRecords(params)` - 查询上传记录
-- `getSubjectOptions()` - 学科选项（用于分配时选择学科）
-- `getGrades()` - 年级选项（用于分配时选择年级）
-- `getLinkedItems(id)` - 获取上传记录关联的业务实体
-- `getStudents(params)` - 搜索学生（用于指派）
-- 详情使用列表项 metadata，不增加单条 GET detail 路由。
-- `assignUploadRecord(id, payload)` - 按图片粒度分配记录（items 数组，每个 item 指定 imageIndices + subject + grade + classification）
-- `resetUploadRecordStatus(id, status)` - 重置状态
-- `rotateUploadImage(id, payload)` - 旋转图片
-- `legacyCheck(id)` - 检查单条上传记录是否为遗留数据
-- `legacyClean(id)` - 清理单条遗留数据
-
----
-
-### 5. 错题管理页面 (`/mistakes`)
-
-**布局**：页头（刷新）+ 4 张统计卡（总错题 / 待审核 / 已确认 / 已退回；点击按该审核状态筛选，再次点击或点「总错题」取消）+ 筛选栏（学生 `el-select filterable remote`，规则沿用原实现：去空格后为空不请求、250ms 防抖、`getStudents({ name, pageSize: 20 })`；学科、年级、审核状态）+ 数据表格（待审核行高亮）+ 服务端分页（`size` 10/20/50）。「详情」「编辑」打开同一个 700px `el-dialog`（`src/views/mistakes/MistakeDetailDialog.vue`）：信息与审核信息（只读，本页不提供审核操作）、题目图片（含 `uploads/` 路径的迁移横幅）、编辑表单（学科、年级、学生必填）。审核状态标签取自 `enum-options` 的 `reviewStatuses`，失败时回退到本地默认。
-
-**功能列表**：
-- 错题列表（学生搜索、学科/年级/审核状态筛选、分页）
-- 总记录数显示
-- 查看详情（图片、完整信息）
-- 编辑错题（修改学生、学科、年级）
-- 迁移图片（`uploads/` → `mistakes/`）
-
-**API 调用**（按需加载）：
-- `getStudents(params)` - 搜索学生
-- `getSubjectOptions()` - 学科选项
-- `getGrades()` - 年级选项
-- `getEnumOptions()` - 枚举选项（含审核状态）
-- `getMistakeItems(params)` - 查询错题列表
-- `getMistakeItem(id)` - 获取单个错题
-- `updateMistakeItem(id, data)` - 更新错题
+**API calls** (loaded on demand):
+- `getUploadRecords(params)` - query upload records
+- `getSubjectOptions()` - subject options (for choosing a subject while assigning)
+- `getGrades()` - grade options (for choosing a grade while assigning)
+- `getLinkedItems(id)` - fetch the business entities linked to an upload record
+- `getStudents(params)` - search students (for assigning)
+- Details use the list item's metadata; no per-record GET detail route is added.
+- `assignUploadRecord(id, payload)` - assign a record per image (items array; each item specifies imageIndices + subject + grade + classification)
+- `resetUploadRecordStatus(id, status)` - reset status
+- `rotateUploadImage(id, payload)` - rotate an image
+- `legacyCheck(id)` - check whether one upload record is legacy data
+- `legacyClean(id)` - clean one legacy record
 
 ---
 
-### 6. OSS 审计页面 (`/oss-audit`)
+### 5. Mistake Management Page (`/mistakes`)
 
-**所属分组**：存储审计。行为规则见 [StorageAudit](../../docs/modules/OssAudit/StorageAudit.md)，调用同一版本的 StorageReferences 接口。
+**Layout**: header (refresh) + 4 stat cards (total mistakes / awaiting review / confirmed / returned; click to filter by that review status, click again or click "Total" to clear) + filter bar (student `el-select filterable remote`, reusing the original rules: no request when empty after trimming, 250ms debounce, `getStudents({ name, pageSize: 20 })`; subject, grade, review status) + data table (rows awaiting review highlighted) + server-side pagination (`size` 10/20/50). "Details" and "Edit" open the same 700px `el-dialog` (`src/views/mistakes/MistakeDetailDialog.vue`): info and review info (read-only — this page offers no review actions), mistake images (with a migration banner for `uploads/` paths), and the edit form (subject, grade, student required). The review status tags come from the `reviewStatuses` in `enum-options`, falling back to local defaults on failure.
 
-**布局**：触发全量扫描（普通确认；运行或触发中禁用）+ 状态面板 + 状态/Bucket/当前页路径筛选 + 记录表格 + 服务端分页（10/20/50）+ 历史 Pending 忽略弹窗。当前视图无选择列、删除按钮、批量操作栏或 `resolve` 事件处理；不能通过旧 status 或伪造组件事件触发删除。
+**Feature list**:
+- Mistake list (student search, subject/grade/review-status filters, pagination)
+- Total record count
+- View details (images, full info)
+- Edit a mistake (change student, subject, grade)
+- Migrate images (`uploads/` → `mistakes/`)
 
-**状态**：保留历史状态 0 待处理、1 已删除、2 已忽略；状态 3 为“未观察到引用”的只读观察。仅历史状态 0 显示 `ignore`，其余操作为—。状态面板区分历史待处理与 `observationCount`；新 v1 运行记录显示“未观察到引用”，旧运行记录显示“历史发现”，不编造新版本验证结果。仅当 student/mistake/homework 三份快照元数据全部完整时，才展示各服务的条数与采集时间；元数据损坏或缺失时不能显示为完整状态。`deletionAuthorized` 恒为 `false`，不作为前端可配置开关。
-
-`GET status` 支持 isRunning、lastCompleted/lastFailed、pendingCount、observationCount；lastCompleted 保留 NewZombieCount 兼容字段，并新增 referenceContractVersion/referenceSnapshots。每 10 秒轮询，运行完成时刷新列表。API 失败时清空列表，显示错误状态与重试；路径搜索只过滤当前页并提示匹配数，总数仍为服务端返回的总数。页面只调用 getRecords/getStatus/triggerAudit/ignoreRecord；兼容 `resolve` API 仍存在，但后端在完整引用检查后返回 409，引用不可用时返回 502，页面不调用。
+**API calls** (loaded on demand):
+- `getStudents(params)` - search students
+- `getSubjectOptions()` - subject options
+- `getGrades()` - grade options
+- `getEnumOptions()` - enum options (including review statuses)
+- `getMistakeItems(params)` - query the mistake list
+- `getMistakeItem(id)` - fetch a single mistake
+- `updateMistakeItem(id, data)` - update a mistake
 
 ---
 
-## API 服务层
+### 6. OSS Audit Page (`/oss-audit`)
+
+**Group**: Storage Audit. Behavioral rules live in [StorageAudit](../../docs/modules/OssAudit/StorageAudit.md); the page calls the same version of the StorageReferences interface.
+
+**Layout**: trigger full scan (plain confirmation; disabled while running or triggering) + status panel + status/bucket/current-page path filters + record table + server-side pagination (10/20/50) + the historical Pending ignore dialog. The current view has no selection column, delete buttons, bulk action bar, or `resolve` event handling; deletion cannot be triggered through an old status or forged component events.
+
+**Status**: keeps the historical statuses 0 pending, 1 deleted, 2 ignored; status 3 is the read-only "no observed references" observation. Only historical status 0 shows `ignore`; every other action is an em dash. The status panel distinguishes historical pending from `observationCount`; new v1 runs show "no observed references" and old runs show "historical findings" — never fabricating results of the new verification. The per-service entry counts and collection times are shown only when all three snapshot metadata sets (student/mistake/homework) are complete; corrupted or missing metadata must not display as complete. `deletionAuthorized` is always `false` and is not a frontend-configurable switch.
+
+`GET status` supports isRunning, lastCompleted/lastFailed, pendingCount, observationCount; lastCompleted keeps the NewZombieCount compatibility field and adds referenceContractVersion/referenceSnapshots. Poll every 10 seconds; refresh the list when a run completes. On API failure, clear the list and show the error state with retry; the path search filters only the current page and reports the match count, while the total stays the server-returned total. The page calls only getRecords/getStatus/triggerAudit/ignoreRecord; the compatibility `resolve` API still exists, but the backend returns 409 after the complete reference check (502 when references are unavailable), and the page never calls it.
+
+---
+
+## API Service Layer
 
 ### studentAdminApi.ts
 
-| 方法 | HTTP | 路径 | 说明 |
+| Method | HTTP | Path | Notes |
 |------|------|------|------|
-| `getGrades()` | GET | `/api/admin/students/grades` | 获取年级选项 |
-| `getStudents(params)` | GET | `/api/admin/students` | 分页查询学生 |
-| `getStudent(id)` | GET | `/api/admin/students/:id` | 获取单个学生 |
-| `createStudent(payload)` | POST | `/api/admin/students` | 创建学生 |
-| `updateStudent(id, payload)` | PUT | `/api/admin/students/:id` | 更新学生 |
-| `deleteStudent(id)` | DELETE | `/api/admin/students/:id` | 删除学生 |
-| `getIdentityAccountsByStudentId(id)` | GET | `/api/admin/students/:id/accounts` | 获取关联账户 |
-| `linkIdentityAccount(id, accountId)` | POST | `/api/admin/students/:id/accounts` | 关联账户 |
-| `unlinkIdentityAccount(id, accountId)` | DELETE | `/api/admin/students/:id/accounts/:accountId` | 取消关联 |
-| `getStudentsByAccountId(accountId)` | GET | `/api/admin/accounts/:accountId/students` | 按账户查学生 |
-| `getIdentityAccountsBatch(ids)` | POST | `/api/admin/identity-accounts/batch` | 批量获取账户 |
-| `getSubjectOptions()` | GET | `/api/admin/students/subject-options` | 学科选项 |
-| `getStudentOpenSubjects(id, activeOnly)` | GET | `/api/admin/students/:id/open-subjects` | 开放学科 |
-| `setStudentOpenSubjects(id, payload)` | PUT | `/api/admin/students/:id/open-subjects` | 设置开放学科 |
-| `getUploadRecords(params)` | GET | `/api/admin/oss-upload-records` | 查询上传记录 |
-| 详情数据 | GET | `/api/admin/oss-upload-records` | 列表项直接提供详情的 revision/有序 entries |
-| `resetUploadRecordStatus(id, status)` | POST | `/api/admin/oss-upload-records/:id/reset-status` | 重置状态 |
-| `assignUploadRecord(id, payload)` | POST | `/api/admin/oss-upload-records/:id/assign` | 按图片粒度分配记录（items 数组，每个 item 指定 imageIndices（使用原始索引）+ subject + grade + classification） |
-| `getLinkedItems(id)` | GET | `/api/admin/oss-upload-records/:id/linked-items` | 获取关联业务实体 |
-| `rotateUploadImage(id, payload)` | POST | `/api/admin/oss-upload-records/:id/rotate` | 旋转图片 |
-| `getMistakeItems(params)` | GET | `/api/admin/mistakes` | 查询错题列表 |
-| `getMistakeItem(id)` | GET | `/api/admin/mistakes/:id` | 获取单个错题 |
-| `updateMistakeItem(id, data)` | PUT | `/api/admin/mistakes/:id` | 更新错题 |
-| `getMistakesByUploadId(uploadId)` | GET | `/api/admin/mistakes/by-upload/:uploadId` | 按上传记录查错题 |
-| `getEnumOptions()` | GET | `/api/admin/enum-options` | 获取枚举选项 |
-| `legacyCheck(id)` | GET | `/api/admin/oss-upload-records/legacy-check/:id` | 检查单条上传记录是否为遗留数据 |
-| `legacyClean(id)` | POST | `/api/admin/oss-upload-records/legacy-clean/:id` | 清理单条遗留数据 |
+| `getGrades()` | GET | `/api/admin/students/grades` | Fetch grade options |
+| `getStudents(params)` | GET | `/api/admin/students` | Paginated student query |
+| `getStudent(id)` | GET | `/api/admin/students/:id` | Fetch a single student |
+| `createStudent(payload)` | POST | `/api/admin/students` | Create a student |
+| `updateStudent(id, payload)` | PUT | `/api/admin/students/:id` | Update a student |
+| `deleteStudent(id)` | DELETE | `/api/admin/students/:id` | Delete a student |
+| `getIdentityAccountsByStudentId(id)` | GET | `/api/admin/students/:id/accounts` | Fetch linked accounts |
+| `linkIdentityAccount(id, accountId)` | POST | `/api/admin/students/:id/accounts` | Link an account |
+| `unlinkIdentityAccount(id, accountId)` | DELETE | `/api/admin/students/:id/accounts/:accountId` | Unlink an account |
+| `getStudentsByAccountId(accountId)` | GET | `/api/admin/accounts/:accountId/students` | Query students by account |
+| `getIdentityAccountsBatch(ids)` | POST | `/api/admin/identity-accounts/batch` | Batch-fetch accounts |
+| `getSubjectOptions()` | GET | `/api/admin/students/subject-options` | Subject options |
+| `getStudentOpenSubjects(id, activeOnly)` | GET | `/api/admin/students/:id/open-subjects` | Open subjects |
+| `setStudentOpenSubjects(id, payload)` | PUT | `/api/admin/students/:id/open-subjects` | Set open subjects |
+| `getUploadRecords(params)` | GET | `/api/admin/oss-upload-records` | Query upload records |
+| Detail data | GET | `/api/admin/oss-upload-records` | List items directly carry the detail's revision/ordered entries |
+| `resetUploadRecordStatus(id, status)` | POST | `/api/admin/oss-upload-records/:id/reset-status` | Reset status |
+| `assignUploadRecord(id, payload)` | POST | `/api/admin/oss-upload-records/:id/assign` | Assign a record per image (items array; each item specifies imageIndices (original indexes) + subject + grade + classification) |
+| `getLinkedItems(id)` | GET | `/api/admin/oss-upload-records/:id/linked-items` | Fetch linked business entities |
+| `rotateUploadImage(id, payload)` | POST | `/api/admin/oss-upload-records/:id/rotate` | Rotate an image |
+| `getMistakeItems(params)` | GET | `/api/admin/mistakes` | Query the mistake list |
+| `getMistakeItem(id)` | GET | `/api/admin/mistakes/:id` | Fetch a single mistake |
+| `updateMistakeItem(id, data)` | PUT | `/api/admin/mistakes/:id` | Update a mistake |
+| `getMistakesByUploadId(uploadId)` | GET | `/api/admin/mistakes/by-upload/:uploadId` | Query mistakes by upload record |
+| `getEnumOptions()` | GET | `/api/admin/enum-options` | Fetch enum options |
+| `legacyCheck(id)` | GET | `/api/admin/oss-upload-records/legacy-check/:id` | Check whether one upload record is legacy data |
+| `legacyClean(id)` | POST | `/api/admin/oss-upload-records/legacy-clean/:id` | Clean one legacy record |
 
 ### identityApi.ts
 
-| 方法 | HTTP | 路径 | 说明 |
+| Method | HTTP | Path | Notes |
 |------|------|------|------|
-| `testConnection()` | GET | `/api/identity/gateway/users/search` | 测试连通性 |
-| `getUsers(params)` | GET | `/api/identity/gateway/users/search` | 搜索用户 |
-| `getUsersByIds(ids)` | POST | `/api/identity/gateway/users/batch` | 批量获取用户 |
+| `testConnection()` | GET | `/api/identity/gateway/users/search` | Test connectivity |
+| `getUsers(params)` | GET | `/api/identity/gateway/users/search` | Search users |
+| `getUsersByIds(ids)` | POST | `/api/identity/gateway/users/batch` | Batch-fetch users |
 
 ### teacherPortalApi.ts
 
-| 方法 | HTTP | 路径 | 说明 |
+| Method | HTTP | Path | Notes |
 |------|------|------|------|
-| `getTeachers(params)` | GET | `/api/teacher-portal/admin/teachers` | 按 keyword/subject/page/pageSize 分页获取教师 |
-| `addTeacherByUserId(payload)` | POST | `/api/teacher-portal/admin/teachers/by-user` | 新增教师 |
-| `grantTeacher(userId, payload)` | POST | `/api/teacher-portal/admin/identity-users/:userId/grant-teacher` | 授予权限 |
-| `removeTeacherByUserId(userId)` | DELETE | `/api/teacher-portal/admin/teachers/by-user/:userId` | 撤销权限 |
-| `checkTeacher(userId, phone?)` | GET | `/api/teacher-portal/auth/check-teacher` | 检查教师身份 |
-| `getTeacherSubjects(userId)` | GET | `/api/teacher-portal/admin/teachers/:userId/subjects` | 获取教师科目 |
-| `setTeacherSubjects(userId, subjects)` | PUT | `/api/teacher-portal/admin/teachers/:userId/subjects` | 设置科目 |
-| `addTeacherSubject(userId, subject)` | POST | `/api/teacher-portal/admin/teachers/:userId/subjects/:subject` | 添加科目 |
-| `removeTeacherSubject(userId, subject)` | DELETE | `/api/teacher-portal/admin/teachers/:userId/subjects/:subject` | 移除科目 |
-| `getAvailableSubjects()` | GET | `/api/teacher-portal/admin/available-subjects` | 可用科目 |
+| `getTeachers(params)` | GET | `/api/teacher-portal/admin/teachers` | Paginated teacher list by keyword/subject/page/pageSize |
+| `addTeacherByUserId(payload)` | POST | `/api/teacher-portal/admin/teachers/by-user` | Add a teacher |
+| `grantTeacher(userId, payload)` | POST | `/api/teacher-portal/admin/identity-users/:userId/grant-teacher` | Grant permission |
+| `removeTeacherByUserId(userId)` | DELETE | `/api/teacher-portal/admin/teachers/by-user/:userId` | Revoke permission |
+| `checkTeacher(userId, phone?)` | GET | `/api/teacher-portal/auth/check-teacher` | Check teacher identity |
+| `getTeacherSubjects(userId)` | GET | `/api/teacher-portal/admin/teachers/:userId/subjects` | Fetch a teacher's subjects |
+| `setTeacherSubjects(userId, subjects)` | PUT | `/api/teacher-portal/admin/teachers/:userId/subjects` | Set subjects |
+| `addTeacherSubject(userId, subject)` | POST | `/api/teacher-portal/admin/teachers/:userId/subjects/:subject` | Add a subject |
+| `removeTeacherSubject(userId, subject)` | DELETE | `/api/teacher-portal/admin/teachers/:userId/subjects/:subject` | Remove a subject |
+| `getAvailableSubjects()` | GET | `/api/teacher-portal/admin/available-subjects` | Available subjects |
 
 ### assistantPortalApi.ts
 
-| 方法 | HTTP | 路径 | 说明 |
+| Method | HTTP | Path | Notes |
 |------|------|------|------|
-| `getAssistants(params)` | GET | `/api/assistant-portal/admin/assistants` | 按 keyword/subject/page/pageSize 分页获取助教 |
-| `grantAssistant(userId, payload)` | POST | `/api/assistant-portal/admin/identity-users/:userId/grant-assistant` | 授予权限 |
-| `revokeAssistant(userId)` | POST | `/api/assistant-portal/admin/identity-users/:userId/revoke-assistant` | 撤销权限 |
-| `getAssistantSubjects(userId)` | GET | `/api/assistant-portal/admin/assistants/:userId/subjects` | 获取助教学科 |
-| `setAssistantSubjects(userId, subjects)` | PUT | `/api/assistant-portal/admin/assistants/:userId/subjects` | 设置学科 |
-| `addAssistantSubject(userId, subject)` | POST | `/api/assistant-portal/admin/assistants/:userId/subjects/:subject` | 添加学科 |
-| `removeAssistantSubject(userId, subject)` | DELETE | `/api/assistant-portal/admin/assistants/:userId/subjects/:subject` | 移除学科 |
-| `getAvailableSubjects()` | GET | `/api/assistant-portal/admin/available-subjects` | 可用学科 |
+| `getAssistants(params)` | GET | `/api/assistant-portal/admin/assistants` | Paginated assistant list by keyword/subject/page/pageSize |
+| `grantAssistant(userId, payload)` | POST | `/api/assistant-portal/admin/identity-users/:userId/grant-assistant` | Grant permission |
+| `revokeAssistant(userId)` | POST | `/api/assistant-portal/admin/identity-users/:userId/revoke-assistant` | Revoke permission |
+| `getAssistantSubjects(userId)` | GET | `/api/assistant-portal/admin/assistants/:userId/subjects` | Fetch an assistant's subjects |
+| `setAssistantSubjects(userId, subjects)` | PUT | `/api/assistant-portal/admin/assistants/:userId/subjects` | Set subjects |
+| `addAssistantSubject(userId, subject)` | POST | `/api/assistant-portal/admin/assistants/:userId/subjects/:subject` | Add a subject |
+| `removeAssistantSubject(userId, subject)` | DELETE | `/api/assistant-portal/admin/assistants/:userId/subjects/:subject` | Remove a subject |
+| `getAvailableSubjects()` | GET | `/api/assistant-portal/admin/available-subjects` | Available subjects |
 
 ### ossAuditApi.ts
 
-| 方法 | HTTP | 路径 | 说明 |
+| Method | HTTP | Path | Notes |
 |------|------|------|------|
-| `getRecords(params)` | GET | `/api/admin/oss-audit/records` | 查询审计记录 |
-| `triggerAudit()` | POST | `/api/admin/oss-audit/trigger` | 触发审计 |
-| `resolveRecord(id)` | POST | `/api/admin/oss-audit/records/:id/resolve` | v1拒绝清理 |
-| `ignoreRecord(id, note)` | POST | `/api/admin/oss-audit/records/:id/ignore` | 忽略单条 |
-| `batchResolve(ids)` | POST | `/api/admin/oss-audit/records/batch-resolve` | v1拒绝批量清理 |
+| `getRecords(params)` | GET | `/api/admin/oss-audit/records` | Query audit records |
+| `triggerAudit()` | POST | `/api/admin/oss-audit/trigger` | Trigger an audit |
+| `resolveRecord(id)` | POST | `/api/admin/oss-audit/records/:id/resolve` | v1 refuses cleanup |
+| `ignoreRecord(id, note)` | POST | `/api/admin/oss-audit/records/:id/ignore` | Ignore one record |
+| `batchResolve(ids)` | POST | `/api/admin/oss-audit/records/batch-resolve` | v1 refuses batch cleanup |
 
 ---
 
-## 核心类型定义
+## Core Type Definitions
 
 ```typescript
 interface PaginatedResponse<T> {
@@ -585,7 +592,7 @@ interface LinkedItemDto {
   imageIndices: number[];
 }
 
-// imageIndices 仅解释当前可信详情；managed 发送固定 sourcePaths，不按后续 current 映射。
+// imageIndices only interprets the current trusted detail; managed sends fixed sourcePaths and never remaps against a later current.
 interface LinkedItemsResponse {
   mistakeItems: LinkedItemDto[];
   homeworkItems: LinkedItemDto[];
@@ -623,23 +630,23 @@ interface EnumOptionsResponse {
 
 ---
 
-## 设计规范
+## Design Guidelines
 
-- **UI 框架**：Element Plus，使用 `size="small"` 紧凑模式
-- **布局**：可折叠侧边栏（按功能分组，由路由 meta 生成）+ 顶部栏 + 主内容区，详见上文「设计规范 → 整体布局」
-- **分页**：用户管理列表默认每页 20 条；学生由 Student 服务分页，教师/助教分别由 Teacher Portal / Assistant Portal 在数据库查询中完成过滤、计数与分页，前端只渲染服务端返回的当前页
-- **懒加载路由**：按需加载页面组件
-- **按需调用 API**：每个页面只调用自己需要的接口
-- **错误处理**：Axios 错误统一提取 `response.data.message`，使用 `ElMessage.error` 提示
-- **确认操作**：删除、撤销权限、移除授权、解除关联等破坏性操作必须使用 `src/utils/confirm.ts` 的 `confirmDanger({ title, message, confirmText })`：危险图标与危险按钮、打开时确认按钮不获得焦点（回车不会执行）、点击遮罩不关闭、Esc/取消返回 `false` 且不抛异常。文案写明对象与后果；需要强调时用 `h()` 构造 VNode，**禁止** `dangerouslyUseHTMLString`（姓名、路径来自后端数据）。调用方写 `if (!(await confirmDanger(...))) return`，API 错误在自己的 try/catch 中处理。非破坏性操作（退回、重置状态、忽略、触发扫描等）不使用危险样式。
-- **认证**：浏览器只使用同源 HttpOnly 不透明 `adminSession`，access/id token 留 BFF 内存。初始化仅尝试移除历史 `adminAuthToken`、`adminRefreshToken`、`adminUsername`，从不读取这些值作身份依据；侧栏布局偏好不受影响。
-- **共享 HTTP 客户端**：所有 API 服务复用 `services/httpClient.ts`。只允许同源 `/api/`，移除 Authorization 和 axios auth；unsafe 请求单飞取得普通 CSRF 后携带单值 `X-CSRF-TOKEN`，不自动重试任何写请求。
-- **会话编号与失败**：每次会话失效或退出时递增会话编号 `generation`；旧初始化或旧 API 的 401/403 响应不能覆盖新会话，多项请求同时返回 401 时只执行一次受控登录页导航。请求取消不会重放部分写请求。
-- **图片加载**：同源 `<img>` / `<el-image>` 自动携带服务器会话 Cookie，由现有图片端点授权后重定向；不拼接 JWT、Authorization 或浏览器 token。图片与业务 API 使用同一当前管理员边界。
-- **图片端点 URL 约定**：`GET /api/admin/image?path=<ossPath>&size=<small|medium|空>`，保留现有服务端管理员会话授权，返回 302 重定向到 OSS presigned URL；浏览器随后从平台公共 `https://oss.example.com/oss/` 入口拉取图片，该入口由 User Web Nginx 统一代理。
-  - 列表缩略图：`size=small`
-  - 详情页中等图：`size=medium`
-  - 详情页点击放大预览：不传 `size`（返回原图）
-  - 路径分流：`mistakes/` 前缀走 Mistake 服务，其他路径走 Student 服务
+- **UI framework**: Element Plus in `size="small"` compact mode
+- **Layout**: collapsible sidebar (grouped by function, generated from route meta) + top bar + main content area — see "Design Guidelines → Overall Layout" above
+- **Pagination**: user-management lists default to 20 per page; students are paginated by the Student service, and teachers/assistants are filtered, counted, and paginated by the Teacher Portal / Assistant Portal in database queries — the frontend only renders the server-returned current page
+- **Lazy routes**: page components load on demand
+- **APIs called on demand**: each page calls only the endpoints it needs
+- **Error handling**: Axios errors uniformly extract `response.data.message` and surface it with `ElMessage.error`
+- **Confirmation operations**: destructive operations such as delete, revoke permission, remove grant, and unlink must use `confirmDanger({ title, message, confirmText })` from `src/utils/confirm.ts`: a danger icon and danger button, the confirm button gets no focus on open (Enter cannot execute), clicking the mask does not close, and Esc/cancel returns `false` without throwing. The copy states the object and the consequence; use `h()` to build VNodes when emphasis is needed — `dangerouslyUseHTMLString` is **forbidden** (names and paths come from backend data). Callers write `if (!(await confirmDanger(...))) return` and handle API errors in their own try/catch. Non-destructive operations (return, reset status, ignore, trigger scan, etc.) do not use the danger style.
+- **Authentication**: the browser uses only the same-origin HttpOnly opaque `adminSession`; access/id tokens stay in BFF memory. Initialization only attempts to remove the historical `adminAuthToken`, `adminRefreshToken`, and `adminUsername`, never reading those values as identity; the sidebar layout preference is unaffected.
+- **Shared HTTP client**: all API services reuse `services/httpClient.ts`. Only same-origin `/api/` is allowed; Authorization and axios auth are stripped; unsafe requests single-flight a plain CSRF token and carry the single-value `X-CSRF-TOKEN`; no write request is ever auto-retried.
+- **Session number and failures**: every session invalidation or sign-out increments the session number `generation`; 401/403 responses from an old initialization or old API cannot overwrite the new session, and when multiple requests return 401 at once, the controlled login-page navigation runs exactly once. A cancelled request never replays partial writes.
+- **Image loading**: same-origin `<img>` / `<el-image>` automatically carries the server session cookie, authorized by the existing image endpoint and then redirected; no JWT, Authorization, or browser token is ever concatenated. Images use the same current-admin boundary as the business APIs.
+- **Image endpoint URL convention**: `GET /api/admin/image?path=<ossPath>&size=<small|medium|empty>`, keeping the existing server-side admin-session authorization, returns a 302 redirect to an OSS presigned URL; the browser then pulls the image from the platform's public `https://oss.example.com/oss/` entry, proxied uniformly by the User Web Nginx.
+  - List thumbnails: `size=small`
+  - Detail-page medium images: `size=medium`
+  - Detail-page click-to-zoom preview: no `size` (returns the original image)
+  - Path routing: `mistakes/`-prefixed paths go to the Mistake service; all other paths go to the Student service
 
-从 #75 起，后端统一使用服务器会话，必需认证配置非法时拒绝启动；五个旧开关仅接受缺省或规范的 `true` 作为迁移检查，不能选择 disabled 或 JWT 模式。前端同源 Cookie/普通及退出专用 CSRF、显式托管重认证、无写请求重放行为保持；API+SPA 必须使用同一完整集成镜像。升级前使用该目标镜像的只读预检，重启使内存票据失效，回滚须完整旧镜像与匹配配置。详见 [部署契约](../../docs/development/Deployment.md#认证只读预检与升级)。
+Since #75, the backend uniformly uses the server session and refuses to start when required auth configuration is invalid; the five legacy switches accept only omission or the exact `true` as a migration check — disabled or JWT modes cannot be selected. The frontend keeps its same-origin cookie/plain and logout-dedicated CSRF, explicit hosted re-authentication, and no-write-replay behavior; the API+SPA must use the same complete integrated image. Before an upgrade, run a read-only preflight with the target image; a restart invalidates in-memory tickets, and a rollback needs the complete old image plus matching configuration. See the [deployment contract](../../docs/development/Deployment.md#认证只读预检与升级).

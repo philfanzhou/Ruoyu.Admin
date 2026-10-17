@@ -41,7 +41,7 @@ export interface OperationResponse {
   warning?: string
 }
 
-// 学生关联的教师/助教
+// Teachers/assistants linked to a student
 export interface LinkedAccountDto {
   userId: string
   displayName: string
@@ -55,14 +55,14 @@ export interface LinkedAccountsResponse {
   assistants: LinkedAccountDto[]
 }
 
-// Identity 账户批量查询响应
+// Identity account batch query response
 export interface IdentityAccountBatchResponse {
   accounts: IdentityAccountDto[]
   partialFailure: boolean
   warning: string | null
 }
 
-// Identity 账户信息（用于批量查询）
+// Identity account info (used for batch queries)
 export interface IdentityAccountDto {
   userId: string
   username: string
@@ -285,13 +285,13 @@ class StudentAdminApiClient {
     return response.data
   }
 
-  // 获取学生关联的教师和助教
+  // Fetch the teachers and assistants linked to a student
   async getLinkedAccounts(studentId: string) {
     const response = await this.client.get<LinkedAccountsResponse>(`/api/admin/students/${studentId}/linked-accounts`)
     return response.data
   }
 
-  // 批量获取 Identity 用户信息
+  // Batch-fetch Identity user info
   async getIdentityAccountsBatch(accountIds: string[]) {
     const response = await this.client.post<IdentityAccountBatchResponse>('/api/admin/identity-accounts/batch', accountIds)
     return response.data
