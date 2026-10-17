@@ -1,29 +1,31 @@
-# 系统上下文
+# System context
 
-## 服务定位
+## Service positioning
 
-Admin Portal 是 Ruoyu.Study 平台的**管理后台服务**，为管理员提供统一的学生管理、错题管理、OSS 审计和上传记录管理等操作入口。它本身不持有核心业务数据，而是作为聚合层代理下游微服务，并按操作顺序调用它们。
+Admin Portal is the **administration console service** of the Ruoyu.Study platform, giving administrators a unified entry point for student management, mistake management, OSS audit, and upload record management. It holds no core business data of its own; it acts as an aggregation layer proxying downstream microservices and calls them in operation order.
 
-**核心职责**：
-- 学生 CRUD 及身份账户关联管理
-- 错题记录查询、更新和图片迁移
-- OSS 僵尸对象审计（定时 + 手动触发）
-- 上传记录查看、分配、旋转、移除、遗留数据清理
-- 身份服务和教师门户的 HTTP 反向代理
-- 枚举选项聚合查询
+**Core responsibilities**:
+- Student CRUD and identity account linking management
+- Mistake record query, update, and image migration
+- OSS zombie object audit (scheduled + manual triggers)
+- Upload record viewing, assignment, rotation, removal, legacy data cleanup
+- HTTP reverse proxying for the identity service and the teacher portal
+- Enum options aggregation query
 
-## 系统上下文图
+## System context diagram
 
 ```
                     ┌─────────────────────────┐
-                    │     管理员 (Admin)       │
-                    │  通过浏览器访问管理后台    │
+                    │     Admin                │
+                    │  accesses the console    │
+                    │  via a browser           │
                     └───────────┬─────────────┘
                                 │ HTTPS
                                 ▼
                     ┌─────────────────────────┐
-                    │   Nginx 容器             │
-                    │   前端静态文件 + 反向代理  │
+                    │   Nginx container        │
+                    │   frontend static files  │
+                    │   + reverse proxy        │
                     └───────────┬─────────────┘
                                 │ HTTP/JSON
                                 ▼
@@ -44,7 +46,7 @@ Admin Portal 是 Ruoyu.Study 平台的**管理后台服务**，为管理员提�
 │                         │                                  │
 │  ┌──────────────────────┴──────────────────────────────┐  │
 │  │              IOssService (S3 / Local)                │  │
-│  │         [仅用于审计 List + 清理 Delete]              │  │
+│  │      [audit List + cleanup Delete only]             │  │
 │  └─────────────────────────────────────────────────────┘  │
 └───────────┬──────────────────┬──────────────┬─────────────┘
             │ gRPC             │ gRPC         │ HTTP Proxy
@@ -56,109 +58,109 @@ Admin Portal 是 Ruoyu.Study 平台的**管理后台服务**，为管理员提�
    └────────────────┘ └──────────────┘ └──────────────┘ └──────────────┘
 ```
 
-## 上游（调用方）
+## Upstream (callers)
 
-### 管理员浏览器 → Nginx 容器
+### Administrator browser → Nginx container
 
-| 属性 | 值 |
+| Property | Value |
 |------|------|
-| 调用方 | 管理员浏览器 |
-| 协议 | HTTPS |
-| 说明 | 管理员通过浏览器访问前端，前端容器或集成式 ASP.NET Core Host 提供静态文件和 API 入口 |
+| Caller | administrator browser |
+| Protocol | HTTPS |
+| Description | the administrator accesses the frontend through a browser; the frontend container or the integrated ASP.NET Core host serves the static files and the API entry |
 
-### Nginx 容器 → Admin Portal API
+### Nginx container → Admin Portal API
 
-| 属性 | 值 |
+| Property | Value |
 |------|------|
-| 调用方 | Nginx 容器 |
-| 协议 | HTTP/JSON |
-| 路由前缀 | `/api/admin/*` |
-| 说明 | Nginx 将 API 请求代理到 Admin Portal 后端 |
+| Caller | Nginx container |
+| Protocol | HTTP/JSON |
+| Route prefix | `/api/admin/*` |
+| Description | Nginx proxies API requests to the Admin Portal backend |
 
-### 管理员浏览器 → 公共 OSS 入口
+### Administrator browser → public OSS entry
 
-| 属性 | 值 |
+| Property | Value |
 |------|------|
-| 调用方 | 管理员浏览器 |
-| 协议 | HTTPS |
-| 路由前缀 | `/oss/*` |
-| 公共入口 | `https://oss.example.com/oss/*` |
-| 说明 | Admin API 返回 302 预签名地址后，浏览器访问平台公共 OSS 入口；仓库内由 User Web Nginx 统一代理，Admin Nginx 不再维护 `/oss/` location |
+| Caller | administrator browser |
+| Protocol | HTTPS |
+| Route prefix | `/oss/*` |
+| Public entry | `https://oss.example.com/oss/*` |
+| Description | after the Admin API returns a 302 presigned address, the browser visits the platform's public OSS entry; in this repository it is uniformly proxied by the User Web Nginx — the Admin Nginx no longer maintains an `/oss/` location |
 
-## 下游（被调用方）
+## Downstream (callees)
 
-### Student Service（gRPC）
+### Student Service (gRPC)
 
-| 属性 | 值 |
+| Property | Value |
 |------|------|
-| 服务名 | StudentManagementGrpcService / StudentLearningGrpcService |
-| 协议 | gRPC (HTTP/2, h2c) |
-| 默认地址 | `http://localhost:5005` |
-| 配置键 | `StudentGrpcService:Address` |
-| 使用的 gRPC 方法 | `ListStudents`, `GetStudent`, `CreateStudent`, `UpdateStudent`, `DeleteStudent`, `GetIdentityAccountsByStudentId`, `LinkIdentityAccountToStudent`, `UnlinkIdentityAccountFromStudent`, `GetStudentOpenSubjects`, `SetStudentOpenSubjects`, `GetAvailableSubjects`, `GetRegisteredOssPaths`, `ListOssObjects`, `DeleteOssObject`, `GetAllUploadRecords`, `GetUploadRecord`, `MarkUploadRecordCompleted`, `RotateUploadImage`, `RemoveImageFromRecord`, `RemoveImagesFromRecord`, `DeleteUploadRecordAfterReview`, `AnalyzeUploadRecord`, `GetPresignedUrl`, `MigrateImagesToMistake` |
-| 不可用时行为 | gRPC `StatusCode.Unavailable` → 返回 500/502；审计任务中止（Student 服务不可用时标记为 Failed） |
+| Service names | StudentManagementGrpcService / StudentLearningGrpcService |
+| Protocol | gRPC (HTTP/2, h2c) |
+| Default address | `http://localhost:5005` |
+| Configuration key | `StudentGrpcService:Address` |
+| gRPC methods used | `ListStudents`, `GetStudent`, `CreateStudent`, `UpdateStudent`, `DeleteStudent`, `GetIdentityAccountsByStudentId`, `LinkIdentityAccountToStudent`, `UnlinkIdentityAccountFromStudent`, `GetStudentOpenSubjects`, `SetStudentOpenSubjects`, `GetAvailableSubjects`, `GetRegisteredOssPaths`, `ListOssObjects`, `DeleteOssObject`, `GetAllUploadRecords`, `GetUploadRecord`, `MarkUploadRecordCompleted`, `RotateUploadImage`, `RemoveImageFromRecord`, `RemoveImagesFromRecord`, `DeleteUploadRecordAfterReview`, `AnalyzeUploadRecord`, `GetPresignedUrl`, `MigrateImagesToMistake` |
+| Behavior when unavailable | gRPC `StatusCode.Unavailable` → returns 500/502; the audit job aborts (marked Failed when the Student service is unavailable) |
 
-### Mistake Service（gRPC）
+### Mistake Service (gRPC)
 
-| 属性 | 值 |
+| Property | Value |
 |------|------|
-| 服务名 | MistakeGrpcService |
-| 协议 | gRPC (HTTP/2, h2c) |
-| 默认地址 | `http://localhost:5006` |
-| 配置键 | `MistakeGrpcService:Address` |
-| 使用的 gRPC 方法 | `GetMistakeItemList`, `GetMistakeItem`, `GetMistakeItemsByUpload`, `UpdateMistakeItem`, `GetAllReferencedImagePaths`, `SubmitMistakeUpload`, `CompleteUploadReview`, `GetPresignedUrl` |
-| 不可用时行为 | 审计任务继续但可能产生误报；Resolve 操作返回 502；查询操作返回 500 |
+| Service name | MistakeGrpcService |
+| Protocol | gRPC (HTTP/2, h2c) |
+| Default address | `http://localhost:5006` |
+| Configuration key | `MistakeGrpcService:Address` |
+| gRPC methods used | `GetMistakeItemList`, `GetMistakeItem`, `GetMistakeItemsByUpload`, `UpdateMistakeItem`, `GetAllReferencedImagePaths`, `SubmitMistakeUpload`, `CompleteUploadReview`, `GetPresignedUrl` |
+| Behavior when unavailable | the audit job continues but may produce false positives; Resolve returns 502; queries return 500 |
 
-### Identity Service（HTTP）
+### Identity Service (HTTP)
 
-| 属性 | 值 |
+| Property | Value |
 |------|------|
-| 协议 | HTTP/JSON（反向代理） |
-| 默认地址 | `http://localhost:5002` |
-| 配置键 | `IdentityService:Authority`, `IdentityService:AppId`, `IdentityService:AppSecret` |
-| 代理中间件 | `IdentityProxyMiddleware` |
-| 路由映射 | `/api/identity/*` → `{Authority}/api/*` |
-| 认证方式 | 请求头 `X-Admin-AppId` + `X-Admin-AppSecret` |
-| 超时 | 30 秒 |
-| 不可用时行为 | 返回 502 + `{"message":"Identity service unreachable"}` |
+| Protocol | HTTP/JSON (reverse proxy) |
+| Default address | `http://localhost:5002` |
+| Configuration keys | `IdentityService:Authority`, `IdentityService:AppId`, `IdentityService:AppSecret` |
+| Proxy middleware | `IdentityProxyMiddleware` |
+| Route mapping | `/api/identity/*` → `{Authority}/api/*` |
+| Authentication | headers `X-Admin-AppId` + `X-Admin-AppSecret` |
+| Timeout | 30 seconds |
+| Behavior when unavailable | returns 502 + `{"message":"Identity service unreachable"}` |
 
-### Teacher Portal（HTTP）
+### Teacher Portal (HTTP)
 
-| 属性 | 值 |
+| Property | Value |
 |------|------|
-| 协议 | HTTP/JSON（反向代理） |
-| 默认地址 | `http://localhost:5004` |
-| 配置键 | `TeacherPortal:Url` |
-| 代理中间件 | `TeacherPortalProxyMiddleware` |
-| 路由映射 | `/api/teacher-portal/admin/*` → `{Url}/api/admin/*` |
+| Protocol | HTTP/JSON (reverse proxy) |
+| Default address | `http://localhost:5004` |
+| Configuration key | `TeacherPortal:Url` |
+| Proxy middleware | `TeacherPortalProxyMiddleware` |
+| Route mapping | `/api/teacher-portal/admin/*` → `{Url}/api/admin/*` |
 |  | `/api/teacher-portal/auth/*` → `{Url}/api/auth/*` |
 |  | `/api/teacher-portal/*` → `{Url}/api/admin/*` |
-| 认证方式 | 发送服务器票据内 access token，拒绝入站 Authorization（下游 `[Authorize(Roles="admin")]` 校验） |
-| 超时 | 10 秒 |
-| 未配置时行为 | 返回 503 + `{"message":"Teacher portal not configured"}` |
-| 不可用时行为 | 返回 502 + `{"message":"Teacher portal service unreachable"}` |
+| Authentication | sends the in-ticket server access token and rejects inbound Authorization (downstream checks `[Authorize(Roles="admin")]`) |
+| Timeout | 10 seconds |
+| Behavior when unconfigured | returns 503 + `{"message":"Teacher portal not configured"}` |
+| Behavior when unavailable | returns 502 + `{"message":"Teacher portal service unreachable"}` |
 
-### OSS 存储
+### OSS storage
 
-| 属性 | 值 |
+| Property | Value |
 |------|------|
-| 协议 | S3 兼容 API / 本地文件系统 |
-| 配置键 | `Oss:InternalEndpoint`, `Oss:InternalSecure`, `Oss:AccessKey`, `Oss:SecretKey`, `Oss:BucketName`, `Oss:PublicBaseUrl` |
-| 环境变量切换 | `USE_LOCAL_OSS=1` → 使用 `LocalFileOssService` |
-| 使用场景 | 审计 ListObjects、清理 DeleteObject（权限降级为只读+有限写） |
-| 公网访问 | `Oss:PublicBaseUrl` 控制预签名公共地址；User Web Nginx 负责 `/oss/` 代理 |
+| Protocol | S3-compatible API / local file system |
+| Configuration keys | `Oss:InternalEndpoint`, `Oss:InternalSecure`, `Oss:AccessKey`, `Oss:SecretKey`, `Oss:BucketName`, `Oss:PublicBaseUrl` |
+| Environment switch | `USE_LOCAL_OSS=1` → uses `LocalFileOssService` |
+| Usage scenarios | audit ListObjects, cleanup DeleteObject (permissions downgraded to read-only + limited write) |
+| Public access | `Oss:PublicBaseUrl` controls the presigned public address; the User Web Nginx handles the `/oss/` proxy |
 
-## 服务边界
+## Service boundaries
 
-Admin Portal 的服务边界清晰定义如下：
+Admin Portal's service boundaries are clearly defined as follows:
 
-| 职责 | 归属 | 说明 |
+| Responsibility | Owner | Description |
 |------|------|------|
-| 学生数据存储 | Student Service | Admin Portal 仅代理 CRUD，不存储学生数据 |
-| 错题数据存储 | Mistake Service | Admin Portal 仅代理查询/更新，不存储错题数据 |
-| 身份认证数据 | Identity Service | Admin Portal 仅代理请求，不存储账户数据 |
-| 教师端数据 | Teacher Portal | Admin Portal 仅代理请求，不存储教师端数据 |
-| OSS 审计数据 | Admin Portal（本地） | 审计记录和运行记录由 Admin Portal 自有数据库管理 |
-| OSS 对象管理 | Student Service + OSS | Admin Portal 通过 Student Service 的 gRPC 方法间接操作 OSS |
-| 图片预签名 URL | Student/Mistake Service | Admin Portal 通过 gRPC GetPresignedUrl 获取预签名 URL，302 重定向 |
-| 图片迁移 | Student Service | Admin Portal 通过 Student gRPC MigrateImagesToMistake 代理迁移 |
+| Student data storage | Student Service | Admin Portal only proxies CRUD and stores no student data |
+| Mistake data storage | Mistake Service | Admin Portal only proxies query/update and stores no mistake data |
+| Authentication data | Identity Service | Admin Portal only proxies requests and stores no account data |
+| Teacher-side data | Teacher Portal | Admin Portal only proxies requests and stores no teacher-side data |
+| OSS audit data | Admin Portal (local) | audit records and run records are managed by Admin Portal's own database |
+| OSS object management | Student Service + OSS | Admin Portal operates OSS indirectly through the Student Service's gRPC methods |
+| Image presigned URLs | Student/Mistake Service | Admin Portal obtains presigned URLs via gRPC GetPresignedUrl and issues a 302 redirect |
+| Image migration | Student Service | Admin Portal proxies migration through Student gRPC MigrateImagesToMistake |

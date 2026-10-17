@@ -1,75 +1,75 @@
-# Ruoyu.Admin 文档
+# Ruoyu.Admin documentation
 
-Ruoyu.Admin 是 Ruoyu.Study 平台的管理后台服务，负责学生管理、上传记录审核、错题管理与 OSS 存储审计能力。
+Ruoyu.Admin is the administration console service of the Ruoyu.Study platform, providing student management, upload record review, mistake management, and OSS storage audit capabilities.
 
-## 入口
+## Entry points
 
-| 入口 | 用途 |
+| Entry point | Purpose |
 |------|------|
-| [overview/](./overview/README.md) | 服务级总览 |
-| [modules/](./modules/README.md) | 内部业务功能 |
-| [Integration/](./Integration/README.md) | 外部系统交互 |
-| [database/](./database/README.md) | 数据结构与维护责任 |
-| [development/](./development/README.md) | 开发执行支持 |
-| [pending-decisions.md](./pending-decisions.md) | 本仓库唯一的未决设计入口 |
-| [api.md](./api.md) | 补充接口文档 |
-| [development/Deployment.md](./development/Deployment.md) | 部署说明 |
-| [../CONTEXT.md](../CONTEXT.md) | Storage Audit 上下文术语 |
+| [overview/](./overview/README.md) | Service-level overview |
+| [modules/](./modules/README.md) | Internal business capabilities |
+| [Integration/](./Integration/README.md) | External system interactions |
+| [database/](./database/README.md) | Data structures and maintenance responsibilities |
+| [development/](./development/README.md) | Development execution support |
+| [pending-decisions.md](./pending-decisions.md) | This repository's only entry point for pending design decisions |
+| [api.md](./api.md) | Supplementary API documentation |
+| [development/Deployment.md](./development/Deployment.md) | Deployment instructions |
+| [../CONTEXT.md](../CONTEXT.md) | Storage Audit context terminology |
 
-## 仓库布局
+## Repository layout
 
-| 路径 | 内容 |
+| Path | Contents |
 |------|------|
-| `backend/Admin.WebApi` | 宿主、Controller、代理中间件、审计持久化、`OssAuditWorker` |
-| `backend/Ruoyu.Admin.Common` | `IOssService`（S3 + 本地文件）、缩略图、共享 JWT 工具（本宿主不注册）、数据库初始化、共享常量 |
-| `backend/Ruoyu.Admin.Consul` | Consul KV 配置源与本地缓存回退、Serilog/Loki 引导、PostgreSQL 连接串工厂 |
-| `backend/Ruoyu.Admin.ServiceClients` | Student / Mistake 手写 HTTP 客户端与镜像 DTO |
-| `backend/Tests` | xUnit + Moq + FluentAssertions 单元测试 |
-| `frontend/` | Vue 3 + Element Plus 管理端 SPA |
-| `scripts/` | Docker 镜像构建脚本 |
-| `start.sh` | 集成镜像启动脚本 |
+| `backend/Admin.WebApi` | Host, controllers, proxy middleware, audit persistence, `OssAuditWorker` |
+| `backend/Ruoyu.Admin.Common` | `IOssService` (S3 + local files), thumbnails, shared JWT utilities (not registered by this host), database initializer, shared constants |
+| `backend/Ruoyu.Admin.Consul` | Consul KV configuration source with local cache fallback, Serilog/Loki bootstrap, PostgreSQL connection-string factory |
+| `backend/Ruoyu.Admin.ServiceClients` | Hand-written HTTP clients and mirror DTOs for Student / Mistake |
+| `backend/Tests` | xUnit + Moq + FluentAssertions unit tests |
+| `frontend/` | Vue 3 + Element Plus admin SPA |
+| `scripts/` | Docker image build scripts |
+| `start.sh` | Integrated image startup script |
 
-## 外部契约归属
+## External contract ownership
 
-Student、Mistake、Homework、Teacher Portal、Assistant Portal 与 Identity 的接口定义**不由本仓库维护**：前五者由 Ruoyu.Study 维护，Identity 由 [SignaCore](https://github.com/philfanzhou/SignaCore) 维护。`backend/Ruoyu.Admin.ServiceClients` 中的 DTO 是这些 HTTP 契约的手写镜像副本：上游字段变更不会在本仓库产生编译错误，只会产生运行时反序列化偏差，因此上游变更必须同步修改 ServiceClients 并补充 Controller 单测。
+The interface definitions of Student, Mistake, Homework, Teacher Portal, Assistant Portal, and Identity are **not maintained by this repository**: the first five are maintained by Ruoyu.Study, and Identity is maintained by [SignaCore](https://github.com/philfanzhou/SignaCore). The DTOs in `backend/Ruoyu.Admin.ServiceClients` are hand-written mirror copies of these HTTP contracts: an upstream field change produces no compile error in this repository — only runtime deserialization drift — so upstream changes must be synchronized into ServiceClients along with additional controller unit tests.
 
-## 受管指派接口进展
+## Managed assignment interface progress
 
-[IKJKML](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKJKML) 曾要求同原图的两组不同裁剪，但旧 POST upload 的整图路径输入无法表达矩形。上游新增 `SourceRegions` 后，[PR #77](https://github.com/philfanzhou/Ruoyu.Admin/pull/77) 已于 2026-10-07 合并，Admin 支持 `sourcePaths` 与 `sourceRegions` 二选一；原六项真实验收记录见该 PR。当前部署环境回归继续由 [#24](https://github.com/philfanzhou/Ruoyu.Admin/issues/24) 跟踪。接口、分组判定和恢复规则见[受管指派说明](./Integration/ManagedAssignment.md)。
+[IKJKML](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKJKML) once required two different crops of the same original image, but the whole-image path input of the old POST upload could not express rectangles. After upstream added `SourceRegions`, [PR #77](https://github.com/philfanzhou/Ruoyu.Admin/pull/77) was merged on 2026-10-07; Admin now supports choosing either `sourcePaths` or `sourceRegions`. The original six real acceptance records are in that PR. Regression of the current deployment environment continues to be tracked by [#24](https://github.com/philfanzhou/Ruoyu.Admin/issues/24). For the interface, grouping rules, and recovery rules, see the [managed assignment notes](./Integration/ManagedAssignment.md).
 
-## 已知文档债（自 monorepo 继承）
+## Known documentation debt (inherited from the monorepo)
 
-以下问题在迁出前就已存在，**尚未修正**，阅读时需要以代码为准：
+The following problems existed before the extraction and **have not been corrected yet**; when reading, treat code as the source of truth:
 
-- `docs/overview/Integration.md` 的集成矩阵仍按 gRPC 描述，且带有「Phase 4 计划变更（尚未实施）」标注。实际实现已全部改为 HTTP/JSON，gRPC 已移除。矩阵中的方法名与端口需按 `backend/Admin.WebApi/Program.cs`、`Controllers/` 和三个代理中间件重新核对。
-- `docs/modules/` 下约 40 个文件仍带有 gRPC 时代的表述（`StudentManagementGrpcServiceClient`、`Ruoyu.Study.Student.Contract.Protos`、`MistakeGrpcService` 等）。这些是历史设计稿，描述的是已下线的协议。
-- `docs/modules/*/04-TASKS.md` 是历史实施任务清单，不代表当前状态，不作为运行手册使用。
-- 原 monorepo 的仓库级 ADR（如 ADR-0003 OSS 内外网路由分离）留在 Ruoyu.Study 仓库，本仓库文档以绝对链接引用。
+- The integration matrix in `docs/overview/Integration.md` is still described in terms of gRPC, with the "Phase 4 planned changes (not yet implemented)" annotation. The actual implementation has fully moved to HTTP/JSON and gRPC has been removed. The method names and ports in the matrix need to be re-verified against `backend/Admin.WebApi/Program.cs`, `Controllers/`, and the three proxy middleware.
+- About 40 files under `docs/modules/` still carry gRPC-era wording (`StudentManagementGrpcServiceClient`, `Ruoyu.Study.Student.Contract.Protos`, `MistakeGrpcService`, etc.). These are historical design drafts describing protocols that have been taken offline.
+- `docs/modules/*/04-TASKS.md` files are historical implementation task lists; they do not represent the current state and must not be used as runbooks.
+- The monorepo's repository-level ADRs (for example ADR-0003, separating internal and external OSS routing) stayed in the Ruoyu.Study repository; this repository's documentation references them by absolute link.
 
-`docs/overview/Design.md` 的依赖关系图、`docs/api.md` 与本文档已在迁出时更新为当前事实。
+The dependency diagram in `docs/overview/Design.md`, `docs/api.md`, and this document were updated to current facts at extraction time.
 
 ## Storage Audit
 
-当前行为与验证入口见 [StorageAudit](./modules/OssAudit/StorageAudit.md)。v1 扫描仅新增只读观察，所有审计删除入口均拒绝；旧审计记录和对象保留，启动时不再清理旧 review 图或旧桶记录。
+For current behavior and verification entry points, see [StorageAudit](./modules/OssAudit/StorageAudit.md). The v1 scan only adds read-only observations and every audit deletion entry point refuses; old audit records and objects are retained, and legacy review images or legacy bucket records are no longer cleaned at startup.
 
-## 待补的继承缺陷
+## Inherited defects still to be addressed
 
-### `Steeltoe.Discovery.Consul` 4.2.0 高危漏洞（GHSA-67c9-f6v2-qv86）
+### `Steeltoe.Discovery.Consul` 4.2.0 high-severity advisory (GHSA-67c9-f6v2-qv86)
 
-继承自源仓库的 Consul 服务发现/配置组件存在已知高危公告：畸形 `secure` 元数据会导致服务实例查找中止（DoS）。受影响范围 `>= 4.0.0, <= 4.2.0`，修复版本 `4.3.0`；`dotnet restore` 以 NU1903 警告呈现。
+The Consul service discovery/configuration component inherited from the source repository carries a known high-severity advisory: malformed `secure` metadata aborts service instance lookup (a denial of service). Affected range `>= 4.0.0, <= 4.2.0`, fixed in `4.3.0`; `dotnet restore` surfaces it as NU1903.
 
-`ci.yml` 中的 trivy 镜像扫描步骤（HIGH/CRITICAL + `ignore-unfixed`）当前为 **report-only（`exit-code: '0'`）**：该漏洞已有修复版本，`ignore-unfixed` 不会跳过它，若设为阻塞，required check `Build & Test` 会让每个 PR 从当天起直接红。**升级条件**：以独立变更把 `Ruoyu.Admin.Consul` 的 Steeltoe.Discovery.Consul 升到 `>= 4.3.0`（涉及 Consul KV 加载与服务注册行为，需按验证纪律完整回归），复核通过后把该步骤改为 `exit-code: '1'`（对齐 SignaCore 的阻塞策略）。首扫时另一镜像（已废弃的独立前端镜像，其 nginx:1.30.0-alpine 基础层贡献了 39 个 HIGH）已随 2026-09-25 的分离模式退役一并消失；当前扫描对象只剩集成镜像，已知发现仅 Steeltoe 这一条。
+The trivy image scan step in `ci.yml` (HIGH/CRITICAL + `ignore-unfixed`) is currently **report-only (`exit-code: '0'`)**: the advisory already has a fixed release, so `ignore-unfixed` does not skip it, and making it blocking would turn the required check `Build & Test` red for every PR from that day on. **Upgrade conditions**: in a separate change, bump `Ruoyu.Admin.Consul`'s Steeltoe.Discovery.Consul to `>= 4.3.0` (this touches Consul KV loading and service registration behavior and requires full regression per the verification discipline), and after that review passes, change the step to `exit-code: '1'` (aligning with SignaCore's blocking policy). At the first scan, another image (the deprecated standalone frontend image, whose nginx:1.30.0-alpine base layer contributed 39 HIGH findings) disappeared along with the retirement of the split mode on 2026-09-25; the integrated image is now the only scan target and Steeltoe is the only known finding.
 
-### `Ruoyu.Admin.ServiceClients` 仍含未使用的下游方法
+### `Ruoyu.Admin.ServiceClients` still contains unused downstream methods
 
-该库在 monorepo 中由 Mistake 服务与多个 Portal 共用。#104 已删除错题评审/重分析与作业图片管理方向的无调用方法及配套 DTO（Mistake 7 个方法、Student 10 个方法及其独占 DTO，含 mistake→student 调用的返回记录请求块）。剩余盘点：Mistake 7 个方法全部在用；Student 24 个方法用到 20 个，`AppendImagesToRecordAsync`、`DeleteUploadRecordAsync`、`MarkUploadRecordAsReturnedAsync`、`RemoveProcessedImagesAsync` 及其独占 DTO 仍无调用方，属后续清理项。
+In the monorepo this library was shared by the Mistake service and several portals. #104 removed the uncalled methods and their companion DTOs in the mistake review / re-analysis / homework image management direction (7 Mistake methods, 10 Student methods, and their exclusive DTOs, including the return-record request block for the mistake→student call). Remaining inventory: all 7 Mistake methods are in use; of Student's 24 methods, 20 are used, while `AppendImagesToRecordAsync`, `DeleteUploadRecordAsync`, `MarkUploadRecordAsReturnedAsync`, `RemoveProcessedImagesAsync` and their exclusive DTOs still have no callers and are items for later cleanup.
 
-### `Ruoyu.Admin.Common.Constants.OssPathPrefixConstants` 在本仓库未被引用
+### `Ruoyu.Admin.Common.Constants.OssPathPrefixConstants` is unreferenced in this repository
 
-它是 Student 图片指纹懒校验用的跨前缀清单，随共享库整体复制过来，本仓库没有任何代码读取它。
+It is a cross-prefix list for lazy validation of Student image fingerprints, copied over with the shared library as a whole; no code in this repository reads it.
 
-它的 `All` 只列 `uploads/`、`mistakes/`、`homework/`，与 `OssBucket` 的四个值（`Uploads`、`Mistakes`、`Questions`、`Documents`）并不对应。**不要**把它当作审计范围的依据——审计范围由 `OssAuditWorker.AuditedBuckets` 定义。
+Its `All` lists only `uploads/`, `mistakes/`, `homework/`, which does not correspond to the four `OssBucket` values (`Uploads`, `Mistakes`, `Questions`, `Documents`). **Do not** treat it as the basis for audit scope — audit scope is defined by `OssAuditWorker.AuditedBuckets`.
 
-另外 `homework/` 这个前缀本身具有误导性：Homework 服务没有 OSS 集成，作业图片实际由 Student 存放在 `uploads/homework/` 之下（旧启动清理曾处理这个路径，当前 v1 已停止该清理并保留对象），源码注释也标明该常量是「reserved for future homework-service image upload」。判断某类对象归谁所有时，应以实际写入方为准，不要以这个常量为准。
+Also, the `homework/` prefix itself is misleading: the Homework service has no OSS integration, and homework images are actually stored by Student under `uploads/homework/` (the old startup cleanup once handled this path; the current v1 has stopped that cleanup and keeps the objects), and the source comments also mark the constant as "reserved for future homework-service image upload". When deciding which service owns a class of objects, go by the actual writer, not by this constant.
 
-处理选项：删除该文件，或补注释说明其真实归属与 `homework/` 的保留状态。
+Handling options: delete the file, or add a comment explaining its real ownership and the reserved status of `homework/`.

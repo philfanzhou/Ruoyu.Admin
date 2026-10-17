@@ -1,10 +1,10 @@
-# 总览索引
+# Overview index
 
-| 文档 | 用途 |
+| Document | Purpose |
 |------|------|
-| [SystemContext.md](./SystemContext.md) | 服务定位与上下游 |
-| [Integration.md](./Integration.md) | 集成矩阵与边界 |
-| [KeyFlows.md](./KeyFlows.md) | 关键流程 |
-| [DataOwnership.md](./DataOwnership.md) | 数据维护责任与引用范围 |
-| [Requirements.md](./Requirements.md) | 需求摘要 |
-| [Design.md](./Design.md) | 架构摘要 |
+| [SystemContext.md](./SystemContext.md) | Service positioning and upstream/downstream neighbors |
+| [Integration.md](./Integration.md) | Integration matrix and boundaries |
+| [KeyFlows.md](./KeyFlows.md) | Key flows |
+| [DataOwnership.md](./DataOwnership.md) | Data maintenance responsibilities and reference scope |
+| [Requirements.md](./Requirements.md) | Requirements summary |
+| [Design.md](./Design.md) | Architecture summary |

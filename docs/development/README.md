@@ -1,9 +1,9 @@
-# 开发执行索引
+# Development execution index
 
-| 文档 | 用途 |
+| Document | Purpose |
 |------|------|
-| [LocalSetup.md](./LocalSetup.md) | 本地环境搭建 |
-| [RunAndDebug.md](./RunAndDebug.md) | 启动与调试 |
-| [Verification.md](./Verification.md) | 验证与测试 |
-| [IdentityTrust.md](./IdentityTrust.md) | 公共 JWT 参数的显式 issuer 信任与托管 OIDC 边界 |
-| [LocalRegressionEnv.md](./LocalRegressionEnv.md) | 本地非生产回归环境（#24 配方：PostgreSQL + SignaCore + 下游替身 + 夹具） |
+| [LocalSetup.md](./LocalSetup.md) | Local environment setup |
+| [RunAndDebug.md](./RunAndDebug.md) | Starting and debugging |
+| [Verification.md](./Verification.md) | Verification and testing |
+| [IdentityTrust.md](./IdentityTrust.md) | Explicit issuer trust for the shared JWT parameters and the hosted OIDC boundary |
+| [LocalRegressionEnv.md](./LocalRegressionEnv.md) | Local non-production regression environment (the #24 recipe: PostgreSQL + SignaCore + downstream stubs + fixtures) |

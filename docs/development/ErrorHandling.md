@@ -1,51 +1,51 @@
-# 错误处理规范
+# Error handling specification
 
-## 异常边界：ServiceMantle Problem Details（#56 起）
+## Exception boundary: ServiceMantle Problem Details (since #56)
 
-未处理异常不再由控制器自行拼接错误文本。JSON 控制器端点（`UseWhen` 分支按「MVC 控制器动作且非 `ImageController`」选定）中逃出的异常由 `UseServiceMantleProblemDetails()` 统一转换为 `application/problem+json`：
+Unhandled exceptions are no longer turned into error text by the controllers themselves. Exceptions escaping JSON controller endpoints (the `UseWhen` branch selects "MVC controller actions other than `ImageController`") are uniformly converted to `application/problem+json` by `UseServiceMantleProblemDetails()`:
 
 ```json
 {
   "type": "urn:servicemantle:error:downstream.unavailable",
   "title": "A downstream service request failed.",
   "status": 502,
-  "correlationId": "32位小写hex，与响应头 x-correlation-id 相同",
+  "correlationId": "32-char lowercase hex, identical to the response header x-correlation-id",
   "errorCode": "downstream.unavailable"
 }
 ```
 
-固定规则：
+Fixed rules:
 
-- 字段恰为 `type/title/status/correlationId/errorCode` 五项；异常消息、堆栈、内部异常与 `Data` 永不进入响应。
-- 精确映射唯一一条：`HttpRequestException` → `502 downstream.unavailable`（下游失败，固定英文 title）。其余未映射异常（含独立抛出的 `OperationCanceledException`）→ `500 http.internal_server_error` / `An unexpected error occurred.`。
-- 调用方请求取消（`RequestAborted`）原样传播，不产生 problem 响应。
-- 响应已开始写入后发生的异常：保留已发送的状态与字节，库吞掉异常并写安全日志（既有非保证边界）。
-- 端点主动返回的业务成功/失败响应（验证 400/404/409/502 与固定文本 5xx catch）、认证 401/403、代理转发响应、SPA/图片/健康端点不进入该分支。
-- 前端归一化：`frontend/src/services/apiBase.ts` 的 `extractApiErrorMessage` 按「业务 `message` → problem+json `title`（仅 content-type 为 `application/problem+json` 时）→ 传输错误消息」取值；`detail` 永不读取。
-- 行为变化（破坏性，仅异常路径）：原先把 `ex.Message` 写入响应的 catch 已删除；学生端点原 404/400 下游中转现为 `502 problem+json`；`OssAuditController` 删除失败原 `500 Failed to delete object: <消息>` 现为固定 problem 500；批量 resolve 的单条失败文本固定为「删除失败，已跳过」；`OssUploadRecordController` 的 rotate/legacy-clean 下游失败为固定文本。
-- 已知邻近行为（本次不改）：`OssAuditWorker` 仍把异常消息写入运行日志与 `OssAuditRuns.ErrorMessage`（后台审计诊断，仅认证管理员可见，不属控制器响应路径）。
+- The fields are exactly the five `type/title/status/correlationId/errorCode`; exception messages, stacks, inner exceptions, and `Data` never enter the response.
+- Exactly one precise mapping exists: `HttpRequestException` → `502 downstream.unavailable` (downstream failure, fixed English title). All other unmapped exceptions (including a standalone `OperationCanceledException`) → `500 http.internal_server_error` / `An unexpected error occurred.`.
+- Caller cancellation (`RequestAborted`) propagates as-is and produces no problem response.
+- Exceptions after the response has started writing: the already-sent status and bytes are kept, and the library swallows the exception and writes a safe log (an existing non-guaranteed boundary).
+- Business success/failure responses actively returned by endpoints (validation 400/404/409/502 and fixed-text 5xx catches), authentication 401/403, proxied responses, SPA/images/health endpoints do not enter this branch.
+- Frontend normalization: `extractApiErrorMessage` in `frontend/src/services/apiBase.ts` takes the value in the order "business `message` → problem+json `title` (only when the content type is `application/problem+json`) → transport error message"; `detail` is never read.
+- Behavior changes (breaking, exception paths only): the catches that used to write `ex.Message` into the response are deleted; the former 404/400 downstream pass-through on student endpoints is now `502 problem+json`; `OssAuditController` delete failures, formerly `500 Failed to delete object: <message>`, are now a fixed problem 500; the single-item failure text of batch resolve is fixed as "Deletion failed, skipped"; rotate/legacy-clean downstream failures of `OssUploadRecordController` use fixed text.
+- Known adjacent behavior (unchanged here): `OssAuditWorker` still writes exception messages into the run log and `OssAuditRuns.ErrorMessage` (background audit diagnostics, visible only to authenticated administrators; not a controller response path).
 
-## REST API 错误响应格式
+## REST API error response format
 
-所有 REST API 在返回错误时，必须使用以下 JSON 结构：
+Every REST API must use the following JSON structure when returning an error:
 
 ```json
 {
   "success": false,
-  "message": "人类可读的错误描述",
+  "message": "human-readable error description",
   "errorCode": "MACHINE_READABLE_CODE",
   "details": {}
 }
 ```
 
-| 字段 | 类型 | 必填 | 说明 |
+| Field | Type | Required | Description |
 |------|------|------|------|
-| `success` | boolean | 是 | 固定为 `false`，表示请求失败 |
-| `message` | string | 是 | 人类可读的错误描述，面向终端用户，使用中文 |
-| `errorCode` | string | 是 | 机器可读的错误代码，大写下划线格式，供前端逻辑判断 |
-| `details` | object | 否 | 附加错误详情，如验证错误的字段列表 |
+| `success` | boolean | yes | Fixed `false`, indicating the request failed |
+| `message` | string | yes | Human-readable error description aimed at end users, in Chinese |
+| `errorCode` | string | yes | Machine-readable error code in uppercase-underscore form, for frontend logic |
+| `details` | object | no | Additional error details, such as a list of fields that failed validation |
 
-成功响应也应包含 `success` 字段：
+Successful responses should also include the `success` field:
 
 ```json
 {
@@ -55,7 +55,7 @@
 }
 ```
 
-分页响应：
+Paginated responses:
 
 ```json
 {
@@ -68,47 +68,47 @@
 }
 ```
 
-## HTTP 状态码规范
+## HTTP status code specification
 
-| 状态码 | 含义 | 使用场景 |
+| Status code | Meaning | Usage |
 |--------|------|----------|
-| `200` | 成功 | 请求成功处理 |
-| `400` | 请求无效 | 参数验证失败、格式错误 |
-| `401` | 未认证 | 未提供或无效的认证凭据 |
-| `403` | 禁止访问 | 已认证但无权限 |
-| `404` | 资源不存在 | 请求的资源未找到 |
-| `409` | 冲突 | 资源状态冲突 |
-| `422` | 无法处理 | 业务规则验证失败 |
-| `429` | 请求过多 | 频率限制 |
-| `500` | 服务器内部错误 | 未预期的服务端异常 |
-| `502` | 网关错误 | 下游 gRPC 服务不可用 |
+| `200` | Success | Request handled successfully |
+| `400` | Invalid request | Parameter validation failure, malformed format |
+| `401` | Unauthenticated | Missing or invalid authentication credentials |
+| `403` | Forbidden | Authenticated but lacking permission |
+| `404` | Not found | The requested resource was not found |
+| `409` | Conflict | Resource state conflict |
+| `422` | Unprocessable | Business rule validation failure |
+| `429` | Too many requests | Rate limiting |
+| `500` | Internal server error | Unexpected server-side exception |
+| `502` | Bad gateway | Downstream gRPC service unavailable |
 
-## gRPC 异常到 HTTP 状态码映射
+## Mapping gRPC exceptions to HTTP status codes
 
-REST API 控制器在捕获 `RpcException` 时，必须根据 gRPC 状态码映射为对应的 HTTP 状态码：
+When a REST API controller catches an `RpcException`, it must map the gRPC status code to the corresponding HTTP status code:
 
-| gRPC StatusCode | HTTP Status Code | 说明 |
+| gRPC StatusCode | HTTP Status Code | Description |
 |-----------------|------------------|------|
-| `InvalidArgument` | `400` | 参数验证失败 |
-| `Unauthenticated` | `401` | 认证失败 |
-| `PermissionDenied` | `403` | 权限不足 |
-| `NotFound` | `404` | 资源不存在 |
-| `AlreadyExists` | `409` | 资源已存在 |
-| `FailedPrecondition` | `422` | 业务前置条件不满足 |
-| `ResourceExhausted` | `429` | 资源耗尽/限流 |
-| `Internal` | `500` | 服务内部错误 |
-| `Unavailable` | `502` | 服务不可用 |
-| 其他 | `500` | 未知错误 |
+| `InvalidArgument` | `400` | Parameter validation failure |
+| `Unauthenticated` | `401` | Authentication failure |
+| `PermissionDenied` | `403` | Insufficient permission |
+| `NotFound` | `404` | Resource not found |
+| `AlreadyExists` | `409` | Resource already exists |
+| `FailedPrecondition` | `422` | Business precondition not met |
+| `ResourceExhausted` | `429` | Resource exhausted / throttled |
+| `Internal` | `500` | Internal service error |
+| `Unavailable` | `502` | Service unavailable |
+| Others | `500` | Unknown error |
 
-## 禁止的做法
+## Forbidden practices
 
-1. 禁止将业务错误伪装为 200 + success:false，应返回正确的 4xx 状态码
-2. 禁止将所有 gRPC 异常统一返回 502，应根据 gRPC 状态码区分映射
-3. 禁止在错误响应中暴露内部实现细节（数据库异常、堆栈跟踪等）
+1. Never disguise a business error as 200 + success:false; return the correct 4xx status code
+2. Never map every gRPC exception to 502; map by the gRPC status code
+3. Never expose internal implementation details in error responses (database exceptions, stack traces, etc.)
 
-## 日志规范
+## Logging conventions
 
-- 使用结构化日志占位符，不要使用字符串插值
-- 异常对象必须传入：使用 `LogError(ex, ...)` 而非 `LogError(ex.Message, ...)`
-- RpcException 应记录状态码和详情
-- 预期内的 NotFound 使用 Warning 级别
+- Use structured logging placeholders, not string interpolation
+- Always pass the exception object: use `LogError(ex, ...)` instead of `LogError(ex.Message, ...)`
+- RpcExceptions should log the status code and details
+- Expected NotFound cases use the Warning level

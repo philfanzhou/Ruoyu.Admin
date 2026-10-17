@@ -1,8 +1,8 @@
-# 实体关系图
+# Entity relationship diagram
 
-Admin Portal 本地数据库仅包含 2 张表，且它们之间**没有外键关系**。
+The Admin Portal local database contains only 2 tables, and there are **no foreign keys** between them.
 
-## 关系图
+## Diagram
 
 ```
 +---------------------+          +---------------------+
@@ -17,33 +17,33 @@ Admin Portal 本地数据库仅包含 2 张表，且它们之间**没有外键�
 |     CreatedAt       |          |     ErrorMessage    |
 |     ResolvedAt      |          +---------------------+
 |     Note            |
-+---------------------+          无外键关联
++---------------------+          no foreign key
         |                               |
-        |    逻辑关联（非 FK）            |
+        |   logical association (not FK)|
         |                               |
-        +---------- 一次 AuditRun ------+
-                    产生多条
+        +---------- one AuditRun ------+
+                    produces multiple
                     AuditRecords
 ```
 
-## 关系说明
+## Relationship details
 
-### OssAuditRuns → OssAuditRecords（逻辑关联）
+### OssAuditRuns → OssAuditRecords (logical association)
 
-- **关系类型**：一对多（逻辑），无外键
-- **说明**：一次审计运行（`OssAuditRun`）会产生零到多条审计记录（`OssAuditRecord`）
-- **无 FK 原因**：`OssAuditRecord` 中没有 `AuditRunId` 字段，无法追溯某条记录由哪次运行产生
-- **业务影响**：新运行记录完整保存三个服务的快照元数据；审计记录没有 RunId，仍通过原业务逻辑关联，`resolve` 不删除对象或记录
+- **Relationship type**: one-to-many (logical), no foreign key
+- **Description**: one audit run (`OssAuditRun`) produces zero or more audit records (`OssAuditRecord`)
+- **Why no FK**: `OssAuditRecord` has no `AuditRunId` field, so a record cannot be traced back to the run that produced it
+- **Business impact**: new runs fully persist the snapshot metadata of the three services; audit records have no RunId and remain associated through the original business logic; `resolve` deletes neither objects nor records
 
-### 表间独立性
+### Independence between the tables
 
-两张表在数据库层面完全独立：
+The two tables are fully independent at the database level:
 
-- `OssAuditRecords`：保存历史记录和新状态 3 的只读观察；`resolve` 共用引用检查，引用完整时返回 409，不可用时返回 502，只有历史 Pending 可 `ignore`
-- `OssAuditRuns`：存储审计任务本身的执行状态，用于并发控制和状态查询
+- `OssAuditRecords`: holds historical records and new read-only status-3 observations; `resolve` shares the reference check, returning 409 when references are complete and 502 when unavailable, and only historical Pending may be `ignore`d
+- `OssAuditRuns`: stores the execution state of the audit job itself, used for concurrency control and status queries
 
-## 外部数据引用
+## External data references
 
-Admin Portal 的数据库不包含来自外部服务（Student、Mistake、Identity）的数据表。业务数据通过 HTTP 查询；完整引用由 StorageReferences v1 收集，运行记录持久保存三个服务的元数据和版本，完整引用路径仍由各提供服务负责保存。
+The Admin Portal database contains no tables of data from external services (Student, Mistake, Identity). Business data is queried over HTTP; complete references are collected by StorageReferences v1, run records persist the three services' metadata and versions, and the complete reference paths remain each providing service's responsibility to keep.
 
-详见 [DataOwnership.md](../overview/DataOwnership.md)。
+See [DataOwnership.md](../overview/DataOwnership.md) for details.

@@ -1,43 +1,43 @@
 # Pending Decisions
 
-本文件是 Ruoyu.Admin 唯一的未决设计入口，只记录当前代码仍能证实、且需要用户或架构取舍的问题。
+This file is Ruoyu.Admin's only entry point for pending design decisions. It records only questions that the current code can still confirm and that need a product or architecture trade-off.
 
-- 决定形成后，迁入对应 ADR、能力文档或实施 Issue，并从本文件移除。
-- 未决事项只阻塞各节声明的范围，不阻塞无关修复、测试或功能开发。
-- 不在此记录执行日志、已完成事项、普通代码卫生建议或测试结果。
-- 跨仓库契约类问题若主责在 Ruoyu.Study，记录在该仓库的 `docs/pending-decisions.md`，本文件只保留 Admin 侧的取舍。
+- Once a decision is made, move it into the corresponding ADR, capability document, or implementation Issue, and remove it from this file.
+- A pending item blocks only the scope declared in its own section; it does not block unrelated fixes, tests, or feature development.
+- Do not record execution logs, completed items, ordinary code-hygiene suggestions, or test results here.
+- For cross-repository contract questions whose primary responsibility lies with Ruoyu.Study, record them in that repository's `docs/pending-decisions.md`; this file keeps only the Admin-side trade-offs.
 
-PD-001 至 PD-003 于 2026-09-24 随产品从 Ruoyu.Study monorepo 迁入，原编号分别为 PD-009、PD-010、PD-011（见 Ruoyu.Study 仓库的 ADR-0010（extract-ruoyu-admin，该仓库未公开））。
+PD-001 through PD-003 were carried into this product from the Ruoyu.Study monorepo on 2026-09-24, originally numbered PD-009, PD-010, and PD-011 (see ADR-0010 in the Ruoyu.Study repository (extract-ruoyu-admin; that repository is not public)).
 
-## PD-001 OSS 审计任务的可靠调度与互斥
+## PD-001 Reliable scheduling and mutual exclusion for OSS audit jobs
 
-- **状态**：待决定
-- **影响范围**：Storage Audit
-- **当前证据**：`OssAuditController.TriggerAudit` 使用 fire-and-forget `Task.Run`；`OssAuditWorker.RunAuditAsync` 的运行中检查（查询其他 `Status=0` 的 Run）与 Run 记录创建不是单一原子互斥操作，仅靠 `DbUpdateException` 兜底，进程退出时任务可能丢失。
-- **A（推荐）**：使用有界 Channel 向现有 BackgroundService 排队，并用数据库唯一运行约束保证互斥。
-- **B**：使用持久化作业表或专用任务框架，支持重试和恢复。
-- **C**：保留当前进程内触发方式。
-- **阻塞范围**：只阻塞手动 OSS 审计触发和任务恢复模型。
-- **关联**：`OssAuditWorker` 的并发互斥路径目前没有测试覆盖（见 `docs/modules/OssAudit/StorageAudit.md` 的触发边界），决定落地时需同时补齐。
+- **Status**: pending decision
+- **Scope of impact**: Storage Audit
+- **Current evidence**: `OssAuditController.TriggerAudit` uses fire-and-forget `Task.Run`; the running check in `OssAuditWorker.RunAuditAsync` (querying other `Status=0` runs) and the Run record creation are not a single atomic mutual-exclusion operation, relying only on `DbUpdateException` as a backstop, and the job can be lost when the process exits.
+- **A (recommended)**: queue to the existing BackgroundService via a bounded Channel, and guarantee mutual exclusion with a database unique-run constraint.
+- **B**: use a persistent job table or a dedicated job framework, with retry and recovery support.
+- **C**: keep the current in-process trigger mechanism.
+- **Blocked scope**: only blocks the manual OSS audit trigger and the job recovery model.
+- **Related**: the concurrent mutual-exclusion paths of `OssAuditWorker` currently have no test coverage (see the trigger boundary in `docs/modules/OssAudit/StorageAudit.md`); the decision's implementation must add them at the same time.
 
-## PD-002 OSS 审计全量扫描的扩展策略
+## PD-002 Scaling strategy for full OSS audit scans
 
-- **状态**：待决定
-- **影响范围**：Storage Audit；跨仓库依赖 Learner、Mistake Learning、Homework 与对象存储
-- **当前证据**：当前v1 collector读取三份最多100000 keys/32MiB canonical的不可变快照，在内存形成集合，再对S3列举结果比对；每次非空single/batch resolve执行一次collector后固定拒删。超出v1预算的引用集明确失败。后续超预算的扩展、流式集合运算和S3列举规模仍需独立取舍。
-- **A（推荐）**：数据主责服务提供游标式引用路径流，Storage Audit 使用分块集合运算和批量 upsert。
-- **B**：保留现有 API，但增加分页并发、超时、缓存和批量数据库查询。
-- **C**：接受当前全量内存聚合。
-- **阻塞范围**：只阻塞大数据量 OSS 审计的扩展性改造。
-- **跨仓库说明**：超出当前v1固定预算的方案 A 需要 Student、Mistake、Homework 三个服务另行改造合同，属 Ruoyu.Study 的实施范围；本仓库只能选择消费方式，不能单方面落地 A。方案 B、C 可独立实施。
+- **Status**: pending decision
+- **Scope of impact**: Storage Audit; cross-repository dependencies on Learner, Mistake Learning, Homework, and object storage
+- **Current evidence**: the current v1 collector reads three immutable snapshots of at most 100000 keys / 32MiB canonical each, builds sets in memory, and then compares them against the S3 listing; every non-empty single/batch resolve runs the collector once and then refuses deletion. Reference sets exceeding the v1 budget fail explicitly. Scaling beyond the budget, streaming set operations, and S3 listing scale still need separate trade-offs.
+- **A (recommended)**: the data-owning services provide cursor-based streams of reference paths, and Storage Audit uses chunked set operations and batch upserts.
+- **B**: keep the current APIs but add pagination concurrency, timeouts, caching, and batched database queries.
+- **C**: accept the current full in-memory aggregation.
+- **Blocked scope**: only blocks scalability work on large-volume OSS audits.
+- **Cross-repository note**: option A beyond the current fixed v1 budget requires Student, Mistake, and Homework to change their contracts separately, which is Ruoyu.Study's implementation scope; this repository can only choose the consumption mode and cannot land A unilaterally. Options B and C can be implemented independently.
 
-## PD-003 未配置 CORS 时的默认策略
+## PD-003 Default policy when CORS is not configured
 
-- **状态**：待决定
-- **影响范围**：Admin Web API 部署
-- **当前证据**：`Program.cs` 中 `AdminWeb:AllowedOrigins` 为空时，`AdminWeb` 策略调用 `AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod()`。仓库迁出为公开开源项目后，该默认值的暴露面比在私有 monorepo 中更大。
-- **A（推荐）**：非 Development 环境启动失败；Development 只允许显式 localhost 来源。
-- **B**：未配置时完全不启用跨域策略。
-- **C**：保留 AllowAnyOrigin 默认值。
-- **阻塞范围**：只阻塞 CORS 默认行为和部署配置。
-- **关联**：集成部署模式下 SPA 与 API 同源，浏览器不需要跨域；`AllowedOrigins` 只服务于前后端分离部署。这使方案 A 的启动失败风险可控。
+- **Status**: pending decision
+- **Scope of impact**: Admin Web API deployment
+- **Current evidence**: in `Program.cs`, when `AdminWeb:AllowedOrigins` is empty, the `AdminWeb` policy calls `AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod()`. After the repository was extracted as a public open-source project, this default's exposure surface is larger than it was inside the private monorepo.
+- **A (recommended)**: fail startup outside the Development environment; in Development allow only explicit localhost origins.
+- **B**: when not configured, do not enable a cross-origin policy at all.
+- **C**: keep the AllowAnyOrigin default.
+- **Blocked scope**: only blocks the CORS default behavior and deployment configuration.
+- **Related**: in the integrated deployment mode the SPA and the API are same-origin and browsers need no cross-origin requests; `AllowedOrigins` only serves split frontend/backend deployments. This keeps the startup-failure risk of option A controllable.
