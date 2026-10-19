@@ -4,6 +4,19 @@ Managed mistake assignment is off by default; before enabling it you must config
 
 ## Build and startup
 
+Newly published release images contain both `linux/amd64` and `linux/arm64` under the same
+tag. Docker selects the matching platform automatically, including ARM64 when Colima
+runs an `aarch64` VM on Apple Silicon. Existing version tags are unchanged; use a
+version published after multi-platform support was added, or a new `edge` image where
+that channel is available. `docker buildx imagetools inspect <image>:<tag>` lists
+the platforms included in a published tag.
+
+The Node and .NET SDK stages run on the build host and produce static web assets and
+framework-dependent assemblies. The runtime base image and OS packages follow the
+target architecture. CI builds both complete images without publishing on pull
+requests, and publishing waits for that check as well as the existing tests.
+
+
 - Integrated image: `backend/Admin.WebApi/Dockerfile`; it builds the Vue frontend first, then copies the output into the API's `wwwroot`. Build entry point `./scripts/build.sh`, producing `ruoyu.admin:${IMAGE_TAG}` (`IMAGE_TAG` defaults to `20260502`).
 - Startup script: `start.sh` at the repository root.
 - Container: `ruoyu-admin`, listening on 5020 in-container, mapped to host 5020 by default (host port equals container port, matching the mapping convention of the platform's other APIs; the monorepo-era 10901 is deprecated).

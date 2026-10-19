@@ -1,9 +1,13 @@
+# Compile static web assets and framework-dependent .NET assemblies on the build host.
+# UseAppHost=false and no RuntimeIdentifier keep the output portable; the final
+# runtime image and its OS packages are selected separately for each target platform.
+
 # Build context: repository root.
 #   docker build -f backend/Admin.WebApi/Dockerfile -t ruoyu.admin .
 # Produces a single image that serves both the API (port 5020) and the built Vue SPA from wwwroot.
 
 # ========== Stage 1: Build Frontend ==========
-FROM node:20-alpine AS frontend-build
+FROM --platform=$BUILDPLATFORM node:20-alpine AS frontend-build
 ARG NPM_REGISTRY=https://mirrors.huaweicloud.com/repository/npm/
 ENV npm_config_registry=${NPM_REGISTRY}
 ENV npm_config_replace_registry_host=always
@@ -14,7 +18,7 @@ COPY frontend/ ./
 RUN npm run build
 
 # ========== Stage 2: Build & Publish Backend ==========
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS backend-build
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0 AS backend-build
 WORKDIR /src
 
 # Restore first with csproj only, so the layer cache survives source edits.
