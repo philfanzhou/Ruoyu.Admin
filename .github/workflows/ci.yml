@@ -89,6 +89,33 @@ jobs:
           ignore-unfixed: true
           exit-code: '0'
 
+  container-platforms:
+    name: Build AMD64 and ARM64 images
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+
+      # Build both complete runtime images on pull requests before a release needs them.
+      # A multi-platform build stays in BuildKit cache; load:true requires a different image store.
+      - name: Build both platforms without publishing
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          file: backend/Admin.WebApi/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: false
+          build-args: |
+            NPM_REGISTRY=${{ env.NPM_REGISTRY }}
+          cache-from: type=gha,scope=ruoyu-admin-release
+
   # Tag pushes only. vMAJOR.MINOR.PATCH publishes the stable image and moves the
   # minor channel and latest; vMAJOR.MINOR.PATCH-rc.N publishes a test image under
   # its exact immutable version tag and never touches a production tag. The git
@@ -97,7 +124,7 @@ jobs:
   publish-images:
     name: Publish GHCR Images
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
-    needs: [build-test]
+    needs: [build-test, container-platforms]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -117,6 +144,9 @@ jobs:
             echo "Release tag must use vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-rc.NUMBER." >&2
             exit 1
           fi
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
@@ -150,7 +180,7 @@ jobs:
           context: .
           file: backend/Admin.WebApi/Dockerfile
           build-args: NPM_REGISTRY=${{ env.NPM_REGISTRY }}
-          platforms: linux/amd64
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
