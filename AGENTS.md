@@ -5,7 +5,7 @@ Ruoyu.Admin is the admin console of the Ruoyu.Study platform: a .NET BFF API, a 
 ## Maintenance
 
 - This file is the single entry point for the AI collaboration process, project boundaries, and verification constraints.
-- Codex reads this file directly; Claude Code imports it through the root `CLAUDE.md`.
+- Codex reads this file directly; Claude Code v2.1.277+ also reads it directly, without a root `CLAUDE.md` import.
 - Tool directories such as `.agent`, `.claude`, and `.trae` may add tool-specific rules, but must not override this file's boundaries, testing, and security constraints.
 - CI lives in `.github/workflows/`: `ci.yml` (Build & Test: backend build + tests, frontend build + component tests, integration image build verification with trivy scan; on tag push, publishes the GHCR image and GitHub Release) and `codeql.yml` (Analyze csharp / javascript-typescript). `main` is protected by the `Protect main` ruleset: direct pushes, force pushes, and deletion are forbidden; PRs must pass the three required checks above before merging.
 - Release contract: tags carry the `v` prefix (`vX.Y.Z-rc.N` / `vX.Y.Z`). `vX.Y.Z-rc.N` publishes only a **test image** with an immutable version tag and creates a pre-release; `vX.Y.Z` publishes the **production image** and also moves `X.Y` and `latest`. Image tags carry no `v` prefix (keeping the historical `X.Y.Z` form; the CI semver-metadata step strips it), and the GitHub Release title is the tag itself (no repository-name prefix). The image is `ghcr.io/philfanzhou/ruoyu.admin` — the API + SPA single integrated container is the product's only release form (the standalone frontend image inherited from the monorepo was never used by any deployment and has been removed).
