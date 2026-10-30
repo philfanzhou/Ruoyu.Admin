@@ -291,3 +291,39 @@ All direct ServiceMantle packages use the official `0.3.1-rc.1`. The existing St
 The three proxies do not copy the raw inbound `x-correlation-id` as an explicit outbound value; the shared handler reads the middleware's private resolved slot. Normally accepted values stay the same, and rejected inputs map to the same generated value. Headers explicitly specified by the outbound call stay single-value; the Mistake session handler keeps only that non-credential metadata, continues clearing the other headers, and injects the server ticket token, with propagation sitting after the session handler. The original stripping of Authorization/Cookie/CSRF/Host/AppSecret and the downstream Set-Cookie isolation are unchanged. Pooled sends read the current context each time; without a context in the background no ID is invented; Mistake's existing no-session requests still get zero downstream rejection. The correlation value takes part in neither authentication nor idempotency.
 
 `InstanceId.CreateRandom` keeps a per-Host-build random `ruoyu-admin-<Guid:N>`, stable within the same Host, writing no bootstrap or other state. No new configuration/data migration is needed; rollback deploys the old code and the matching same-version packages, and no database Down runs.
+
+## PostgreSQL connection pool budgets
+
+Pool settings are service-private, under `Database:Pool`; do not put one maximum for every
+consumer in the shared Consul KV. Environment variables use double underscores, for example
+`Database__Pool__MaximumSize=6`. Supported keys are:
+
+| Key | Npgsql connection-string option | Valid values |
+| --- | --- | --- |
+| `MaximumSize` | `Maximum Pool Size` | integer >= 1 |
+| `MinimumSize` | `Minimum Pool Size` | integer >= 0, no greater than the maximum |
+| `IdleLifetimeSeconds` | `Connection Idle Lifetime` | integer >= 0 |
+| `PruningIntervalSeconds` | `Connection Pruning Interval` | integer >= 1 |
+| `ConnectionLifetimeSeconds` | `Connection Lifetime` | integer >= 0 |
+| `ConnectionTimeoutSeconds` | `Timeout` | integer >= 0 |
+| `CommandTimeoutSeconds` | `Command Timeout` | integer >= 0 |
+
+`Database:ApplicationName` optionally sets `Application Name`. It must be nonempty and contain
+no control characters. Explicit service settings override fallback connection-string pool
+options. When shared PostgreSQL credentials are complete, they still replace fallback host,
+port, database and credentials; only the listed pool/timing options, `Pooling` and application
+name survive from the fallback. Without complete shared credentials, the ordinary fallback
+connection string remains supported and receives the same explicit service overrides.
+Malformed values fail startup with a fixed message and no configuration values or inner exception.
+Omitted settings preserve driver defaults; adding this capability alone does not impose a budget.
+
+Startup logs report effective pool sizes, idle/pruning intervals, connection timeout and pooling
+state without credentials. Confirm the effective values after rebuilding every consumer.
+Budget the sum of maximum sizes across every pool and service replica below both the shared
+login role limit and PostgreSQL's total connection limit, leaving room for identity, maintenance
+and migrations. Include background workers and separate pools with different connection strings.
+A closed logical connection usually returns its physical connection to its own pool; that idle
+connection still counts against the login role limit. Shorter transactions and HTTP throttling
+therefore complement pool budgets rather than replacing them. No schema or data migration is
+required. Rollback removes the service-specific overrides and restores the previous application
+version; it does not change database role limits or learning records.

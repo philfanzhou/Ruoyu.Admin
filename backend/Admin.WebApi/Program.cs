@@ -313,6 +313,9 @@ app.Logger.LogInformation("Listening: http://+:{Port}", httpPort);
 if (!string.IsNullOrEmpty(connectionString))
 {
     var csb = new DbConnectionStringBuilder { ConnectionString = connectionString };
+    var pool = new Npgsql.NpgsqlConnectionStringBuilder(connectionString);
+    app.Logger.LogInformation("Database pool: {Pool}", StartupDiagnosticsFormatter.SummarizePostgreSqlPool(
+        pool.MaxPoolSize, pool.MinPoolSize, pool.ConnectionIdleLifetime, pool.ConnectionPruningInterval, pool.Timeout, pool.Pooling));
     app.Logger.LogInformation("Database: PostgreSQL {Host}:{Port}/{Database}", csb["Host"], csb.TryGetValue("Port", out var dbPort) ? dbPort : "5432", csb["Database"]);
 }
 app.Logger.LogInformation(

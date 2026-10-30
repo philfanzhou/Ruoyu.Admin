@@ -28,7 +28,7 @@ internal static class AuditDatabaseStartupConfiguration
                     WellKnownDatabaseProviderIds.PostgreSql, null, connectionString!),
                 allowTargetCreation: allowCreate);
         }
-        catch (Exception exception) when (exception is ArgumentException or FormatException or OverflowException)
+        catch (Exception exception) when (exception is ArgumentException or FormatException or OverflowException or InvalidOperationException)
         {
             throw InvalidTarget();
         }
